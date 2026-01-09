@@ -1,0 +1,66 @@
+from datetime import datetime, UTC
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from api.v1.scrape import router as scrape_router
+from config import settings
+from database import check_database_connection
+from middleware.auth import APIKeyMiddleware
+
+app = FastAPI(
+    title="TechFacts Pipeline API",
+    description="Knowledge extraction and report generation pipeline",
+    version="0.1.0",
+)
+
+# Add CORS middleware (must be added before auth middleware for preflight requests)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+# Add authentication middleware
+app.add_middleware(APIKeyMiddleware)
+
+# Include API routers
+app.include_router(scrape_router)
+
+
+@app.get("/health")
+async def health_check() -> JSONResponse:
+    """Health check endpoint - returns service status."""
+    # Check database connectivity
+    db_connected = False
+    try:
+        db_connected = check_database_connection()
+    except Exception:
+        db_connected = False
+
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "service": "techfacts-pipeline",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "log_level": settings.log_level,
+            "database": {
+                "connected": db_connected,
+            },
+        }
+    )
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    """Root endpoint - provides API information."""
+    return {
+        "service": "TechFacts Pipeline API",
+        "version": "0.1.0",
+        "docs": "/docs",
+        "health": "/health",
+    }

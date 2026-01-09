@@ -53,7 +53,8 @@
       "Bash(celery inspect:*)",
       "Bash(redis-cli INFO:*)",
       "Bash(redis-cli KEYS:*)",
-      "Bash(redis-cli GET:*)"
+      "Bash(redis-cli GET:*)",
+      "Bash(.venv/bin/pytest:*)"
     ],
     "deny": []
   }
