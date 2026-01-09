@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture
@@ -22,3 +23,15 @@ def valid_api_key():
 def invalid_api_key():
     """Return an invalid API key."""
     return "invalid-key-12345"
+
+
+@pytest.fixture
+def db():
+    """Create a database session for testing."""
+    from database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()

@@ -1,52 +1,72 @@
 """Scrape API endpoints."""
 
 from datetime import datetime, UTC
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
+from database import get_db
 from models import JobStatusResponse, ScrapeRequest, ScrapeResponse
+from orm_models import Job
 
 router = APIRouter(prefix="/api/v1", tags=["scrape"])
 
-# In-memory job storage (temporary until database integration)
-_job_store: dict[str, dict] = {}
-
 
 @router.post("/scrape", status_code=status.HTTP_202_ACCEPTED)
-async def create_scrape_job(request: ScrapeRequest) -> ScrapeResponse:
+async def create_scrape_job(
+    request: ScrapeRequest, db: Session = Depends(get_db)
+) -> ScrapeResponse:
     """
     Create a new scrape job.
 
     Args:
         request: Scrape job parameters (urls, company, optional profile)
+        db: Database session
 
     Returns:
         ScrapeResponse with job_id and metadata
     """
-    response = ScrapeResponse.create(request)
+    # Create job ID
+    job_id = uuid4()
 
-    # Store job in memory
-    _job_store[response.job_id] = {
-        "job_id": response.job_id,
-        "status": response.status,
-        "company": response.company,
-        "url_count": response.url_count,
-        "profile": response.profile,
-        "urls": request.urls,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
+    # Create Job ORM instance
+    job = Job(
+        id=job_id,
+        type="scrape",
+        status="queued",
+        payload={
+            "urls": request.urls,
+            "company": request.company,
+            "profile": request.profile,
+        },
+    )
 
-    return response
+    # Persist to database
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    # Create response
+    return ScrapeResponse(
+        job_id=str(job.id),
+        status=job.status,
+        url_count=len(request.urls),
+        company=request.company,
+        profile=request.profile,
+    )
 
 
 @router.get("/scrape/{job_id}", status_code=status.HTTP_200_OK)
-async def get_job_status(job_id: str) -> JobStatusResponse:
+async def get_job_status(
+    job_id: str, db: Session = Depends(get_db)
+) -> JobStatusResponse:
     """
     Get the status of a scrape job.
 
     Args:
         job_id: Job identifier (UUID format)
+        db: Database session
 
     Returns:
         JobStatusResponse with job details and current status
@@ -56,19 +76,31 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     """
     # Validate UUID format
     try:
-        UUID(job_id)
+        job_uuid = UUID(job_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid job_id format. Must be a valid UUID.",
         )
 
+    # Query database for job
+    job = db.query(Job).filter(Job.id == job_uuid).first()
+
     # Check if job exists
-    if job_id not in _job_store:
+    if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job {job_id} not found",
         )
 
-    job_data = _job_store[job_id]
-    return JobStatusResponse(**job_data)
+    # Extract data from Job ORM model
+    return JobStatusResponse(
+        job_id=str(job.id),
+        status=job.status,
+        company=job.payload.get("company", ""),
+        url_count=len(job.payload.get("urls", [])),
+        profile=job.payload.get("profile"),
+        urls=job.payload.get("urls"),
+        created_at=job.created_at.isoformat(),
+        error=job.error,
+    )

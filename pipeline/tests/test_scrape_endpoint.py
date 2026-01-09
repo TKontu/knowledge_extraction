@@ -1,5 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+from uuid import UUID
+
+from orm_models import Job
 
 
 class TestScrapeEndpoint:
@@ -307,3 +311,162 @@ class TestGetJobStatus:
         assert response.status_code == 200
         data = response.json()
         assert data["profile"] is None
+
+
+class TestJobPersistence:
+    """Test that jobs are persisted to the database."""
+
+    def test_create_job_persists_to_database(
+        self, client: TestClient, valid_api_key: str, db: Session
+    ):
+        """Creating a job should persist it to the database."""
+        # Create a job via API
+        response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com/docs"],
+                "company": "TestCo",
+                "profile": "api_docs",
+            },
+        )
+        assert response.status_code == 202
+        job_id = response.json()["job_id"]
+
+        # Verify job exists in database
+        db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
+        assert db_job is not None
+        assert str(db_job.id) == job_id
+        assert db_job.type == "scrape"
+        assert db_job.status == "queued"
+        assert db_job.payload is not None
+        assert db_job.payload["company"] == "TestCo"
+        assert db_job.payload["urls"] == ["https://example.com/docs"]
+        assert db_job.payload["profile"] == "api_docs"
+
+    def test_get_job_reads_from_database(
+        self, client: TestClient, valid_api_key: str, db: Session
+    ):
+        """Getting job status should read from the database."""
+        # Create a job via API
+        create_response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com/api", "https://example.com/docs"],
+                "company": "TestCo",
+            },
+        )
+        job_id = create_response.json()["job_id"]
+
+        # Get job status via API
+        get_response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert get_response.status_code == 200
+        data = get_response.json()
+
+        # Verify data matches what's in database
+        db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
+        assert db_job is not None
+        assert data["job_id"] == str(db_job.id)
+        assert data["status"] == db_job.status
+        assert data["company"] == db_job.payload["company"]
+        assert data["url_count"] == len(db_job.payload["urls"])
+
+    def test_job_persists_across_multiple_get_requests(
+        self, client: TestClient, valid_api_key: str, db: Session
+    ):
+        """Job should persist and be retrievable multiple times."""
+        # Create a job
+        create_response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com"],
+                "company": "TestCo",
+                "profile": "technical_specs",
+            },
+        )
+        job_id = create_response.json()["job_id"]
+
+        # Get the job multiple times
+        for _ in range(3):
+            response = client.get(
+                f"/api/v1/scrape/{job_id}",
+                headers={"X-API-Key": valid_api_key},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["job_id"] == job_id
+            assert data["company"] == "TestCo"
+            assert data["profile"] == "technical_specs"
+
+        # Verify only one job exists in database
+        db_jobs = db.query(Job).filter(Job.id == UUID(job_id)).all()
+        assert len(db_jobs) == 1
+
+    def test_multiple_jobs_persist_independently(
+        self, client: TestClient, valid_api_key: str, db: Session
+    ):
+        """Multiple jobs should be stored independently in database."""
+        # Create multiple jobs
+        job_ids = []
+        for i in range(3):
+            response = client.post(
+                "/api/v1/scrape",
+                headers={"X-API-Key": valid_api_key},
+                json={
+                    "urls": [f"https://example{i}.com"],
+                    "company": f"Company{i}",
+                },
+            )
+            assert response.status_code == 202
+            job_ids.append(response.json()["job_id"])
+
+        # Verify all jobs exist in database
+        for i, job_id in enumerate(job_ids):
+            db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
+            assert db_job is not None
+            assert db_job.payload["company"] == f"Company{i}"
+            assert db_job.payload["urls"] == [f"https://example{i}.com"]
+
+    def test_get_nonexistent_job_returns_404(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Getting a nonexistent job should return 404."""
+        fake_job_id = "123e4567-e89b-12d3-a456-426614174999"
+        response = client.get(
+            f"/api/v1/scrape/{fake_job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 404
+
+    def test_job_includes_created_at_timestamp(
+        self, client: TestClient, valid_api_key: str, db: Session
+    ):
+        """Job should include created_at timestamp from database."""
+        # Create a job
+        response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com"],
+                "company": "TestCo",
+            },
+        )
+        job_id = response.json()["job_id"]
+
+        # Get job status
+        get_response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        data = get_response.json()
+
+        # Verify created_at matches database
+        db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
+        assert "created_at" in data
+        # Both should be ISO format timestamps
+        assert data["created_at"] == db_job.created_at.isoformat()
