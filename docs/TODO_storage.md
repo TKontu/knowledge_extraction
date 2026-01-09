@@ -4,11 +4,27 @@
 
 Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provides search functionality.
 
+## Status
+
+**Completed:**
+- ✅ Database schema defined in `init.sql` (pages, facts, jobs, profiles, reports, rate_limits)
+- ✅ Database connection module (`pipeline/database.py` with SQLAlchemy)
+- ✅ Redis connection module (`pipeline/redis_client.py`)
+- ✅ Health checks for DB and Redis
+
+**Pending:**
+- ORM models for database tables
+- Repository classes (CRUD operations)
+- Qdrant client and repository
+- Embedding service
+- Search service
+
 ## Core Tasks
 
 ### PostgreSQL Repository
 
-- [ ] Database connection pool (SQLAlchemy async)
+- [x] Database connection pool (SQLAlchemy async) - basic setup in `database.py`
+- [ ] Create SQLAlchemy ORM models for all tables
 - [ ] Page repository
   ```python
   class PageRepository:
@@ -144,10 +160,12 @@ class EmbeddingItem:
 
 ## Database Schema
 
+**Note:** Schema already exists in `/mnt/c/code/knowledge_extraction/init.sql` with all tables created.
+
 ```sql
 -- pages table
 CREATE TABLE pages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     url TEXT UNIQUE NOT NULL,
     domain TEXT NOT NULL,
     company TEXT NOT NULL,

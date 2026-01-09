@@ -4,6 +4,26 @@
 
 Extracts structured facts from scraped markdown content using LLM with configurable profiles.
 
+## Status
+
+**Completed:**
+- ✅ Built-in profiles defined in `init.sql` (technical_specs, api_docs, security, pricing, general)
+- ✅ LLM configuration in `config.py` (OpenAI-compatible endpoints, model names, timeouts)
+
+**Pending:**
+- Profile schema/dataclass implementation
+- Profile loading from database
+- Prompt generation
+- LLM client implementation
+- Fact extraction logic
+- Fact validation and storage
+
+**Next Steps:**
+1. Create ORM models for profiles table
+2. Implement profile repository
+3. Build LLM client (OpenAI-compatible)
+4. Create extraction prompt templates
+
 ## Core Tasks
 
 ### Extraction Profiles
@@ -18,15 +38,15 @@ Extracts structured facts from scraped markdown content using LLM with configura
       depth: Literal["summary", "detailed", "comprehensive"]
       custom_instructions: str | None = None
   ```
-- [ ] Built-in profiles (stored in `prompts/profiles/`)
-  - [ ] `technical_specs.yaml`
-  - [ ] `api_docs.yaml`
-  - [ ] `security.yaml`
-  - [ ] `pricing.yaml`
-  - [ ] `general.yaml`
-- [ ] Profile loading from YAML
+- [x] Built-in profiles inserted in database (`init.sql`)
+  - [x] `technical_specs` (detailed)
+  - [x] `api_docs` (detailed)
+  - [x] `security` (comprehensive)
+  - [x] `pricing` (detailed)
+  - [x] `general` (summary)
+- [ ] Profile ORM model
+- [ ] Profile loading from database
 - [ ] Custom profile creation via API
-- [ ] Profile storage in PostgreSQL
 
 ### Prompt Generation
 
@@ -43,11 +63,16 @@ Extracts structured facts from scraped markdown content using LLM with configura
 
 ### LLM Client
 
-- [ ] Reuse your existing OpenAI-compatible client pattern
-- [ ] Configure for extraction model (gemma3-12b-awq default)
+- [ ] Create OpenAI-compatible client wrapper
+- [x] Configuration ready in `config.py`:
+  - [x] `OPENAI_BASE_URL` (extraction LLM)
+  - [x] `LLM_MODEL` (default: gemma3-12b-awq)
+  - [x] `LLM_HTTP_TIMEOUT` (900s)
+  - [x] `LLM_MAX_RETRIES` (5)
+  - [x] Retry backoff configuration
 - [ ] Structured output parsing (JSON)
 - [ ] Retry on malformed JSON
-- [ ] Timeout handling (match your existing config)
+- [ ] Timeout handling (use existing config)
 
 ### Fact Extraction
 
