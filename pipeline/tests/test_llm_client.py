@@ -1,0 +1,223 @@
+"""Tests for LLM client."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
+
+from config import settings
+from models import ExtractedFact
+from services.llm.client import LLMClient
+
+
+class MockChatCompletion:
+    """Mock OpenAI chat completion response."""
+
+    def __init__(self, content: str):
+        self.choices = [MagicMock(message=MagicMock(content=content))]
+
+
+@pytest.fixture
+def llm_client() -> LLMClient:
+    """Create LLM client fixture."""
+    return LLMClient(settings)
+
+
+@pytest.fixture
+def sample_facts_json() -> str:
+    """Sample JSON response from LLM."""
+    return """{
+  "facts": [
+    {
+      "fact": "Pro plan supports 10,000 API calls per minute",
+      "category": "limits",
+      "confidence": 0.95,
+      "source_quote": "10,000 req/min on Pro tier"
+    },
+    {
+      "fact": "Enterprise plan includes SSO authentication",
+      "category": "features",
+      "confidence": 0.9,
+      "source_quote": "SSO available for Enterprise customers"
+    }
+  ]
+}"""
+
+
+class TestLLMClient:
+    """Test LLM client functionality."""
+
+    @pytest.mark.asyncio
+    async def test_client_initialization(self, llm_client: LLMClient) -> None:
+        """Test client initializes with correct settings."""
+        assert llm_client.model == settings.llm_model
+        assert llm_client.client is not None
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_success(
+        self, llm_client: LLMClient, sample_facts_json: str
+    ) -> None:
+        """Test successful fact extraction."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion(sample_facts_json)
+
+            content = "## Pro Plan\nSupports 10,000 req/min. Enterprise includes SSO."
+            profile_categories = ["limits", "features"]
+
+            facts = await llm_client.extract_facts(content, profile_categories)
+
+            assert len(facts) == 2
+            assert facts[0].fact == "Pro plan supports 10,000 API calls per minute"
+            assert facts[0].category == "limits"
+            assert facts[0].confidence == 0.95
+            assert facts[1].category == "features"
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_with_profile(
+        self, llm_client: LLMClient, sample_facts_json: str
+    ) -> None:
+        """Test extraction uses profile categories."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion(sample_facts_json)
+
+            content = "Test content"
+            categories = ["limits", "features", "pricing"]
+
+            await llm_client.extract_facts(content, categories)
+
+            # Verify categories were passed to prompt
+            call_args = mock_create.call_args
+            messages = call_args.kwargs["messages"]
+            system_prompt = messages[0]["content"]
+
+            assert "limits" in system_prompt
+            assert "features" in system_prompt
+            assert "pricing" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_empty_response(
+        self, llm_client: LLMClient
+    ) -> None:
+        """Test handles empty facts list."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion('{"facts": []}')
+
+            facts = await llm_client.extract_facts("content", ["category"])
+
+            assert len(facts) == 0
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_uses_json_mode(
+        self, llm_client: LLMClient, sample_facts_json: str
+    ) -> None:
+        """Test extraction uses JSON mode."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion(sample_facts_json)
+
+            await llm_client.extract_facts("content", ["category"])
+
+            call_args = mock_create.call_args
+            assert call_args.kwargs["response_format"] == {"type": "json_object"}
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_uses_low_temperature(
+        self, llm_client: LLMClient, sample_facts_json: str
+    ) -> None:
+        """Test extraction uses low temperature for consistency."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion(sample_facts_json)
+
+            await llm_client.extract_facts("content", ["category"])
+
+            call_args = mock_create.call_args
+            assert call_args.kwargs["temperature"] == 0.1
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_retries_on_failure(
+        self, llm_client: LLMClient, sample_facts_json: str
+    ) -> None:
+        """Test client retries on transient failures."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            # Fail twice, then succeed
+            mock_create.side_effect = [
+                Exception("Temporary error"),
+                Exception("Another error"),
+                MockChatCompletion(sample_facts_json),
+            ]
+
+            facts = await llm_client.extract_facts("content", ["category"])
+
+            assert len(facts) == 2
+            assert mock_create.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_invalid_json_raises_error(
+        self, llm_client: LLMClient
+    ) -> None:
+        """Test raises error on invalid JSON."""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion("invalid json{")
+
+            with pytest.raises(Exception):
+                await llm_client.extract_facts("content", ["category"])
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_missing_fields_skipped(
+        self, llm_client: LLMClient
+    ) -> None:
+        """Test skips facts with missing required fields."""
+        incomplete_json = """{
+  "facts": [
+    {
+      "fact": "Complete fact",
+      "category": "features",
+      "confidence": 0.9
+    },
+    {
+      "fact": "Missing category"
+    },
+    {
+      "category": "limits"
+    }
+  ]
+}"""
+        with patch.object(
+            llm_client.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            mock_create.return_value = MockChatCompletion(incomplete_json)
+
+            facts = await llm_client.extract_facts("content", ["category"])
+
+            # Only the complete fact should be returned
+            assert len(facts) == 1
+            assert facts[0].fact == "Complete fact"
