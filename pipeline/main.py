@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from api.v1.scrape import router as scrape_router
 from config import settings
+from database import check_database_connection
 from middleware.auth import APIKeyMiddleware
 
 app = FastAPI(
@@ -34,12 +35,22 @@ app.include_router(scrape_router)
 @app.get("/health")
 async def health_check() -> JSONResponse:
     """Health check endpoint - returns service status."""
+    # Check database connectivity
+    db_connected = False
+    try:
+        db_connected = check_database_connection()
+    except Exception:
+        db_connected = False
+
     return JSONResponse(
         content={
             "status": "ok",
             "service": "techfacts-pipeline",
             "timestamp": datetime.now(UTC).isoformat(),
             "log_level": settings.log_level,
+            "database": {
+                "connected": db_connected,
+            },
         }
     )
 
