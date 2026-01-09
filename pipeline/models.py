@@ -1,0 +1,68 @@
+"""Data models for API requests and responses."""
+
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class ScrapeRequest(BaseModel):
+    """Request body for scrape endpoint."""
+
+    urls: list[str] = Field(
+        ...,
+        min_length=1,
+        description="List of URLs to scrape",
+    )
+    company: str = Field(
+        ...,
+        min_length=1,
+        description="Company name for the scraped content",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="Extraction profile to use (optional)",
+    )
+
+    @field_validator("urls")
+    @classmethod
+    def validate_urls_not_empty(cls, v: list[str]) -> list[str]:
+        """Ensure URLs list is not empty."""
+        if not v:
+            raise ValueError("urls list cannot be empty")
+        return v
+
+
+class ScrapeResponse(BaseModel):
+    """Response body for scrape endpoint."""
+
+    job_id: str = Field(
+        ...,
+        description="Unique job identifier",
+    )
+    status: str = Field(
+        default="queued",
+        description="Job status",
+    )
+    url_count: int = Field(
+        ...,
+        description="Number of URLs in the job",
+    )
+    company: str = Field(
+        ...,
+        description="Company name",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="Extraction profile (if specified)",
+    )
+
+    @staticmethod
+    def create(request: ScrapeRequest) -> "ScrapeResponse":
+        """Create a response from a scrape request."""
+        return ScrapeResponse(
+            job_id=str(uuid4()),
+            status="queued",
+            url_count=len(request.urls),
+            company=request.company,
+            profile=request.profile,
+        )

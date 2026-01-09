@@ -23,8 +23,7 @@ class TestAPIKeyAuthentication:
 
     def test_protected_endpoint_requires_api_key(self, client: TestClient):
         """Protected endpoints should require API key."""
-        # This endpoint doesn't exist yet, but will be added
-        response = client.get("/api/v1/scrape")
+        response = client.get("/api/v1/nonexistent")
         assert response.status_code in [401, 404]  # 401 if auth works, 404 if endpoint missing
 
     def test_protected_endpoint_rejects_invalid_key(
@@ -32,7 +31,7 @@ class TestAPIKeyAuthentication:
     ):
         """Protected endpoints should reject invalid API keys."""
         response = client.get(
-            "/api/v1/scrape",
+            "/api/v1/nonexistent",
             headers={"X-API-Key": invalid_api_key},
         )
         assert response.status_code in [401, 404]  # 401 if auth works, 404 if endpoint missing
@@ -44,7 +43,7 @@ class TestAPIKeyAuthentication:
     ):
         """Protected endpoints should accept valid API key."""
         response = client.get(
-            "/api/v1/scrape",
+            "/api/v1/nonexistent",
             headers={"X-API-Key": valid_api_key},
         )
         # Should get 404 (endpoint doesn't exist) not 401 (auth failed)

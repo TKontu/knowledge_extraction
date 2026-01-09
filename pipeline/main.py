@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.v1.scrape import router as scrape_router
 from config import settings
 from middleware.auth import APIKeyMiddleware
 
@@ -25,6 +26,9 @@ app.add_middleware(
 
 # Add authentication middleware
 app.add_middleware(APIKeyMiddleware)
+
+# Include API routers
+app.include_router(scrape_router)
 
 
 @app.get("/health")
