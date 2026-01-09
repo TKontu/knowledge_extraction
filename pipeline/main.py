@@ -8,6 +8,7 @@ from api.v1.scrape import router as scrape_router
 from config import settings
 from database import check_database_connection
 from middleware.auth import APIKeyMiddleware
+from redis_client import check_redis_connection
 
 app = FastAPI(
     title="TechFacts Pipeline API",
@@ -42,6 +43,13 @@ async def health_check() -> JSONResponse:
     except Exception:
         db_connected = False
 
+    # Check Redis connectivity
+    redis_connected = False
+    try:
+        redis_connected = check_redis_connection()
+    except Exception:
+        redis_connected = False
+
     return JSONResponse(
         content={
             "status": "ok",
@@ -50,6 +58,9 @@ async def health_check() -> JSONResponse:
             "log_level": settings.log_level,
             "database": {
                 "connected": db_connected,
+            },
+            "redis": {
+                "connected": redis_connected,
             },
         }
     )

@@ -2,35 +2,30 @@
 
 ## Completed
 
-**Session Summary**: Extended the FastAPI pipeline service with CORS, Docker testing, and first API endpoint using strict TDD approach. All changes on `feat/minimal-pipeline-service` branch with 3 new commits.
+**Session Summary**: Added database and Redis connections with health check integration following strict TDD. All changes on `feat/minimal-pipeline-service` branch with 3 new commits.
 
-### Increment 4: CORS Middleware (Commit: efefd55) **TDD**
-- ✅ Wrote 6 tests first for CORS functionality
-- ✅ Added FastAPI CORSMiddleware with `settings.allowed_origins_list`
-- ✅ Modified auth middleware to allow OPTIONS (CORS preflight)
-- ✅ All tests passing (20/20: 14 auth + 6 CORS)
-- ✅ Supports credentials, all methods/headers, configurable origins
+### Increment 7: Database Connection (Commit: b1e445b) **TDD**
+- ✅ Wrote 8 tests first for database connectivity and health check integration
+- ✅ Created `database.py` with SQLAlchemy engine and session management
+- ✅ Implemented `check_database_connection()` with graceful error handling
+- ✅ Updated `/health` endpoint to include database connection status
+- ✅ Uses psycopg3 driver for PostgreSQL (modern async-capable driver)
+- ✅ All 38 tests passing (30 existing + 8 new database tests)
+- ✅ Graceful degradation: health returns 200 even if DB is down
 
-### Increment 5: Docker Build Verification (Commit: fbdb61c)
-- ✅ Created comprehensive `test_docker.sh` (build, run, test, cleanup)
-- ✅ Created quick `docker_quick_test.sh` for rapid verification
-- ✅ Added `DOCKER_TEST.md` with manual testing guide
-- ✅ Pre-flight verification confirms build-ready:
-  - All Python files syntax-valid
-  - requirements.txt complete (9 deps)
-  - Dockerfile properly configured
-- ⏸️ **Awaiting Docker Desktop** to run actual container tests
+### Increment 8: Claude Code Settings (Commit: 12887b4)
+- ✅ Added `.claude/settings.json` with auto-formatting hooks
+- ✅ Auto-runs ruff check/format on file write/edit
+- ✅ Defined safe bash command permissions for development
 
-### Increment 6: First API Endpoint (Commit: 788e47b) **TDD**
-- ✅ Wrote 10 tests first for scrape endpoint
-- ✅ Created `models.py` with Pydantic validation:
-  - `ScrapeRequest` (urls, company, optional profile)
-  - `ScrapeResponse` (job_id, status, url_count, company, profile)
-- ✅ Implemented `POST /api/v1/scrape` returning 202 Accepted
-- ✅ Returns UUID job_id with job metadata
-- ✅ Request validation (urls: required non-empty list, company: required)
-- ✅ Created API router structure: `api/v1/scrape.py`
-- ✅ All 30 tests passing (14 auth + 6 CORS + 10 scrape)
+### Increment 9: Redis Connection (Commit: 0a49cf2) **TDD**
+- ✅ Wrote 8 tests first for Redis connectivity and health check integration
+- ✅ Created `redis_client.py` with Redis client and connection management
+- ✅ Implemented `check_redis_connection()` with ping-based connectivity check
+- ✅ Updated `/health` endpoint to include Redis connection status
+- ✅ Uses redis-py library with 5-second connection timeouts
+- ✅ All 46 tests passing (38 existing + 8 new Redis tests)
+- ✅ Graceful degradation: health returns 200 even if Redis is down
 
 ## In Progress
 
@@ -44,31 +39,17 @@
 
 Continue incremental TDD development. Choose next increment:
 
-### Immediate Next Option:
+### Immediate Next Options:
 
-**[ ] Database Connection** (~15 min, TDD)
-- Write tests for DB connection and health check
-- Add SQLAlchemy engine initialization
-- Update /health endpoint with database status
-- Add database connectivity check on startup
-- Test with docker-compose PostgreSQL
+**[ ] GET /api/v1/scrape/{job_id}** (~10 min, TDD)
+- Write tests for job status lookup endpoint
+- Stub endpoint returning mock job status
+- Integrate with database later
 
-### Alternative Options:
-
-1. **[ ] Test Docker Build** (when Docker Desktop available)
-   - Run `./test_docker.sh` or `./docker_quick_test.sh`
-   - Verify container builds and runs
-   - Confirm all endpoints work in container
-
-2. **[ ] GET /api/v1/scrape/{job_id}** (~10 min, TDD)
-   - Stub endpoint for job status lookup
-   - Return mock job status for now
-   - Integrate with database later
-
-3. **[ ] Redis Connection** (~10 min, TDD)
-   - Add Redis client initialization
-   - Test connection in /health endpoint
-   - Prepare for job queue integration
+**[ ] Test Docker Build** (when Docker Desktop available)
+- Run `./test_docker.sh` or `./docker_quick_test.sh`
+- Verify container builds and runs
+- Confirm all endpoints work in container
 
 ### Future Increments:
 - [ ] Metrics endpoint (Prometheus format)
@@ -82,18 +63,22 @@ Continue incremental TDD development. Choose next increment:
 ## Key Files
 
 ### Core Application
-- `pipeline/main.py` - FastAPI app, middleware registration, router includes
+- `pipeline/main.py` - FastAPI app, middleware, routers, health check with DB + Redis status
 - `pipeline/config.py` - Pydantic-settings configuration (all env vars)
-- `pipeline/models.py` - Pydantic request/response models with validation
+- `pipeline/database.py` - SQLAlchemy engine, session factory, connectivity check
+- `pipeline/redis_client.py` - Redis client, connection management, connectivity check **NEW**
+- `pipeline/models.py` - Pydantic request/response models
 - `pipeline/middleware/auth.py` - API key auth + OPTIONS bypass
 
 ### API Endpoints
-- `pipeline/api/v1/scrape.py` - POST /api/v1/scrape endpoint (202 Accepted)
+- `pipeline/api/v1/scrape.py` - POST /api/v1/scrape endpoint (202 Accepted stub)
 
 ### Testing
 - `pipeline/tests/conftest.py` - Pytest fixtures (client, api keys)
 - `pipeline/tests/test_auth.py` - 14 auth tests
 - `pipeline/tests/test_cors.py` - 6 CORS tests
+- `pipeline/tests/test_database.py` - 8 database tests
+- `pipeline/tests/test_redis.py` - 8 Redis tests **NEW**
 - `pipeline/tests/test_scrape_endpoint.py` - 10 scrape endpoint tests
 - `pipeline/test_docker.sh` - Comprehensive Docker test suite
 - `pipeline/docker_quick_test.sh` - Quick Docker verification
@@ -108,6 +93,7 @@ Continue incremental TDD development. Choose next increment:
 - `docker-compose.yml` - Full 7-service stack
 - `init.sql` - PostgreSQL schema with extraction profiles
 - `.env.example` - Environment template
+- `.claude/settings.json` - Claude Code hooks and permissions **NEW**
 
 ## Context
 
@@ -120,24 +106,45 @@ Continue incremental TDD development. Choose next increment:
 3. Refactor if needed
 4. Commit and push
 
-**Branch Strategy**: Working on `feat/minimal-pipeline-service`. Will merge PR#1 to main once we have a few more increments or reach a logical milestone (e.g., database integration complete).
+**Branch Strategy**: Working on `feat/minimal-pipeline-service`. Will merge PR#1 to main once we have a few more increments or reach a logical milestone (e.g., database + Redis integration complete).
 
 ### Current API Endpoints
 
 | Endpoint | Method | Auth | Status |
 |----------|--------|------|--------|
-| `/health` | GET | Public | ✅ Working |
+| `/health` | GET | Public | ✅ Working (shows DB + Redis status) |
 | `/docs` | GET | Public | ✅ Working |
 | `/` | GET | Protected | ✅ Working |
 | `/api/v1/scrape` | POST | Protected | ✅ Stub (returns job_id) |
 
 ### Test Coverage
 
-- **30 tests, all passing**
+- **46 tests, all passing**
 - **100% endpoint coverage** for implemented features
 - Auth: 14 tests (key validation, public/protected paths, case-insensitivity)
 - CORS: 6 tests (origins, preflight, credentials, headers)
+- Database: 8 tests (connectivity, health check integration, graceful degradation)
+- Redis: 8 tests (connectivity, health check integration, graceful degradation)
 - Scrape: 10 tests (validation, auth, response format)
+
+### Health Check Response
+
+```json
+{
+  "status": "ok",
+  "service": "techfacts-pipeline",
+  "timestamp": "2026-01-09T12:12:20.549277+00:00",
+  "log_level": "INFO",
+  "database": {
+    "connected": false
+  },
+  "redis": {
+    "connected": false
+  }
+}
+```
+
+Database and Redis show as `connected: false` until services are running via docker-compose.
 
 ### Technical Decisions
 
@@ -150,13 +157,25 @@ Continue incremental TDD development. Choose next increment:
    - Credentials enabled
    - All methods and headers allowed
 
-3. **API Design**:
+3. **Database**: SQLAlchemy with psycopg3
+   - Modern async-capable driver
+   - Connection pooling (size=5, max_overflow=10)
+   - pool_pre_ping enabled for connection verification
+   - Graceful degradation in health check
+
+4. **Redis**: redis-py client
+   - 5-second connection and socket timeouts
+   - decode_responses=True for string handling
+   - Graceful degradation in health check
+   - Will be used for job queues and caching
+
+5. **API Design**:
    - RESTful structure under `/api/v1/`
    - 202 Accepted for async job creation
    - UUID job identifiers
    - Pydantic validation with clear error messages
 
-4. **Remote Deployment**: Designed for 192.168.0.136 via Portainer
+6. **Remote Deployment**: Designed for 192.168.0.136 via Portainer
    - Web UI at :8080
    - API at :8000
    - vLLM gateway at 192.168.0.247:9003
@@ -165,14 +184,16 @@ Continue incremental TDD development. Choose next increment:
 
 - **No secrets committed**: All use placeholders or env var references
 - **Docker verified but not tested**: Container should build, awaiting Docker Desktop
-- **Database not connected yet**: Config exists but no actual connection
+- **Database not connected yet**: Module exists, will connect when PostgreSQL starts
+- **Redis not connected yet**: Module exists, will connect when Redis starts
 - **Scrape endpoint is stub**: Returns job_id but doesn't actually scrape yet
 - **All code follows TDD**: Every feature has tests written first
 
 ### Dependencies Installed
 - FastAPI 0.115.0, uvicorn 0.32.0
 - pydantic-settings 2.6.0
-- SQLAlchemy 2.0.36 (not used yet)
+- SQLAlchemy 2.0.36, psycopg[binary] 3.2.3
+- redis 5.2.0
 - httpx 0.27.2 (not used yet)
 - pytest 9.0.2
 
@@ -183,16 +204,18 @@ Continue incremental TDD development. Choose next increment:
 - Remote repo: `https://github.com/TKontu/knowledge_extraction.git`
 
 ### Session Statistics
-- **Commits this session**: 3 (CORS, Docker tests, Scrape endpoint)
-- **Files changed**: 12
-- **Lines added**: 619
-- **Tests added**: 16 (6 CORS + 10 scrape)
-- **Time per increment**: ~5-10 minutes each
+- **Commits this session**: 3 (Database connection, Claude settings, Redis connection)
+- **Files changed**: 8
+- **Lines added**: ~450
+- **Tests added**: 16 (8 database tests + 8 Redis tests)
+- **Time per increment**: ~10-15 minutes each
 
 ## Ready to Continue
 
 The TDD approach is working excellently. All increments are small, tested, and cleanly separated. Next session should continue this pattern.
 
-**Suggested Next**: Database connection with TDD approach - write tests for connection and health check, then implement.
+**Infrastructure Complete**: Database and Redis connections are now integrated with health monitoring. Core infrastructure connectivity is in place.
+
+**Suggested Next**: GET /api/v1/scrape/{job_id} endpoint with TDD approach - write tests for job status lookup, then implement a stub endpoint. This will complete the basic scrape API surface.
 
 **Reminder**: Run `/clear` to start next session fresh with full context.
