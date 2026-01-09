@@ -8,6 +8,7 @@ from api.v1.scrape import router as scrape_router
 from config import settings
 from database import check_database_connection
 from middleware.auth import APIKeyMiddleware
+from qdrant_connection import check_qdrant_connection
 from redis_client import check_redis_connection
 
 app = FastAPI(
@@ -50,6 +51,13 @@ async def health_check() -> JSONResponse:
     except Exception:
         redis_connected = False
 
+    # Check Qdrant connectivity
+    qdrant_connected = False
+    try:
+        qdrant_connected = check_qdrant_connection()
+    except Exception:
+        qdrant_connected = False
+
     return JSONResponse(
         content={
             "status": "ok",
@@ -61,6 +69,9 @@ async def health_check() -> JSONResponse:
             },
             "redis": {
                 "connected": redis_connected,
+            },
+            "qdrant": {
+                "connected": qdrant_connected,
             },
         }
     )
