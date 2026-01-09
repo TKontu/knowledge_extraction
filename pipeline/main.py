@@ -3,6 +3,8 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from config import settings
+
 app = FastAPI(
     title="TechFacts Pipeline API",
     description="Knowledge extraction and report generation pipeline",
@@ -18,6 +20,7 @@ async def health_check() -> JSONResponse:
             "status": "ok",
             "service": "techfacts-pipeline",
             "timestamp": datetime.utcnow().isoformat(),
+            "log_level": settings.log_level,
         }
     )
 
