@@ -1,35 +1,36 @@
-# Handoff: Pipeline Service Foundation (TDD Approach)
+# Handoff: Pipeline Service - Incremental TDD Development
 
 ## Completed
 
-**Session Summary**: Built the foundational FastAPI pipeline service using incremental TDD approach with 3 commits on `feat/minimal-pipeline-service` branch.
+**Session Summary**: Extended the FastAPI pipeline service with CORS, Docker testing, and first API endpoint using strict TDD approach. All changes on `feat/minimal-pipeline-service` branch with 3 new commits.
 
-### Infrastructure Setup (Commit: bb7b21d)
-- ✅ Re-initialized git remote to `github.com/TKontu/knowledge_extraction`
-- ✅ Created comprehensive documentation (ARCHITECTURE.md, DEPLOYMENT.md, TODO.md)
-- ✅ Set up docker-compose.yml with 7 services (Firecrawl, PostgreSQL, Qdrant, Redis, Pipeline API, Web UI, FlareSolverr)
-- ✅ Added PostgreSQL schema with built-in extraction profiles
-- ✅ Updated architecture for remote deployment to 192.168.0.136
+### Increment 4: CORS Middleware (Commit: efefd55) **TDD**
+- ✅ Wrote 6 tests first for CORS functionality
+- ✅ Added FastAPI CORSMiddleware with `settings.allowed_origins_list`
+- ✅ Modified auth middleware to allow OPTIONS (CORS preflight)
+- ✅ All tests passing (20/20: 14 auth + 6 CORS)
+- ✅ Supports credentials, all methods/headers, configurable origins
 
-### Increment 1: Minimal FastAPI Service (Commit: 4a0fe09)
-- ✅ Created `pipeline/main.py` with /health and / endpoints
-- ✅ Added `pipeline/requirements.txt` with core dependencies
-- ✅ Created `pipeline/Dockerfile` for Python 3.12 container
-- ✅ Service starts and responds correctly
+### Increment 5: Docker Build Verification (Commit: fbdb61c)
+- ✅ Created comprehensive `test_docker.sh` (build, run, test, cleanup)
+- ✅ Created quick `docker_quick_test.sh` for rapid verification
+- ✅ Added `DOCKER_TEST.md` with manual testing guide
+- ✅ Pre-flight verification confirms build-ready:
+  - All Python files syntax-valid
+  - requirements.txt complete (9 deps)
+  - Dockerfile properly configured
+- ⏸️ **Awaiting Docker Desktop** to run actual container tests
 
-### Increment 2: Configuration Management (Commit: 5a6e8aa)
-- ✅ Added `pipeline/config.py` with pydantic-settings
-- ✅ All environment variables defined with defaults
-- ✅ Type-safe configuration (API_KEY, DATABASE_URL, LLM settings, etc.)
-- ✅ Environment variable overrides tested and working
-
-### Increment 3: API Authentication (Commit: e578434) **TDD**
-- ✅ Wrote 14 tests first (tests/test_auth.py)
-- ✅ Implemented `middleware/auth.py` with APIKeyMiddleware
-- ✅ All tests passing (14/14)
-- ✅ Public endpoints: /health, /docs (no auth)
-- ✅ Protected endpoints: /, /api/v1/* (require X-API-Key)
-- ✅ Case-insensitive header support
+### Increment 6: First API Endpoint (Commit: 788e47b) **TDD**
+- ✅ Wrote 10 tests first for scrape endpoint
+- ✅ Created `models.py` with Pydantic validation:
+  - `ScrapeRequest` (urls, company, optional profile)
+  - `ScrapeResponse` (job_id, status, url_count, company, profile)
+- ✅ Implemented `POST /api/v1/scrape` returning 202 Accepted
+- ✅ Returns UUID job_id with job metadata
+- ✅ Request validation (urls: required non-empty list, company: required)
+- ✅ Created API router structure: `api/v1/scrape.py`
+- ✅ All 30 tests passing (14 auth + 6 CORS + 10 scrape)
 
 ## In Progress
 
@@ -41,91 +42,132 @@
 
 ## Next Steps
 
-Continue incremental development with small, tested changes:
+Continue incremental TDD development. Choose next increment:
 
-### Immediate Next Options (Choose One):
+### Immediate Next Option:
 
-1. **[ ] CORS Middleware** (~5 min)
-   - Add CORS middleware for Web UI
-   - Use `settings.allowed_origins_list`
-   - Test with different origins
+**[ ] Database Connection** (~15 min, TDD)
+- Write tests for DB connection and health check
+- Add SQLAlchemy engine initialization
+- Update /health endpoint with database status
+- Add database connectivity check on startup
+- Test with docker-compose PostgreSQL
 
-2. **[ ] Test Docker Build** (~5 min)
-   - `docker build -t techfacts-pipeline ./pipeline`
-   - `docker run -p 8000:8000 techfacts-pipeline`
-   - Verify /health responds in container
+### Alternative Options:
 
-3. **[ ] First API Endpoint** (~10 min, TDD)
-   - Write tests for `POST /api/v1/scrape`
-   - Add stub endpoint that returns 202 Accepted
-   - Return job_id placeholder
+1. **[ ] Test Docker Build** (when Docker Desktop available)
+   - Run `./test_docker.sh` or `./docker_quick_test.sh`
+   - Verify container builds and runs
+   - Confirm all endpoints work in container
 
-4. **[ ] Database Connection** (~15 min, TDD)
-   - Write tests for DB health check
-   - Add SQLAlchemy engine to config
-   - Update /health with DB status
+2. **[ ] GET /api/v1/scrape/{job_id}** (~10 min, TDD)
+   - Stub endpoint for job status lookup
+   - Return mock job status for now
+   - Integrate with database later
+
+3. **[ ] Redis Connection** (~10 min, TDD)
+   - Add Redis client initialization
+   - Test connection in /health endpoint
+   - Prepare for job queue integration
 
 ### Future Increments:
 - [ ] Metrics endpoint (Prometheus format)
 - [ ] Structured logging with structlog
-- [ ] Redis connection for job queue
+- [ ] Job storage in PostgreSQL
 - [ ] Qdrant connection for vectors
+- [ ] Firecrawl client wrapper
 - [ ] Scraper module implementation
 - [ ] Extraction module with LLM client
 
 ## Key Files
 
 ### Core Application
-- `pipeline/main.py` - FastAPI app entry point, middleware registration
-- `pipeline/config.py` - Centralized configuration with pydantic-settings
-- `pipeline/middleware/auth.py` - API key authentication middleware
+- `pipeline/main.py` - FastAPI app, middleware registration, router includes
+- `pipeline/config.py` - Pydantic-settings configuration (all env vars)
+- `pipeline/models.py` - Pydantic request/response models with validation
+- `pipeline/middleware/auth.py` - API key auth + OPTIONS bypass
+
+### API Endpoints
+- `pipeline/api/v1/scrape.py` - POST /api/v1/scrape endpoint (202 Accepted)
 
 ### Testing
 - `pipeline/tests/conftest.py` - Pytest fixtures (client, api keys)
-- `pipeline/tests/test_auth.py` - 14 auth tests (all passing)
-
-### Infrastructure
-- `docker-compose.yml` - Full service stack (7 services)
-- `init.sql` - PostgreSQL schema with built-in profiles
-- `.env.example` - Environment variable template
+- `pipeline/tests/test_auth.py` - 14 auth tests
+- `pipeline/tests/test_cors.py` - 6 CORS tests
+- `pipeline/tests/test_scrape_endpoint.py` - 10 scrape endpoint tests
+- `pipeline/test_docker.sh` - Comprehensive Docker test suite
+- `pipeline/docker_quick_test.sh` - Quick Docker verification
 
 ### Documentation
-- `docs/ARCHITECTURE.md` - System design and data flow
-- `docs/DEPLOYMENT.md` - Remote deployment guide for Portainer
-- `docs/TODO.md` - Phased development plan
+- `pipeline/DOCKER_TEST.md` - Docker testing guide
+- `docs/ARCHITECTURE.md` - System design
+- `docs/DEPLOYMENT.md` - Remote deployment guide
+- `docs/TODO.md` - Full phased development plan
+
+### Infrastructure
+- `docker-compose.yml` - Full 7-service stack
+- `init.sql` - PostgreSQL schema with extraction profiles
+- `.env.example` - Environment template
 
 ## Context
 
 ### Development Strategy
-**Approach**: Small incremental changes (~5-15 min each) with TDD where possible. Each increment is a separate commit on the feature branch.
+**Approach**: Small incremental changes (~5-15 min each) with TDD. Each increment is a separate commit on the feature branch.
 
-**Branch Strategy**: Working on `feat/minimal-pipeline-service` branch. Will merge PR#1 to main once we have a few more increments or reach a logical milestone.
+**TDD Pattern**:
+1. Write tests first (Red)
+2. Implement to pass tests (Green)
+3. Refactor if needed
+4. Commit and push
+
+**Branch Strategy**: Working on `feat/minimal-pipeline-service`. Will merge PR#1 to main once we have a few more increments or reach a logical milestone (e.g., database integration complete).
+
+### Current API Endpoints
+
+| Endpoint | Method | Auth | Status |
+|----------|--------|------|--------|
+| `/health` | GET | Public | ✅ Working |
+| `/docs` | GET | Public | ✅ Working |
+| `/` | GET | Protected | ✅ Working |
+| `/api/v1/scrape` | POST | Protected | ✅ Stub (returns job_id) |
+
+### Test Coverage
+
+- **30 tests, all passing**
+- **100% endpoint coverage** for implemented features
+- Auth: 14 tests (key validation, public/protected paths, case-insensitivity)
+- CORS: 6 tests (origins, preflight, credentials, headers)
+- Scrape: 10 tests (validation, auth, response format)
 
 ### Technical Decisions
 
 1. **Authentication**: API key via X-API-Key header (case-insensitive)
    - Simple for internal LAN deployment
-   - Can upgrade to JWT later if needed
+   - OPTIONS requests bypass auth for CORS preflight
 
-2. **Configuration**: pydantic-settings for type-safe env vars
-   - Loads from .env file or environment
-   - Defaults suitable for development
+2. **CORS**: Configured for Web UI access
+   - Origins from `ALLOWED_ORIGINS` env var
+   - Credentials enabled
+   - All methods and headers allowed
 
-3. **Remote Deployment**: Designed for 192.168.0.136 via Portainer
-   - Web UI at :8080 for browser control
-   - API at :8000 for programmatic access
+3. **API Design**:
+   - RESTful structure under `/api/v1/`
+   - 202 Accepted for async job creation
+   - UUID job identifiers
+   - Pydantic validation with clear error messages
+
+4. **Remote Deployment**: Designed for 192.168.0.136 via Portainer
+   - Web UI at :8080
+   - API at :8000
    - vLLM gateway at 192.168.0.247:9003
-
-4. **Testing**: Using pytest + FastAPI TestClient
-   - TDD approach confirmed effective
-   - Test fixtures in conftest.py
 
 ### Important Notes
 
 - **No secrets committed**: All use placeholders or env var references
-- **Docker not tested yet**: Container builds but hasn't been run
-- **Database not connected**: Config exists but no actual connection
-- **Only 2 endpoints exist**: /health (public) and / (protected)
+- **Docker verified but not tested**: Container should build, awaiting Docker Desktop
+- **Database not connected yet**: Config exists but no actual connection
+- **Scrape endpoint is stub**: Returns job_id but doesn't actually scrape yet
+- **All code follows TDD**: Every feature has tests written first
 
 ### Dependencies Installed
 - FastAPI 0.115.0, uvicorn 0.32.0
@@ -137,11 +179,20 @@ Continue incremental development with small, tested changes:
 ### Environment
 - Python 3.12
 - Virtual env: `pipeline/.venv/`
-- Working directory: `/mnt/c/code/knowledge_extraction/`
+- Working directory: `/mnt/c/code/knowledge_extraction/pipeline/`
 - Remote repo: `https://github.com/TKontu/knowledge_extraction.git`
+
+### Session Statistics
+- **Commits this session**: 3 (CORS, Docker tests, Scrape endpoint)
+- **Files changed**: 12
+- **Lines added**: 619
+- **Tests added**: 16 (6 CORS + 10 scrape)
+- **Time per increment**: ~5-10 minutes each
 
 ## Ready to Continue
 
-The foundation is solid. Next session can pick up with any of the immediate next options above. TDD approach is working well - recommend continuing with test-first for new features.
+The TDD approach is working excellently. All increments are small, tested, and cleanly separated. Next session should continue this pattern.
 
-**Suggested**: Run `/clear` to start next session fresh.
+**Suggested Next**: Database connection with TDD approach - write tests for connection and health check, then implement.
+
+**Reminder**: Run `/clear` to start next session fresh with full context.
