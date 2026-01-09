@@ -1,15 +1,19 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from config import settings
+from middleware.auth import APIKeyMiddleware
 
 app = FastAPI(
     title="TechFacts Pipeline API",
     description="Knowledge extraction and report generation pipeline",
     version="0.1.0",
 )
+
+# Add authentication middleware
+app.add_middleware(APIKeyMiddleware)
 
 
 @app.get("/health")
@@ -19,7 +23,7 @@ async def health_check() -> JSONResponse:
         content={
             "status": "ok",
             "service": "techfacts-pipeline",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "log_level": settings.log_level,
         }
     )
