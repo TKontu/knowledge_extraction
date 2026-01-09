@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, UTC
 
 from fastapi import FastAPI
@@ -10,11 +11,24 @@ from database import check_database_connection
 from middleware.auth import APIKeyMiddleware
 from qdrant_connection import check_qdrant_connection
 from redis_client import check_redis_connection
+from services.scraper.scheduler import start_scheduler, stop_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events."""
+    # Startup: Start the background job scheduler
+    await start_scheduler()
+    yield
+    # Shutdown: Stop the background job scheduler
+    await stop_scheduler()
+
 
 app = FastAPI(
     title="TechFacts Pipeline API",
     description="Knowledge extraction and report generation pipeline",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware (must be added before auth middleware for preflight requests)
