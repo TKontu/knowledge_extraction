@@ -2,7 +2,7 @@
 
 ## Completed
 
-**Session Summary**: Added database connection with health check integration following strict TDD. All changes on `feat/minimal-pipeline-service` branch with 2 new commits.
+**Session Summary**: Added database and Redis connections with health check integration following strict TDD. All changes on `feat/minimal-pipeline-service` branch with 3 new commits.
 
 ### Increment 7: Database Connection (Commit: b1e445b) **TDD**
 - ✅ Wrote 8 tests first for database connectivity and health check integration
@@ -18,6 +18,15 @@
 - ✅ Auto-runs ruff check/format on file write/edit
 - ✅ Defined safe bash command permissions for development
 
+### Increment 9: Redis Connection (Commit: 0a49cf2) **TDD**
+- ✅ Wrote 8 tests first for Redis connectivity and health check integration
+- ✅ Created `redis_client.py` with Redis client and connection management
+- ✅ Implemented `check_redis_connection()` with ping-based connectivity check
+- ✅ Updated `/health` endpoint to include Redis connection status
+- ✅ Uses redis-py library with 5-second connection timeouts
+- ✅ All 46 tests passing (38 existing + 8 new Redis tests)
+- ✅ Graceful degradation: health returns 200 even if Redis is down
+
 ## In Progress
 
 **Current Branch**: `feat/minimal-pipeline-service`
@@ -31,12 +40,6 @@
 Continue incremental TDD development. Choose next increment:
 
 ### Immediate Next Options:
-
-**[ ] Redis Connection** (~10 min, TDD)
-- Write tests for Redis connection and health check
-- Add Redis client initialization
-- Update /health endpoint with redis status
-- Test connection with docker-compose Redis
 
 **[ ] GET /api/v1/scrape/{job_id}** (~10 min, TDD)
 - Write tests for job status lookup endpoint
@@ -60,9 +63,10 @@ Continue incremental TDD development. Choose next increment:
 ## Key Files
 
 ### Core Application
-- `pipeline/main.py` - FastAPI app, middleware, routers, health check with DB status
+- `pipeline/main.py` - FastAPI app, middleware, routers, health check with DB + Redis status
 - `pipeline/config.py` - Pydantic-settings configuration (all env vars)
 - `pipeline/database.py` - SQLAlchemy engine, session factory, connectivity check
+- `pipeline/redis_client.py` - Redis client, connection management, connectivity check **NEW**
 - `pipeline/models.py` - Pydantic request/response models
 - `pipeline/middleware/auth.py` - API key auth + OPTIONS bypass
 
@@ -73,7 +77,8 @@ Continue incremental TDD development. Choose next increment:
 - `pipeline/tests/conftest.py` - Pytest fixtures (client, api keys)
 - `pipeline/tests/test_auth.py` - 14 auth tests
 - `pipeline/tests/test_cors.py` - 6 CORS tests
-- `pipeline/tests/test_database.py` - 8 database tests **NEW**
+- `pipeline/tests/test_database.py` - 8 database tests
+- `pipeline/tests/test_redis.py` - 8 Redis tests **NEW**
 - `pipeline/tests/test_scrape_endpoint.py` - 10 scrape endpoint tests
 - `pipeline/test_docker.sh` - Comprehensive Docker test suite
 - `pipeline/docker_quick_test.sh` - Quick Docker verification
@@ -107,18 +112,19 @@ Continue incremental TDD development. Choose next increment:
 
 | Endpoint | Method | Auth | Status |
 |----------|--------|------|--------|
-| `/health` | GET | Public | ✅ Working (shows DB status) |
+| `/health` | GET | Public | ✅ Working (shows DB + Redis status) |
 | `/docs` | GET | Public | ✅ Working |
 | `/` | GET | Protected | ✅ Working |
 | `/api/v1/scrape` | POST | Protected | ✅ Stub (returns job_id) |
 
 ### Test Coverage
 
-- **38 tests, all passing**
+- **46 tests, all passing**
 - **100% endpoint coverage** for implemented features
 - Auth: 14 tests (key validation, public/protected paths, case-insensitivity)
 - CORS: 6 tests (origins, preflight, credentials, headers)
 - Database: 8 tests (connectivity, health check integration, graceful degradation)
+- Redis: 8 tests (connectivity, health check integration, graceful degradation)
 - Scrape: 10 tests (validation, auth, response format)
 
 ### Health Check Response
@@ -131,11 +137,14 @@ Continue incremental TDD development. Choose next increment:
   "log_level": "INFO",
   "database": {
     "connected": false
+  },
+  "redis": {
+    "connected": false
   }
 }
 ```
 
-Database shows as `connected: false` until PostgreSQL is running via docker-compose.
+Database and Redis show as `connected: false` until services are running via docker-compose.
 
 ### Technical Decisions
 
@@ -154,13 +163,19 @@ Database shows as `connected: false` until PostgreSQL is running via docker-comp
    - pool_pre_ping enabled for connection verification
    - Graceful degradation in health check
 
-4. **API Design**:
+4. **Redis**: redis-py client
+   - 5-second connection and socket timeouts
+   - decode_responses=True for string handling
+   - Graceful degradation in health check
+   - Will be used for job queues and caching
+
+5. **API Design**:
    - RESTful structure under `/api/v1/`
    - 202 Accepted for async job creation
    - UUID job identifiers
    - Pydantic validation with clear error messages
 
-5. **Remote Deployment**: Designed for 192.168.0.136 via Portainer
+6. **Remote Deployment**: Designed for 192.168.0.136 via Portainer
    - Web UI at :8080
    - API at :8000
    - vLLM gateway at 192.168.0.247:9003
@@ -170,6 +185,7 @@ Database shows as `connected: false` until PostgreSQL is running via docker-comp
 - **No secrets committed**: All use placeholders or env var references
 - **Docker verified but not tested**: Container should build, awaiting Docker Desktop
 - **Database not connected yet**: Module exists, will connect when PostgreSQL starts
+- **Redis not connected yet**: Module exists, will connect when Redis starts
 - **Scrape endpoint is stub**: Returns job_id but doesn't actually scrape yet
 - **All code follows TDD**: Every feature has tests written first
 
@@ -177,6 +193,7 @@ Database shows as `connected: false` until PostgreSQL is running via docker-comp
 - FastAPI 0.115.0, uvicorn 0.32.0
 - pydantic-settings 2.6.0
 - SQLAlchemy 2.0.36, psycopg[binary] 3.2.3
+- redis 5.2.0
 - httpx 0.27.2 (not used yet)
 - pytest 9.0.2
 
@@ -187,16 +204,18 @@ Database shows as `connected: false` until PostgreSQL is running via docker-comp
 - Remote repo: `https://github.com/TKontu/knowledge_extraction.git`
 
 ### Session Statistics
-- **Commits this session**: 2 (Database connection, Claude settings)
-- **Files changed**: 5
-- **Lines added**: 302
-- **Tests added**: 8 (database tests)
+- **Commits this session**: 3 (Database connection, Claude settings, Redis connection)
+- **Files changed**: 8
+- **Lines added**: ~450
+- **Tests added**: 16 (8 database tests + 8 Redis tests)
 - **Time per increment**: ~10-15 minutes each
 
 ## Ready to Continue
 
 The TDD approach is working excellently. All increments are small, tested, and cleanly separated. Next session should continue this pattern.
 
-**Suggested Next**: Redis connection with TDD approach - write tests for connection and health check, then implement. This will complete the core infrastructure connectivity (DB + Redis + health monitoring).
+**Infrastructure Complete**: Database and Redis connections are now integrated with health monitoring. Core infrastructure connectivity is in place.
+
+**Suggested Next**: GET /api/v1/scrape/{job_id} endpoint with TDD approach - write tests for job status lookup, then implement a stub endpoint. This will complete the basic scrape API surface.
 
 **Reminder**: Run `/clear` to start next session fresh with full context.
