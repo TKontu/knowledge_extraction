@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import settings
@@ -10,6 +11,16 @@ app = FastAPI(
     title="TechFacts Pipeline API",
     description="Knowledge extraction and report generation pipeline",
     version="0.1.0",
+)
+
+# Add CORS middleware (must be added before auth middleware for preflight requests)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Add authentication middleware

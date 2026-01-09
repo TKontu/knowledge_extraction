@@ -22,6 +22,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.PUBLIC_PATHS:
             return await call_next(request)
 
+        # Skip auth for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Get API key from header (case-insensitive)
         api_key = None
         for header_name, header_value in request.headers.items():
