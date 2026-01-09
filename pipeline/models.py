@@ -1,5 +1,6 @@
 """Data models for API requests and responses."""
 
+from datetime import datetime, UTC
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -66,3 +67,40 @@ class ScrapeResponse(BaseModel):
             company=request.company,
             profile=request.profile,
         )
+
+
+class JobStatusResponse(BaseModel):
+    """Response body for job status endpoint."""
+
+    job_id: str = Field(
+        ...,
+        description="Unique job identifier",
+    )
+    status: str = Field(
+        ...,
+        description="Job status (queued, running, completed, failed)",
+    )
+    company: str = Field(
+        ...,
+        description="Company name",
+    )
+    url_count: int = Field(
+        ...,
+        description="Number of URLs in the job",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="Extraction profile (if specified)",
+    )
+    created_at: str = Field(
+        ...,
+        description="Job creation timestamp",
+    )
+    urls: list[str] | None = Field(
+        default=None,
+        description="List of URLs (optional, for completed jobs)",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message (if failed)",
+    )
