@@ -1,51 +1,62 @@
-# Handoff: Claude Code Command Creation & Development Planning
+# Handoff: SQLAlchemy ORM Models Implementation
 
 ## Completed
 
-**Session Summary**: Created generic `/update-todos` command and analyzed current project state to identify critical development priorities.
+**Session Summary**: Successfully implemented all SQLAlchemy ORM models using TDD approach. Created 2 PRs (both merged to main) with comprehensive tests and updated documentation.
 
-### Created `/update-todos` Command
-- ✅ Generic command for verifying and updating TODO documentation
-- ✅ Emphasizes evidence-based verification (read code, run tests, check git history)
-- ✅ Works for any project with TODO files (not project-specific)
-- ✅ Condensed from 180 to 77 lines based on user feedback
-- ✅ Located at `.claude/commands/update-todos.md`
+### PR #4: SQLAlchemy ORM Models (MERGED ✅)
+- ✅ Created 6 ORM models (Job, Page, Fact, Profile, Report, RateLimit)
+- ✅ 274 lines of implementation code in `pipeline/orm_models.py`
+- ✅ 329 lines of tests in `pipeline/tests/test_orm_models.py`
+- ✅ 18 new comprehensive tests (100% pass rate)
+- ✅ Cross-database compatible (PostgreSQL + SQLite for testing)
+- ✅ Custom UUID TypeDecorator for platform independence
+- ✅ Modern SQLAlchemy 2.0 with Mapped[] type hints
+- ✅ Page-Fact relationship with cascade delete
 
-### Analyzed Current Project State
-- ✅ Reviewed codebase structure (pipeline/, docs/, tests/)
-- ✅ Examined TODO documentation across 5 files
-- ✅ Identified 3 merged PRs to main (foundational service, Redis, GET job status)
-- ✅ Found critical blocker: in-memory job storage needs database persistence
-- ✅ Counted actual tests (~25 collected vs 53 claimed in docs)
+### PR #5: Documentation Updates (MERGED ✅)
+- ✅ Updated HANDOFF.md with current project state
+- ✅ Updated TODO.md test count (53 → 71 passing tests)
+- ✅ Updated all TODO_*.md files with current status
+- ✅ Created 3 new Claude commands:
+  - `/update-todos` - Verify TODO documentation against code
+  - `/secrets-check` - Scan staged files for exposed secrets
+  - `/takeoff` - Quick project status summary
+- ✅ Enhanced `/commit-push-pr` command with secrets check
+
+### Test Coverage Achievement
+```
+======================== 71 passed, 1 warning in 5.13s =========================
+```
+- **71 total tests passing** (up from 53 claimed previously)
+- 18 new ORM model tests
+- All existing tests pass (no regressions)
 
 ## In Progress
 
-**Current Branch**: `main`
+**Current Branch**: `main` (clean, all changes merged)
 
-**Uncommitted Changes**:
-- Modified: `docs/TODO*.md` files (5 files touched but not staged)
-- Untracked: `.claude/commands/update-todos.md` (new command, ready)
-- Untracked: `.claude/commands/secrets-check.md` (status unknown)
-- Modified: `.claude/commands/commit-push-pr.md` (changes unknown)
+**Working Tree**: Clean, no uncommitted changes
 
-**Working Tree**: Modified files present
+**Next Development Step**: Database integration for jobs (critical blocker)
 
 ## Next Steps
 
 ### Critical Priority (Blocks Production Usage)
 
 1. **[ ] Database Integration for Jobs** ⭐ BLOCKER
-   - Create SQLAlchemy ORM model for `jobs` table
-   - Replace in-memory `_job_store` dict in `pipeline/api/v1/scrape.py:12-13`
-   - Update POST `/api/v1/scrape` to persist jobs to PostgreSQL
-   - Update GET `/api/v1/scrape/{job_id}` to read from PostgreSQL
-   - **Why critical**: Jobs are lost on restart, blocks real usage
+   - Update `POST /api/v1/scrape` to persist jobs to PostgreSQL using Job ORM model
+   - Update `GET /api/v1/scrape/{job_id}` to read from PostgreSQL
+   - Remove in-memory `_job_store` dict from `pipeline/api/v1/scrape.py:12-13`
+   - Use dependency injection with `get_db()` from `database.py`
+   - Write tests for persistence (TDD approach)
+   - **Why critical**: Jobs currently lost on restart, blocks production usage
+   - **Ready**: ORM models exist and are tested
 
-2. **[ ] Create SQLAlchemy ORM Models**
-   - Models for: jobs, pages, facts, profiles, reports, rate_limits
-   - Database schema exists (referenced in `init.sql`), models don't exist yet
-   - `pipeline/database.py` has connection code but no models
-   - **Why next**: Required for step 1, establishes data access pattern
+2. **[ ] Test Job Persistence with PostgreSQL**
+   - Verify Job ORM model works with actual PostgreSQL database
+   - Test service restart scenario (jobs survive restart)
+   - Add integration tests with real database
 
 3. **[ ] Qdrant Connection & Health Check**
    - Follow Redis pattern (see `pipeline/redis_client.py`)
@@ -59,53 +70,70 @@
    - Add `/metrics` endpoint in Prometheus format
    - Track: job counts by status, API request counts, health status
 
-5. **[ ] Firecrawl Client & Scraper Service**
+5. **[ ] Setup Alembic**
+   - Add database migration system before schema changes
+   - Create initial migration from current schema
+
+6. **[ ] Configure Structured Logging**
+   - Configure structlog (already installed)
+   - Add request ID tracing
+   - Structured logging for job lifecycle
+
+### Future Work
+
+7. **[ ] Firecrawl Client & Scraper Service**
    - Once persistence works, implement actual scraping
    - See `docs/TODO_scraper.md` for detailed requirements
 
-### Quick Wins
-
-- **[ ] Verify test count**: TODO claims 53 tests but pytest only collected ~25
-- **[ ] Setup Alembic**: Add database migrations before schema gets complex
-- **[ ] Configure structlog**: Already installed, needs configuration
-
 ## Key Files
 
-### Commands Created This Session
-- `.claude/commands/update-todos.md` - TODO verification command (ready to use)
+### ORM Models (NEW)
+- `pipeline/orm_models.py` - All 6 SQLAlchemy ORM models with relationships
+- `pipeline/tests/test_orm_models.py` - 18 comprehensive tests
 
-### Critical Files for Next Work
-- `pipeline/api/v1/scrape.py:12-13` - In-memory `_job_store` dict (NEEDS DB REPLACEMENT)
-- `pipeline/database.py` - Has SQLAlchemy connection, needs ORM models added
-- `pipeline/models.py` - Has Pydantic API models, needs SQLAlchemy models too
+### Critical Files for Next Work (Database Integration)
+- `pipeline/api/v1/scrape.py:12-13` - In-memory `_job_store` dict (NEEDS REMOVAL)
+- `pipeline/api/v1/scrape.py:16-40` - POST endpoint to update for DB persistence
+- `pipeline/api/v1/scrape.py:43-74` - GET endpoint to update for DB reads
+- `pipeline/database.py` - Has `get_db()` dependency ready to use
+- `pipeline/orm_models.py` - Job model ready for import
 
-### Documentation
-- `docs/TODO.md` - Master task list (lines 18-22 show next priorities)
-- `docs/TODO_scraper.md` - Detailed scraper module requirements
-- `docs/TODO_storage.md` - Storage and search requirements
+### Documentation (Updated)
+- `docs/TODO.md` - Master task list with accurate test count (71)
+- `docs/TODO_scraper.md` - Scraper module requirements
+- `docs/TODO_storage.md` - Storage requirements (ORM models complete)
 - `docs/TODO_extraction.md` - Extraction module requirements
 - `docs/TODO_reports.md` - Report generation requirements
 
+### New Claude Commands
+- `.claude/commands/update-todos.md` - Verify TODO accuracy
+- `.claude/commands/secrets-check.md` - Prevent credential leaks
+- `.claude/commands/takeoff.md` - Quick status summary
+- `.claude/commands/commit-push-pr.md` - Enhanced with secrets check
+
 ### Infrastructure
-- `docker-compose.yml` - 7-service stack definition
-- `init.sql` - PostgreSQL schema (jobs, pages, facts, profiles, reports, rate_limits)
-- `.env.example` - Environment template
+- `docker-compose.yml` - 7-service stack (PostgreSQL, Redis, Qdrant, etc.)
+- `init.sql` - PostgreSQL schema (matches ORM models)
+- `.env.example` - Environment configuration template
 
 ## Context
 
-### Current Project State (3 PRs Merged to Main)
+### Current Project State (5 PRs Merged to Main)
 - ✅ PR #1: Foundational FastAPI service with auth, CORS, health check
 - ✅ PR #2: Redis connection with health monitoring
-- ✅ PR #3: GET job status endpoint
-- ⚠️ **Critical Issue**: Jobs stored in-memory dict, lost on restart
-- 25+ tests passing (pytest collected count, not 53 as claimed in docs)
-- Database and Redis connections configured but jobs not persisting to DB yet
+- ✅ PR #3: GET `/api/v1/scrape/{job_id}` endpoint
+- ✅ PR #4: SQLAlchemy ORM models for all 6 tables
+- ✅ PR #5: Documentation updates and Claude commands
+- ⚠️ **Critical Issue**: Jobs still in-memory, need DB integration (next step)
+- 71 tests passing
+- Database connection ready but not used for jobs yet
 
 ### Decisions Made This Session
-1. `/update-todos` command designed to be generic (works for any project)
-2. Prioritized database integration as critical path before new features
-3. Identified in-memory storage as production blocker
-4. Condensed command documentation based on user feedback (shorter is better)
+1. **TDD approach**: Wrote all 18 tests before implementing ORM models
+2. **Cross-database compatibility**: Used JSON instead of JSONB for test compatibility
+3. **Custom UUID type**: TypeDecorator handles PostgreSQL vs SQLite differences
+4. **Reserved keyword handling**: Mapped `meta_data` attribute to `metadata` column
+5. **Separate PRs**: ORM models (PR #4) separate from docs (PR #5) for cleaner review
 
 ### Current API Status
 
@@ -116,42 +144,39 @@
 | `/api/v1/scrape` | POST | ⚠️ Works but uses in-memory storage |
 | `/api/v1/scrape/{job_id}` | GET | ⚠️ Works but uses in-memory storage |
 
-### Test Count Discrepancy
-- **Claimed in docs**: 53 tests passing
-- **Actually collected**: ~25 tests
-- **Action needed**: Verify and update TODO.md test count
-
 ### Technical Stack
-- Python 3.12, FastAPI, SQLAlchemy, Redis, PostgreSQL, Qdrant
-- TDD approach with pytest
+- Python 3.12, FastAPI, SQLAlchemy 2.0, Redis, PostgreSQL, Qdrant
+- TDD approach with pytest (71 tests passing)
 - Docker deployment on remote server (192.168.0.136)
 - vLLM gateway at 192.168.0.247:9003
 
 ### Important Notes
-- **In-memory job storage blocks production**: Jobs lost on restart
-- **Database connection exists but not used**: `pipeline/database.py` has connection logic but no ORM models
-- **Test count mismatch**: Docs claim 53 but only ~25 actually exist
-- **Uncommitted work**: TODO files and new command need review/commit decision
+- **ORM models ready**: All 6 models implemented and tested
+- **Database integration is unblocked**: Can now implement job persistence
+- **In-memory storage is the blocker**: Jobs lost on restart, blocks production
+- **Test coverage improved**: 71 passing tests (was 53 claimed, actually ~25)
+- **Documentation is accurate**: All TODO files reflect actual code state
 
-### Blockers Identified
-1. **Critical**: No SQLAlchemy ORM models exist (blocks DB integration)
-2. **Critical**: Jobs not persisted to database (blocks production usage)
-3. **Medium**: No Qdrant connection yet (blocks vector search later)
-4. **Low**: Test count documentation inaccurate
-
-## To Commit
-- `.claude/commands/update-todos.md` (new command, ready)
-- Modified TODO files (if user wants to keep the changes)
-- Consider running `/update-todos` first to verify TODO accuracy
+### Technical Achievements This Session
+- ✅ Cross-database ORM models (PostgreSQL + SQLite)
+- ✅ Modern SQLAlchemy 2.0 patterns (Mapped[], mapped_column())
+- ✅ Comprehensive test coverage (18 new tests)
+- ✅ Zero regressions (all existing tests still pass)
+- ✅ Type safety with modern Python type hints
+- ✅ Proper handling of SQLAlchemy reserved keywords
 
 ## Ready to Continue
 
-**Current State**: On main branch with uncommitted changes from this session.
+**Current State**: On main branch, working tree clean, both PRs merged.
 
-**Suggested Next Actions**:
-1. Decide whether to commit the new `/update-todos` command and TODO changes
-2. Start work on database integration for jobs (critical blocker)
-3. Create SQLAlchemy ORM models for `jobs` table first
-4. Then replace in-memory storage with DB persistence
+**Immediate Next Action**: Implement database integration for jobs to replace in-memory storage.
+
+**Suggested Approach for Next Session**:
+1. Use TDD: Write tests for job persistence first
+2. Update POST `/api/v1/scrape` to use Job ORM model
+3. Update GET `/api/v1/scrape/{job_id}` to read from database
+4. Remove `_job_store` dict
+5. Test with actual PostgreSQL database
+6. Verify jobs survive service restart
 
 **Reminder**: Run `/clear` to start next session fresh with full context.
