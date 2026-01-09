@@ -161,3 +161,149 @@ class TestScrapeEndpoint:
         assert "company" in data
         assert data["company"] == "TestCo"
         assert data["url_count"] == 1
+
+
+class TestGetJobStatus:
+    """Test GET /api/v1/scrape/{job_id} endpoint."""
+
+    def test_get_job_status_requires_authentication(self, client: TestClient):
+        """GET job status endpoint should require API key."""
+        job_id = "123e4567-e89b-12d3-a456-426614174000"
+        response = client.get(f"/api/v1/scrape/{job_id}")
+        assert response.status_code == 401
+
+    def test_get_job_status_returns_404_for_nonexistent_job(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should return 404 for non-existent job_id."""
+        job_id = "123e4567-e89b-12d3-a456-426614174000"
+        response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 404
+        data = response.json()
+        assert "detail" in data
+
+    def test_get_job_status_validates_job_id_format(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should return 422 for invalid UUID format."""
+        invalid_job_id = "not-a-valid-uuid"
+        response = client.get(
+            f"/api/v1/scrape/{invalid_job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 422
+
+    def test_get_job_status_returns_queued_status(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should return job with queued status."""
+        # First create a job
+        create_response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com"],
+                "company": "TestCo",
+            },
+        )
+        job_id = create_response.json()["job_id"]
+
+        # Then get its status
+        response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == job_id
+        assert data["status"] == "queued"
+
+    def test_get_job_status_includes_all_fields(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should return job with all required fields."""
+        # Create a job
+        create_response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com/docs", "https://example.com/api"],
+                "company": "TestCo",
+                "profile": "api_docs",
+            },
+        )
+        job_id = create_response.json()["job_id"]
+
+        # Get job status
+        response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Check all required fields
+        assert "job_id" in data
+        assert "status" in data
+        assert "company" in data
+        assert "url_count" in data
+        assert "profile" in data
+        assert "created_at" in data
+
+        # Check values
+        assert data["job_id"] == job_id
+        assert data["company"] == "TestCo"
+        assert data["url_count"] == 2
+        assert data["profile"] == "api_docs"
+
+    def test_get_job_status_handles_different_statuses(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should handle different job statuses correctly."""
+        # Create a job
+        create_response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com"],
+                "company": "TestCo",
+            },
+        )
+        job_id = create_response.json()["job_id"]
+
+        # Get status
+        response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # For stub, should return queued status
+        assert data["status"] in ["queued", "running", "completed", "failed"]
+
+    def test_get_job_status_with_no_profile(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should handle jobs without profile."""
+        # Create a job without profile
+        create_response = client.post(
+            "/api/v1/scrape",
+            headers={"X-API-Key": valid_api_key},
+            json={
+                "urls": ["https://example.com"],
+                "company": "TestCo",
+            },
+        )
+        job_id = create_response.json()["job_id"]
+
+        # Get status
+        response = client.get(
+            f"/api/v1/scrape/{job_id}",
+            headers={"X-API-Key": valid_api_key},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["profile"] is None
