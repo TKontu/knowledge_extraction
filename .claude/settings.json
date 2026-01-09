@@ -54,6 +54,8 @@
       "Bash(redis-cli INFO:*)",
       "Bash(redis-cli KEYS:*)",
       "Bash(redis-cli GET:*)",
+      "cd /mnt/c/code/* && source .venv/bin/activate && pytest*",
+      "cd /mnt/c/code/* && source .venv/bin/activate && pytest* -v --tb=short",
       "Bash(.venv/bin/pytest:*)"
     ],
     "deny": []

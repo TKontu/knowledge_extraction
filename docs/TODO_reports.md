@@ -4,6 +4,25 @@
 
 Generates structured reports from extracted facts. Supports single company deep-dives, comparisons, and topic summaries.
 
+## Status
+
+**Completed:**
+- ✅ Reports table schema in `init.sql`
+- ✅ LLM configuration available for report generation
+
+**Pending:**
+- Everything - this module hasn't been started
+
+**Dependencies:**
+- Requires Storage module (fact retrieval)
+- Requires Extraction module (facts must exist)
+
+**Next Steps:**
+1. Wait for Storage and Extraction modules to be functional
+2. Define report type schemas
+3. Implement fact aggregation
+4. Create report generation logic
+
 ## Core Tasks
 
 ### Report Types

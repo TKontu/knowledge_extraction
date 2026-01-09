@@ -4,6 +4,28 @@
 
 Handles web scraping via Firecrawl, rate limiting, and raw content storage.
 
+## Status
+
+**Completed:**
+- ✅ API endpoint skeleton (`POST /api/v1/scrape` and `GET /api/v1/scrape/{job_id}`)
+- ✅ Request/response models (`ScrapeRequest`, `ScrapeResponse`, `JobStatusResponse`)
+- ✅ In-memory job storage (temporary)
+- ✅ Configuration for scraping params in `config.py`
+- ✅ Redis connection available for rate limiting
+
+**Pending:**
+- Firecrawl client integration
+- Rate limiting implementation
+- Actual scraping logic
+- Database storage for jobs and pages
+- Error handling and retries
+- FlareSolverr integration
+
+**Next Steps:**
+1. Replace in-memory job store with PostgreSQL
+2. Implement Firecrawl client
+3. Add rate limiting with Redis
+
 ## Core Tasks
 
 ### Firecrawl Client
@@ -117,30 +139,35 @@ scraping:
 
 ## API Endpoints
 
+**Status:** ✅ Endpoints exist as stubs in `pipeline/api/v1/scrape.py`
+
 ```python
 # POST /api/v1/scrape
 # Request:
 {
     "urls": ["https://example.com/docs"],
     "company": "Example Inc",
-    "profile": "api_docs",
-    "priority": 0
+    "profile": "api_docs"  # priority not yet implemented
 }
-# Response:
+# Response: ✅ Working (stub)
 {
     "job_id": "uuid",
     "status": "queued",
-    "urls_queued": 1
+    "url_count": 1,
+    "company": "Example Inc",
+    "profile": "api_docs"
 }
 
 # GET /api/v1/scrape/{job_id}
-# Response:
+# Response: ✅ Working (stub with in-memory storage)
 {
     "job_id": "uuid",
-    "status": "completed",
-    "pages": [
-        {"url": "...", "page_id": "uuid", "status": "success"}
-    ]
+    "status": "queued",  # Always queued for now
+    "company": "Example Inc",
+    "url_count": 1,
+    "profile": "api_docs",
+    "created_at": "timestamp",
+    "urls": ["..."]
 }
 ```
 
