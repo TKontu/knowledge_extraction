@@ -19,12 +19,19 @@ Extracts structured data from scraped content using LLM with **project-defined s
 - **Extraction orchestrator** (`services/extraction/extractor.py`, 9 tests)
 - **Fact validator** (`services/extraction/validator.py`, 11 tests)
 
+**Completed (Current):**
+- **Extraction API endpoints** (`api/v1/extraction.py`, 25 tests)
+  - POST /api/v1/projects/{project_id}/extract (async job creation)
+  - GET /api/v1/projects/{project_id}/extractions (list with filtering)
+  - Full integration with ProjectRepository, SourceRepository, ExtractionRepository
+  - Pagination, filtering by source_id, source_group, extraction_type, min_confidence
+
 **Pending:**
 - Schema-driven extraction (use project.extraction_schema)
 - Dynamic prompt generation from project schema
 - Store results in `extractions` table (not `facts`)
 - Integration tests with mocked LLM
-- API endpoints (POST /extract, GET /profiles)
+- Legacy API endpoints (POST /api/v1/extract, GET /api/v1/profiles)
 
 **Refactoring Required (Generalization):**
 - Replace fixed fact schema with dynamic project schema
@@ -449,8 +456,10 @@ pipeline/
 - [ ] Store in Qdrant with project_id
 
 ### Phase 3: API Endpoints
-- [ ] Create POST /api/v1/projects/{project_id}/extract
-- [ ] Create GET /api/v1/projects/{project_id}/extractions
+- [x] Create POST /api/v1/projects/{project_id}/extract
+- [x] Create GET /api/v1/projects/{project_id}/extractions
+- [x] Add extraction router to main.py
+- [x] Write comprehensive tests (25 tests)
 - [ ] Maintain legacy POST /api/v1/extract (uses default project)
 - [ ] Maintain legacy GET /api/v1/profiles
 

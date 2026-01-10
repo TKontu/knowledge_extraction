@@ -15,13 +15,14 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - PR #8: LLM integration with document chunking and client
 
 **Current State:**
-- 340 tests passing (77 new tests in generalization phase)
+- 365 tests passing (102 new tests in generalization + API phase)
 - Complete scraping pipeline operational (Firecrawl + rate limiting + worker)
 - Document chunking with semantic header splitting implemented
 - LLM client with retry logic and JSON mode extraction ready
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
 - **Repository layer complete** (Project, Source, Extraction, Entity repositories)
+- **Extraction API endpoints complete** (POST /extract, GET /extractions with filtering)
 
 **Architectural Direction:**
 The system is being generalized from "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
@@ -118,7 +119,7 @@ See: `docs/TODO_scraper.md`
 
 ---
 
-## Phase 3: Extraction Module (In Progress - ~50% Complete)
+## Phase 3: Extraction Module (In Progress - ~65% Complete)
 
 See: `docs/TODO_extraction.md`
 
@@ -130,11 +131,14 @@ See: `docs/TODO_extraction.md`
 - [x] **Profile repository** (PR #9 - 10 tests)
 - [x] **Extraction orchestrator** (PR #9 - 9 tests)
 - [x] **Fact validator** (PR #9 - 11 tests)
+- [x] **Extraction API endpoints** (`api/v1/extraction.py` - 25 tests)
+  - POST /api/v1/projects/{project_id}/extract (async job creation)
+  - GET /api/v1/projects/{project_id}/extractions (list with filtering)
 
 ### Pending
 - [ ] Chunk result merging with deduplication
 - [ ] Integration tests for extraction
-- [ ] API endpoints (POST /extract, GET /profiles)
+- [ ] Legacy API endpoints (POST /api/v1/extract, GET /api/v1/profiles)
 
 ### Refactoring Required (Generalization)
 - [ ] Update extraction to use project schema (JSONB fields)
@@ -256,8 +260,11 @@ See: `docs/TODO_reports.md`
 - [x] CORS configuration for Web UI (PR #1)
 - [x] Health check endpoint with DB + Redis + Qdrant + Firecrawl status
 - [x] Scrape endpoints: POST /api/v1/scrape, GET /api/v1/scrape/{job_id}
+- [x] **Extraction endpoints** (`api/v1/extraction.py`)
+  - POST /api/v1/projects/{project_id}/extract
+  - GET /api/v1/projects/{project_id}/extractions
 - [ ] **Project endpoints** (`POST /projects`, `GET /projects/{id}`)
-- [ ] Extract endpoints (`POST /extract`, `GET /profiles`)
+- [ ] Legacy extract endpoints (`POST /api/v1/extract`, `GET /api/v1/profiles`)
 - [ ] Search endpoint (`POST /search`)
 - [ ] Entity query endpoints (`GET /entities`, `GET /entities/{type}`)
 - [ ] Report endpoints (`POST /reports`, `GET /reports/{id}`)
@@ -334,7 +341,7 @@ See: `docs/TODO_reports.md`
 
 ## Test Coverage
 
-**Current: 340 tests passing** (77 new in generalization phase)
+**Current: 365 tests passing** (102 new in generalization + API phase)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
@@ -353,9 +360,10 @@ See: `docs/TODO_reports.md`
 - 20 Database schema tests (generalization)
 - 19 ProjectRepository tests (generalization)
 - 21 SchemaValidator tests (generalization)
-- 23 SourceRepository tests (NEW)
-- 26 ExtractionRepository tests (NEW)
-- 28 EntityRepository tests (NEW)
+- 23 SourceRepository tests (generalization)
+- 26 ExtractionRepository tests (generalization)
+- 28 EntityRepository tests (generalization)
+- 25 Extraction endpoint tests (NEW)
 
 ---
 
