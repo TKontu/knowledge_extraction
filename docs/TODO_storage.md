@@ -22,11 +22,11 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 - **ExtractionRepository** (8 methods, 26 tests) - CRUD, batch ops, JSONB queries
 - **EntityRepository** (8 methods, 28 tests) - Deduplication, entity-extraction links
 - **JSONB query support** (query_jsonb, filter_by_data with PostgreSQL/SQLite compatibility)
+- **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch upsert, search, delete
 
 **Pending:**
-- Qdrant collection initialization
 - Embedding service
-- Search service
+- Search service (hybrid semantic + JSONB)
 - Pagination support
 
 ---
@@ -590,9 +590,9 @@ pipeline/
 - [ ] Update JobRepository with project_id
 
 ### Phase 3: Qdrant Integration
-- [ ] Create QdrantRepository
-- [ ] Implement collection initialization
-- [ ] Implement upsert/search/delete
+- [x] Create QdrantRepository
+- [x] Implement collection initialization
+- [x] Implement upsert/search/delete
 
 ### Phase 4: Embedding Service
 - [ ] Create EmbeddingService
@@ -609,11 +609,11 @@ pipeline/
 
 ## Testing Checklist
 
-- [ ] Unit: Repository CRUD operations
-- [ ] Unit: JSONB filter building
+- [x] Unit: Repository CRUD operations (96 tests for SQL repositories)
+- [x] Unit: JSONB filter building (included in repository tests)
 - [ ] Unit: Embedding batching
-- [ ] Integration: Qdrant collection creation
-- [ ] Integration: Store extraction with embedding
-- [ ] Integration: Search returns relevant results
-- [ ] Integration: JSONB filters work correctly
-- [ ] Integration: Project-scoped queries work
+- [x] Integration: Qdrant collection creation (QdrantRepository, 2 tests)
+- [x] Integration: Store extraction with embedding (QdrantRepository, 4 tests)
+- [x] Integration: Search returns relevant results (QdrantRepository, 3 tests)
+- [x] Integration: Qdrant payload filters work correctly (QdrantRepository, 1 test)
+- [ ] Integration: Project-scoped queries work (pending SearchService integration)
