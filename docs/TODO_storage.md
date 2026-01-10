@@ -16,14 +16,18 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 - **Qdrant client initialization** (PR #6)
 - **Job persistence integrated** (PR #6)
 - **Page storage** (PR #7 - via scraper worker)
+- **Generalized ORM models** (Project, Source, Extraction, Entity, ExtractionEntity) - in orm_models.py
+- **ProjectRepository** (9 methods, 19 tests) - CRUD, templates, default project
+- **SourceRepository** (6 methods, 23 tests) - CRUD, filtering, content updates
+- **ExtractionRepository** (8 methods, 26 tests) - CRUD, batch ops, JSONB queries
+- **EntityRepository** (8 methods, 28 tests) - Deduplication, entity-extraction links
+- **JSONB query support** (query_jsonb, filter_by_data with PostgreSQL/SQLite compatibility)
 
 **Pending:**
-- Generalized schema (projects, sources, extractions)
-- Repository classes for new tables
 - Qdrant collection initialization
 - Embedding service
-- JSONB query support
 - Search service
+- Pagination support
 
 ---
 

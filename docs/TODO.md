@@ -15,12 +15,13 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - PR #8: LLM integration with document chunking and client
 
 **Current State:**
-- 156 tests passing (26 new tests in PR #8)
+- 340 tests passing (77 new tests in generalization phase)
 - Complete scraping pipeline operational (Firecrawl + rate limiting + worker)
 - Document chunking with semantic header splitting implemented
 - LLM client with retry logic and JSON mode extraction ready
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
+- **Repository layer complete** (Project, Source, Extraction, Entity repositories)
 
 **Architectural Direction:**
 The system is being generalized from "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
@@ -34,9 +35,12 @@ See: `docs/TODO_generalization.md`
 
 **Goal:** Transform from single-purpose to general-purpose extraction pipeline.
 
-- [ ] Design project model (extraction schema, entity types, prompts)
-- [ ] Create projects table with JSONB configuration
-- [ ] Implement incremental migration strategy
+- [x] Design project model (extraction schema, entity types, prompts)
+- [x] Create projects table with JSONB configuration (in init.sql + ORM)
+- [x] Create sources table to replace pages
+- [x] Create extractions table to replace facts
+- [x] Create entities table with project scoping
+- [ ] Implement incremental migration strategy (Alembic)
 - [ ] Create default "company_analysis" project for existing data
 - [ ] Update API for project-scoped operations
 
@@ -83,9 +87,11 @@ See: `docs/TODO_migrations.md`
 
 - [x] Create PostgreSQL schema in `init.sql`
 - [x] **Create SQLAlchemy ORM models** (PR #4)
-- [ ] **Add projects table** (generalization) - See Phase 0
-- [ ] **Add sources table** (replaces pages) - See Phase 0
-- [ ] **Add extractions table** (replaces facts) - See Phase 0
+- [x] **Add projects table** (in init.sql + orm_models.py)
+- [x] **Add sources table** (replaces pages - in init.sql + orm_models.py)
+- [x] **Add extractions table** (replaces facts - in init.sql + orm_models.py)
+- [x] **Add entities table** (in init.sql + orm_models.py)
+- [x] **Add extraction_entities junction table** (in init.sql + orm_models.py)
 - [ ] Create Qdrant collection (dim=1024 for BGE-large-en)
 
 ---
@@ -140,17 +146,24 @@ See: `docs/TODO_extraction.md`
 
 ---
 
-## Phase 4: Project System (NEW)
+## Phase 4: Project System
 
 See: `docs/TODO_project_system.md`
 
 **Goal:** Implement project management for multi-domain extraction.
 
+**Completed:**
+- [x] **ProjectRepository** (9 methods, 19 tests) - CRUD, templates, default project
+- [x] **SchemaValidator** (dynamic Pydantic from JSONB, 21 tests)
+- [x] **Project ORM model** with relationships
+- [x] **COMPANY_ANALYSIS_TEMPLATE** - default project template
+
+**Pending:**
 - [ ] Project CRUD API endpoints
-- [ ] Project templates (company_analysis, research_survey, contract_review)
-- [ ] Schema validation service (dynamic Pydantic from JSONB)
+- [ ] Additional project templates (research_survey, contract_review)
 - [ ] Project-scoped search and queries
 - [ ] Clone project from template
+- [ ] Seed script for default project
 
 **Milestone**: Can create and manage extraction projects with custom schemas
 
@@ -163,10 +176,11 @@ See: `docs/TODO_knowledge_layer.md`
 > Enables structured queries like "Which companies support SSO?" without LLM inference.
 
 ### Entity Extraction (MVP)
-- [ ] Update `entities` table with project_id
-- [ ] Entity types from project configuration (not hardcoded)
-- [ ] Create `EntityExtractor` class
-- [ ] Value normalization per type
+- [x] Update `entities` table with project_id (in ORM)
+- [x] Entity types from project configuration (stored in project.entity_types JSONB)
+- [x] **EntityRepository** (deduplication via get_or_create, 28 tests)
+- [x] Value normalization per type (normalized_value field)
+- [ ] Create `EntityExtractor` class (LLM-based extraction)
 - [ ] Integrate into extraction pipeline
 
 ### Entity Queries
@@ -187,19 +201,30 @@ See: `docs/TODO_knowledge_layer.md`
 
 See: `docs/TODO_storage.md`
 
+**Completed:**
 - [x] **SQLAlchemy ORM models** (PR #4)
 - [x] **Qdrant client initialization** (PR #6)
-- [ ] Repository classes (sources, extractions, projects, entities)
+- [x] **SourceRepository** (6 methods, 23 tests) - CRUD, filtering, content updates
+- [x] **ExtractionRepository** (8 methods, 26 tests) - CRUD, batch ops, JSONB queries
+- [x] **EntityRepository** (8 methods, 28 tests) - Deduplication, entity-extraction links
+- [x] **ProjectRepository** (9 methods, 19 tests) - From Phase 4
+- [x] **JSONB field filtering** (query_jsonb, filter_by_data with PostgreSQL/SQLite support)
+- [x] Filter support (source_group, entity_type, confidence ranges, etc.)
+
+**Pending:**
 - [ ] Qdrant repository (embeddings CRUD)
 - [ ] Embedding service (BGE-large-en via vLLM)
 - [ ] Semantic search endpoint
-- [ ] **JSONB field filtering** (key for dynamic schemas)
-- [ ] Filter support (source_group, category, date, entity type)
 - [ ] Pagination
 
 ### Deduplication
 See: `docs/TODO_deduplication.md`
 
+**Entity Deduplication (Completed):**
+- [x] Entity deduplication via `EntityRepository.get_or_create()`
+- [x] Scoped by (project_id, source_group, entity_type, normalized_value)
+
+**Extraction Deduplication (Pending):**
 - [ ] Implement `ExtractionDeduplicator` class
 - [ ] Embedding similarity check before insert
 - [ ] Single threshold (0.90) for MVP
@@ -294,26 +319,27 @@ See: `docs/TODO_reports.md`
 
 | Module | File | Phase | Status |
 |--------|------|-------|--------|
-| **Generalization** | `docs/TODO_generalization.md` | 0 | **Design Complete** |
+| **Generalization** | `docs/TODO_generalization.md` | 0 | **Schema Complete (96 tests)** |
 | Migrations | `docs/TODO_migrations.md` | 0 | Not started |
-| **Project System** | `docs/TODO_project_system.md` | 4 | **NEW** |
+| **Project System** | `docs/TODO_project_system.md` | 4 | **Repository Complete (40 tests)** |
 | Scraper | `docs/TODO_scraper.md` | 2 | Complete (needs refactor) |
 | Extraction | `docs/TODO_extraction.md` | 3 | ~50% (needs refactor) |
 | LLM Integration | `docs/TODO_llm_integration.md` | 3 | Foundation Complete |
-| Knowledge Layer | `docs/TODO_knowledge_layer.md` | 5 | Not started |
-| Deduplication | `docs/TODO_deduplication.md` | 6 | Not started |
-| Storage | `docs/TODO_storage.md` | 6 | Partial |
+| **Knowledge Layer** | `docs/TODO_knowledge_layer.md` | 5 | **Repository Complete (28 tests)** |
+| Deduplication | `docs/TODO_deduplication.md` | 6 | Entity dedup done |
+| **Storage** | `docs/TODO_storage.md` | 6 | **Repository Complete (77 tests)** |
 | Reports | `docs/TODO_reports.md` | 7 | Not started |
 
 ---
 
 ## Test Coverage
 
-**Current: 186 tests passing** (30 new in PR #9)
+**Current: 340 tests passing** (77 new in generalization phase)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
 - 18 ORM model tests (PR #4)
+- 17 Generalized ORM model tests (relationships, constraints)
 - 8 Redis connection tests
 - 23 scrape endpoint tests
 - 14 FirecrawlClient tests (PR #7)
@@ -324,6 +350,12 @@ See: `docs/TODO_reports.md`
 - 10 Profile repository tests (PR #9)
 - 9 Extraction orchestrator tests (PR #9)
 - 11 Fact validator tests (PR #9)
+- 20 Database schema tests (generalization)
+- 19 ProjectRepository tests (generalization)
+- 21 SchemaValidator tests (generalization)
+- 23 SourceRepository tests (NEW)
+- 26 ExtractionRepository tests (NEW)
+- 28 EntityRepository tests (NEW)
 
 ---
 
@@ -331,14 +363,16 @@ See: `docs/TODO_reports.md`
 
 The following components need updates for generalization:
 
-| Component | Current | Target | Priority |
-|-----------|---------|--------|----------|
-| `orm_models.py` | pages, facts | sources, extractions, projects | High |
-| `scraper/worker.py` | Creates Page | Creates Source | High |
-| `extraction/extractor.py` | Fixed schema | Project schema | High |
-| `extraction/profiles.py` | Hardcoded profiles | Project config | Medium |
-| `api/v1/scrape.py` | Uses company | Uses source_group + project | Medium |
-| `models.py` | Fixed models | Dynamic validation | Medium |
+| Component | Current | Target | Priority | Status |
+|-----------|---------|--------|----------|---------|
+| `orm_models.py` | pages, facts | sources, extractions, projects | High | ✅ **DONE** |
+| `repositories/` | N/A | Project, Source, Extraction, Entity | High | ✅ **DONE** |
+| `services/projects/schema.py` | N/A | SchemaValidator | High | ✅ **DONE** |
+| `scraper/worker.py` | Creates Page | Creates Source | High | TODO |
+| `extraction/extractor.py` | Fixed schema | Project schema | High | TODO |
+| `extraction/profiles.py` | Hardcoded profiles | Project config | Medium | TODO |
+| `api/v1/scrape.py` | Uses company | Uses source_group + project | Medium | TODO |
+| `models.py` | Fixed models | Dynamic validation | Medium | TODO |
 
 ---
 
