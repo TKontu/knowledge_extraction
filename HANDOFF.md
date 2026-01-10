@@ -1,225 +1,222 @@
-# Handoff: LLM Integration - Document Chunking & Client (TDD)
+# Handoff: Generalization Architecture + Extraction Service
 
 **Session Date:** 2026-01-10
-**Branch:** `feat/llm-integration-chunking-client`
-**PR:** https://github.com/TKontu/knowledge_extraction/pull/8
-**Tests:** 156 passing (26 new)
+**Branch:** `feat/extraction-service`
+**PR:** https://github.com/TKontu/knowledge_extraction/pull/9
+**Tests:** 186 passing (30 new)
 
 ---
 
-## Completed ✅
+## Architectural Pivot: Generalization
 
-### PR #8: LLM Integration Foundation
-Implemented Phase 3 (Extraction Module) foundation using Test-Driven Development:
+This session introduced a **major architectural change**: transforming from a single-purpose "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain.
 
-1. **Document Chunking Module** (`services/llm/chunking.py`)
-   - Semantic chunking: splits on markdown `##` headers
-   - Token-aware splitting (default 8000 tokens, configurable)
-   - Large section handling with word-level fallback
-   - Header path extraction for context breadcrumbs
-   - **17 comprehensive tests** in `tests/test_chunking.py`
+### Key Changes
 
-2. **LLM Client** (`services/llm/client.py`)
-   - OpenAI-compatible async client (uses vLLM gateway)
-   - Automatic retry logic via tenacity (3 attempts, exponential backoff)
-   - JSON mode for structured fact extraction
-   - Low temperature (0.1) for consistent results
-   - **9 comprehensive tests** in `tests/test_llm_client.py`
+| Concept | Before | After |
+|---------|--------|-------|
+| Purpose | Company technical facts only | Any extraction domain |
+| Schema | Fixed (fact_text, category, confidence) | Project-defined (JSONB) |
+| Grouping | Hardcoded `company` field | Configurable `source_group` |
+| Tables | `pages`, `facts`, `profiles` | `projects`, `sources`, `extractions` |
+| Entity types | 5 hardcoded types | Project-configurable via JSONB |
 
-3. **Data Models** (`models.py`)
-   - `DocumentChunk`: chunked content with metadata
-   - `ExtractedFact`: structured fact with category, confidence, source quote
-   - `ExtractionResult`: aggregated extraction results
+### New Documentation
 
-4. **Dependencies Added**
-   - `openai==1.58.1` - Async LLM client
-   - `tenacity==9.0.0` - Retry logic
+| File | Purpose |
+|------|---------|
+| `docs/TODO_generalization.md` | Complete design for project-based architecture |
+| `docs/TODO_project_system.md` | Project CRUD, templates, schema validation |
 
-**Test Coverage:** 156/156 tests passing ✅
+### Updated Documentation
+
+- `docs/TODO.md` - Added Phase 0 (Foundation), Phase 4 (Project System)
+- `docs/TODO_storage.md` - Generalized schema with JSONB queries
+- `docs/TODO_extraction.md` - Schema-driven extraction
+- `docs/TODO_knowledge_layer.md` - Project-scoped entities
+- `docs/TODO_migrations.md` - Marked as deferred (can recreate from scratch)
 
 ---
 
-## In Progress 🚧
+## Completed This Session ✅
 
-**Current State:** PR #8 created and ready for review. No uncommitted production code.
+### 1. Architectural Planning
+Reviewed candidate TODO proposals and integrated generalization strategy:
+- Project abstraction layer for multi-domain support
+- JSONB hybrid schema for flexible extraction
+- Incremental migration approach preserving existing code
+- Backward compatibility via default project
 
-**Uncommitted Documentation Files:**
-- `docs/TODO_*.md` - Various TODO documentation updates
-- `.claude/settings.json` - Claude Code settings
-- These can be committed separately or in next PR
+### 2. PR #9: Extraction Service Foundation
+Implemented Phase 3 (Extraction Module) core components using TDD:
+
+1. **Profile Repository** (`services/extraction/profiles.py`)
+   - Load extraction profiles from PostgreSQL
+   - Methods: `get_by_name()`, `list_all()`, `list_builtin()`, `exists()`
+   - **10 tests**
+
+2. **Extraction Orchestrator** (`services/extraction/extractor.py`)
+   - Orchestrates: chunking → LLM extraction → fact merging
+   - Handles multi-chunk documents, deduplication, header context
+   - **9 tests**
+
+3. **Fact Validator** (`services/extraction/validator.py`)
+   - Validates facts against profile criteria
+   - Configurable confidence threshold, category validation
+   - **11 tests**
+
+### 3. PR #8: LLM Integration (Previously Merged)
+- Document chunking (`services/llm/chunking.py`) - 17 tests
+- LLM client (`services/llm/client.py`) - 9 tests
 
 ---
 
 ## Next Steps 📋
 
-### Immediate (Increment 3): Extraction Service
-Continue TDD approach with extraction orchestration:
+### Phase 0: Foundation (NEW - Priority)
 
-1. **Profile Loading** (`services/extraction/profiles.py`)
-   - [ ] Load extraction profiles from PostgreSQL
-   - [ ] Create `ProfileRepository` class
-   - [ ] Write tests for profile loading
-   - [ ] Handle built-in vs custom profiles
+Before continuing with existing extraction work, implement generalization foundation:
 
-2. **Extraction Orchestrator** (`services/extraction/extractor.py`)
-   - [ ] Orchestrate: chunking → LLM → merging
-   - [ ] Handle multi-chunk documents
-   - [ ] Basic deduplication (exact match) across chunks
-   - [ ] Write integration tests
+1. **Schema Update** (`init.sql`)
+   - [ ] Add `projects` table with JSONB configuration
+   - [ ] Add `sources` table (generalized `pages`)
+   - [ ] Add `extractions` table (generalized `facts`)
+   - [ ] Update `entities` table with `project_id`
+   - [ ] Update `jobs` table with `project_id`
 
-3. **Fact Validation** (`services/extraction/validator.py`)
-   - [ ] Validate fact schema (required fields)
-   - [ ] Validate categories match profile
-   - [ ] Filter by confidence threshold (default 0.5)
-   - [ ] Write validation tests
+2. **Project System** (See `docs/TODO_project_system.md`)
+   - [ ] Create Project ORM model
+   - [ ] Create ProjectRepository
+   - [ ] Create SchemaValidator (dynamic Pydantic from JSONB)
+   - [ ] Create project templates (company_analysis, research_survey, contract_review)
+   - [ ] Create default "company_analysis" project
 
-4. **Integration Tests**
-   - [ ] End-to-end extraction from sample markdown
-   - [ ] Test with different profiles
-   - [ ] Test large document chunking
-   - [ ] Mock LLM responses (no real API calls in tests)
+3. **Refactoring Required**
+   - [ ] Update scraper worker: `Page` → `Source` with `project_id`
+   - [ ] Update extraction: fixed schema → project schema
+   - [ ] Update terminology: `company` → `source_group`
 
-### Increment 4: Extraction API Endpoints
-- [ ] `POST /api/v1/extract` - Queue extraction job
-- [ ] `GET /api/v1/profiles` - List profiles
-- [ ] `POST /api/v1/profiles` - Create custom profile
-- [ ] Background worker integration (similar to scraper)
+### Phase 3 Continuation: Extraction (After Phase 0)
 
-### Increment 5: Embeddings & Qdrant Storage
-- [ ] Embedding service (BGE-large-en via vLLM)
-- [ ] Store facts to PostgreSQL `facts` table
-- [ ] Store embeddings to Qdrant with payload
-- [ ] Deduplication via embedding similarity (0.90 threshold)
+**Increment 3b: Integration Tests**
+- [ ] End-to-end extraction test with mocked LLM
+- [ ] Test with different project schemas
+- [ ] Test error handling
 
-### Increment 6: Knowledge Layer (Entities)
-- [ ] Database migrations with Alembic
-- [ ] Entity extraction from facts
-- [ ] `entities` and `fact_entities` tables
-- [ ] Entity-filtered search
+**Increment 4: API Endpoints**
+- [ ] `POST /api/v1/projects/{project_id}/extract`
+- [ ] `GET /api/v1/projects/{project_id}/extractions`
+- [ ] Legacy endpoints using default project
+
+**Increment 5: Storage & Embeddings**
+- [ ] Store extractions with JSONB data
+- [ ] Generate embeddings via BGE-large-en
+- [ ] JSONB query support
 
 ---
 
 ## Key Files 📁
 
+### New Documentation
+- `docs/TODO_generalization.md` - Generalization architecture
+- `docs/TODO_project_system.md` - Project management design
+
 ### Production Code
-- `pipeline/services/llm/chunking.py` - Document chunking with semantic splitting
-- `pipeline/services/llm/client.py` - LLM client with retry logic
-- `pipeline/models.py` - Data models (includes DocumentChunk, ExtractedFact)
-- `pipeline/config.py` - Settings (LLM endpoints configured)
+- `pipeline/services/extraction/profiles.py` - Profile loading
+- `pipeline/services/extraction/extractor.py` - Orchestration
+- `pipeline/services/extraction/validator.py` - Validation
+- `pipeline/services/llm/chunking.py` - Document chunking
+- `pipeline/services/llm/client.py` - LLM client
 
-### Tests
-- `pipeline/tests/test_chunking.py` - 17 chunking tests
-- `pipeline/tests/test_llm_client.py` - 9 LLM client tests
-- `pipeline/tests/conftest.py` - Shared fixtures
-
-### Documentation
-- `docs/TODO.md` - Master TODO (shows Phase 3 in progress)
-- `docs/TODO_extraction.md` - Extraction module details
-- `docs/TODO_llm_integration.md` - LLM integration design decisions
+### Tests (186 total)
+- `test_profile_repository.py` - 10 tests
+- `test_extractor.py` - 9 tests
+- `test_fact_validator.py` - 11 tests
+- `test_chunking.py` - 17 tests
+- `test_llm_client.py` - 9 tests
 
 ---
 
 ## Context & Decisions 💡
 
-### Architecture Decisions
-1. **TDD Approach:** Tests written first, implementation follows
-   - Ensures robust test coverage from the start
-   - 156 tests passing (baseline 130 + new 26)
+### Generalization Strategy
+1. **Project abstraction** - Every operation scoped to a project with custom schema
+2. **JSONB hybrid** - Dynamic extraction schema + common fields for indexing
+3. **Incremental migration** - Preserve existing 186 tests and working code
+4. **Backward compatibility** - Legacy endpoints use default "company_analysis" project
 
-2. **Semantic Chunking:** Splits on `##` headers, not arbitrary tokens
-   - Preserves document structure
-   - Header path provides context for LLM
+### Rejected/Deferred Proposals
+- **arq job queue** - Current BackgroundTasks sufficient
+- **Full relation extraction** - Entity-only for MVP
+- **Alembic migrations** - Can recreate database from scratch
 
-3. **JSON Mode:** Uses LLM's native JSON output
-   - More reliable than regex-based JSON repair
-   - Validates structure before returning
+### Terminology Reference
+| Old Term | New Term | Notes |
+|----------|----------|-------|
+| `pages` | `sources` | Supports web, PDF, API, text |
+| `facts` | `extractions` | JSONB data field for dynamic schema |
+| `company` | `source_group` | Configurable grouping concept |
+| `profiles` | `project.extraction_schema` | Part of project configuration |
 
-4. **Low Temperature (0.1):** For consistent extraction
-   - Not creative text generation
-   - Factual extraction task
-
-5. **Retry Logic:** Tenacity with exponential backoff
-   - Handles transient LLM failures
-   - 3 attempts with 2^n multiplier (4s min, 60s max)
-
-### Development Strategy
-**Option B (Fast Value):** Extraction first, migrations later
-- Focus on core functionality (extraction pipeline)
-- Database migrations (Alembic) deferred to Increment 6
-- Using `init.sql` for now (works for development)
-
-### Configuration Available
-From `config.py`:
+### Configuration
 ```python
 OPENAI_BASE_URL = "http://192.168.0.247:9003/v1"  # vLLM gateway
 OPENAI_EMBEDDING_BASE_URL = "http://192.168.0.136:9003/v1"  # BGE-large-en
 LLM_MODEL = "gemma3-12b-awq"
-LLM_HTTP_TIMEOUT = 900
-LLM_MAX_RETRIES = 5
 ```
-
-### Known Gaps
-1. No profile repository yet (needs DB access)
-2. No extraction service (needs profile + chunking + LLM integration)
-3. No API endpoints for extraction
-4. No embeddings/Qdrant storage yet
-5. No database migrations (using init.sql)
-
----
-
-## Testing Notes 🧪
-
-### Run Tests
-```bash
-# All tests
-pytest -v
-
-# New tests only
-pytest tests/test_chunking.py tests/test_llm_client.py -v
-
-# With coverage
-pytest --cov=services/llm --cov-report=html
-```
-
-### Test Structure
-- **Unit tests:** Mock external dependencies (OpenAI client)
-- **Integration tests:** Coming in Increment 3
-- **TDD pattern:** Red → Green → Refactor
 
 ---
 
 ## Commands for Next Session
 
 ```bash
-# Check out the branch
-git checkout feat/llm-integration-chunking-client
+# Check out the extraction service branch
+git checkout feat/extraction-service
 
 # Verify tests pass
-source .venv/bin/activate
+source pipeline/.venv/bin/activate
 pytest -v
 
-# Start next increment (Extraction Service)
-# Create new branch from current
-git checkout -b feat/extraction-service
+# Review generalization design
+cat docs/TODO_generalization.md
+cat docs/TODO_project_system.md
 
-# Begin with profile repository tests
-touch tests/test_profile_repository.py
+# Start with schema updates
+vim init.sql  # Add projects, sources, extractions tables
+
+# Or continue with current extraction work
+pytest pipeline/tests/test_extractor.py -v
 ```
 
 ---
 
 ## Session Summary
 
-**Increment 1 & 2 Complete:**
-- ✅ Document chunking (17 tests)
-- ✅ LLM client with retry (9 tests)
-- ✅ PR created and pushed
-- ✅ All tests passing (156/156)
+**Major Achievement:** Defined generalization architecture for multi-domain extraction pipeline.
 
-**Next:** Continue with Increment 3 (Extraction Service) using TDD approach.
+**Progress:**
+- ✅ Architectural planning complete
+- ✅ TODO documentation updated for generalization
+- ✅ Phase 3 Extraction: ~50% complete (core components done)
+- 🔲 Phase 0 Foundation: Not started (new priority)
+- 🔲 Phase 4 Project System: Not started
 
-**Estimated Progress:** ~25% of Phase 3 (Extraction Module) complete
+**Recommended Order:**
+1. Complete Phase 0 (schema + project system) - enables generalization
+2. Refactor Phase 2-3 components for new schema
+3. Continue Phase 3 (extraction API + storage)
+4. Phase 4 (project CRUD API)
 
 ---
 
-💡 **Tip:** Run `/clear` to start next session fresh with this context loaded.
+## Candidate Files
+
+The `docs/candidate/` folder contains the original proposals that were reviewed and integrated. These can be deleted or archived:
+- `docs/candidate/TODO.md`
+- `docs/candidate/TODO_generalization.md`
+- `docs/candidate/TODO_storage.md`
+- `docs/candidate/ARCHITECTURE.md`
+
+---
+
+💡 **Tip:** Run `/clear` to start the next session fresh with this context loaded.

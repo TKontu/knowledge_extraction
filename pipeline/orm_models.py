@@ -15,7 +15,7 @@ from sqlalchemy import (
     JSON,
     ForeignKey,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator, CHAR
 from typing import Optional
@@ -272,3 +272,261 @@ class RateLimit(Base):
 
     def __repr__(self) -> str:
         return f"<RateLimit(domain={self.domain}, count={self.request_count})>"
+
+
+# ===================
+# Generalized Schema Models
+# ===================
+
+
+class Project(Base):
+    """Project table for multi-domain extraction configurations."""
+
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        primary_key=True,
+        default=uuid4
+    )
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Configuration stored as JSONB (uses JSON for cross-DB compatibility)
+    source_config: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        default=lambda: {"type": "web", "group_by": "company"}
+    )
+    extraction_schema: Mapped[dict] = mapped_column(JSON, nullable=False)
+    entity_types: Mapped[list] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list
+    )
+    prompt_templates: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict
+    )
+
+    # Settings
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC)
+    )
+
+    # Relationships
+    sources: Mapped[list["Source"]] = relationship(
+        "Source",
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )
+    extractions: Mapped[list["Extraction"]] = relationship(
+        "Extraction",
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )
+    entities: Mapped[list["Entity"]] = relationship(
+        "Entity",
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Project(id={self.id}, name={self.name})>"
+
+
+class Source(Base):
+    """Source table for generalized document sources."""
+
+    __tablename__ = "sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        primary_key=True,
+        default=uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    source_type: Mapped[str] = mapped_column(Text, nullable=False, default="web")
+    uri: Mapped[str] = mapped_column(Text, nullable=False)
+    source_group: Mapped[str] = mapped_column(Text, nullable=False)
+
+    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    outbound_links: Mapped[list] = mapped_column(JSON, default=list)
+
+    status: Mapped[str] = mapped_column(Text, default="pending")
+    fetched_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+
+    # Relationships
+    project: Mapped["Project"] = relationship("Project", back_populates="sources")
+    extractions: Mapped[list["Extraction"]] = relationship(
+        "Extraction",
+        back_populates="source",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Source(id={self.id}, uri={self.uri}, source_group={self.source_group})>"
+
+
+class Extraction(Base):
+    """Extraction table for generalized extracted data."""
+
+    __tablename__ = "extractions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        primary_key=True,
+        default=uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("sources.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    # Dynamic data validated against project schema
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    # Denormalized for indexing/queries
+    extraction_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_group: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Provenance
+    profile_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    chunk_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    chunk_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # Vector reference
+    embedding_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    extracted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+
+    # Relationships
+    project: Mapped["Project"] = relationship("Project", back_populates="extractions")
+    source: Mapped["Source"] = relationship("Source", back_populates="extractions")
+    entity_links: Mapped[list["ExtractionEntity"]] = relationship(
+        "ExtractionEntity",
+        back_populates="extraction",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Extraction(id={self.id}, type={self.extraction_type}, confidence={self.confidence})>"
+
+
+class Entity(Base):
+    """Entity table for project-scoped entity recognition."""
+
+    __tablename__ = "entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        primary_key=True,
+        default=uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    source_group: Mapped[str] = mapped_column(Text, nullable=False)
+
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_value: Mapped[str] = mapped_column(Text, nullable=False)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+
+    # Relationships
+    project: Mapped["Project"] = relationship("Project", back_populates="entities")
+    extraction_links: Mapped[list["ExtractionEntity"]] = relationship(
+        "ExtractionEntity",
+        back_populates="entity",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Entity(id={self.id}, type={self.entity_type}, value={self.value})>"
+
+
+class ExtractionEntity(Base):
+    """Junction table linking extractions to entities."""
+
+    __tablename__ = "extraction_entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        primary_key=True,
+        default=uuid4
+    )
+    extraction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("extractions.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("entities.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    role: Mapped[str] = mapped_column(Text, default="mention")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+
+    # Relationships
+    extraction: Mapped["Extraction"] = relationship(
+        "Extraction",
+        back_populates="entity_links"
+    )
+    entity: Mapped["Entity"] = relationship(
+        "Entity",
+        back_populates="extraction_links"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExtractionEntity(extraction_id={self.extraction_id}, entity_id={self.entity_id}, role={self.role})>"
