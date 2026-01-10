@@ -210,11 +210,11 @@ See: `docs/TODO_storage.md`
 - [x] **ProjectRepository** (9 methods, 19 tests) - From Phase 4
 - [x] **JSONB field filtering** (query_jsonb, filter_by_data with PostgreSQL/SQLite support)
 - [x] Filter support (source_group, entity_type, confidence ranges, etc.)
+- [x] **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch, search, delete
 
 **Pending:**
-- [ ] Qdrant repository (embeddings CRUD)
 - [ ] Embedding service (BGE-large-en via vLLM)
-- [ ] Semantic search endpoint
+- [ ] Semantic search endpoint (hybrid vector + JSONB)
 - [ ] Pagination
 
 ### Deduplication
@@ -327,14 +327,14 @@ See: `docs/TODO_reports.md`
 | LLM Integration | `docs/TODO_llm_integration.md` | 3 | Foundation Complete |
 | **Knowledge Layer** | `docs/TODO_knowledge_layer.md` | 5 | **Repository Complete (28 tests)** |
 | Deduplication | `docs/TODO_deduplication.md` | 6 | Entity dedup done |
-| **Storage** | `docs/TODO_storage.md` | 6 | **Repository Complete (77 tests)** |
+| **Storage** | `docs/TODO_storage.md` | 6 | **Qdrant Complete (89 tests)** |
 | Reports | `docs/TODO_reports.md` | 7 | Not started |
 
 ---
 
 ## Test Coverage
 
-**Current: 340 tests passing** (77 new in generalization phase)
+**Current: 352 tests passing** (89 new in generalization phase)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
@@ -353,9 +353,10 @@ See: `docs/TODO_reports.md`
 - 20 Database schema tests (generalization)
 - 19 ProjectRepository tests (generalization)
 - 21 SchemaValidator tests (generalization)
-- 23 SourceRepository tests (NEW)
-- 26 ExtractionRepository tests (NEW)
-- 28 EntityRepository tests (NEW)
+- 23 SourceRepository tests (generalization)
+- 26 ExtractionRepository tests (generalization)
+- 28 EntityRepository tests (generalization)
+- 12 QdrantRepository tests (NEW)
 
 ---
 
