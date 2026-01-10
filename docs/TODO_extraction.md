@@ -6,23 +6,26 @@ Extracts structured facts from scraped markdown content using LLM with configura
 
 ## Status
 
-**Completed:**
+**Completed (PR #8 - LLM Foundation):**
 - ✅ Built-in profiles defined in `init.sql` (technical_specs, api_docs, security, pricing, general)
 - ✅ LLM configuration in `config.py` (OpenAI-compatible endpoints, model names, timeouts)
+- ✅ Profile ORM model exists (`pipeline/orm_models.py` - PR #4)
+- ✅ **Document chunking module** (`services/llm/chunking.py`, 17 tests)
+- ✅ **LLM client implementation** (`services/llm/client.py`, 9 tests)
+- ✅ **Data models** (DocumentChunk, ExtractedFact, ExtractionResult)
 
-**Pending:**
+**Pending (~75% remaining):**
 - Profile schema/dataclass implementation
-- Profile loading from database
-- Prompt generation
-- LLM client implementation
-- Fact extraction logic
-- Fact validation and storage
+- Profile loading from database (repository pattern)
+- Extraction service (orchestrates chunking + LLM + validation)
+- Fact validation (schema, categories, confidence filtering)
+- Fact storage to PostgreSQL and Qdrant
 
-**Next Steps:**
-1. Create ORM models for profiles table
-2. Implement profile repository
-3. Build LLM client (OpenAI-compatible)
-4. Create extraction prompt templates
+**Related Documentation:**
+- See `docs/TODO_llm_integration.md` for detailed LLM client design
+- See `docs/TODO_deduplication.md` for fact deduplication strategy
+
+---
 
 ## Core Tasks
 
@@ -44,35 +47,32 @@ Extracts structured facts from scraped markdown content using LLM with configura
   - [x] `security` (comprehensive)
   - [x] `pricing` (detailed)
   - [x] `general` (summary)
-- [ ] Profile ORM model
-- [ ] Profile loading from database
+- [x] Profile ORM model (PR #4)
+- [ ] Profile loading from database (repository)
 - [ ] Custom profile creation via API
 
-### Prompt Generation
+### LLM Client ✅ COMPLETE (PR #8)
 
-- [ ] Base extraction prompt template
-- [ ] Dynamic prompt builder from profile
-  ```python
-  def build_extraction_prompt(content: str, profile: ExtractionProfile) -> str
-  ```
-- [ ] Depth-based prompt variations
-  - summary: Extract key facts only (5-10)
-  - detailed: Extract all relevant facts (10-30)
-  - comprehensive: Extract everything + inferences (30+)
-- [ ] JSON output schema in prompt
+> **Detailed implementation:** See `docs/TODO_llm_integration.md`
 
-### LLM Client
-
-- [ ] Create OpenAI-compatible client wrapper
+- [x] **Create OpenAI-compatible client wrapper** (PR #8 - `services/llm/client.py`)
 - [x] Configuration ready in `config.py`:
   - [x] `OPENAI_BASE_URL` (extraction LLM)
   - [x] `LLM_MODEL` (default: gemma3-12b-awq)
   - [x] `LLM_HTTP_TIMEOUT` (900s)
   - [x] `LLM_MAX_RETRIES` (5)
-  - [x] Retry backoff configuration
-- [ ] Structured output parsing (JSON)
-- [ ] Retry on malformed JSON
-- [ ] Timeout handling (use existing config)
+- [x] **Use JSON mode for structured output** (PR #8 - `response_format={"type": "json_object"}`)
+- [x] **Retry logic with tenacity** (PR #8 - exponential backoff, 3 attempts)
+- [x] **Timeout handling** (PR #8 - via AsyncOpenAI client)
+
+### Document Chunking ✅ COMPLETE (PR #8)
+
+> **Detailed implementation:** See `docs/TODO_llm_integration.md`
+
+- [x] **Semantic chunking (split on markdown headers)** (PR #8)
+- [x] **Token-based splitting for large sections** (PR #8 - word-level fallback)
+- [x] **Preserve context across chunks** (PR #8 - header path tracking)
+- [x] **Track chunk source positions** (PR #8 - chunk index, total chunks)
 
 ### Fact Extraction
 
@@ -81,21 +81,24 @@ Extracts structured facts from scraped markdown content using LLM with configura
   async def extract_facts(page: ScrapedPage, profile: ExtractionProfile) -> list[ExtractedFact]
   ```
 - [ ] Chunking for long content (if > context limit)
-- [ ] Merge facts from chunks
-- [ ] Confidence scoring (from LLM or heuristic)
+- [ ] Merge facts from chunks (with basic dedup)
+- [ ] Confidence scoring (from LLM response)
 
 ### Fact Validation
 
 - [ ] Schema validation (required fields present)
 - [ ] Category validation (matches profile categories)
-- [ ] Deduplication within page
 - [ ] Basic quality filters (min length, not empty)
+- [ ] Confidence threshold filtering (default: 0.5)
 
 ### Fact Storage
+
+> **Deduplication:** See `docs/TODO_deduplication.md`
 
 - [ ] Store to PostgreSQL `facts` table
 - [ ] Generate embedding via BGE-large-en
 - [ ] Store embedding to Qdrant
+- [ ] Check for duplicates before insert (same-company)
 - [ ] Link fact → page relationship
 
 ---
@@ -113,10 +116,10 @@ class ExtractionProfile:
 
 @dataclass
 class ExtractedFact:
-    fact_text: str
+    fact: str
     category: str
     confidence: float
-    source_context: str | None = None  # snippet where fact was found
+    source_quote: str | None = None  # snippet for attribution
 
 @dataclass
 class StoredFact:
@@ -140,24 +143,25 @@ You are a technical fact extractor. Extract concrete, verifiable facts from the 
 
 Focus: {profile.prompt_focus}
 Categories: {profile.categories}
-Depth: {profile.depth}
 
-Rules:
-- Only extract factual, specific information
-- Skip marketing language, vague claims, and opinions
-- Each fact should be self-contained and understandable without context
-- Assign confidence based on how explicit the fact is in the source
-
-Output JSON array:
+Output a JSON object with this exact structure:
 {
   "facts": [
     {
       "fact": "Specific technical statement",
-      "category": "one of: {categories}",
-      "confidence": 0.0-1.0
+      "category": "one of the allowed categories",
+      "confidence": 0.0-1.0,
+      "source_quote": "brief supporting quote"
     }
   ]
 }
+
+Rules:
+- Only extract factual, specific information
+- Skip marketing language, vague claims, and opinions
+- Each fact should be self-contained
+- Include source_quote for attribution
+- Assign confidence based on how explicit the source is
 
 Content:
 ---
@@ -169,78 +173,13 @@ Content:
 
 ## Built-in Profiles
 
-### technical_specs.yaml
-```yaml
-name: technical_specs
-categories:
-  - specs
-  - hardware
-  - requirements
-  - compatibility
-  - performance
-prompt_focus: >
-  Hardware specifications, system requirements, supported platforms,
-  performance metrics, compatibility information
-depth: detailed
-```
-
-### api_docs.yaml
-```yaml
-name: api_docs
-categories:
-  - endpoints
-  - authentication
-  - rate_limits
-  - sdks
-  - versioning
-prompt_focus: >
-  API endpoints, authentication methods, rate limits, SDK availability,
-  API versioning, request/response formats
-depth: detailed
-```
-
-### security.yaml
-```yaml
-name: security
-categories:
-  - certifications
-  - compliance
-  - encryption
-  - audit
-  - access_control
-prompt_focus: >
-  Security certifications (SOC2, ISO27001, etc), compliance standards,
-  encryption methods, audit capabilities, access control features
-depth: comprehensive
-```
-
-### pricing.yaml
-```yaml
-name: pricing
-categories:
-  - pricing
-  - tiers
-  - limits
-  - features
-prompt_focus: >
-  Pricing tiers, feature inclusions per tier, usage limits,
-  enterprise options, free tier details
-depth: detailed
-```
-
-### general.yaml
-```yaml
-name: general
-categories:
-  - general
-  - features
-  - technical
-  - integration
-prompt_focus: >
-  General technical facts about the product, features, integrations,
-  and capabilities
-depth: summary
-```
+| Profile | Categories | Depth | Use Case |
+|---------|------------|-------|----------|
+| `technical_specs` | specs, hardware, requirements, compatibility, performance | detailed | Product specifications |
+| `api_docs` | endpoints, authentication, rate_limits, sdks, versioning | detailed | API documentation |
+| `security` | certifications, compliance, encryption, audit, access_control | comprehensive | Security posture |
+| `pricing` | pricing, tiers, limits, features | detailed | Competitive intel |
+| `general` | general, features, technical, integration | summary | Broad extraction |
 
 ---
 
@@ -249,9 +188,7 @@ depth: summary
 ```yaml
 extraction:
   default_profile: general
-  max_content_length: 50000  # characters before chunking
-  chunk_size: 10000
-  chunk_overlap: 500
+  max_chunk_tokens: 8000
   min_fact_length: 20
   max_facts_per_page: 100
   confidence_threshold: 0.5  # filter low-confidence facts
@@ -272,14 +209,6 @@ extraction:
 {
     "job_id": "uuid",
     "status": "queued"
-}
-
-# POST /api/v1/extract (custom profile)
-{
-    "page_ids": ["uuid1"],
-    "profile": "custom",
-    "custom_focus": "Extract deployment and scaling information",
-    "custom_categories": ["deployment", "scaling", "regions"]
 }
 
 # GET /api/v1/profiles
@@ -308,23 +237,20 @@ extraction:
 ```
 pipeline/
 ├── services/
-│   └── extraction/
+│   ├── extraction/
+│   │   ├── __init__.py
+│   │   ├── profiles.py        # Profile loading/management
+│   │   ├── extractor.py       # Fact extraction logic
+│   │   ├── validator.py       # Fact validation
+│   │   └── service.py         # ExtractionService (orchestration)
+│   └── llm/
 │       ├── __init__.py
-│       ├── profiles.py        # Profile loading/management
-│       ├── prompt_builder.py  # Dynamic prompt generation
-│       ├── extractor.py       # Fact extraction logic
-│       ├── validator.py       # Fact validation
-│       └── service.py         # ExtractionService (orchestration)
+│       ├── client.py          # LLMClient (OpenAI-compatible)
+│       ├── chunking.py        # Semantic document chunking
+│       ├── prompts.py         # Prompt templates
+│       └── merging.py         # Chunk result merging
 ├── models/
 │   └── extraction.py          # ExtractionProfile, ExtractedFact
-├── prompts/
-│   ├── extraction_base.txt    # Base prompt template
-│   └── profiles/
-│       ├── technical_specs.yaml
-│       ├── api_docs.yaml
-│       ├── security.yaml
-│       ├── pricing.yaml
-│       └── general.yaml
 └── api/
     └── routes/
         └── extraction.py      # API endpoints
@@ -334,10 +260,11 @@ pipeline/
 
 ## Testing Checklist
 
+- [ ] Unit: Profile loading from database
 - [ ] Unit: Prompt builder generates valid prompts
-- [ ] Unit: Profile loading from YAML
-- [ ] Unit: JSON parsing handles malformed responses
+- [ ] Unit: Chunking produces correct sizes
 - [ ] Unit: Fact validation filters correctly
 - [ ] Integration: Extract from sample markdown
 - [ ] Integration: Custom profile extraction
 - [ ] Integration: Long content chunking works
+- [ ] Integration: End-to-end with real vLLM model
