@@ -23,9 +23,9 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 - **EntityRepository** (8 methods, 28 tests) - Deduplication, entity-extraction links
 - **JSONB query support** (query_jsonb, filter_by_data with PostgreSQL/SQLite compatibility)
 - **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch upsert, search, delete
+- **EmbeddingService** (2 methods, 7 tests) - Single embed, batch embed with retry logic
 
 **Pending:**
-- Embedding service
 - Search service (hybrid semantic + JSONB)
 - Pagination support
 
@@ -595,9 +595,9 @@ pipeline/
 - [x] Implement upsert/search/delete
 
 ### Phase 4: Embedding Service
-- [ ] Create EmbeddingService
-- [ ] Test with BGE-large-en endpoint
-- [ ] Implement batching
+- [x] Create EmbeddingService
+- [x] Test with BGE-large-en endpoint
+- [x] Implement batching
 
 ### Phase 5: Search Service
 - [ ] Create SearchService
@@ -611,7 +611,7 @@ pipeline/
 
 - [x] Unit: Repository CRUD operations (96 tests for SQL repositories)
 - [x] Unit: JSONB filter building (included in repository tests)
-- [ ] Unit: Embedding batching
+- [x] Unit: Embedding batching (EmbeddingService, 7 tests)
 - [x] Integration: Qdrant collection creation (QdrantRepository, 2 tests)
 - [x] Integration: Store extraction with embedding (QdrantRepository, 4 tests)
 - [x] Integration: Search returns relevant results (QdrantRepository, 3 tests)
