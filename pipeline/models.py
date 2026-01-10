@@ -143,37 +143,13 @@ class ExtractionResult:
     extraction_time_ms: int
 
 
-# LLM-related data models
-
-
 @dataclass
-class DocumentChunk:
-    """A chunk of a document for processing."""
+class ExtractionProfile:
+    """Configuration profile for fact extraction."""
 
-    content: str
-    chunk_index: int
-    total_chunks: int
-    header_path: list[str] | None = None
-    start_line: int | None = None
-    end_line: int | None = None
-
-
-@dataclass
-class ExtractedFact:
-    """A fact extracted from content by LLM."""
-
-    fact: str
-    category: str
-    confidence: float
-    source_quote: str | None = None
-    header_context: str | None = None
-
-
-@dataclass
-class ExtractionResult:
-    """Result of extracting facts from a page."""
-
-    page_id: UUID
-    facts: list[ExtractedFact]
-    chunks_processed: int
-    extraction_time_ms: int
+    name: str
+    categories: list[str]
+    prompt_focus: str
+    depth: str  # "summary", "detailed", or "comprehensive"
+    custom_instructions: str | None = None
+    is_builtin: bool = False
