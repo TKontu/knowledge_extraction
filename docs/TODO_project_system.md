@@ -4,7 +4,19 @@
 
 Implements the project abstraction layer that enables the pipeline to support multiple extraction domains with custom schemas.
 
-**Status:** Not started - depends on generalization design.
+**Status:** Repository layer complete (40 tests passing)
+
+**Completed:**
+- [x] **ProjectRepository** - Full implementation (9 methods, 19 tests)
+- [x] **SchemaValidator** - Dynamic Pydantic model generation (21 tests)
+- [x] **Project ORM model** - With relationships to sources, extractions, entities
+- [x] **COMPANY_ANALYSIS_TEMPLATE** - Default project template
+
+**Pending:**
+- [ ] Project CRUD API endpoints
+- [ ] Additional templates (research_survey, contract_review)
+- [ ] Seed script for default project
+- [ ] Clone project from template functionality
 
 **Related Documentation:**
 - See `docs/TODO_generalization.md` for overall architecture
