@@ -6,19 +6,24 @@ Replace `init.sql` with Alembic migrations for safe schema evolution.
 
 ## Status
 
-**Current State:**
-- ✅ SQLAlchemy ORM models exist (`pipeline/orm_models.py` - PR #4)
-- ✅ Database connection works (`pipeline/database.py`)
-- ⚠️ Schema defined in `init.sql` (no upgrade path)
-- ⚠️ ORM models and init.sql may have minor mismatches
+✅ **IMPLEMENTATION COMPLETE** - 2026-01-10
 
-**Decision:** Migrations are **deferred** - we can recreate the database from scratch during development. Alembic will be added when approaching production or when data persistence becomes critical.
+**Implementation Summary:**
+- ✅ SQLAlchemy ORM models reconciled with init.sql
+- ✅ Alembic fully configured and integrated
+- ✅ Initial migration created (001_initial_schema.py)
+- ✅ Seed migration for builtin profiles (002_seed_builtin_profiles.py)
+- ✅ Docker-compose integration with automatic migrations
+- ✅ Comprehensive documentation and helper scripts
+- ✅ Migration system ready for production use
 
-**Problem (when needed):**
-- No way to apply schema changes to existing databases
-- No version tracking of schema
-- Manual intervention required for upgrades
-- Risk of data loss on schema changes
+**See:** `ALEMBIC_SETUP_COMPLETE.md` for full implementation summary
+
+**Original Problem (SOLVED):**
+- ✅ Schema changes now version controlled
+- ✅ Upgrade path for existing databases
+- ✅ Automatic migrations on deployment
+- ✅ Safe rollback capability
 
 ---
 

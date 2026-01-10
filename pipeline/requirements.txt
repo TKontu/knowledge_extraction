@@ -7,6 +7,7 @@ pydantic-settings==2.6.0
 # Database
 psycopg[binary]==3.2.3
 sqlalchemy==2.0.36
+alembic==1.13.3
 
 # Redis
 redis==5.2.0

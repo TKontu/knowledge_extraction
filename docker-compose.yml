@@ -51,7 +51,13 @@ services:
       POSTGRES_DB: ${DB_NAME:-techfacts}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Note: init.sql is kept as fallback but migrations are preferred
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-techfacts}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     networks:
       - techfacts
@@ -83,6 +89,23 @@ services:
     restart: unless-stopped
     networks:
       - techfacts
+
+  # ===================
+  # Database Migrations
+  # ===================
+  migrate:
+    build:
+      context: ./pipeline
+      dockerfile: Dockerfile
+    command: python -m alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-techfacts}:${DB_PASSWORD:-techfacts}@postgres:5432/${DB_NAME:-techfacts}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - techfacts
+    restart: "no"
 
   # ===================
   # Web UI (Remote Control)
@@ -161,10 +184,16 @@ services:
       - ./pipeline/prompts:/app/prompts:ro
       - ./reports:/app/reports
     depends_on:
-      - redis
-      - postgres
-      - qdrant
-      - firecrawl-api
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      firecrawl-api:
+        condition: service_started
     restart: unless-stopped
     networks:
       - techfacts
