@@ -3,12 +3,15 @@
 from datetime import datetime, UTC
 from typing import Optional
 from urllib.parse import urlparse
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from orm_models import Job, Page
+from orm_models import Job
 from services.scraper.client import FirecrawlClient, ScrapeResult
 from services.scraper.rate_limiter import DomainRateLimiter, RateLimitExceeded
+from services.storage.repositories.source import SourceRepository
+from services.projects.repository import ProjectRepository
 
 
 class ScraperWorker:
@@ -17,7 +20,7 @@ class ScraperWorker:
     Handles queued scrape jobs by:
     1. Updating job status to "running"
     2. Scraping all URLs in the job payload
-    3. Storing successful scrapes as Page records
+    3. Storing successful scrapes as Source records
     4. Updating job with results and completion status
 
     Args:
@@ -49,6 +52,10 @@ class ScraperWorker:
         self.client = firecrawl_client
         self.rate_limiter = rate_limiter
 
+        # Initialize repositories
+        self.source_repo = SourceRepository(db)
+        self.project_repo = ProjectRepository(db)
+
     async def process_job(self, job: Job) -> None:
         """Process a scrape job.
 
@@ -68,12 +75,18 @@ class ScraperWorker:
 
             # Extract payload data
             urls = job.payload.get("urls", [])
-            company = job.payload.get("company", "")
+            source_group = job.payload.get("source_group") or job.payload.get("company", "")  # Backward compat
             profile = job.payload.get("profile")
+            project_id = job.payload.get("project_id")
+
+            # Get or create default project if project_id not provided
+            if not project_id:
+                default_project = await self.project_repo.get_default_project()
+                project_id = default_project.id
 
             # Track results
-            pages_scraped = 0
-            pages_failed = 0
+            sources_scraped = 0
+            sources_failed = 0
             rate_limited = 0
 
             # Process each URL
@@ -91,44 +104,47 @@ class ScraperWorker:
 
                     # Store successful scrapes
                     if result.success and result.markdown:
-                        page = Page(
-                            url=result.url,
-                            domain=result.domain,
-                            company=company,
+                        source = await self.source_repo.create(
+                            project_id=project_id,
+                            uri=result.url,
+                            source_group=source_group,
+                            source_type="web",
                             title=result.title,
-                            markdown_content=result.markdown,
+                            content=result.markdown,
+                            meta_data={
+                                "domain": result.domain,
+                                **result.metadata,
+                            },
                             status="completed",
-                            meta_data=result.metadata,
                         )
-                        self.db.add(page)
-                        pages_scraped += 1
+                        sources_scraped += 1
                     else:
-                        pages_failed += 1
+                        sources_failed += 1
 
                 except RateLimitExceeded:
                     # Rate limit hit for this domain, skip this URL
-                    pages_failed += 1
+                    sources_failed += 1
                     rate_limited += 1
                     continue
 
-            # Commit all pages
+            # Commit all sources
             self.db.commit()
 
             # Update job with results
-            if pages_scraped == 0 and pages_failed > 0:
+            if sources_scraped == 0 and sources_failed > 0:
                 # All URLs failed - mark job as failed
                 job.status = "failed"
                 if rate_limited > 0:
-                    job.error = f"All {pages_failed} URLs failed ({rate_limited} rate limited)"
+                    job.error = f"All {sources_failed} URLs failed ({rate_limited} rate limited)"
                 else:
-                    job.error = f"All {pages_failed} URLs failed to scrape"
+                    job.error = f"All {sources_failed} URLs failed to scrape"
             else:
                 job.status = "completed"
 
             job.completed_at = datetime.now(UTC)
             job.result = {
-                "pages_scraped": pages_scraped,
-                "pages_failed": pages_failed,
+                "sources_scraped": sources_scraped,
+                "sources_failed": sources_failed,
                 "rate_limited": rate_limited,
                 "total_urls": len(urls),
             }
