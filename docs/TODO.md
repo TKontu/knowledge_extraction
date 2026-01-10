@@ -110,9 +110,9 @@ See: `docs/TODO_scraper.md`
 - [ ] Retry logic with exponential backoff (nice-to-have)
 
 **Refactoring Required:**
-- [ ] Update scraper to create `sources` instead of `pages`
-- [ ] Add project_id context to scrape jobs
-- [ ] Replace `company` with `source_group`
+- [x] Update scraper to create `sources` instead of `pages` ✅ **DONE**
+- [x] Add project_id context to scrape jobs ✅ **DONE**
+- [x] Replace `company` with `source_group` ✅ **DONE**
 
 **Milestone**: Can scrape URLs and store markdown automatically
 
@@ -368,7 +368,7 @@ The following components need updates for generalization:
 | `orm_models.py` | pages, facts | sources, extractions, projects | High | ✅ **DONE** |
 | `repositories/` | N/A | Project, Source, Extraction, Entity | High | ✅ **DONE** |
 | `services/projects/schema.py` | N/A | SchemaValidator | High | ✅ **DONE** |
-| `scraper/worker.py` | Creates Page | Creates Source | High | TODO |
+| `scraper/worker.py` | Creates Page | Creates Source | High | ✅ **DONE** |
 | `extraction/extractor.py` | Fixed schema | Project schema | High | TODO |
 | `extraction/profiles.py` | Hardcoded profiles | Project config | Medium | TODO |
 | `api/v1/scrape.py` | Uses company | Uses source_group + project | Medium | TODO |

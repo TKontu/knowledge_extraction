@@ -8,7 +8,7 @@ from uuid import uuid4
 from services.scraper.worker import ScraperWorker
 from services.scraper.client import ScrapeResult
 from services.scraper.rate_limiter import RateLimitExceeded
-from orm_models import Job, Page
+from orm_models import Job, Source
 
 
 class TestScraperWorker:
@@ -27,9 +27,30 @@ class TestScraperWorker:
         return client
 
     @pytest.fixture
-    def worker(self, db_session, firecrawl_client):
-        """Create ScraperWorker instance."""
-        return ScraperWorker(db=db_session, firecrawl_client=firecrawl_client)
+    def mock_source_repo(self):
+        """Mock SourceRepository."""
+        repo = AsyncMock()
+        # Mock create to return a Source-like object
+        repo.create.return_value = Mock(id=uuid4())
+        return repo
+
+    @pytest.fixture
+    def mock_project_repo(self):
+        """Mock ProjectRepository."""
+        repo = AsyncMock()
+        # Mock get_default_project to return a project with ID
+        default_project = Mock(id=uuid4())
+        repo.get_default_project.return_value = default_project
+        return repo
+
+    @pytest.fixture
+    def worker(self, db_session, firecrawl_client, mock_source_repo, mock_project_repo):
+        """Create ScraperWorker instance with mocked repositories."""
+        worker = ScraperWorker(db=db_session, firecrawl_client=firecrawl_client)
+        # Replace repositories with mocks
+        worker.source_repo = mock_source_repo
+        worker.project_repo = mock_project_repo
+        return worker
 
     @pytest.mark.asyncio
     async def test_worker_initialization(self, worker, db_session, firecrawl_client):
@@ -46,7 +67,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -81,7 +102,7 @@ class TestScraperWorker:
                     "https://example.com/page2",
                     "https://example.com/page3",
                 ],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -104,16 +125,16 @@ class TestScraperWorker:
 
     @pytest.mark.asyncio
     async def test_process_job_stores_successful_scrape_to_database(
-        self, worker, db_session
+        self, worker, mock_source_repo
     ):
-        """Test that successful scrapes are stored as Page records."""
+        """Test that successful scrapes are stored as Source records."""
         job = Job(
             id=uuid4(),
             type="scrape",
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -131,19 +152,21 @@ class TestScraperWorker:
 
         await worker.process_job(job)
 
-        # Verify a Page was added to the database
-        db_session.add.assert_called()
-        added_page = db_session.add.call_args[0][0]
-        assert isinstance(added_page, Page)
-        assert added_page.url == "https://example.com"
-        assert added_page.domain == "example.com"
-        assert added_page.company == "Example Corp"
-        assert added_page.markdown_content == "# Example Page\n\nTest content"
-        assert added_page.title == "Example Page"
+        # Verify a Source was created via repository
+        mock_source_repo.create.assert_called_once()
+        call_kwargs = mock_source_repo.create.call_args[1]
+        assert call_kwargs["uri"] == "https://example.com"
+        assert call_kwargs["source_group"] == "Example Corp"
+        assert call_kwargs["source_type"] == "web"
+        assert call_kwargs["title"] == "Example Page"
+        assert call_kwargs["content"] == "# Example Page\n\nTest content"
+        assert call_kwargs["status"] == "completed"
+        assert "domain" in call_kwargs["meta_data"]
+        assert call_kwargs["meta_data"]["domain"] == "example.com"
 
     @pytest.mark.asyncio
     async def test_process_job_handles_scrape_failure_gracefully(
-        self, worker, db_session
+        self, worker, mock_source_repo
     ):
         """Test that scrape failures don't crash the worker."""
         job = Job(
@@ -152,7 +175,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com/404", "https://example.com/good"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -185,8 +208,8 @@ class TestScraperWorker:
 
         # Job should still complete
         assert job.status == "completed"
-        # Only one page should be added (the successful one)
-        assert db_session.add.call_count == 1
+        # Only one source should be created (the successful one)
+        assert mock_source_repo.create.call_count == 1
 
     @pytest.mark.asyncio
     async def test_process_job_marks_job_as_completed(self, worker):
@@ -197,7 +220,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -227,7 +250,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com/1", "https://example.com/2"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -259,8 +282,8 @@ class TestScraperWorker:
 
         # Job result should contain summary
         assert job.result is not None
-        assert job.result["pages_scraped"] == 1
-        assert job.result["pages_failed"] == 1
+        assert job.result["sources_scraped"] == 1
+        assert job.result["sources_failed"] == 1
         assert job.result["total_urls"] == 2
 
     @pytest.mark.asyncio
@@ -272,7 +295,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -295,7 +318,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -317,15 +340,15 @@ class TestScraperWorker:
         db_session.commit.assert_called()
 
     @pytest.mark.asyncio
-    async def test_process_job_extracts_company_from_payload(self, worker, db_session):
-        """Test that company name is correctly extracted from payload."""
+    async def test_process_job_extracts_source_group_from_payload(self, worker, mock_source_repo):
+        """Test that source_group is correctly extracted from payload."""
         job = Job(
             id=uuid4(),
             type="scrape",
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Acme Corporation",
+                "source_group": "Acme Corporation",
                 "profile": "default",
             },
         )
@@ -343,9 +366,9 @@ class TestScraperWorker:
 
         await worker.process_job(job)
 
-        # Check the Page was created with correct company
-        added_page = db_session.add.call_args[0][0]
-        assert added_page.company == "Acme Corporation"
+        # Check the Source was created with correct source_group
+        call_kwargs = mock_source_repo.create.call_args[1]
+        assert call_kwargs["source_group"] == "Acme Corporation"
 
     @pytest.mark.asyncio
     async def test_process_job_sets_started_at_timestamp(self, worker):
@@ -356,7 +379,7 @@ class TestScraperWorker:
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
             started_at=None,
@@ -401,13 +424,31 @@ class TestScraperWorkerWithRateLimiting:
         return limiter
 
     @pytest.fixture
-    def worker_with_limiter(self, db_session, firecrawl_client, rate_limiter):
+    def mock_source_repo(self):
+        """Mock SourceRepository."""
+        repo = AsyncMock()
+        repo.create.return_value = Mock(id=uuid4())
+        return repo
+
+    @pytest.fixture
+    def mock_project_repo(self):
+        """Mock ProjectRepository."""
+        repo = AsyncMock()
+        default_project = Mock(id=uuid4())
+        repo.get_default_project.return_value = default_project
+        return repo
+
+    @pytest.fixture
+    def worker_with_limiter(self, db_session, firecrawl_client, rate_limiter, mock_source_repo, mock_project_repo):
         """Create ScraperWorker instance with rate limiter."""
-        return ScraperWorker(
+        worker = ScraperWorker(
             db=db_session,
             firecrawl_client=firecrawl_client,
             rate_limiter=rate_limiter,
         )
+        worker.source_repo = mock_source_repo
+        worker.project_repo = mock_project_repo
+        return worker
 
     @pytest.mark.asyncio
     async def test_worker_uses_rate_limiter_before_scraping(
@@ -420,7 +461,7 @@ class TestScraperWorkerWithRateLimiting:
             status="queued",
             payload={
                 "urls": ["https://example.com/page1", "https://example.com/page2"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -454,7 +495,7 @@ class TestScraperWorkerWithRateLimiting:
             status="queued",
             payload={
                 "urls": ["https://example.com/page1"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -484,7 +525,7 @@ class TestScraperWorkerWithRateLimiting:
                     "https://www.example.com/path/page",
                     "https://another.com/page",
                 ],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -509,7 +550,7 @@ class TestScraperWorkerWithRateLimiting:
 
     @pytest.mark.asyncio
     async def test_worker_continues_after_partial_rate_limit(
-        self, worker_with_limiter, rate_limiter, db_session
+        self, worker_with_limiter, rate_limiter, mock_source_repo
     ):
         """Test that worker continues processing other URLs after rate limit on one."""
         job = Job(
@@ -521,7 +562,7 @@ class TestScraperWorkerWithRateLimiting:
                     "https://example.com/page1",  # This will be rate limited
                     "https://another.com/page2",  # This should succeed
                 ],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
@@ -547,16 +588,18 @@ class TestScraperWorkerWithRateLimiting:
 
         # Job should still complete (not fail completely)
         assert job.status == "completed"
-        # Should have 1 successful page
-        assert db_session.add.call_count == 1
+        # Should have 1 successful source
+        assert worker_with_limiter.source_repo.create.call_count == 1
 
     @pytest.mark.asyncio
     async def test_worker_without_rate_limiter_works_normally(
-        self, db_session, firecrawl_client
+        self, db_session, firecrawl_client, mock_source_repo, mock_project_repo
     ):
         """Test that worker works without rate limiter (backwards compatibility)."""
         # Create worker without rate limiter
         worker = ScraperWorker(db=db_session, firecrawl_client=firecrawl_client)
+        worker.source_repo = mock_source_repo
+        worker.project_repo = mock_project_repo
 
         job = Job(
             id=uuid4(),
@@ -564,7 +607,7 @@ class TestScraperWorkerWithRateLimiting:
             status="queued",
             payload={
                 "urls": ["https://example.com"],
-                "company": "Example Corp",
+                "source_group": "Example Corp",
                 "profile": "default",
             },
         )
