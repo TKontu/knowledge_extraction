@@ -46,6 +46,9 @@
       "Bash(docker images:*)",
       "Bash(docker logs:*)",
       "Bash(docker inspect:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose build* && docker-compose up -d :*)",
+      "Bash(docker volume ls | grep *)",
       "Bash(poetry show:*)",
       "Bash(poetry env info:*)",
       "Bash(uv pip list:*)",
@@ -54,10 +57,19 @@
       "Bash(redis-cli INFO:*)",
       "Bash(redis-cli KEYS:*)",
       "Bash(redis-cli GET:*)",
-      "cd /mnt/c/code/* && source .venv/bin/activate && pytest*",
-      "cd /mnt/c/code/* && source .venv/bin/activate && pytest* -v --tb=short",
-      "Bash(.venv/bin/pytest:*)"
+      "Bash(source *.venv/bin/activate && pytest *)",
+      "Bash(sleep 5 && source *.venv/bin/activate && pytest *)",
+      "Bash(.venv/bin/pytest:*)",
+      "Bash(git add *)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(git push -u origin feat/*)",
+      "Bash(git commit -m *)",
+      "Bash(git checkout -b feat/*)",
+      "Bash(gh pr create --title * --body *)",
+      "Bash(gh pr view * --json title,url,state | python3 -m json.tool)"
     ],
-    "deny": []
+    "deny": [
+      "Bash(git push -u origin main)"
+    ]
   }
 }

@@ -2,26 +2,31 @@
 
 ## Overview
 
-Generates structured reports from extracted facts. Supports single company deep-dives, comparisons, and topic summaries.
+Generates structured reports from extracted facts and entities. Supports single company deep-dives, comparisons, and topic summaries.
 
 ## Status
 
 **Completed:**
 - ✅ Reports table schema in `init.sql`
+- ✅ Report ORM model (`pipeline/orm_models.py` - PR #4)
 - ✅ LLM configuration available for report generation
 
 **Pending:**
-- Everything - this module hasn't been started
+- Report type definitions
+- Fact aggregation logic
+- Entity-based structured comparisons
+- Report generation and formatting
 
 **Dependencies:**
-- Requires Storage module (fact retrieval)
-- Requires Extraction module (facts must exist)
+- Requires Phase 3 (Extraction) - facts must exist
+- Requires Phase 4 (Knowledge Layer) - entities enable structured comparisons
+- Requires Phase 5 (Storage) - fact/entity retrieval
 
-**Next Steps:**
-1. Wait for Storage and Extraction modules to be functional
-2. Define report type schemas
-3. Implement fact aggregation
-4. Create report generation logic
+**Related Documentation:**
+- See `docs/TODO_knowledge_layer.md` for entity-based comparisons
+- See `docs/TODO_llm_integration.md` for LLM client
+
+---
 
 ## Core Tasks
 
@@ -45,6 +50,7 @@ Generates structured reports from extracted facts. Supports single company deep-
       type: ReportType
       companies: list[str] | None = None
       categories: list[str] | None = None
+      entity_types: list[str] | None = None  # Filter by entity type
       date_range: tuple[datetime, datetime] | None = None
       format: Literal["md", "pdf"] = "md"
       max_facts_per_section: int = 20
@@ -59,8 +65,43 @@ Generates structured reports from extracted facts. Supports single company deep-
   ```
 - [ ] Group by company and/or category
 - [ ] Sort by confidence (high first)
-- [ ] Deduplicate similar facts (optional)
+- [ ] Deduplicate similar facts
 - [ ] Limit facts per section (prevent huge reports)
+
+### Entity-Based Structured Comparisons
+
+> **Key Enhancement:** Use entities for accurate tables instead of LLM inference.
+
+- [ ] Query entities for comparison
+  ```python
+  async def gather_entities(
+      companies: list[str],
+      entity_types: list[str]
+  ) -> dict[str, dict[str, list[Entity]]]
+  ```
+- [ ] Build comparison tables from entity data
+  ```python
+  async def build_comparison_table(
+      companies: list[str],
+      entity_type: str  # e.g., "limit", "pricing", "feature"
+  ) -> ComparisonTable
+  ```
+- [ ] Merge entity data with fact context
+
+**Example - Entity-Based Comparison:**
+```python
+# Instead of asking LLM to infer rate limits from text:
+# Query entities directly:
+limits = await get_entities(companies=["A", "B"], type="limit")
+
+# Returns structured data:
+# {
+#   "Company A": [{"value": "10,000/min", "numeric": 10000}],
+#   "Company B": [{"value": "5,000/min", "numeric": 5000}]
+# }
+
+# Build accurate table (no hallucination risk)
+```
 
 ### Report Generation
 
@@ -69,10 +110,12 @@ Generates structured reports from extracted facts. Supports single company deep-
   def build_report_prompt(
       report_type: ReportType,
       facts: dict,
+      entity_tables: dict | None = None,  # Pre-built comparison tables
       instructions: str | None = None
   ) -> str
   ```
 - [ ] LLM call for report synthesis
+- [ ] Inject entity tables directly (not LLM-generated)
 - [ ] Markdown output formatting
 - [ ] PDF conversion (via Pandoc, optional)
 
@@ -80,6 +123,7 @@ Generates structured reports from extracted facts. Supports single company deep-
 
 - [ ] Store generated reports in PostgreSQL
 - [ ] Link report → source facts (for attribution)
+- [ ] Link report → source entities
 - [ ] Cache reports (regenerate on demand)
 
 ---
@@ -108,24 +152,37 @@ Facts: {fact_count}
 - {source_urls}
 ```
 
-### Comparison Report
+### Comparison Report (Entity-Enhanced)
 
 ```markdown
 # Comparison: {company_a} vs {company_b}
 
 Generated: {date}
 
-## {category_1}
+## Rate Limits
+<!-- Table built from entities, not LLM inference -->
+| Limit Type | {company_a} | {company_b} |
+|------------|-------------|-------------|
+| API calls/min | 10,000 | 5,000 |
+| Storage | 100GB | 50GB |
 
-| Aspect | {company_a} | {company_b} |
-|--------|-------------|-------------|
-| {aspect} | {fact} | {fact} |
+## Pricing
+<!-- Table built from pricing entities -->
+| Plan | {company_a} | {company_b} |
+|------|-------------|-------------|
+| Pro | $99/month | $79/month |
+| Enterprise | Custom | $299/month |
 
-## {category_2}
-...
+## Features
+<!-- Table built from feature entities -->
+| Feature | {company_a} | {company_b} |
+|---------|-------------|-------------|
+| SSO | ✓ | ✓ |
+| Webhooks | ✓ | ✗ |
 
-## Summary
+## Analysis
 {llm_generated_comparison_summary}
+<!-- LLM synthesizes insights from accurate data above -->
 ```
 
 ### Topic Report
@@ -173,27 +230,31 @@ Generated: {date}
 
 ## Prompt Templates
 
-### Comparison Prompt
+### Comparison Prompt (Entity-Enhanced)
 
 ```
 You are creating a technical comparison report.
 
 Companies: {companies}
-Categories: {categories}
 
-Facts by company:
-{structured_facts}
+## Structured Data (Verified)
+The following tables contain verified data from documentation:
+
+{entity_tables}
+
+## Additional Context (Facts)
+{supporting_facts}
 
 Create a comparison report that:
-1. Highlights key differences
-2. Notes similarities
-3. Provides objective analysis
-4. Uses tables where appropriate for side-by-side comparison
+1. Uses the structured tables above as-is (do not modify values)
+2. Adds analysis and insights based on the data
+3. Highlights key differences and similarities
+4. Notes any gaps ("Not documented" where data missing)
 
 Output format: Markdown
 
-Do not invent facts. Only use information provided above.
-If a company lacks information for a category, note "Not documented".
+IMPORTANT: Do not invent or modify the data in the tables.
+Only add analysis and commentary.
 ```
 
 ### Summary Prompt
@@ -226,10 +287,18 @@ class ReportRequest:
     type: ReportType
     companies: list[str] | None = None
     categories: list[str] | None = None
+    entity_types: list[str] | None = None
     date_range: tuple[datetime, datetime] | None = None
     format: Literal["md", "pdf"] = "md"
     max_facts_per_section: int = 20
     custom_instructions: str | None = None
+
+@dataclass
+class ComparisonTable:
+    """Pre-built comparison table from entities."""
+    entity_type: str  # "limit", "pricing", "feature"
+    headers: list[str]  # Company names
+    rows: list[dict[str, str]]  # {aspect: company_value}
 
 @dataclass
 class GeneratedReport:
@@ -240,6 +309,7 @@ class GeneratedReport:
     companies: list[str]
     categories: list[str]
     fact_ids: list[UUID]  # Source facts
+    entity_ids: list[UUID]  # Source entities
     generated_at: datetime
     format: str
 
@@ -262,12 +332,20 @@ reports:
   max_facts_total: 200
   default_format: md
   cache_ttl_hours: 24
-  
+
+  # Entity-based comparisons
+  use_entity_tables: true  # Build tables from entities
+  entity_types_for_tables:
+    - limit
+    - pricing
+    - feature
+    - certification
+
   # LLM settings for report generation
   llm_model: ${LLM_MODEL:-gemma3-12b-awq}
   max_tokens: 4000
   temperature: 0.3  # Lower for factual reports
-  
+
   # PDF export (optional)
   enable_pdf: true
   pandoc_path: /usr/bin/pandoc
@@ -286,11 +364,12 @@ reports:
     "format": "md"
 }
 
-# Request (comparison):
+# Request (comparison with entity tables):
 {
     "type": "comparison",
     "companies": ["Company A", "Company B", "Company C"],
     "categories": ["pricing", "api_limits", "security"],
+    "entity_types": ["limit", "pricing", "feature"],
     "format": "md"
 }
 
@@ -342,18 +421,13 @@ pipeline/
 │   └── reports/
 │       ├── __init__.py
 │       ├── aggregator.py      # Fact gathering and grouping
+│       ├── entity_tables.py   # Build comparison tables from entities
 │       ├── generator.py       # Report generation logic
 │       ├── prompts.py         # Prompt templates
 │       ├── formatter.py       # Output formatting (MD, PDF)
 │       └── service.py         # ReportService (orchestration)
 ├── models/
 │   └── reports.py             # ReportRequest, GeneratedReport
-├── prompts/
-│   └── reports/
-│       ├── single.txt
-│       ├── comparison.txt
-│       ├── topic.txt
-│       └── summary.txt
 └── api/
     └── routes/
         └── reports.py         # API endpoints
@@ -364,9 +438,11 @@ pipeline/
 ## Testing Checklist
 
 - [ ] Unit: Fact aggregation grouping
+- [ ] Unit: Entity table building
 - [ ] Unit: Prompt building for each report type
 - [ ] Unit: Markdown formatting
 - [ ] Integration: Single company report generation
+- [ ] Integration: Comparison report with entity tables
 - [ ] Integration: Comparison report with real facts
 - [ ] Integration: PDF export (if enabled)
 - [ ] Integration: Report caching works

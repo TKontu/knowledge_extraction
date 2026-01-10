@@ -1,18 +1,18 @@
-# TechFacts Scraper - TODO
+# Knowledge Extraction Pipeline - TODO
 
 Master task list. Module-specific details in `docs/TODO_*.md`.
 
 ## Progress Summary
 
 **Completed (8 PRs merged to main):**
-- ✅ PR #1: Foundational FastAPI service with auth, CORS, health check
-- ✅ PR #2: Redis connection with health monitoring
-- ✅ PR #3: GET job status endpoint
-- ✅ PR #4: SQLAlchemy ORM models for all database tables
-- ✅ PR #5: Documentation updates and Claude commands
-- ✅ PR #6: Database persistence for jobs and Qdrant health monitoring
-- ✅ PR #7: Firecrawl client, background worker, and rate limiting
-- ✅ PR #8: LLM integration with document chunking and client
+- PR #1: Foundational FastAPI service with auth, CORS, health check
+- PR #2: Redis connection with health monitoring
+- PR #3: GET job status endpoint
+- PR #4: SQLAlchemy ORM models for all database tables
+- PR #5: Documentation updates and Claude commands
+- PR #6: Database persistence for jobs and Qdrant health monitoring
+- PR #7: Firecrawl client, background worker, and rate limiting
+- PR #8: LLM integration with document chunking and client
 
 **Current State:**
 - 156 tests passing (26 new tests in PR #8)
@@ -22,36 +22,44 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
 
-**Remaining Architectural Gaps:**
-1. No database migration strategy (using init.sql)
-2. LLM integration complexity not detailed
-3. Deduplication strategy undefined
-4. **NEW:** No structured entity/relation layer for comparison queries
-
-**Next Priority:**
-1. Extraction service (orchestrates chunking + LLM + validation)
-2. Extraction API endpoints (POST /extract, GET /profiles)
-3. Embeddings and Qdrant storage (fact deduplication)
-4. Knowledge layer (entity extraction from facts) - enables structured queries
-5. Database migrations (Alembic) - deferred for development speed
+**Architectural Direction:**
+The system is being generalized from "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
 
 ---
 
-## Phase 0: Foundation
+## Phase 0: Foundation (Priority)
 
-> **Critical:** Schema evolution requires migrations before production deployment.
+### System Generalization
+See: `docs/TODO_generalization.md`
+
+**Goal:** Transform from single-purpose to general-purpose extraction pipeline.
+
+- [ ] Design project model (extraction schema, entity types, prompts)
+- [ ] Create projects table with JSONB configuration
+- [ ] Implement incremental migration strategy
+- [ ] Create default "company_analysis" project for existing data
+- [ ] Update API for project-scoped operations
+
+**Key Terminology Changes:**
+| Current | Generalized | Purpose |
+|---------|-------------|---------|
+| `pages` | `sources` | Generic content source (web, PDF, API) |
+| `facts` | `extractions` | Schema-driven extracted data |
+| `company` | `source_group` | Configurable grouping (company, paper, contract) |
+| `profiles` | `project.extraction_schema` | Dynamic extraction configuration |
 
 ### Database Migrations
 See: `docs/TODO_migrations.md`
+
+> **Critical:** Schema evolution requires migrations before production deployment.
 
 - [ ] Install Alembic
 - [ ] Reconcile ORM models with init.sql schema
 - [ ] Create alembic.ini and env.py (async-compatible)
 - [ ] Generate initial migration from ORM models
-- [ ] Create seed migration for builtin profiles
+- [ ] Create seed migration for builtin profiles/default project
 - [ ] Update docker-compose to run migrations on startup
 - [ ] Remove init.sql (replaced by migrations)
-- [ ] Document migration workflow
 
 ---
 
@@ -70,92 +78,100 @@ See: `docs/TODO_migrations.md`
 - [x] **Add Qdrant health check to health endpoint** (PR #6)
 - [ ] Test deployment via Portainer
 - [ ] Verify network connectivity to vLLM gateway (192.168.0.247:9003)
-- [ ] Verify remote access from workstation
 
 ### Database Schema
 
 - [x] Create PostgreSQL schema in `init.sql`
-  - [x] `pages` table
-  - [x] `facts` table
-  - [x] `jobs` table
-  - [x] `profiles` table (with 5 built-in profiles)
-  - [x] `reports` table
-  - [x] `rate_limits` table
-- [x] **Create SQLAlchemy ORM models** (PR #4 - all 6 tables with relationships)
-- [ ] **Create database migration system (Alembic)** → See Phase 0
+- [x] **Create SQLAlchemy ORM models** (PR #4)
+- [ ] **Add projects table** (generalization) - See Phase 0
+- [ ] **Add sources table** (replaces pages) - See Phase 0
+- [ ] **Add extractions table** (replaces facts) - See Phase 0
 - [ ] Create Qdrant collection (dim=1024 for BGE-large-en)
 
 ---
 
-## Phase 2: Scraper Module ✅ COMPLETE
+## Phase 2: Scraper Module - COMPLETE
 
 See: `docs/TODO_scraper.md`
 
-- [x] **Firecrawl client wrapper** (PR #7 - `services/scraper/client.py`)
-- [x] **Rate limiting logic (per-domain)** (PR #7 - `services/scraper/rate_limiter.py`)
-- [x] **Background worker for job processing** (PR #7 - `services/scraper/worker.py`)
-- [x] **Job scheduler with FastAPI integration** (PR #7 - `services/scraper/scheduler.py`)
-- [x] **Page storage (raw markdown)** (PR #7 - stores to PostgreSQL `pages` table)
-- [x] **Basic error handling** (PR #7 - handles timeouts, 404s, partial failures)
-- [ ] Store outbound links from Firecrawl (enables knowledge graph)
+- [x] **Firecrawl client wrapper** (PR #7)
+- [x] **Rate limiting logic (per-domain)** (PR #7)
+- [x] **Background worker for job processing** (PR #7)
+- [x] **Job scheduler with FastAPI integration** (PR #7)
+- [x] **Page storage (raw markdown)** (PR #7)
+- [x] **Basic error handling** (PR #7)
+- [ ] Store outbound links from Firecrawl (enables link graph)
 - [ ] Retry logic with exponential backoff (nice-to-have)
-- [ ] FlareSolverr integration (optional fallback)
 
-**Milestone**: ✅ COMPLETE - Can scrape URLs and store markdown automatically
+**Refactoring Required:**
+- [ ] Update scraper to create `sources` instead of `pages`
+- [ ] Add project_id context to scrape jobs
+- [ ] Replace `company` with `source_group`
+
+**Milestone**: Can scrape URLs and store markdown automatically
 
 ---
 
-## Phase 3: Extraction Module (In Progress - ~25% Complete)
+## Phase 3: Extraction Module (In Progress - ~50% Complete)
 
 See: `docs/TODO_extraction.md`
 
-- [x] Built-in profiles defined in database (technical_specs, api_docs, security, pricing, general)
-- [x] **Document chunking module** (PR #8 - `services/llm/chunking.py`, 17 tests)
-- [x] **LLM client wrapper** (PR #8 - `services/llm/client.py`, 9 tests)
-- [x] **Data models** (PR #8 - DocumentChunk, ExtractedFact, ExtractionResult)
-- [ ] Extraction profile schema/dataclass
-- [ ] Profile loading from database
-- [ ] Dynamic prompt generation from profile
+### Completed
+- [x] Built-in profiles defined in database
+- [x] **Document chunking module** (PR #8 - 17 tests)
+- [x] **LLM client implementation** (PR #8 - 9 tests)
+- [x] **Data models** (DocumentChunk, ExtractedFact, ExtractionResult)
+- [x] **Profile repository** (PR #9 - 10 tests)
+- [x] **Extraction orchestrator** (PR #9 - 9 tests)
+- [x] **Fact validator** (PR #9 - 11 tests)
 
-### LLM Integration ✅ FOUNDATION COMPLETE
-See: `docs/TODO_llm_integration.md`
+### Pending
+- [ ] Chunk result merging with deduplication
+- [ ] Integration tests for extraction
+- [ ] API endpoints (POST /extract, GET /profiles)
 
-- [x] **LLM client wrapper (OpenAI-compatible)** (PR #8)
-- [x] **Semantic document chunking (split on markdown headers)** (PR #8)
-- [x] **Chunk context tracking (header path, position)** (PR #8)
-- [x] **JSON mode for structured output** (PR #8)
-- [x] **Retry logic for transient failures** (PR #8 - tenacity with exponential backoff)
-- [ ] Chunk result merging
-- [ ] Fact validation (schema, category matching)
-- [ ] Extraction service (orchestration)
+### Refactoring Required (Generalization)
+- [ ] Update extraction to use project schema (JSONB fields)
+- [ ] Dynamic prompt generation from project.extraction_schema
+- [ ] Replace fixed categories with project-defined categories
+- [ ] Store results in `extractions` table
 
-### Fact Storage
-
-- [ ] Store facts to PostgreSQL `facts` table
-- [ ] Generate embeddings via BGE-large-en
-- [ ] Store embeddings to Qdrant with payload
-
-**Milestone**: Can extract structured facts from scraped pages
+**Milestone**: Can extract structured data from scraped sources using project schema
 
 ---
 
-## Phase 4: Knowledge Layer (Entities)
+## Phase 4: Project System (NEW)
 
-> **NEW:** Enables structured queries like "Which companies support SSO?" without LLM inference.
+See: `docs/TODO_project_system.md`
+
+**Goal:** Implement project management for multi-domain extraction.
+
+- [ ] Project CRUD API endpoints
+- [ ] Project templates (company_analysis, research_survey, contract_review)
+- [ ] Schema validation service (dynamic Pydantic from JSONB)
+- [ ] Project-scoped search and queries
+- [ ] Clone project from template
+
+**Milestone**: Can create and manage extraction projects with custom schemas
+
+---
+
+## Phase 5: Knowledge Layer (Entities)
 
 See: `docs/TODO_knowledge_layer.md`
 
+> Enables structured queries like "Which companies support SSO?" without LLM inference.
+
 ### Entity Extraction (MVP)
-- [ ] Add `entities` and `fact_entities` tables (via Alembic)
-- [ ] Create ORM models for Entity, FactEntity
+- [ ] Update `entities` table with project_id
+- [ ] Entity types from project configuration (not hardcoded)
 - [ ] Create `EntityExtractor` class
-- [ ] Implement entity extraction prompt
-- [ ] Value normalization per type (plan, feature, limit, certification, pricing)
+- [ ] Value normalization per type
 - [ ] Integrate into extraction pipeline
 
 ### Entity Queries
 - [ ] Entity-filtered search endpoint
-- [ ] Comparison queries (e.g., compare pricing across companies)
+- [ ] Comparison queries (e.g., compare pricing across source_groups)
 - [ ] Hybrid search (vector + entity filtering)
 
 ### Relations (Post-MVP)
@@ -167,40 +183,40 @@ See: `docs/TODO_knowledge_layer.md`
 
 ---
 
-## Phase 5: Storage & Search Module
+## Phase 6: Storage & Search Module
 
 See: `docs/TODO_storage.md`
 
-- [x] **SQLAlchemy ORM models** (PR #4 - all 6 tables with relationships)
+- [x] **SQLAlchemy ORM models** (PR #4)
 - [x] **Qdrant client initialization** (PR #6)
-- [ ] PostgreSQL repository classes (pages, facts, profiles, entities)
+- [ ] Repository classes (sources, extractions, projects, entities)
 - [ ] Qdrant repository (embeddings CRUD)
 - [ ] Embedding service (BGE-large-en via vLLM)
 - [ ] Semantic search endpoint
-- [ ] Filter support (company, category, date, **entity type**)
+- [ ] **JSONB field filtering** (key for dynamic schemas)
+- [ ] Filter support (source_group, category, date, entity type)
 - [ ] Pagination
 
 ### Deduplication
 See: `docs/TODO_deduplication.md`
 
-- [ ] Implement `FactDeduplicator` class
+- [ ] Implement `ExtractionDeduplicator` class
 - [ ] Embedding similarity check before insert
 - [ ] Single threshold (0.90) for MVP
-- [ ] Same-company deduplication only (MVP)
-- [ ] (Future) Cross-company linking
+- [ ] Same-source_group deduplication only (MVP)
 
-**Milestone**: Can search facts semantically with filters, no duplicates
+**Milestone**: Can search extractions semantically with filters, no duplicates
 
 ---
 
-## Phase 6: Report Generation
+## Phase 7: Report Generation
 
 See: `docs/TODO_reports.md`
 
 - [ ] Report type definitions (single, comparison, topic, summary)
 - [ ] Fact aggregation logic
 - [ ] **Structured comparison via entities** (not just LLM inference)
-- [ ] Report prompt templates
+- [ ] Report prompt templates (project-aware)
 - [ ] Markdown output generation
 - [ ] PDF export (optional, via Pandoc)
 
@@ -208,53 +224,50 @@ See: `docs/TODO_reports.md`
 
 ---
 
-## Phase 7: API & Integration
+## Phase 8: API & Integration
 
 - [x] FastAPI application structure (PR #1)
 - [x] **API key authentication middleware** (PR #1)
 - [x] CORS configuration for Web UI (PR #1)
-- [x] Basic error responses with FastAPI HTTPException
-- [x] OpenAPI documentation (automatic with FastAPI at `/docs`)
 - [x] Health check endpoint with DB + Redis + Qdrant + Firecrawl status
-- [x] Scrape endpoints:
-  - [x] `POST /api/v1/scrape` (PR #1, integrated with PostgreSQL in PR #6)
-  - [x] `GET /api/v1/scrape/{job_id}` (PR #3, integrated with PostgreSQL in PR #6)
-- [x] **Integrate scrape endpoints with PostgreSQL jobs table** (PR #6)
+- [x] Scrape endpoints: POST /api/v1/scrape, GET /api/v1/scrape/{job_id}
+- [ ] **Project endpoints** (`POST /projects`, `GET /projects/{id}`)
 - [ ] Extract endpoints (`POST /extract`, `GET /profiles`)
 - [ ] Search endpoint (`POST /search`)
-- [ ] **Entity query endpoints** (`GET /entities`, `GET /entities/{type}`)
+- [ ] Entity query endpoints (`GET /entities`, `GET /entities/{type}`)
 - [ ] Report endpoints (`POST /reports`, `GET /reports/{id}`)
 - [ ] Jobs endpoint (`GET /jobs` - list all jobs)
 - [ ] Metrics endpoint (`/metrics` - Prometheus format)
 
-**Milestone**: Full API functional and secured
+**Backward Compatibility:**
+- [ ] Legacy endpoints use default "company_analysis" project
+- [ ] New endpoints are project-scoped: `/api/v1/projects/{project_id}/...`
 
-**Current Status**: Scrape pipeline complete with auth, CORS, health checks, PostgreSQL persistence, background worker, and rate limiting.
+**Milestone**: Full API functional and secured
 
 ---
 
-## Phase 8: Polish & Hardening
+## Phase 9: Polish & Hardening
 
-- [ ] Configure structured logging with structlog (dependency installed)
+- [ ] Configure structured logging with structlog
 - [ ] Add metrics endpoint (Prometheus format)
-- [x] Job status tracking (queued → running → completed/failed) - PR #7
+- [x] Job status tracking (queued, running, completed, failed) - PR #7
 - [ ] Retry failed jobs (manual trigger)
 - [ ] Basic metrics (scrape count, extraction count)
 - [x] Config validation on startup (pydantic-settings)
 - [ ] Graceful shutdown handling
 - [ ] Add request ID tracing
-- [ ] Add error monitoring/alerting
 
 ---
 
-## Phase 9: Web UI (Post-MVP)
+## Phase 10: Web UI (Post-MVP)
 
 - [ ] Simple HTML/JS dashboard (single page)
+- [ ] **Project management UI**
 - [ ] Job submission forms (scrape, extract, report)
 - [ ] Job status list with auto-refresh
 - [ ] Search interface
 - [ ] Entity browser
-- [ ] Recent activity log
 - [ ] API key configuration
 - [ ] Containerize with nginx
 
@@ -265,7 +278,7 @@ See: `docs/TODO_reports.md`
 ## Future Enhancements (Post-MVP)
 
 - [ ] Advanced Web UI (React/Vue with real-time updates)
-- [ ] Page links storage and crawl expansion
+- [ ] PDF source support (beyond web scraping)
 - [ ] Scheduled re-scraping
 - [ ] Sitemap discovery
 - [ ] Proxy rotation support
@@ -274,48 +287,68 @@ See: `docs/TODO_reports.md`
 - [ ] Export to CSV/JSON
 - [ ] Multi-user support with auth
 - [ ] HTTPS with nginx reverse proxy
-- [ ] Grafana dashboards for monitoring
 
 ---
 
 ## Quick Reference
 
-| Module | File | Priority | Status |
-|--------|------|----------|--------|
-| Migrations | `docs/TODO_migrations.md` | **Phase 0** | Deferred |
-| Scraper | `docs/TODO_scraper.md` | Phase 2 | ✅ Complete (PR #7) |
-| Extraction | `docs/TODO_extraction.md` | **Phase 3** | ⚠️ In Progress (25% - PR #8 chunking + client) |
-| LLM Integration | `docs/TODO_llm_integration.md` | Phase 3 | ⚠️ Foundation Complete (PR #8) |
-| **Knowledge Layer** | `docs/TODO_knowledge_layer.md` | Phase 4 | Not started |
-| Deduplication | `docs/TODO_deduplication.md` | Phase 5 | Not started |
-| Storage | `docs/TODO_storage.md` | Phase 5 | ⚠️ Partial (ORM + Qdrant client done) |
-| Reports | `docs/TODO_reports.md` | Phase 6 | Not started |
+| Module | File | Phase | Status |
+|--------|------|-------|--------|
+| **Generalization** | `docs/TODO_generalization.md` | 0 | **Design Complete** |
+| Migrations | `docs/TODO_migrations.md` | 0 | Not started |
+| **Project System** | `docs/TODO_project_system.md` | 4 | **NEW** |
+| Scraper | `docs/TODO_scraper.md` | 2 | Complete (needs refactor) |
+| Extraction | `docs/TODO_extraction.md` | 3 | ~50% (needs refactor) |
+| LLM Integration | `docs/TODO_llm_integration.md` | 3 | Foundation Complete |
+| Knowledge Layer | `docs/TODO_knowledge_layer.md` | 5 | Not started |
+| Deduplication | `docs/TODO_deduplication.md` | 6 | Not started |
+| Storage | `docs/TODO_storage.md` | 6 | Partial |
+| Reports | `docs/TODO_reports.md` | 7 | Not started |
 
 ---
 
 ## Test Coverage
 
-**Current: 156 tests passing** (26 new in PR #8)
+**Current: 186 tests passing** (30 new in PR #9)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
 - 18 ORM model tests (PR #4)
 - 8 Redis connection tests
-- 23 scrape endpoint tests (includes persistence tests from PR #6)
+- 23 scrape endpoint tests
 - 14 FirecrawlClient tests (PR #7)
 - 23 DomainRateLimiter tests (PR #7)
-- 16 ScraperWorker tests (PR #7, includes 5 integration tests)
-- **17 Document chunking tests (PR #8)**
-- **9 LLM client tests (PR #8)**
+- 16 ScraperWorker tests (PR #7)
+- 17 Document chunking tests (PR #8)
+- 9 LLM client tests (PR #8)
+- 10 Profile repository tests (PR #9)
+- 9 Extraction orchestrator tests (PR #9)
+- 11 Fact validator tests (PR #9)
+
+---
+
+## Refactoring Summary
+
+The following components need updates for generalization:
+
+| Component | Current | Target | Priority |
+|-----------|---------|--------|----------|
+| `orm_models.py` | pages, facts | sources, extractions, projects | High |
+| `scraper/worker.py` | Creates Page | Creates Source | High |
+| `extraction/extractor.py` | Fixed schema | Project schema | High |
+| `extraction/profiles.py` | Hardcoded profiles | Project config | Medium |
+| `api/v1/scrape.py` | Uses company | Uses source_group + project | Medium |
+| `models.py` | Fixed models | Dynamic validation | Medium |
 
 ---
 
 ## Getting Started
 
-1. **Complete Phase 3** (Extraction Service) - orchestrate LLM extraction (~25% done)
-2. **Complete Phase 3** (API Endpoints) - POST /extract, GET /profiles
-3. **Complete Phase 5** (Storage & Search) - embeddings + Qdrant + deduplication
-4. **Complete Phase 4** (Knowledge Layer) - entity extraction for structured queries
-5. **Complete Phase 0** (Migrations) - Alembic (deferred for development speed)
-6. Phase 6 (Reports) after search is working
-7. Phase 8 (Polish) after core functionality works
+1. **Complete Phase 0** (Migrations + Project Layer) - foundation for generalization
+2. **Refactor Phase 2** (Scraper) - update for sources/project context
+3. **Complete Phase 3** (Extraction) - orchestration + API endpoints
+4. **Complete Phase 4** (Project System) - CRUD + templates
+5. **Complete Phase 6** (Storage) - embeddings + search + dedup
+6. Phase 5 (Knowledge Layer) - entity extraction
+7. Phase 7 (Reports) after search is working
+8. Phase 9 (Polish) after core functionality works
