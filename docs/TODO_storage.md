@@ -24,10 +24,11 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 - **JSONB query support** (query_jsonb, filter_by_data with PostgreSQL/SQLite compatibility)
 - **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch upsert, search, delete
 - **EmbeddingService** (2 methods, 7 tests) - Single embed, batch embed with retry logic
+- **SearchService** (1 method, 14 tests) - Hybrid semantic + JSONB search with over-fetching strategy
 
 **Pending:**
-- Search service (hybrid semantic + JSONB)
 - Pagination support
+- Search API endpoint (POST /api/v1/projects/{project_id}/search)
 
 ---
 
@@ -600,9 +601,8 @@ pipeline/
 - [x] Implement batching
 
 ### Phase 5: Search Service
-- [ ] Create SearchService
-- [ ] Implement hybrid search (vector + JSONB)
-- [ ] Implement entity filtering
+- [x] Create SearchService
+- [x] Implement hybrid search (vector + JSONB)
 - [ ] Create search API endpoint
 
 ---
@@ -612,8 +612,9 @@ pipeline/
 - [x] Unit: Repository CRUD operations (96 tests for SQL repositories)
 - [x] Unit: JSONB filter building (included in repository tests)
 - [x] Unit: Embedding batching (EmbeddingService, 7 tests)
+- [x] Unit: SearchService hybrid search (14 tests)
 - [x] Integration: Qdrant collection creation (QdrantRepository, 2 tests)
 - [x] Integration: Store extraction with embedding (QdrantRepository, 4 tests)
 - [x] Integration: Search returns relevant results (QdrantRepository, 3 tests)
 - [x] Integration: Qdrant payload filters work correctly (QdrantRepository, 1 test)
-- [ ] Integration: Project-scoped queries work (pending SearchService integration)
+- [x] Integration: Hybrid search with over-fetching and JSONB filtering (SearchService, 14 tests)
