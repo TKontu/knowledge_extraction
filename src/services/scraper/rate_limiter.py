@@ -66,9 +66,7 @@ class DomainRateLimiter:
         # Make request here
     """
 
-    def __init__(
-        self, redis_client: redis.Redis, config: RateLimitConfig
-    ) -> None:
+    def __init__(self, redis_client: redis.Redis, config: RateLimitConfig) -> None:
         """Initialize DomainRateLimiter.
 
         Args:
@@ -180,7 +178,9 @@ class DomainRateLimiter:
         if ttl == -1:  # No expiry set
             # Calculate seconds until midnight
             now = datetime.now()
-            midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
+            midnight = datetime.combine(
+                now.date() + timedelta(days=1), datetime.min.time()
+            )
             seconds_until_midnight = int((midnight - now).total_seconds())
             self.redis.expire(key, seconds_until_midnight)
 

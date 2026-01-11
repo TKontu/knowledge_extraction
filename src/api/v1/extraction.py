@@ -1,17 +1,22 @@
 """Extraction API endpoints."""
 
-from datetime import datetime, UTC
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import ExtractRequest, ExtractResponse, ExtractionListResponse
+from models import ExtractionListResponse, ExtractRequest, ExtractResponse
 from orm_models import Job
 from services.projects.repository import ProjectRepository
-from services.storage.repositories.extraction import ExtractionRepository, ExtractionFilters
-from services.storage.repositories.source import SourceRepository, SourceFilters
+from services.storage.repositories.extraction import (
+    ExtractionFilters,
+    ExtractionRepository,
+)
+from services.storage.repositories.source import SourceFilters, SourceRepository
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["extraction"])
 
@@ -90,6 +95,14 @@ async def create_extraction_job(
 
     # Create job ID
     job_id = uuid4()
+
+    logger.info(
+        "extraction_job_created",
+        job_id=str(job_id),
+        project_id=project_id,
+        source_count=source_count,
+        profile=request.profile,
+    )
 
     # Create Job ORM instance
     job = Job(

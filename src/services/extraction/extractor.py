@@ -42,7 +42,9 @@ class ExtractionOrchestrator:
                 page_id=page_id,
                 facts=[],
                 chunks_processed=0,
-                extraction_time_ms=max(1, int((time.perf_counter() - start_time) * 1000)),
+                extraction_time_ms=max(
+                    1, int((time.perf_counter() - start_time) * 1000)
+                ),
             )
 
         # Chunk the document

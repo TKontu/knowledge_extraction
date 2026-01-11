@@ -1,14 +1,16 @@
 """Scrape API endpoints."""
 
-from datetime import datetime, UTC
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import JobStatusResponse, ScrapeRequest, ScrapeResponse
 from orm_models import Job
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["scrape"])
 
@@ -29,6 +31,14 @@ async def create_scrape_job(
     """
     # Create job ID
     job_id = uuid4()
+
+    logger.info(
+        "scrape_job_created",
+        job_id=str(job_id),
+        url_count=len(request.urls),
+        company=request.company,
+        profile=request.profile,
+    )
 
     # Create Job ORM instance
     job = Job(

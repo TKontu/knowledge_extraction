@@ -73,9 +73,7 @@ class EntityRepository:
         Returns:
             Entity instance or None if not found
         """
-        result = self._session.execute(
-            select(Entity).where(Entity.id == entity_id)
-        )
+        result = self._session.execute(select(Entity).where(Entity.id == entity_id))
         return result.scalar_one_or_none()
 
     async def get_or_create(
@@ -219,9 +217,7 @@ class EntityRepository:
         self._session.flush()
         return link
 
-    async def get_entities_for_extraction(
-        self, extraction_id: UUID
-    ) -> list[Entity]:
+    async def get_entities_for_extraction(self, extraction_id: UUID) -> list[Entity]:
         """Get all entities linked to an extraction.
 
         Args:
@@ -241,9 +237,7 @@ class EntityRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def get_extractions_for_entity(
-        self, entity_id: UUID
-    ) -> list[Extraction]:
+    async def get_extractions_for_entity(self, entity_id: UUID) -> list[Extraction]:
         """Get all extractions linked to an entity.
 
         Args:

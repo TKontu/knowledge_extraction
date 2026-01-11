@@ -86,9 +86,7 @@ class SourceRepository:
         Returns:
             Source instance or None if not found
         """
-        result = self._session.execute(
-            select(Source).where(Source.id == source_id)
-        )
+        result = self._session.execute(select(Source).where(Source.id == source_id))
         return result.scalar_one_or_none()
 
     async def get_by_uri(self, project_id: UUID, uri: str) -> Optional[Source]:
@@ -136,9 +134,7 @@ class SourceRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def update_status(
-        self, source_id: UUID, status: str
-    ) -> Optional[Source]:
+    async def update_status(self, source_id: UUID, status: str) -> Optional[Source]:
         """Update source status.
 
         Args:
