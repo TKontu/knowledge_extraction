@@ -154,7 +154,7 @@ async def extract(
 Before creating PR, confirm:
 - [ ] All 5 tasks above completed
 - [ ] `pytest tests/test_entity_extractor.py -v` - All tests pass
-- [ ] `pytest` - All 377+ tests still pass
+- [ ] `pytest` - All 417+ tests still pass
 - [ ] `ruff check src/` clean
 - [ ] `ruff format src/` applied
 - [ ] No new warnings

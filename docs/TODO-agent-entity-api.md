@@ -228,7 +228,7 @@ app.include_router(entities_router)
 Before creating PR, confirm:
 - [ ] All 7 tasks above completed
 - [ ] `pytest tests/test_entity_endpoint.py -v` - All tests pass
-- [ ] `pytest` - All 377+ tests still pass
+- [ ] `pytest` - All 417+ tests still pass
 - [ ] `ruff check src/` clean
 - [ ] `ruff format src/` applied
 - [ ] No new warnings
