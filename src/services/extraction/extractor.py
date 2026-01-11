@@ -3,7 +3,7 @@
 import time
 from uuid import UUID
 
-from models import ExtractionProfile, ExtractedFact, ExtractionResult
+from models import ExtractedFact, ExtractionProfile, ExtractionResult
 from services.llm.chunking import chunk_document
 
 
@@ -42,7 +42,9 @@ class ExtractionOrchestrator:
                 page_id=page_id,
                 facts=[],
                 chunks_processed=0,
-                extraction_time_ms=max(1, int((time.perf_counter() - start_time) * 1000)),
+                extraction_time_ms=max(
+                    1, int((time.perf_counter() - start_time) * 1000)
+                ),
             )
 
         # Chunk the document

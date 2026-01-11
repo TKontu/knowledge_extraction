@@ -73,9 +73,7 @@ class ProjectRepository:
         Returns:
             Project if found, None otherwise
         """
-        result = self._session.execute(
-            select(Project).where(Project.id == project_id)
-        )
+        result = self._session.execute(select(Project).where(Project.id == project_id))
         return result.scalar_one_or_none()
 
     async def get_by_name(self, name: str) -> Optional[Project]:

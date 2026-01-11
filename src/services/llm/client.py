@@ -1,13 +1,15 @@
 """LLM client for fact extraction."""
 
 import json
-from typing import Any
 
+import structlog
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import Settings
 from models import ExtractedFact
+
+logger = structlog.get_logger(__name__)
 
 
 class LLMClient:
@@ -49,35 +51,51 @@ class LLMClient:
         system_prompt = self._build_system_prompt(categories)
         user_prompt = self._build_user_prompt(content)
 
-        response = await self.client.chat.completions.create(
+        logger.info(
+            "llm_extraction_started",
             model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,  # Low temperature for consistent extraction
+            content_length=len(content),
+            categories=categories,
+            profile=profile_name,
         )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,  # Low temperature for consistent extraction
+            )
 
-        result_text = response.choices[0].message.content
-        result_data = json.loads(result_text)
+            result_text = response.choices[0].message.content
+            result_data = json.loads(result_text)
 
-        # Parse facts and filter out incomplete ones
-        facts: list[ExtractedFact] = []
-        for fact_data in result_data.get("facts", []):
-            try:
-                fact = ExtractedFact(
-                    fact=fact_data["fact"],
-                    category=fact_data["category"],
-                    confidence=fact_data.get("confidence", 0.8),
-                    source_quote=fact_data.get("source_quote"),
-                )
-                facts.append(fact)
-            except (KeyError, TypeError):
-                # Skip facts with missing required fields
-                continue
+            # Parse facts and filter out incomplete ones
+            facts: list[ExtractedFact] = []
+            for fact_data in result_data.get("facts", []):
+                try:
+                    fact = ExtractedFact(
+                        fact=fact_data["fact"],
+                        category=fact_data["category"],
+                        confidence=fact_data.get("confidence", 0.8),
+                        source_quote=fact_data.get("source_quote"),
+                    )
+                    facts.append(fact)
+                except (KeyError, TypeError):
+                    # Skip facts with missing required fields
+                    continue
 
-        return facts
+            logger.info(
+                "llm_extraction_completed", model=self.model, facts_extracted=len(facts)
+            )
+            return facts
+        except Exception as e:
+            logger.error(
+                "llm_extraction_failed", model=self.model, error=str(e), exc_info=True
+            )
+            raise
 
     def _build_system_prompt(self, categories: list[str]) -> str:
         """Build system prompt for extraction.

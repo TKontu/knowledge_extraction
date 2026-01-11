@@ -403,3 +403,41 @@ class ReportJobResponse(BaseModel):
     job_id: str
     status: str
     report_id: str | None = None
+
+
+# Job API models
+
+
+class JobSummary(BaseModel):
+    """Summary of a job for list views."""
+
+    id: str
+    type: str
+    status: str
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+
+
+class JobListResponse(BaseModel):
+    """Response for job list endpoint."""
+
+    jobs: list[JobSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class JobDetailResponse(BaseModel):
+    """Detailed job information."""
+
+    id: str
+    type: str
+    status: str
+    payload: dict
+    result: dict | None = None
+    error: str | None = None
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
