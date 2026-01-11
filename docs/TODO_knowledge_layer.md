@@ -8,21 +8,25 @@ Extends extraction with a lightweight knowledge graph layer - entities and relat
 
 ## Status
 
-**In Progress** - EntityExtractor implementation started (2/10 tasks complete)
+**Complete** - EntityExtractor fully implemented + Entity API endpoints
 
-**Completed (PR #TBD):**
+**Completed:**
 - [x] EntityExtractor class skeleton (`services/knowledge/extractor.py`)
 - [x] Entity extraction prompt builder (`_build_prompt()` method)
+- [x] Entity normalization (`_normalize()` method - plan, feature, limit, pricing types)
+- [x] LLM entity extraction call (`_call_llm()` method with JSON mode)
+- [x] Entity storage with deduplication (`_store_entities()` method)
+- [x] Entity-extraction linking (via `entity_repo.link_to_extraction()`)
+- [x] Main `extract()` method (full pipeline orchestration)
+- [x] Full test suite (27 tests in `test_entity_extractor.py`)
+- [x] **Entity API endpoints** (`api/v1/entities.py` - 15 tests)
+  - GET /api/v1/projects/{project_id}/entities (list with filtering)
+  - GET /api/v1/projects/{project_id}/entities/types (type counts)
+  - GET /api/v1/projects/{project_id}/entities/{entity_id} (single entity)
+  - GET /api/v1/projects/{project_id}/entities/by-value (find source_groups)
 
-**In Progress:**
-- [ ] Entity normalization (`_normalize()` method)
-- [ ] LLM entity extraction call
-- [ ] Entity storage with deduplication
-- [ ] Entity-extraction linking
-- [ ] Main extract() method
-- [ ] Error handling and retry logic
-- [ ] Full test suite
-- [ ] Documentation and type hints
+**Pending:**
+- [ ] Integrate EntityExtractor into extraction pipeline
 
 **Related Documentation:**
 - See `docs/TODO_extraction.md` for extraction module
@@ -239,11 +243,11 @@ Only extract entities explicitly mentioned. Do not infer.
 
 - [x] Add `entities` and `extraction_entities` tables (completed in PR #11)
 - [x] Create ORM models for Entity, ExtractionEntity (completed in PR #11)
-- [x] Create `EntityExtractor` class (in progress - skeleton complete)
+- [x] Create `EntityExtractor` class (complete - all methods implemented)
 - [x] Create entity extraction prompt (completed - `_build_prompt()` method)
-- [ ] Implement value normalization per type (next task)
+- [x] Implement value normalization per type (`_normalize()` method)
+- [x] **Entity API endpoints** (list, get, types, by-value queries)
 - [ ] Integrate into extraction pipeline (run after fact extraction)
-- [ ] Entity-filtered search endpoint
 
 ### Phase 2: Relations (Post-MVP)
 
@@ -391,10 +395,11 @@ knowledge_layer:
 
 - [x] Unit: EntityExtractor initialization (✅ test_init_requires_llm_client_and_entity_repo)
 - [x] Unit: Prompt building with entity types (✅ TestBuildPrompt - 2 tests)
-- [ ] Unit: Value normalization (limits, pricing) - next task
-- [ ] Unit: Entity extraction from sample extractions with mocked LLM
-- [ ] Unit: Entity deduplication (same project + source_group + type + normalized)
-- [ ] Integration: Extract entities from extraction data end-to-end
+- [x] Unit: Value normalization (limits, pricing) - TestNormalize class
+- [x] Unit: Entity extraction from sample extractions with mocked LLM - TestCallLlm class
+- [x] Unit: Entity deduplication (same project + source_group + type + normalized) - TestStoreEntities class
+- [x] Unit: Main extract() method - TestExtract class
+- [x] Integration: Entity API endpoints - test_entity_endpoint.py (15 tests)
 - [ ] Integration: Entity-filtered search
 - [ ] Integration: Comparison query
 

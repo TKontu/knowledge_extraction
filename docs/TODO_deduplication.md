@@ -6,11 +6,21 @@ Prevent duplicate facts using embedding similarity before storage.
 
 ## Status
 
+**Complete** - ExtractionDeduplicator fully implemented
+
 **Current State:**
 - ✅ Qdrant client available (`src/qdrant_connection.py`)
 - ✅ Embedding endpoint configured (BGE-large-en at `192.168.0.136:9003`)
-- ⚠️ No deduplication logic implemented
-- ⚠️ No embedding service
+- ✅ **EmbeddingService** (`services/storage/embedding.py` - 7 tests)
+- ✅ **ExtractionDeduplicator** (`services/storage/deduplication.py` - 17 tests)
+  - `check_duplicate()` - embedding similarity check with configurable threshold
+  - `get_text_from_extraction_data()` - extract text from extraction data dict
+  - `check_extraction_data()` - convenience wrapper
+  - Default threshold: 0.90 (conservative)
+  - Scoped by project_id and source_group
+
+**Pending:**
+- [ ] Integrate into extraction pipeline
 
 ---
 
@@ -329,22 +339,25 @@ When needed, can add:
 
 ## Tasks
 
-- [ ] Create `EmbeddingService` class
-- [ ] Create `FactDeduplicator` class
-- [ ] Implement Qdrant collection initialization
+- [x] Create `EmbeddingService` class (`services/storage/embedding.py`)
+- [x] Create `ExtractionDeduplicator` class (`services/storage/deduplication.py`)
+- [x] Qdrant collection initialization (via `QdrantRepository`)
 - [ ] Integrate deduplication into extraction pipeline
-- [ ] Add configuration loading
-- [ ] Test with sample facts
+- [x] Configuration loading (threshold configurable in constructor)
+- [x] Test with sample data (17 tests)
 - [ ] Tune threshold with real data (may need adjustment from 0.90)
 
 ---
 
 ## Testing Checklist
 
-- [ ] Unit: Embedding service returns correct dimension (1024)
-- [ ] Unit: Deduplicator detects exact duplicates
-- [ ] Unit: Deduplicator detects near-duplicates above threshold
-- [ ] Unit: Different facts below threshold are NOT flagged
-- [ ] Integration: Qdrant collection created on startup
-- [ ] Integration: Duplicate fact skipped in full pipeline
-- [ ] Integration: Unique fact stored in both PostgreSQL and Qdrant
+- [x] Unit: Embedding service returns correct dimension (1024)
+- [x] Unit: Deduplicator detects exact duplicates (similarity >= threshold)
+- [x] Unit: Deduplicator detects near-duplicates above threshold
+- [x] Unit: Different content below threshold is NOT flagged
+- [x] Unit: Deduplicator scoped by project_id (different project = not duplicate)
+- [x] Unit: Deduplicator scoped by source_group (different group = not duplicate)
+- [x] Unit: Text extraction from extraction data dict
+- [x] Integration: Qdrant collection created on startup
+- [ ] Integration: Duplicate extraction skipped in full pipeline
+- [ ] Integration: Unique extraction stored in both PostgreSQL and Qdrant

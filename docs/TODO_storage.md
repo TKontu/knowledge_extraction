@@ -28,7 +28,12 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 
 **Pending:**
 - Pagination support
-- Search API endpoint (POST /api/v1/projects/{project_id}/search)
+
+**Search API:**
+- [x] **Search API endpoint** (`POST /api/v1/projects/{project_id}/search` - 14 tests)
+- [x] Request/response models (`SearchRequest`, `SearchResponse`, `SearchResultItem`)
+- [x] Hybrid vector + JSONB filtering
+- [x] Source group filtering
 
 ---
 
@@ -603,7 +608,7 @@ src/
 ### Phase 5: Search Service
 - [x] Create SearchService
 - [x] Implement hybrid search (vector + JSONB)
-- [ ] Create search API endpoint
+- [x] **Create search API endpoint** (`api/v1/search.py` - 14 tests)
 
 ---
 

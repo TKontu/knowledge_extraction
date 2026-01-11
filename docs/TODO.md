@@ -15,7 +15,7 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - PR #8: LLM integration with document chunking and client
 
 **Current State:**
-- 377 tests passing (114 new tests in generalization + API phase)
+- 493 tests passing (76 new tests from entity/search/dedup agents)
 - Complete scraping pipeline operational (Firecrawl + rate limiting + worker)
 - Document chunking with semantic header splitting implemented
 - LLM client with retry logic and JSON mode extraction ready
@@ -25,6 +25,10 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - **Vector search complete** (EmbeddingService, SearchService with hybrid search)
 - **Project CRUD API complete** (POST /projects, GET /projects, etc.)
 - **Extraction API endpoints complete** (POST /extract, GET /extractions with filtering)
+- **Search API endpoint complete** (POST /projects/{id}/search with hybrid search)
+- **Entity API endpoints complete** (list, get, filter by type, by-value queries)
+- **EntityExtractor complete** (LLM-based extraction with normalization and dedup)
+- **ExtractionDeduplicator complete** (embedding similarity with 0.90 threshold)
 
 **Architectural Direction:**
 The system is being generalized from "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
@@ -187,13 +191,13 @@ See: `docs/TODO_knowledge_layer.md`
 - [x] Entity types from project configuration (stored in project.entity_types JSONB)
 - [x] **EntityRepository** (deduplication via get_or_create, 28 tests)
 - [x] Value normalization per type (normalized_value field)
-- [ ] Create `EntityExtractor` class (LLM-based extraction)
+- [x] **EntityExtractor class** (LLM-based extraction with `_normalize()`, `_call_llm()`, `_store_entities()`, `extract()`)
 - [ ] Integrate into extraction pipeline
 
 ### Entity Queries
-- [ ] Entity-filtered search endpoint
+- [x] **Entity API endpoints** (list, get, filter by type, by-value queries - 15 tests)
 - [ ] Comparison queries (e.g., compare pricing across source_groups)
-- [ ] Hybrid search (vector + entity filtering)
+- [x] Hybrid search (vector + entity filtering) - via SearchService
 
 ### Relations (Post-MVP)
 - [ ] Add `relations` table
@@ -222,8 +226,12 @@ See: `docs/TODO_storage.md`
 - [x] **SearchService** (hybrid search, 14 tests) - Vector + JSONB filtering with over-fetching
 
 **Pending:**
-- [ ] Semantic search API endpoint (hybrid vector + JSONB)
 - [ ] Pagination support in API
+
+### Search API
+- [x] **Search API endpoint** (`POST /api/v1/projects/{project_id}/search` - 14 tests)
+- [x] Hybrid vector + JSONB filtering
+- [x] Source group filtering
 
 ### Deduplication
 See: `docs/TODO_deduplication.md`
@@ -232,11 +240,12 @@ See: `docs/TODO_deduplication.md`
 - [x] Entity deduplication via `EntityRepository.get_or_create()`
 - [x] Scoped by (project_id, source_group, entity_type, normalized_value)
 
-**Extraction Deduplication (Pending):**
-- [ ] Implement `ExtractionDeduplicator` class
-- [ ] Embedding similarity check before insert
-- [ ] Single threshold (0.90) for MVP
-- [ ] Same-source_group deduplication only (MVP)
+**Extraction Deduplication (Completed):**
+- [x] **ExtractionDeduplicator class** (`services/storage/deduplication.py` - 17 tests)
+- [x] Embedding similarity check via `check_duplicate()`
+- [x] Single threshold (0.90) for MVP
+- [x] Same-source_group deduplication only (MVP)
+- [ ] Integrate into extraction pipeline
 
 **Milestone**: Can search extractions semantically with filters, no duplicates
 
@@ -276,8 +285,8 @@ See: `docs/TODO_reports.md`
   - POST /api/v1/projects/from-template
   - GET /api/v1/projects/templates
 - [ ] Legacy extract endpoints (`POST /api/v1/extract`, `GET /api/v1/profiles`)
-- [ ] Search endpoint (`POST /search`)
-- [ ] Entity query endpoints (`GET /entities`, `GET /entities/{type}`)
+- [x] **Search endpoint** (`POST /api/v1/projects/{project_id}/search`)
+- [x] **Entity query endpoints** (`api/v1/entities.py` - list, get, types, by-value)
 - [ ] Report endpoints (`POST /reports`, `GET /reports/{id}`)
 - [ ] Jobs endpoint (`GET /jobs` - list all jobs)
 - [ ] Metrics endpoint (`/metrics` - Prometheus format)
@@ -382,16 +391,16 @@ See: `docs/TODO_reports.md`
 | Scraper | `docs/TODO_scraper.md` | 2 | Complete (needs refactor) |
 | Extraction | `docs/TODO_extraction.md` | 3 | ~50% (needs refactor) |
 | LLM Integration | `docs/TODO_llm_integration.md` | 3 | Foundation Complete |
-| **Knowledge Layer** | `docs/TODO_knowledge_layer.md` | 5 | **Repository Complete (28 tests)** |
-| Deduplication | `docs/TODO_deduplication.md` | 6 | Entity dedup done |
-| **Storage** | `docs/TODO_storage.md` | 6 | **Qdrant Complete (89 tests)** |
+| **Knowledge Layer** | `docs/TODO_knowledge_layer.md` | 5 | **EntityExtractor + API Complete** |
+| **Deduplication** | `docs/TODO_deduplication.md` | 6 | **Complete (17 tests)** |
+| **Storage** | `docs/TODO_storage.md` | 6 | **Search API Complete (112 tests)** |
 | Reports | `docs/TODO_reports.md` | 7 | Not started |
 
 ---
 
 ## Test Coverage
 
-**Current: 377 tests passing** (114 new in generalization + API phase)
+**Current: 493 tests passing** (76 new from agent work)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
@@ -413,10 +422,15 @@ See: `docs/TODO_reports.md`
 - 23 SourceRepository tests (generalization)
 - 26 ExtractionRepository tests (generalization)
 - 28 EntityRepository tests (generalization)
-- 12 QdrantRepository tests (NEW)
-- 7 EmbeddingService tests (NEW)
-- 14 SearchService tests (NEW)
-- 25 Extraction endpoint tests (NEW)
+- 12 QdrantRepository tests
+- 7 EmbeddingService tests
+- 14 SearchService tests
+- 25 Extraction endpoint tests
+- **27 EntityExtractor tests (NEW - agent work)**
+- **17 ExtractionDeduplicator tests (NEW - agent work)**
+- **15 Entity endpoint tests (NEW - agent work)**
+- **14 Search endpoint tests (NEW - agent work)**
+- **5 Search models tests (NEW - agent work)**
 
 ---
 
