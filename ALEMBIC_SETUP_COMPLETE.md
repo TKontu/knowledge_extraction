@@ -8,11 +8,11 @@ The Alembic migrations system has been fully implemented and is ready for use. T
 
 ### 1. Core Setup ✅
 
-- **Alembic installed** (`pipeline/requirements.txt`)
-- **Configuration file** (`pipeline/alembic.ini`) with ruff formatting hooks
-- **Environment configuration** (`pipeline/alembic/env.py`) with DATABASE_URL support
-- **Migration template** (`pipeline/alembic/script.py.mako`)
-- **Directory structure** created (`pipeline/alembic/versions/`)
+- **Alembic installed** (`requirements.txt`)
+- **Configuration file** (`alembic.ini`) with ruff formatting hooks
+- **Environment configuration** (`alembic/env.py`) with DATABASE_URL support
+- **Migration template** (`alembic/script.py.mako`)
+- **Directory structure** created (`alembic/versions/`)
 
 ### 2. Initial Migrations ✅
 
@@ -34,7 +34,7 @@ Two migration files created:
 
 ### 3. ORM Models Reconciled ✅
 
-Updated `pipeline/orm_models.py` to match `init.sql` schema:
+Updated `src/orm_models.py` to match `init.sql` schema:
 
 - Added `project_id` to Job model
 - Changed Profile.categories from JSON to ARRAY(Text)
@@ -60,7 +60,7 @@ Updated `docker-compose.yml`:
   - Troubleshooting
   - Best practices
 
-- **`pipeline/migrate.sh`** - Helper script for common operations
+- **`migrate.sh`** - Helper script for common operations
   - `./migrate.sh upgrade` - Apply migrations
   - `./migrate.sh downgrade [version]` - Rollback
   - `./migrate.sh create <name>` - Create new migration
@@ -86,7 +86,7 @@ docker compose up -d --build
 docker compose exec pipeline python -m alembic upgrade head
 
 # Or use helper script locally
-cd pipeline
+# Commands now run from repo root
 ./migrate.sh upgrade
 ```
 
@@ -118,7 +118,7 @@ docker compose exec pipeline python -m alembic stamp head
 ### Local Test (with helper script)
 
 ```bash
-cd pipeline
+# Commands now run from repo root
 export DATABASE_URL="postgresql://techfacts:techfacts@localhost:5432/techfacts"
 
 # Test full cycle
@@ -156,7 +156,7 @@ knowledge_extraction/
 ├── docs/
 │   ├── MIGRATIONS.md              # Migration documentation
 │   └── TODO_migrations.md         # Original implementation plan
-├── pipeline/
+├── src/
 │   ├── alembic/
 │   │   ├── versions/
 │   │   │   ├── 20260110_001_initial_schema.py
@@ -186,7 +186,7 @@ knowledge_extraction/
 
 When making schema changes:
 
-1. Update `pipeline/orm_models.py`
+1. Update `src/orm_models.py`
 2. Generate migration: `./migrate.sh create description_of_change`
 3. Review generated migration file
 4. Test locally: `./migrate.sh test`
@@ -230,7 +230,7 @@ DATABASE_URL=postgresql://user:pass@host:port/dbname
 
 ### Alembic Settings
 
-- **Script location:** `pipeline/alembic/`
+- **Script location:** `alembic/`
 - **Migration naming:** `YYYYMMDD_HHMM_<revision>_<slug>.py`
 - **Post-write hooks:** Ruff format (if installed)
 - **Logging:** Console output with INFO level
@@ -293,7 +293,7 @@ All tasks from `docs/TODO_migrations.md` completed:
 ## Resources
 
 - **Documentation:** `docs/MIGRATIONS.md`
-- **Helper script:** `pipeline/migrate.sh`
+- **Helper script:** `migrate.sh`
 - **Alembic docs:** https://alembic.sqlalchemy.org/
 - **Original plan:** `docs/TODO_migrations.md`
 

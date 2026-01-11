@@ -20,7 +20,7 @@ Based on remote deployment to `192.168.0.136` via Portainer, the architecture ha
 
 **Implementation Required:**
 ```python
-# pipeline/api/middleware/auth.py
+# src/api/middleware/auth.py
 async def verify_api_key(request: Request):
     api_key = request.headers.get("X-API-Key")
     if not api_key or api_key != settings.API_KEY:

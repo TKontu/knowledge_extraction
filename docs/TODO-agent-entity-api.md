@@ -24,7 +24,7 @@ Create Entity API endpoints that allow querying and browsing entities by project
 
 ### 1. Create request/response models
 
-**File(s):** `pipeline/models.py` (add to existing file)
+**File(s):** `src/models.py` (add to existing file)
 
 **Requirements:**
 Add these Pydantic models to the existing `models.py`:
@@ -64,7 +64,7 @@ class EntityTypesResponse(BaseModel):
 
 ### 2. Create entity list endpoint
 
-**File(s):** `pipeline/api/v1/entities.py` (new file)
+**File(s):** `src/api/v1/entities.py` (new file)
 
 **Requirements:**
 - Create new router with prefix `/api/v1` and tag `entities`
@@ -103,7 +103,7 @@ async def list_entities(
 
 ### 3. Create entity types summary endpoint
 
-**File(s):** `pipeline/api/v1/entities.py`
+**File(s):** `src/api/v1/entities.py`
 
 **Requirements:**
 - Implement `GET /api/v1/projects/{project_id}/entities/types` endpoint
@@ -129,7 +129,7 @@ async def get_entity_types(
 
 ### 4. Create single entity endpoint
 
-**File(s):** `pipeline/api/v1/entities.py`
+**File(s):** `src/api/v1/entities.py`
 
 **Requirements:**
 - Implement `GET /api/v1/projects/{project_id}/entities/{entity_id}` endpoint
@@ -154,7 +154,7 @@ async def get_entity(
 
 ### 5. Create source_groups with entity endpoint
 
-**File(s):** `pipeline/api/v1/entities.py`
+**File(s):** `src/api/v1/entities.py`
 
 **Requirements:**
 - Implement `GET /api/v1/projects/{project_id}/entities/by-value` endpoint
@@ -191,7 +191,7 @@ async def get_source_groups_by_entity(
 
 ### 6. Register router in main app
 
-**File(s):** `pipeline/main.py`
+**File(s):** `src/main.py`
 
 **Requirements:**
 - Import the entities router
@@ -206,7 +206,7 @@ app.include_router(entities_router)
 
 ### 7. Create comprehensive test suite
 
-**File(s):** `pipeline/tests/test_entity_endpoint.py` (new file)
+**File(s):** `tests/test_entity_endpoint.py` (new file)
 
 **Requirements:**
 - Use pytest-asyncio
@@ -227,10 +227,10 @@ app.include_router(entities_router)
 
 Before creating PR, confirm:
 - [ ] All 7 tasks above completed
-- [ ] `pytest pipeline/tests/test_entity_endpoint.py -v` - All tests pass
+- [ ] `pytest tests/test_entity_endpoint.py -v` - All tests pass
 - [ ] `pytest` - All 377+ tests still pass
-- [ ] `ruff check pipeline/` clean
-- [ ] `ruff format pipeline/` applied
+- [ ] `ruff check src/` clean
+- [ ] `ruff format src/` applied
 - [ ] No new warnings
 - [ ] All endpoints appear in OpenAPI docs (`/docs`)
 

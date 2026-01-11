@@ -20,9 +20,31 @@ If you catch yourself:
 2. Read `docs/TODO-{your-id}.md` - this is your complete specification
 3. `git checkout -b feat/{task-name}`
 4. For each task: TEST FIRST (RED), then implement (GREEN)
-5. Verify: `pytest && ruff check .`
+5. Verify: `pytest && ruff check src/`
 6. Commit, push, create PR
 7. Report completion
+
+## Project Structure
+
+```
+repo-root/
+├── .venv/           # Virtual environment at root
+├── src/             # Source code
+│   ├── api/
+│   ├── services/
+│   ├── main.py
+│   └── ...
+├── tests/           # Tests at root
+├── alembic/         # Migrations at root
+├── requirements.txt
+└── pyproject.toml
+```
+
+All commands run from repo root:
+- `source .venv/bin/activate`
+- `pytest` (finds tests/, imports from src/)
+- `ruff check src/`
+- `cd src && uvicorn main:app --reload`
 
 ## TDD Cycle (MANDATORY)
 
@@ -59,31 +81,26 @@ Your orchestrator considered these. Execute the spec.
 ## Common Commands
 
 ```bash
-# Environment setup
+# Environment setup (from repo root)
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 .venv\Scripts\activate     # Windows
 
 # Dependencies
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
-pip install -e .  # Editable install
 
-# Testing
+# Testing (from repo root)
 pytest                          # Run all tests
 pytest tests/test_foo.py -v     # Single file, verbose
 pytest -k "test_name"           # Run matching tests
-pytest --cov=src --cov-report=html  # Coverage report
 
 # Linting & Formatting
-ruff check .                    # Lint
-ruff check . --fix              # Lint + autofix
-ruff format .                   # Format code
-mypy src/                       # Type checking
+ruff check src/                 # Lint source
+ruff check src/ --fix           # Lint + autofix
+ruff format src/                # Format code
 
 # Running (FastAPI)
-uvicorn app.main:app --reload              # Dev server
-uvicorn app.main:app --host 0.0.0.0 --port 8000  # Production
+cd src && uvicorn main:app --reload  # Dev server
 
 # Git
 git checkout -b feat/task-name
@@ -328,11 +345,11 @@ addopts = "-ra -q"
 
 ## Verification Before PR
 
-Run these. Report actual output, not "should pass":
+Run these from repo root. Report actual output, not "should pass":
 
 ```bash
 pytest                  # Must show: X passed
-ruff check .           # Must show: 0 errors
+ruff check src/         # Must show: 0 errors
 ```
 
 ## Completion Report Format

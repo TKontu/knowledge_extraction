@@ -223,7 +223,7 @@ scraping:
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   └── scraper/
 │       ├── __init__.py

@@ -71,7 +71,8 @@
       "Bash(gh pr view * --json title,url,state | python3 -m json.tool)"
     ],
     "deny": [
-      "Bash(git push -u origin main)"
+      "Bash(git push -u origin main)",
+      "Bash(cd * && python *)"
     ]
   }
 }

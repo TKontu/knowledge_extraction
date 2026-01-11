@@ -192,15 +192,16 @@ techfacts-scraper/
 ├── ARCHITECTURE.md
 ├── README.md
 ├── TODO.md
-├── pipeline/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── config.yaml
+├── src/
 │   ├── main.py
+│   ├── config.py
 │   ├── api/
 │   ├── services/
-│   ├── models/
-│   └── prompts/
+│   └── middleware/
+├── tests/
+├── alembic/
+├── Dockerfile
+├── requirements.txt
 └── docs/
     ├── TODO_scraper.md
     ├── TODO_extraction.md
@@ -212,11 +213,10 @@ techfacts-scraper/
 
 ```bash
 # Local development (without Docker)
-cd pipeline
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload
+cd src && uvicorn main:app --reload
 
 # Run tests
 pytest

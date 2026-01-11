@@ -24,7 +24,7 @@ Implement an ExtractionDeduplicator class that checks for existing similar extra
 
 ### 1. Create ExtractionDeduplicator class
 
-**File(s):** `pipeline/services/storage/deduplication.py` (new file)
+**File(s):** `src/services/storage/deduplication.py` (new file)
 
 **Requirements:**
 - Class that checks extraction similarity before storage
@@ -77,7 +77,7 @@ class ExtractionDeduplicator:
 
 ### 2. Implement `check_duplicate()` method
 
-**File(s):** `pipeline/services/storage/deduplication.py`
+**File(s):** `src/services/storage/deduplication.py`
 
 **Requirements:**
 - Generate embedding for the input text
@@ -101,7 +101,7 @@ class ExtractionDeduplicator:
 
 ### 3. Implement `get_text_from_extraction_data()` method
 
-**File(s):** `pipeline/services/storage/deduplication.py`
+**File(s):** `src/services/storage/deduplication.py`
 
 **Requirements:**
 - Extract searchable text from extraction data dictionary
@@ -117,7 +117,7 @@ class ExtractionDeduplicator:
 
 ### 4. Add convenience method `check_extraction_data()`
 
-**File(s):** `pipeline/services/storage/deduplication.py`
+**File(s):** `src/services/storage/deduplication.py`
 
 **Requirements:**
 - Wrapper that accepts extraction data dict directly
@@ -141,7 +141,7 @@ async def check_extraction_data(
 
 ### 5. Create comprehensive test suite
 
-**File(s):** `pipeline/tests/test_extraction_deduplicator.py` (new file)
+**File(s):** `tests/test_extraction_deduplicator.py` (new file)
 
 **Requirements:**
 - Use pytest-asyncio
@@ -187,10 +187,10 @@ class TestCheckExtractionData:
 
 Before creating PR, confirm:
 - [ ] All 5 tasks above completed
-- [ ] `pytest pipeline/tests/test_extraction_deduplicator.py -v` - All tests pass
+- [ ] `pytest tests/test_extraction_deduplicator.py -v` - All tests pass
 - [ ] `pytest` - All 377+ tests still pass
-- [ ] `ruff check pipeline/` clean
-- [ ] `ruff format pipeline/` applied
+- [ ] `ruff check src/` clean
+- [ ] `ruff format src/` applied
 - [ ] No new warnings
 
 ## Notes

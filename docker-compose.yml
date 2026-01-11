@@ -95,7 +95,7 @@ services:
   # ===================
   migrate:
     build:
-      context: ./pipeline
+      context: .
       dockerfile: Dockerfile
     command: python -m alembic upgrade head
     environment:
@@ -130,7 +130,7 @@ services:
   # ===================
   pipeline:
     build:
-      context: ./pipeline
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -181,7 +181,7 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
     volumes:
-      - ./pipeline/prompts:/app/prompts:ro
+      - ./prompts:/app/prompts:ro
       - ./reports:/app/reports
     depends_on:
       migrate:

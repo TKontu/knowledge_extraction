@@ -75,7 +75,7 @@ CREATE INDEX idx_projects_active ON projects(is_active);
 ## ORM Model
 
 ```python
-# pipeline/orm_models.py (addition)
+# src/orm_models.py (addition)
 from sqlalchemy import Column, String, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
@@ -109,7 +109,7 @@ class Project(Base):
 ## Pydantic Models
 
 ```python
-# pipeline/models/project.py
+# src/models/project.py
 from pydantic import BaseModel, Field
 from uuid import UUID
 from datetime import datetime
@@ -184,7 +184,7 @@ class ProjectFromTemplate(BaseModel):
 ## Project Repository
 
 ```python
-# pipeline/services/projects/repository.py
+# src/services/projects/repository.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
@@ -275,7 +275,7 @@ class ProjectRepository:
 ## Project Templates
 
 ```python
-# pipeline/services/projects/templates.py
+# src/services/projects/templates.py
 from ..models.project import ProjectCreate, ExtractionSchema, FieldDefinition, EntityTypeDefinition, SourceConfig
 
 COMPANY_ANALYSIS_TEMPLATE = ProjectCreate(
@@ -365,7 +365,7 @@ PROJECT_TEMPLATES = {
 ## Schema Validator
 
 ```python
-# pipeline/services/projects/schema.py
+# src/services/projects/schema.py
 from pydantic import BaseModel, ValidationError, create_model, Field
 from typing import Any
 import structlog
@@ -450,7 +450,7 @@ class SchemaValidator:
 ## API Endpoints
 
 ```python
-# pipeline/api/v1/projects.py
+# src/api/v1/projects.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
@@ -609,7 +609,7 @@ async def delete_project(
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   └── projects/
 │       ├── __init__.py

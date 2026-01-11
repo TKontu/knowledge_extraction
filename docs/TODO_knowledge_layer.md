@@ -351,7 +351,7 @@ async def generate_comparison_table(companies: list[str], entity_type: str):
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   └── knowledge/
 │       ├── __init__.py

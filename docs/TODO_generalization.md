@@ -467,7 +467,7 @@ Return JSON array of extractions matching the schema above.
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── models/
 │   ├── project.py          # Project, ExtractionSchema
 │   ├── source.py           # Source (generalized Page)

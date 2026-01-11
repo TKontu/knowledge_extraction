@@ -8,7 +8,7 @@
 ## Quick Test
 
 ```bash
-cd /mnt/c/code/knowledge_extraction/pipeline
+cd /mnt/c/code/knowledge_extraction-orchestrator
 ./test_docker.sh
 ```
 

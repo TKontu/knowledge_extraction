@@ -25,7 +25,7 @@ Create a Search API endpoint that exposes the SearchService's hybrid search capa
 
 ### 1. Create request/response models
 
-**File(s):** `pipeline/models.py` (add to existing file)
+**File(s):** `src/models.py` (add to existing file)
 
 **Requirements:**
 Add these Pydantic models to the existing `models.py`:
@@ -61,7 +61,7 @@ class SearchResponse(BaseModel):
 
 ### 2. Create search endpoint
 
-**File(s):** `pipeline/api/v1/search.py` (new file)
+**File(s):** `src/api/v1/search.py` (new file)
 
 **Requirements:**
 - Create new router with prefix `/api/v1` and tag `search`
@@ -93,7 +93,7 @@ async def search_extractions(
 
 ### 3. Register router in main app
 
-**File(s):** `pipeline/main.py`
+**File(s):** `src/main.py`
 
 **Requirements:**
 - Import the search router
@@ -111,7 +111,7 @@ app.include_router(search_router)
 
 ### 4. Create comprehensive test suite
 
-**File(s):** `pipeline/tests/test_search_endpoint.py` (new file)
+**File(s):** `tests/test_search_endpoint.py` (new file)
 
 **Requirements:**
 - Use pytest-asyncio
@@ -153,10 +153,10 @@ class TestSearchEndpoint:
 
 Before creating PR, confirm:
 - [ ] All 4 tasks above completed
-- [ ] `pytest pipeline/tests/test_search_endpoint.py -v` - All tests pass
+- [ ] `pytest tests/test_search_endpoint.py -v` - All tests pass
 - [ ] `pytest` - All 377+ tests still pass
-- [ ] `ruff check pipeline/` clean
-- [ ] `ruff format pipeline/` applied
+- [ ] `ruff check src/` clean
+- [ ] `ruff format src/` applied
 - [ ] No new warnings
 - [ ] Endpoint appears in OpenAPI docs (`/docs`)
 

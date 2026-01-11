@@ -364,7 +364,7 @@ llm:
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   └── llm/
 │       ├── __init__.py

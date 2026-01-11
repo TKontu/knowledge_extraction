@@ -9,8 +9,8 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 ## Status
 
 **Completed:**
-- Database connection module (`pipeline/database.py` with SQLAlchemy)
-- Redis connection module (`pipeline/redis_client.py`)
+- Database connection module (`src/database.py` with SQLAlchemy)
+- Redis connection module (`src/redis_client.py`)
 - Health checks for DB, Redis, and Qdrant
 - **SQLAlchemy ORM models** (PR #4 - legacy tables)
 - **Qdrant client initialization** (PR #6)
@@ -553,7 +553,7 @@ storage:
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   └── storage/
 │       ├── __init__.py

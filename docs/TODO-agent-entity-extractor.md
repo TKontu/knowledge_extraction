@@ -27,7 +27,7 @@ Complete the EntityExtractor class to extract entities from extraction data, sto
 
 ### 1. Implement `_normalize()` method
 
-**File(s):** `pipeline/services/knowledge/extractor.py`
+**File(s):** `src/services/knowledge/extractor.py`
 
 **Requirements:**
 - Static or instance method that normalizes entity values for deduplication
@@ -48,7 +48,7 @@ Complete the EntityExtractor class to extract entities from extraction data, sto
 
 ### 2. Implement `_call_llm()` method
 
-**File(s):** `pipeline/services/knowledge/extractor.py`
+**File(s):** `src/services/knowledge/extractor.py`
 
 **Requirements:**
 - Async method that calls LLM with the built prompt
@@ -72,7 +72,7 @@ async def _call_llm(self, prompt: dict[str, str]) -> list[dict]:
 
 ### 3. Implement `_store_entities()` method
 
-**File(s):** `pipeline/services/knowledge/extractor.py`
+**File(s):** `src/services/knowledge/extractor.py`
 
 **Requirements:**
 - Async method that stores entities using EntityRepository
@@ -97,7 +97,7 @@ async def _store_entities(
 
 ### 4. Implement main `extract()` method
 
-**File(s):** `pipeline/services/knowledge/extractor.py`
+**File(s):** `src/services/knowledge/extractor.py`
 
 **Requirements:**
 - Main async method that orchestrates the full extraction pipeline
@@ -131,7 +131,7 @@ async def extract(
 
 ### 5. Add imports and type hints
 
-**File(s):** `pipeline/services/knowledge/extractor.py`
+**File(s):** `src/services/knowledge/extractor.py`
 
 **Requirements:**
 - Add UUID import
@@ -153,10 +153,10 @@ async def extract(
 
 Before creating PR, confirm:
 - [ ] All 5 tasks above completed
-- [ ] `pytest pipeline/tests/test_entity_extractor.py -v` - All tests pass
+- [ ] `pytest tests/test_entity_extractor.py -v` - All tests pass
 - [ ] `pytest` - All 377+ tests still pass
-- [ ] `ruff check pipeline/` clean
-- [ ] `ruff format pipeline/` applied
+- [ ] `ruff check src/` clean
+- [ ] `ruff format src/` applied
 - [ ] No new warnings
 
 ## Notes

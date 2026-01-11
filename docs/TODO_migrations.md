@@ -48,7 +48,7 @@ Before generating migrations, verify ORM models match intended schema:
 ### 3. Project Structure
 
 ```
-pipeline/
+src/
 ├── alembic/
 │   ├── versions/           # Migration files
 │   │   ├── 001_initial_schema.py
@@ -143,7 +143,7 @@ else:
 ### 6. Generate Initial Migration
 
 ```bash
-cd pipeline
+# Commands now run from repo root
 
 # Initialize alembic (creates alembic/ directory)
 alembic init alembic

@@ -8,7 +8,7 @@ Generates structured reports from extracted facts and entities. Supports single 
 
 **Completed:**
 - ✅ Reports table schema in `init.sql`
-- ✅ Report ORM model (`pipeline/orm_models.py` - PR #4)
+- ✅ Report ORM model (`src/orm_models.py` - PR #4)
 - ✅ LLM configuration available for report generation
 
 **Pending:**
@@ -416,7 +416,7 @@ reports:
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   └── reports/
 │       ├── __init__.py

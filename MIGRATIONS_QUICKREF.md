@@ -3,7 +3,7 @@
 ## Most Common Commands
 
 ```bash
-cd pipeline
+# Commands now run from repo root
 
 # Apply all migrations
 ./migrate.sh upgrade
@@ -41,7 +41,7 @@ docker compose logs migrate
 
 ### 1. Update ORM Model
 
-Edit `pipeline/orm_models.py`:
+Edit `src/orm_models.py`:
 
 ```python
 class MyTable(Base):
@@ -53,7 +53,7 @@ class MyTable(Base):
 ### 2. Generate Migration
 
 ```bash
-cd pipeline
+# Commands now run from repo root
 ./migrate.sh create "add_new_field_to_my_table"
 ```
 

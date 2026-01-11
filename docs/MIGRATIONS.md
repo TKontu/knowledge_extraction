@@ -14,7 +14,7 @@ The project uses Alembic for database schema migrations, replacing the previous 
 ## Migration Files Location
 
 ```
-pipeline/
+src/
 ├── alembic/
 │   ├── versions/           # Migration scripts (version controlled)
 │   │   ├── 20260110_001_initial_schema.py
@@ -41,7 +41,7 @@ The `migrate` service runs before the `pipeline` service starts, ensuring the da
 
 ```bash
 # Run all pending migrations (recommended)
-cd pipeline
+# Commands now run from repo root
 python -m alembic upgrade head
 
 # Apply specific migration
@@ -84,7 +84,7 @@ python -m alembic heads
 After modifying `orm_models.py`, generate a migration:
 
 ```bash
-cd pipeline
+# Commands now run from repo root
 python -m alembic revision --autogenerate -m "add_user_preferences_column"
 ```
 
@@ -98,7 +98,7 @@ python -m alembic revision --autogenerate -m "add_user_preferences_column"
 Create an empty migration template:
 
 ```bash
-cd pipeline
+# Commands now run from repo root
 python -m alembic revision -m "migrate_user_data"
 ```
 
@@ -149,7 +149,7 @@ def downgrade() -> None:
 
 2. **Generate migration**:
    ```bash
-   cd pipeline
+   # Commands now run from repo root
    python -m alembic revision --autogenerate -m "add_new_table"
    ```
 
@@ -169,7 +169,7 @@ def downgrade() -> None:
 
 5. **Commit migration file**:
    ```bash
-   git add pipeline/alembic/versions/
+   git add alembic/versions/
    git commit -m "Add new_table migration"
    ```
 

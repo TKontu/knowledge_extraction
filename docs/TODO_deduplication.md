@@ -7,7 +7,7 @@ Prevent duplicate facts using embedding similarity before storage.
 ## Status
 
 **Current State:**
-- ✅ Qdrant client available (`pipeline/qdrant_connection.py`)
+- ✅ Qdrant client available (`src/qdrant_connection.py`)
 - ✅ Embedding endpoint configured (BGE-large-en at `192.168.0.136:9003`)
 - ⚠️ No deduplication logic implemented
 - ⚠️ No embedding service
@@ -287,7 +287,7 @@ deduplication:
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   ├── embedding/
 │   │   ├── __init__.py

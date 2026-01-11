@@ -11,7 +11,7 @@ Extracts structured data from scraped content using LLM with **project-defined s
 **Completed (PRs #8, #9):**
 - Built-in profiles defined in `init.sql` (technical_specs, api_docs, security, pricing, general)
 - LLM configuration in `config.py` (OpenAI-compatible endpoints, model names, timeouts)
-- Profile ORM model exists (`pipeline/orm_models.py` - PR #4)
+- Profile ORM model exists (`src/orm_models.py` - PR #4)
 - **Document chunking module** (`services/llm/chunking.py`, 17 tests)
 - **LLM client implementation** (`services/llm/client.py`, 9 tests)
 - **Data models** (DocumentChunk, ExtractedFact, ExtractionResult)
@@ -61,7 +61,7 @@ extractions = await extractor.extract(source, project)
 ### Extraction Service (Schema-Aware)
 
 ```python
-# pipeline/services/extraction/service.py
+# src/services/extraction/service.py
 from ..projects.schema import SchemaValidator
 from ..llm.client import LLMClient
 from ..llm.chunking import chunk_document
@@ -150,7 +150,7 @@ class ExtractionService:
 ### Dynamic Prompt Builder
 
 ```python
-# pipeline/services/extraction/prompt_builder.py
+# src/services/extraction/prompt_builder.py
 from ...models.project import Project
 
 class DynamicPromptBuilder:
@@ -275,7 +275,7 @@ Return JSON:
 ### Extraction Validator (Schema-Aware)
 
 ```python
-# pipeline/services/extraction/validator.py
+# src/services/extraction/validator.py
 from ...services.projects.schema import SchemaValidator
 
 class ExtractionValidator:
@@ -418,7 +418,7 @@ Generate embedding → Store in Qdrant
 ## File Structure
 
 ```
-pipeline/
+src/
 ├── services/
 │   ├── extraction/
 │   │   ├── __init__.py
