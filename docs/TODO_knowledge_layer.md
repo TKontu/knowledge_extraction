@@ -8,7 +8,21 @@ Extends extraction with a lightweight knowledge graph layer - entities and relat
 
 ## Status
 
-**Not Started** - Depends on Phase 3 (Extraction) being complete first.
+**In Progress** - EntityExtractor implementation started (2/10 tasks complete)
+
+**Completed (PR #TBD):**
+- [x] EntityExtractor class skeleton (`services/knowledge/extractor.py`)
+- [x] Entity extraction prompt builder (`_build_prompt()` method)
+
+**In Progress:**
+- [ ] Entity normalization (`_normalize()` method)
+- [ ] LLM entity extraction call
+- [ ] Entity storage with deduplication
+- [ ] Entity-extraction linking
+- [ ] Main extract() method
+- [ ] Error handling and retry logic
+- [ ] Full test suite
+- [ ] Documentation and type hints
 
 **Related Documentation:**
 - See `docs/TODO_extraction.md` for extraction module
@@ -223,11 +237,11 @@ Only extract entities explicitly mentioned. Do not infer.
 
 ### Phase 1: Entity Extraction (MVP)
 
-- [ ] Add `entities` and `fact_entities` tables (via Alembic migration)
-- [ ] Create ORM models for Entity, FactEntity
-- [ ] Create `EntityExtractor` class
-- [ ] Create entity extraction prompt
-- [ ] Implement value normalization per type
+- [x] Add `entities` and `extraction_entities` tables (completed in PR #11)
+- [x] Create ORM models for Entity, ExtractionEntity (completed in PR #11)
+- [x] Create `EntityExtractor` class (in progress - skeleton complete)
+- [x] Create entity extraction prompt (completed - `_build_prompt()` method)
+- [ ] Implement value normalization per type (next task)
 - [ ] Integrate into extraction pipeline (run after fact extraction)
 - [ ] Entity-filtered search endpoint
 
@@ -341,15 +355,16 @@ pipeline/
 ├── services/
 │   └── knowledge/
 │       ├── __init__.py
-│       ├── entities/
-│       │   ├── __init__.py
-│       │   ├── extractor.py      # EntityExtractor
-│       │   ├── normalizer.py     # Value normalization
-│       │   └── repository.py     # Entity CRUD
-│       └── queries.py            # Structured query helpers
-├── models/
-│   └── knowledge.py              # Entity dataclass
+│       └── extractor.py          # EntityExtractor (✅ implemented)
+├── services/
+│   └── storage/
+│       └── repositories/
+│           └── entity.py         # EntityRepository (✅ implemented in PR #11)
+├── tests/
+│   └── test_entity_extractor.py  # EntityExtractor tests (✅ implemented)
 ```
+
+**Note:** Simplified structure from original design - no separate entities/ subdirectory needed.
 
 ---
 
@@ -374,10 +389,12 @@ knowledge_layer:
 
 ## Testing Checklist
 
-- [ ] Unit: Entity extraction from sample facts
-- [ ] Unit: Value normalization (limits, pricing)
-- [ ] Unit: Entity deduplication (same company + type + normalized)
-- [ ] Integration: Extract entities from page facts
+- [x] Unit: EntityExtractor initialization (✅ test_init_requires_llm_client_and_entity_repo)
+- [x] Unit: Prompt building with entity types (✅ TestBuildPrompt - 2 tests)
+- [ ] Unit: Value normalization (limits, pricing) - next task
+- [ ] Unit: Entity extraction from sample extractions with mocked LLM
+- [ ] Unit: Entity deduplication (same project + source_group + type + normalized)
+- [ ] Integration: Extract entities from extraction data end-to-end
 - [ ] Integration: Entity-filtered search
 - [ ] Integration: Comparison query
 
