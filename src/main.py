@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TechFacts Pipeline API",
+    title="Scristill Pipeline API",
     description="Knowledge extraction and report generation pipeline",
     version="0.1.0",
     lifespan=lifespan,
@@ -83,7 +83,7 @@ async def health_check() -> JSONResponse:
     return JSONResponse(
         content={
             "status": "ok",
-            "service": "techfacts-pipeline",
+            "service": "scristill-pipeline",
             "timestamp": datetime.now(UTC).isoformat(),
             "log_level": settings.log_level,
             "database": {
@@ -103,7 +103,7 @@ async def health_check() -> JSONResponse:
 async def root() -> dict[str, str]:
     """Root endpoint - provides API information."""
     return {
-        "service": "TechFacts Pipeline API",
+        "service": "Scristill Pipeline API",
         "version": "0.1.0",
         "docs": "/docs",
         "health": "/health",

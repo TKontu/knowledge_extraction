@@ -123,7 +123,7 @@ class FactDeduplicator:
         self.qdrant = qdrant_client
         self.embedding = embedding_service
         self.threshold = threshold
-        self.collection = "techfacts"
+        self.collection = "scristill"
 
     async def check_duplicate(
         self,
@@ -218,17 +218,17 @@ from qdrant_client.models import Distance, VectorParams
 async def init_qdrant_collection(client: QdrantClient):
     """Create Qdrant collection if not exists."""
     collections = client.get_collections().collections
-    exists = any(c.name == "techfacts" for c in collections)
+    exists = any(c.name == "scristill" for c in collections)
 
     if not exists:
         client.create_collection(
-            collection_name="techfacts",
+            collection_name="scristill",
             vectors_config=VectorParams(
                 size=1024,  # BGE-large-en dimension
                 distance=Distance.COSINE,
             ),
         )
-        logger.info("Created Qdrant collection 'techfacts'")
+        logger.info("Created Qdrant collection 'scristill'")
 ```
 
 ### 4. Integration with Extraction Pipeline
@@ -288,7 +288,7 @@ deduplication:
   enabled: true
   threshold: 0.90              # Similarity threshold (0.0-1.0)
   same_company_only: true      # MVP: only dedupe within company
-  qdrant_collection: techfacts
+  qdrant_collection: scristill
   embedding_dimension: 1024    # BGE-large-en
 ```
 

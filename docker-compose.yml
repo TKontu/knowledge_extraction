@@ -17,7 +17,7 @@ services:
       - playwright
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
   playwright:
     image: mendableai/firecrawl-playwright:latest
@@ -25,7 +25,7 @@ services:
       - "3000:3000"
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
   # ===================
   # Data Stores
@@ -39,28 +39,28 @@ services:
     command: redis-server --appendonly yes
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
   postgres:
     image: postgres:16-alpine
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${DB_USER:-techfacts}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-techfacts}
-      POSTGRES_DB: ${DB_NAME:-techfacts}
+      POSTGRES_USER: ${DB_USER:-scristill}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-scristill}
+      POSTGRES_DB: ${DB_NAME:-scristill}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Note: init.sql is kept as fallback but migrations are preferred
       # - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-techfacts}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-scristill}"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -73,7 +73,7 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
   # ===================
   # Anti-Bot (Optional)
@@ -88,7 +88,7 @@ services:
       - antibot
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
   # ===================
   # Database Migrations
@@ -99,12 +99,12 @@ services:
       dockerfile: Dockerfile
     command: python -m alembic upgrade head
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-techfacts}:${DB_PASSWORD:-techfacts}@postgres:5432/${DB_NAME:-techfacts}
+      DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - techfacts
+      - scristill
     restart: "no"
 
   # ===================
@@ -125,7 +125,7 @@ services:
   #     - pipeline
   #   restart: unless-stopped
   #   networks:
-  #     - techfacts
+  #     - scristill
 
   # ===================
   # Pipeline Service
@@ -138,7 +138,7 @@ services:
       - "8000:8000"
     environment:
       # Database
-      DATABASE_URL: postgresql://${DB_USER:-techfacts}:${DB_PASSWORD:-techfacts}@postgres:5432/${DB_NAME:-techfacts}
+      DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
       
       # Redis
       REDIS_URL: redis://redis:6379
@@ -198,7 +198,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - techfacts
+      - scristill
 
 volumes:
   redis_data:
@@ -206,5 +206,5 @@ volumes:
   qdrant_data:
 
 networks:
-  techfacts:
+  scristill:
     driver: bridge

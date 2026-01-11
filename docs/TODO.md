@@ -31,7 +31,7 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - **ExtractionDeduplicator complete** (embedding similarity with 0.90 threshold)
 
 **Architectural Direction:**
-The system is being generalized from "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
+The system is being generalized from "Scristill" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
 
 ---
 

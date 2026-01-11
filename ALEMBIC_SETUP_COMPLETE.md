@@ -119,7 +119,7 @@ docker compose exec pipeline python -m alembic stamp head
 
 ```bash
 # Commands now run from repo root
-export DATABASE_URL="postgresql://techfacts:techfacts@localhost:5432/techfacts"
+export DATABASE_URL="postgresql://scristill:scristill@localhost:5432/scristill"
 
 # Test full cycle
 ./migrate.sh test
@@ -143,7 +143,7 @@ sleep 5
 docker compose run --rm migrate
 
 # Verify tables
-docker compose exec postgres psql -U techfacts -d techfacts -c '\dt'
+docker compose exec postgres psql -U scristill -d scristill -c '\dt'
 
 # Start full stack
 docker compose up -d

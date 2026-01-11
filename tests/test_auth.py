@@ -60,7 +60,7 @@ class TestAPIKeyAuthentication:
         """Root endpoint should work with valid API key."""
         response = client.get("/", headers={"X-API-Key": valid_api_key})
         assert response.status_code == 200
-        assert response.json()["service"] == "TechFacts Pipeline API"
+        assert response.json()["service"] == "Scristill Pipeline API"
 
     def test_case_insensitive_header_name(
         self, client: TestClient, valid_api_key: str

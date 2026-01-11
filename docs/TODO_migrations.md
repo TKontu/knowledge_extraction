@@ -89,7 +89,7 @@ from orm_models import Base
 config = context.config
 
 # Set URL from environment
-database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://techfacts:techfacts@localhost:5432/techfacts")
+database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://scristill:scristill@localhost:5432/scristill")
 config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:

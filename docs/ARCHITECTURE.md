@@ -1,4 +1,4 @@
-# TechFacts Scraper - Architecture
+# Scristill - Architecture
 
 ## Overview
 
@@ -198,7 +198,7 @@ SCRAPE_DAILY_LIMIT_PER_DOMAIN=500
 # Services
 REDIS_URL=redis://redis:6379
 QDRANT_URL=http://qdrant:6333
-DATABASE_URL=postgresql://user:pass@postgres:5432/techfacts
+DATABASE_URL=postgresql://user:pass@postgres:5432/scristill
 ```
 
 ## API Endpoints (Pipeline Service)

@@ -48,7 +48,7 @@ def test_db_engine():
     """
     database_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql+psycopg://techfacts:techfacts@localhost:5432/techfacts"
+        "postgresql+psycopg://scristill:scristill@localhost:5432/scristill"
     )
     engine = create_engine(database_url)
     return engine

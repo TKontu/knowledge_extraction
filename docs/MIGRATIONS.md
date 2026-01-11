@@ -242,7 +242,7 @@ sleep 5
 docker compose run --rm migrate
 
 # Verify all tables exist
-docker compose exec postgres psql -U techfacts -d techfacts -c '\dt'
+docker compose exec postgres psql -U scristill -d scristill -c '\dt'
 ```
 
 ### Test Downgrade Path
@@ -252,7 +252,7 @@ docker compose exec postgres psql -U techfacts -d techfacts -c '\dt'
 docker compose exec pipeline python -m alembic downgrade base
 
 # Verify tables are dropped
-docker compose exec postgres psql -U techfacts -d techfacts -c '\dt'
+docker compose exec postgres psql -U scristill -d scristill -c '\dt'
 
 # Re-apply migrations
 docker compose exec pipeline python -m alembic upgrade head
@@ -266,10 +266,10 @@ Alembic reads the database URL from the `DATABASE_URL` environment variable:
 
 ```bash
 # Local development
-export DATABASE_URL="postgresql://techfacts:techfacts@localhost:5432/techfacts"
+export DATABASE_URL="postgresql://scristill:scristill@localhost:5432/scristill"
 
 # Docker (automatic)
-DATABASE_URL=postgresql://techfacts:techfacts@postgres:5432/techfacts
+DATABASE_URL=postgresql://scristill:scristill@postgres:5432/scristill
 ```
 
 ### Alembic Configuration
@@ -318,7 +318,7 @@ If downgrade fails, you may need to manually fix the database:
 
 ```bash
 # Connect to database
-docker compose exec postgres psql -U techfacts -d techfacts
+docker compose exec postgres psql -U scristill -d scristill
 
 # Manual fixes here
 

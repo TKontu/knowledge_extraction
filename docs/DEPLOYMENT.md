@@ -88,9 +88,9 @@ curl -H "X-API-Key: $API_KEY" \
 ### Option 3: Python Client Library (Future)
 
 ```python
-from techfacts import TechFactsClient
+from scristill import ScristillClient
 
-client = TechFactsClient(
+client = ScristillClient(
     base_url="http://192.168.0.136:8000",
     api_key="your-key-here"
 )
@@ -159,7 +159,7 @@ In Portainer, create stack environment variables:
 ```env
 # Required
 API_KEY=generate-secure-random-key
-DB_USER=techfacts
+DB_USER=scristill
 DB_PASSWORD=secure-db-password
 OPENAI_BASE_URL=http://192.168.0.247:9003/v1
 OPENAI_EMBEDDING_BASE_URL=http://192.168.0.136:9003/v1
@@ -178,7 +178,7 @@ ALLOWED_ORIGINS=http://192.168.0.136:8080
 ### 2. Deploy Stack
 
 1. In Portainer: **Stacks** → **Add Stack**
-2. Name: `techfacts-scraper`
+2. Name: `scristill`
 3. Build method: **Git Repository**
    - URL: `https://github.com/TKontu/knowledge_extraction.git`
    - Branch: `main`
@@ -209,25 +209,25 @@ Enter API key when prompted.
 
 ```bash
 # PostgreSQL
-docker exec techfacts-postgres pg_dump -U techfacts techfacts > backup.sql
+docker exec scristill-postgres pg_dump -U scristill scristill > backup.sql
 
 # Qdrant vectors
-docker exec techfacts-qdrant tar czf - /qdrant/storage > qdrant-backup.tar.gz
+docker exec scristill-qdrant tar czf - /qdrant/storage > qdrant-backup.tar.gz
 
 # Redis (if needed)
-docker exec techfacts-redis redis-cli --rdb /data/dump.rdb
-docker cp techfacts-redis:/data/dump.rdb redis-backup.rdb
+docker exec scristill-redis redis-cli --rdb /data/dump.rdb
+docker cp scristill-redis:/data/dump.rdb redis-backup.rdb
 ```
 
 ### Restore Data
 
 ```bash
 # PostgreSQL
-cat backup.sql | docker exec -i techfacts-postgres psql -U techfacts techfacts
+cat backup.sql | docker exec -i scristill-postgres psql -U scristill scristill
 
 # Qdrant
-docker cp qdrant-backup.tar.gz techfacts-qdrant:/tmp/
-docker exec techfacts-qdrant tar xzf /tmp/qdrant-backup.tar.gz -C /
+docker cp qdrant-backup.tar.gz scristill-qdrant:/tmp/
+docker exec scristill-qdrant tar xzf /tmp/qdrant-backup.tar.gz -C /
 
 # Restart services
 docker compose restart
@@ -238,9 +238,9 @@ docker compose restart
 ### Cannot Access Web UI
 
 1. Check container is running: `docker ps | grep webui`
-2. Check port mapping: `docker port techfacts-webui`
+2. Check port mapping: `docker port scristill-webui`
 3. Check firewall: `sudo ufw status` (if applicable)
-4. Check logs: `docker logs techfacts-webui`
+4. Check logs: `docker logs scristill-webui`
 
 ### API Returns 401 Unauthorized
 
