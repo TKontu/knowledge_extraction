@@ -10,6 +10,7 @@ from api.v1.scrape import router as scrape_router
 from api.v1.projects import router as projects_router
 from api.v1.search import router as search_router
 from api.v1.entities import router as entities_router
+from api.v1.reports import router as reports_router
 from config import settings
 from database import check_database_connection
 from middleware.auth import APIKeyMiddleware
@@ -54,6 +55,7 @@ app.include_router(extraction_router)
 app.include_router(projects_router)
 app.include_router(search_router)
 app.include_router(entities_router)
+app.include_router(reports_router)
 
 
 @app.get("/health")

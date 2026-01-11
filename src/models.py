@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -344,3 +345,61 @@ class EntityTypesResponse(BaseModel):
 
     types: list[EntityTypeCount] = Field(..., description="List of type counts")
     total_entities: int = Field(..., description="Total number of entities")
+
+
+# Report API models
+
+
+class ReportType(str, Enum):
+    """Types of reports that can be generated."""
+
+    SINGLE = "single"
+    COMPARISON = "comparison"
+
+
+class ReportRequest(BaseModel):
+    """Request to generate a report."""
+
+    type: ReportType
+    source_groups: list[str] = Field(
+        ..., min_length=1, description="Source groups to include"
+    )
+    entity_types: list[str] | None = Field(
+        default=None, description="Entity types for comparison tables"
+    )
+    categories: list[str] | None = Field(
+        default=None, description="Filter by extraction categories"
+    )
+    title: str | None = Field(default=None, description="Custom report title")
+    max_extractions: int = Field(
+        default=50, ge=1, le=200, description="Max extractions per source_group"
+    )
+
+    @field_validator("source_groups")
+    @classmethod
+    def validate_comparison_needs_multiple(cls, v, info):
+        """Validate comparison reports require at least 2 source_groups."""
+        if info.data.get("type") == ReportType.COMPARISON and len(v) < 2:
+            raise ValueError("Comparison reports require at least 2 source_groups")
+        return v
+
+
+class ReportResponse(BaseModel):
+    """Response with generated report."""
+
+    id: str
+    type: str
+    title: str
+    content: str  # Markdown content
+    source_groups: list[str]
+    extraction_count: int
+    entity_count: int
+    generated_at: str
+
+
+class ReportJobResponse(BaseModel):
+    """Response when report job is created."""
+
+    job_id: str
+    status: str
+    report_id: str | None = None
