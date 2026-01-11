@@ -8,7 +8,7 @@ import os
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from main import app
+    from src.main import app
 
     return TestClient(app)
 
@@ -16,7 +16,7 @@ def client():
 @pytest.fixture
 def valid_api_key():
     """Return valid API key from config."""
-    from config import settings
+    from src.config import settings
 
     return settings.api_key
 
@@ -30,7 +30,7 @@ def invalid_api_key():
 @pytest.fixture
 def db():
     """Create a database session for testing."""
-    from database import SessionLocal
+    from src.database import SessionLocal
 
     session = SessionLocal()
     try:

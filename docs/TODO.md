@@ -292,7 +292,9 @@ See: `docs/TODO_reports.md`
 
 ## Phase 9: Polish & Hardening
 
-- [ ] Configure structured logging with structlog
+### Logging & Monitoring
+- [ ] Configure structured logging with structlog (currently imported but not initialized)
+- [ ] Add logging to health check failures (currently silent try-except blocks)
 - [ ] Add metrics endpoint (Prometheus format)
 - [x] Job status tracking (queued, running, completed, failed) - PR #7
 - [ ] Retry failed jobs (manual trigger)
@@ -300,6 +302,43 @@ See: `docs/TODO_reports.md`
 - [x] Config validation on startup (pydantic-settings)
 - [ ] Graceful shutdown handling
 - [ ] Add request ID tracing
+
+### Security Hardening
+- [ ] Remove insecure default API key or make it required via env var (src/config.py:16-19)
+- [ ] Add application-level rate limiting (currently only domain-based scraping limits)
+- [ ] Add HTTPS enforcement option in configuration
+- [ ] Document security best practices in README
+- [ ] Add API key rotation mechanism
+- [ ] Consider JWT authentication for multi-user scenarios
+
+### Code Quality
+- [x] Fix coverage configuration (changed "app" to "src") - 2026-01-11
+- [x] Remove duplicate dependencies in requirements.txt - 2026-01-11
+- [x] Modernize Pydantic patterns (ConfigDict vs Config class) - 2026-01-11
+- [ ] Add complete type hints to all functions (some missing in tests)
+- [ ] Improve exception handling specificity (avoid bare except blocks)
+- [ ] Add context to exception chains (use `raise ... from e`)
+- [ ] Consistent import patterns across modules
+
+### Testing Improvements
+- [x] Fix pytest asyncio fixture scope - 2026-01-11
+- [ ] Fix test database isolation (test_db_engine is session-scoped, causes crosstalk)
+- [ ] Add transaction rollback to test fixtures
+- [ ] Increase test coverage to 90%+ (current coverage unknown due to previous config issue)
+- [ ] Add integration tests for full extraction pipeline
+
+### Configuration & Deployment
+- [x] Fix webui service in docker-compose.yml (commented out until implemented) - 2026-01-11
+- [x] Update .env.example with security warnings and better defaults - 2026-01-11
+- [ ] Add resource limits to docker-compose services (memory, CPU)
+- [ ] Add health check logging for debugging
+- [ ] Create deployment documentation
+- [ ] Add backup/restore procedures for PostgreSQL
+
+### Project Configuration
+- [ ] Align project naming: pyproject.toml uses "app" but code is in "src/"
+- [ ] Update Ruff known-first-party to ["src"] instead of ["app"]
+- [ ] Decide on package name and apply consistently
 
 ---
 
