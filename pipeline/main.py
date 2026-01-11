@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.v1.extraction import router as extraction_router
 from api.v1.scrape import router as scrape_router
 from api.v1.projects import router as projects_router
 from config import settings
@@ -47,6 +48,7 @@ app.add_middleware(APIKeyMiddleware)
 
 # Include API routers
 app.include_router(scrape_router)
+app.include_router(extraction_router)
 app.include_router(projects_router)
 
 

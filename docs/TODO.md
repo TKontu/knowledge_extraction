@@ -15,13 +15,16 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - PR #8: LLM integration with document chunking and client
 
 **Current State:**
-- 340 tests passing (77 new tests in generalization phase)
+- 377 tests passing (114 new tests in generalization + API phase)
 - Complete scraping pipeline operational (Firecrawl + rate limiting + worker)
 - Document chunking with semantic header splitting implemented
 - LLM client with retry logic and JSON mode extraction ready
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
-- **Repository layer complete** (Project, Source, Extraction, Entity repositories)
+- **Repository layer complete** (Project, Source, Extraction, Entity, Qdrant repositories)
+- **Vector search complete** (EmbeddingService, SearchService with hybrid search)
+- **Project CRUD API complete** (POST /projects, GET /projects, etc.)
+- **Extraction API endpoints complete** (POST /extract, GET /extractions with filtering)
 
 **Architectural Direction:**
 The system is being generalized from "TechFacts Scraper" to a **general-purpose extraction pipeline** supporting any domain via project-based configuration.
@@ -118,7 +121,7 @@ See: `docs/TODO_scraper.md`
 
 ---
 
-## Phase 3: Extraction Module (In Progress - ~50% Complete)
+## Phase 3: Extraction Module (In Progress - ~65% Complete)
 
 See: `docs/TODO_extraction.md`
 
@@ -130,11 +133,14 @@ See: `docs/TODO_extraction.md`
 - [x] **Profile repository** (PR #9 - 10 tests)
 - [x] **Extraction orchestrator** (PR #9 - 9 tests)
 - [x] **Fact validator** (PR #9 - 11 tests)
+- [x] **Extraction API endpoints** (`api/v1/extraction.py` - 25 tests)
+  - POST /api/v1/projects/{project_id}/extract (async job creation)
+  - GET /api/v1/projects/{project_id}/extractions (list with filtering)
 
 ### Pending
 - [ ] Chunk result merging with deduplication
 - [ ] Integration tests for extraction
-- [ ] API endpoints (POST /extract, GET /profiles)
+- [ ] Legacy API endpoints (POST /api/v1/extract, GET /api/v1/profiles)
 
 ### Refactoring Required (Generalization)
 - [ ] Update extraction to use project schema (JSONB fields)
@@ -157,12 +163,13 @@ See: `docs/TODO_project_system.md`
 - [x] **SchemaValidator** (dynamic Pydantic from JSONB, 21 tests)
 - [x] **Project ORM model** with relationships
 - [x] **COMPANY_ANALYSIS_TEMPLATE** - default project template
+- [x] **Project CRUD API endpoints** (POST, GET, PUT, DELETE /api/v1/projects)
+- [x] **Clone project from template** (POST /api/v1/projects/from-template)
+- [x] **List templates** (GET /api/v1/projects/templates)
 
 **Pending:**
-- [ ] Project CRUD API endpoints
 - [ ] Additional project templates (research_survey, contract_review)
-- [ ] Project-scoped search and queries
-- [ ] Clone project from template
+- [ ] Project-scoped search API endpoint
 - [ ] Seed script for default project
 
 **Milestone**: Can create and manage extraction projects with custom schemas
@@ -211,11 +218,12 @@ See: `docs/TODO_storage.md`
 - [x] **JSONB field filtering** (query_jsonb, filter_by_data with PostgreSQL/SQLite support)
 - [x] Filter support (source_group, entity_type, confidence ranges, etc.)
 - [x] **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch, search, delete
+- [x] **EmbeddingService** (2 methods, 7 tests) - Single + batch embedding via BGE-large-en
+- [x] **SearchService** (hybrid search, 14 tests) - Vector + JSONB filtering with over-fetching
 
 **Pending:**
-- [ ] Embedding service (BGE-large-en via vLLM)
-- [ ] Semantic search endpoint (hybrid vector + JSONB)
-- [ ] Pagination
+- [ ] Semantic search API endpoint (hybrid vector + JSONB)
+- [ ] Pagination support in API
 
 ### Deduplication
 See: `docs/TODO_deduplication.md`
@@ -256,8 +264,18 @@ See: `docs/TODO_reports.md`
 - [x] CORS configuration for Web UI (PR #1)
 - [x] Health check endpoint with DB + Redis + Qdrant + Firecrawl status
 - [x] Scrape endpoints: POST /api/v1/scrape, GET /api/v1/scrape/{job_id}
-- [ ] **Project endpoints** (`POST /projects`, `GET /projects/{id}`)
-- [ ] Extract endpoints (`POST /extract`, `GET /profiles`)
+- [x] **Extraction endpoints** (`api/v1/extraction.py`)
+  - POST /api/v1/projects/{project_id}/extract
+  - GET /api/v1/projects/{project_id}/extractions
+- [x] **Project endpoints** (`api/v1/projects.py`)
+  - POST /api/v1/projects
+  - GET /api/v1/projects
+  - GET /api/v1/projects/{id}
+  - PUT /api/v1/projects/{id}
+  - DELETE /api/v1/projects/{id}
+  - POST /api/v1/projects/from-template
+  - GET /api/v1/projects/templates
+- [ ] Legacy extract endpoints (`POST /api/v1/extract`, `GET /api/v1/profiles`)
 - [ ] Search endpoint (`POST /search`)
 - [ ] Entity query endpoints (`GET /entities`, `GET /entities/{type}`)
 - [ ] Report endpoints (`POST /reports`, `GET /reports/{id}`)
@@ -334,7 +352,7 @@ See: `docs/TODO_reports.md`
 
 ## Test Coverage
 
-**Current: 352 tests passing** (89 new in generalization phase)
+**Current: 377 tests passing** (114 new in generalization + API phase)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
@@ -357,6 +375,9 @@ See: `docs/TODO_reports.md`
 - 26 ExtractionRepository tests (generalization)
 - 28 EntityRepository tests (generalization)
 - 12 QdrantRepository tests (NEW)
+- 7 EmbeddingService tests (NEW)
+- 14 SearchService tests (NEW)
+- 25 Extraction endpoint tests (NEW)
 
 ---
 

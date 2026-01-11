@@ -155,6 +155,64 @@ class ExtractionProfile:
     is_builtin: bool = False
 
 
+# Extraction API models
+
+
+class ExtractRequest(BaseModel):
+    """Request body for extraction endpoint."""
+
+    source_ids: list[str] | None = Field(
+        default=None,
+        description="Optional list of source UUIDs to extract from. If omitted, extracts from all pending sources.",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="Optional extraction profile/depth",
+    )
+
+
+class ExtractResponse(BaseModel):
+    """Response body for extraction endpoint."""
+
+    job_id: str = Field(
+        ...,
+        description="Unique job identifier",
+    )
+    status: str = Field(
+        default="queued",
+        description="Job status",
+    )
+    source_count: int = Field(
+        ...,
+        description="Number of sources to extract from",
+    )
+    project_id: str = Field(
+        ...,
+        description="Project identifier",
+    )
+
+
+class ExtractionListResponse(BaseModel):
+    """Response body for listing extractions."""
+
+    extractions: list[dict] = Field(
+        ...,
+        description="List of extraction objects",
+    )
+    total: int = Field(
+        ...,
+        description="Total count of extractions matching filters",
+    )
+    limit: int = Field(
+        ...,
+        description="Page size",
+    )
+    offset: int = Field(
+        ...,
+        description="Pagination offset",
+    )
+
+
 # Project-related Pydantic models for API
 
 
