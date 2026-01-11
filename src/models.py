@@ -306,3 +306,41 @@ class SearchResponse(BaseModel):
     results: list[SearchResultItem]
     query: str
     total: int
+
+
+# Entity API models
+
+
+class EntityResponse(BaseModel):
+    """Single entity in response."""
+
+    id: str = Field(..., description="Entity UUID")
+    entity_type: str = Field(..., description="Entity type")
+    value: str = Field(..., description="Original entity value")
+    normalized_value: str = Field(..., description="Normalized value for matching")
+    source_group: str = Field(..., description="Source group identifier")
+    attributes: dict[str, Any] = Field(..., description="Entity attributes")
+    created_at: str = Field(..., description="Creation timestamp")
+
+
+class EntityListResponse(BaseModel):
+    """Response for entity list endpoint."""
+
+    entities: list[EntityResponse] = Field(..., description="List of entities")
+    total: int = Field(..., description="Total count of entities")
+    limit: int = Field(..., description="Page size")
+    offset: int = Field(..., description="Pagination offset")
+
+
+class EntityTypeCount(BaseModel):
+    """Count of entities per type."""
+
+    entity_type: str = Field(..., description="Entity type name")
+    count: int = Field(..., description="Number of entities of this type")
+
+
+class EntityTypesResponse(BaseModel):
+    """Response for entity types summary."""
+
+    types: list[EntityTypeCount] = Field(..., description="List of type counts")
+    total_entities: int = Field(..., description="Total number of entities")
