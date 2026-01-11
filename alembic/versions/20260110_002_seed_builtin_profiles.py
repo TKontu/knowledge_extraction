@@ -8,6 +8,7 @@ Create Date: 2026-01-10 22:15:00.000000
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -57,7 +58,7 @@ def upgrade() -> None:
     # Create profiles table reference for bulk insert
     profiles_table = sa.table(
         "profiles",
-        sa.column("id", sa.String),
+        sa.column("id", UUID(as_uuid=True)),
         sa.column("name", sa.String),
         sa.column("categories", sa.ARRAY(sa.String)),
         sa.column("prompt_focus", sa.String),
@@ -71,7 +72,7 @@ def upgrade() -> None:
     now = datetime.now(timezone.utc)
     insert_data = [
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "name": p["name"],
             "categories": p["categories"],
             "prompt_focus": p["prompt_focus"],

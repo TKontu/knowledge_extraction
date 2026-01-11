@@ -110,20 +110,22 @@ services:
   # ===================
   # Web UI (Remote Control)
   # ===================
-  webui:
-    build:
-      context: ./webui
-      dockerfile: Dockerfile
-    ports:
-      - "8080:80"
-    environment:
-      - PIPELINE_API_URL=http://pipeline:8000
-      - API_KEY=${API_KEY}
-    depends_on:
-      - pipeline
-    restart: unless-stopped
-    networks:
-      - techfacts
+  # NOTE: WebUI not yet implemented - see docs/TODO.md Phase 10
+  # Uncomment when ./webui directory is created
+  # webui:
+  #   build:
+  #     context: ./webui
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8080:80"
+  #   environment:
+  #     - PIPELINE_API_URL=http://pipeline:8000
+  #     - API_KEY=${API_KEY}
+  #   depends_on:
+  #     - pipeline
+  #   restart: unless-stopped
+  #   networks:
+  #     - techfacts
 
   # ===================
   # Pipeline Service

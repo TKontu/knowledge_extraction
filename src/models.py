@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ScrapeRequest(BaseModel):
@@ -258,8 +258,7 @@ class ProjectResponse(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectFromTemplate(BaseModel):

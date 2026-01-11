@@ -1,7 +1,6 @@
 """Tests for profile repository."""
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from uuid import uuid4
 
@@ -9,39 +8,19 @@ from models import ExtractionProfile
 
 
 @pytest.fixture
-def test_db_engine():
-    """Create in-memory SQLite database for testing."""
-    engine = create_engine("sqlite:///:memory:")
-    return engine
-
-
-@pytest.fixture
 def test_db_session(test_db_engine):
-    """Create test database session with sample profiles."""
-    from orm_models import Base, Profile
+    """Create test database session with transaction rollback."""
+    from orm_models import Profile
 
-    # Create all tables
-    Base.metadata.create_all(test_db_engine)
+    # Start a connection and transaction
+    connection = test_db_engine.connect()
+    transaction = connection.begin()
 
-    # Create session
-    TestSession = sessionmaker(bind=test_db_engine)
+    # Create session bound to the connection
+    TestSession = sessionmaker(bind=connection)
     session = TestSession()
 
-    # Insert test profiles
-    technical_profile = Profile(
-        name="technical_specs",
-        categories=["specs", "hardware", "requirements", "compatibility", "performance"],
-        prompt_focus="Hardware specifications, system requirements, supported platforms",
-        depth="detailed",
-        is_builtin=True,
-    )
-    api_profile = Profile(
-        name="api_docs",
-        categories=["endpoints", "authentication", "rate_limits", "sdks", "versioning"],
-        prompt_focus="API endpoints, authentication methods, rate limits",
-        depth="detailed",
-        is_builtin=True,
-    )
+    # Insert custom test profile (builtin profiles already exist from migrations)
     custom_profile = Profile(
         name="custom_test",
         categories=["test_category"],
@@ -50,14 +29,15 @@ def test_db_session(test_db_engine):
         custom_instructions="Custom instructions here",
         is_builtin=False,
     )
-
-    session.add_all([technical_profile, api_profile, custom_profile])
+    session.add(custom_profile)
     session.commit()
 
     yield session
 
+    # Rollback transaction and close connection
     session.close()
-    Base.metadata.drop_all(test_db_engine)
+    transaction.rollback()
+    connection.close()
 
 
 class TestProfileRepository:
@@ -74,7 +54,7 @@ class TestProfileRepository:
         assert isinstance(profile, ExtractionProfile)
         assert profile.name == "technical_specs"
         assert profile.categories == ["specs", "hardware", "requirements", "compatibility", "performance"]
-        assert profile.prompt_focus == "Hardware specifications, system requirements, supported platforms"
+        assert profile.prompt_focus == "Hardware specifications, system requirements, supported platforms, performance metrics, compatibility information"
         assert profile.depth == "detailed"
         assert profile.is_builtin is True
         assert profile.custom_instructions is None
@@ -107,11 +87,16 @@ class TestProfileRepository:
         repo = ProfileRepository(test_db_session)
         profiles = repo.list_all()
 
-        assert len(profiles) == 3
+        assert len(profiles) == 6  # 5 builtin + 1 custom
         assert all(isinstance(p, ExtractionProfile) for p in profiles)
         profile_names = [p.name for p in profiles]
+        # Check for some builtin profiles
         assert "technical_specs" in profile_names
         assert "api_docs" in profile_names
+        assert "security" in profile_names
+        assert "pricing" in profile_names
+        assert "general" in profile_names
+        # Check for custom profile
         assert "custom_test" in profile_names
 
     def test_list_builtin_profiles_only(self, test_db_session: Session):
@@ -121,12 +106,17 @@ class TestProfileRepository:
         repo = ProfileRepository(test_db_session)
         profiles = repo.list_builtin()
 
-        assert len(profiles) == 2
+        assert len(profiles) == 5  # All seeded builtin profiles
         assert all(isinstance(p, ExtractionProfile) for p in profiles)
         assert all(p.is_builtin for p in profiles)
         profile_names = [p.name for p in profiles]
+        # Check for all builtin profiles
         assert "technical_specs" in profile_names
         assert "api_docs" in profile_names
+        assert "security" in profile_names
+        assert "pricing" in profile_names
+        assert "general" in profile_names
+        # Ensure custom profile is not included
         assert "custom_test" not in profile_names
 
     def test_profile_exists_returns_true_when_exists(self, test_db_session: Session):
@@ -148,14 +138,17 @@ class TestProfileRepository:
         assert exists is False
 
     def test_list_all_returns_empty_list_when_no_profiles(self, test_db_engine):
-        """Test listing profiles when database is empty."""
+        """Test listing profiles when database has no profiles."""
         from orm_models import Base, Profile
         from services.extraction.profiles import ProfileRepository
 
-        # Create clean session without adding profiles
-        Base.metadata.create_all(test_db_engine)
+        # Create session
         TestSession = sessionmaker(bind=test_db_engine)
         session = TestSession()
+
+        # Delete all profiles (including seeded ones)
+        session.query(Profile).delete()
+        session.commit()
 
         repo = ProfileRepository(session)
         profiles = repo.list_all()
@@ -163,7 +156,6 @@ class TestProfileRepository:
         assert profiles == []
 
         session.close()
-        Base.metadata.drop_all(test_db_engine)
 
     def test_get_profile_case_sensitive(self, test_db_session: Session):
         """Test that profile names are case-sensitive."""

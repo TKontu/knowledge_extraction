@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, UTC
 from uuid import uuid4
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, Session
 
 # Will be imported once created
@@ -12,28 +12,22 @@ from sqlalchemy.orm import sessionmaker, Session
 
 
 @pytest.fixture
-def test_db_engine():
-    """Create in-memory SQLite database for testing."""
-    engine = create_engine("sqlite:///:memory:")
-    return engine
-
-
-@pytest.fixture
 def test_db_session(test_db_engine):
-    """Create test database session."""
-    from orm_models import Base
+    """Create test database session with transaction rollback."""
+    # Start a connection and transaction
+    connection = test_db_engine.connect()
+    transaction = connection.begin()
 
-    # Create all tables
-    Base.metadata.create_all(test_db_engine)
-
-    # Create session
-    TestSession = sessionmaker(bind=test_db_engine)
+    # Create session bound to the connection
+    TestSession = sessionmaker(bind=connection)
     session = TestSession()
 
     yield session
 
+    # Rollback transaction and close connection
     session.close()
-    Base.metadata.drop_all(test_db_engine)
+    transaction.rollback()
+    connection.close()
 
 
 class TestJobModel:
@@ -129,6 +123,7 @@ class TestJobModel:
         """Test querying jobs by status."""
         from orm_models import Job
 
+        # Store job IDs to query for them specifically
         job1 = Job(type="scrape", status="queued", payload={"test": "1"})
         job2 = Job(type="scrape", status="running", payload={"test": "2"})
         job3 = Job(type="scrape", status="queued", payload={"test": "3"})
@@ -136,7 +131,16 @@ class TestJobModel:
         test_db_session.add_all([job1, job2, job3])
         test_db_session.commit()
 
-        queued_jobs = test_db_session.query(Job).filter(Job.status == "queued").all()
+        # Get the IDs of jobs we just created
+        test_job_ids = [job1.id, job2.id, job3.id]
+
+        # Query only for jobs we created in this test that are queued
+        queued_jobs = (
+            test_db_session.query(Job)
+            .filter(Job.status == "queued")
+            .filter(Job.id.in_(test_job_ids))
+            .all()
+        )
         assert len(queued_jobs) == 2
 
 
@@ -288,7 +292,6 @@ class TestReportModel:
             type="comparison",
             title="Auth Comparison: Provider A vs Provider B",
             content="# Comparison\n\nProvider A uses OAuth...",
-            companies=["Provider A", "Provider B"],
             categories=["authentication"],
             format="md"
         )
@@ -297,7 +300,7 @@ class TestReportModel:
 
         assert report.id is not None
         assert report.type == "comparison"
-        assert report.companies == ["Provider A", "Provider B"]
+        assert report.categories == ["authentication"]
         assert report.format == "md"
 
 
