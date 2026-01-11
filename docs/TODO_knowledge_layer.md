@@ -6,12 +6,12 @@ Extends extraction with a lightweight knowledge graph layer - entities and relat
 
 **Architecture:** Uses the generalized project-based system. Entity types are defined per-project, not hardcoded.
 
-## Status
+## Status: COMPLETE
 
-**Complete** - EntityExtractor fully implemented + Entity API endpoints
+**EntityExtractor fully implemented, integrated into pipeline, and API endpoints complete**
 
 **Completed:**
-- [x] EntityExtractor class skeleton (`services/knowledge/extractor.py`)
+- [x] EntityExtractor class (`services/knowledge/extractor.py`)
 - [x] Entity extraction prompt builder (`_build_prompt()` method)
 - [x] Entity normalization (`_normalize()` method - plan, feature, limit, pricing types)
 - [x] LLM entity extraction call (`_call_llm()` method with JSON mode)
@@ -24,9 +24,7 @@ Extends extraction with a lightweight knowledge graph layer - entities and relat
   - GET /api/v1/projects/{project_id}/entities/types (type counts)
   - GET /api/v1/projects/{project_id}/entities/{entity_id} (single entity)
   - GET /api/v1/projects/{project_id}/entities/by-value (find source_groups)
-
-**Pending:**
-- [ ] Integrate EntityExtractor into extraction pipeline
+- [x] **Integrated into ExtractionPipelineService** (`services/extraction/pipeline.py`)
 
 **Related Documentation:**
 - See `docs/TODO_extraction.md` for extraction module
@@ -239,7 +237,7 @@ Only extract entities explicitly mentioned. Do not infer.
 
 ## Implementation Tasks
 
-### Phase 1: Entity Extraction (MVP)
+### Phase 1: Entity Extraction (MVP) - COMPLETE
 
 - [x] Add `entities` and `extraction_entities` tables (completed in PR #11)
 - [x] Create ORM models for Entity, ExtractionEntity (completed in PR #11)
@@ -247,7 +245,7 @@ Only extract entities explicitly mentioned. Do not infer.
 - [x] Create entity extraction prompt (completed - `_build_prompt()` method)
 - [x] Implement value normalization per type (`_normalize()` method)
 - [x] **Entity API endpoints** (list, get, types, by-value queries)
-- [ ] Integrate into extraction pipeline (run after fact extraction)
+- [x] **Integrated into ExtractionPipelineService** (runs after fact extraction)
 
 ### Phase 2: Relations (Post-MVP)
 

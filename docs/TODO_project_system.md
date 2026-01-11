@@ -4,19 +4,25 @@
 
 Implements the project abstraction layer that enables the pipeline to support multiple extraction domains with custom schemas.
 
-**Status:** Repository layer complete (40 tests passing)
+**Status: COMPLETE**
 
 **Completed:**
 - [x] **ProjectRepository** - Full implementation (9 methods, 19 tests)
 - [x] **SchemaValidator** - Dynamic Pydantic model generation (21 tests)
 - [x] **Project ORM model** - With relationships to sources, extractions, entities
 - [x] **COMPANY_ANALYSIS_TEMPLATE** - Default project template
+- [x] **Project CRUD API endpoints** (`api/v1/projects.py`)
+  - POST /api/v1/projects (create)
+  - GET /api/v1/projects (list)
+  - GET /api/v1/projects/{id} (get)
+  - PUT /api/v1/projects/{id} (update)
+  - DELETE /api/v1/projects/{id} (soft delete)
+  - POST /api/v1/projects/from-template (clone from template)
+  - GET /api/v1/projects/templates (list templates)
 
-**Pending:**
-- [ ] Project CRUD API endpoints
-- [ ] Additional templates (research_survey, contract_review)
+**Pending (Agent Task Assigned):**
+- [ ] Additional templates (research_survey, contract_review) - `agent-templates`
 - [ ] Seed script for default project
-- [ ] Clone project from template functionality
 
 **Related Documentation:**
 - See `docs/TODO_generalization.md` for overall architecture
@@ -580,29 +586,30 @@ async def delete_project(
 
 ## Implementation Tasks
 
-### Phase 1: Core Infrastructure
-- [ ] Add Project ORM model to `orm_models.py`
-- [ ] Create `projects` table in init.sql or migration
-- [ ] Create Pydantic models for project DTOs
-- [ ] Create ProjectRepository with CRUD operations
+### Phase 1: Core Infrastructure - COMPLETE
+- [x] Add Project ORM model to `orm_models.py`
+- [x] Create `projects` table in init.sql
+- [x] Create Pydantic models for project DTOs
+- [x] Create ProjectRepository with CRUD operations
 
-### Phase 2: Templates & Validation
-- [ ] Create project templates (company_analysis, research_survey, contract_review)
-- [ ] Implement SchemaValidator for dynamic validation
-- [ ] Add template cloning functionality
+### Phase 2: Templates & Validation - COMPLETE
+- [x] Create COMPANY_ANALYSIS_TEMPLATE
+- [x] Implement SchemaValidator for dynamic validation
+- [x] Add template cloning functionality
+- [ ] Additional templates (agent task: `agent-templates`)
 - [ ] Create seed script for default project
 
-### Phase 3: API Layer
-- [ ] Create projects router with CRUD endpoints
-- [ ] Add project endpoints to main app
-- [ ] Add project ID to job payloads
-- [ ] Create project-scoped endpoints pattern
+### Phase 3: API Layer - COMPLETE
+- [x] Create projects router with CRUD endpoints
+- [x] Add project endpoints to main app
+- [x] Add project ID to job payloads
+- [x] Create project-scoped endpoints pattern
 
-### Phase 4: Integration
-- [ ] Update scraper to use project context
-- [ ] Update extraction to use project schema
-- [ ] Update entity extraction to use project entity_types
-- [ ] Add default project fallback for legacy endpoints
+### Phase 4: Integration - COMPLETE
+- [x] Update scraper to use project context
+- [x] Update extraction to use project schema
+- [x] Update entity extraction to use project entity_types
+- [ ] Add default project fallback for legacy endpoints (low priority)
 
 ---
 
@@ -627,10 +634,10 @@ src/
 
 ## Testing Checklist
 
-- [ ] Unit: Create project with valid schema
-- [ ] Unit: Schema validation rejects invalid data
-- [ ] Unit: Clone project from template
-- [ ] Unit: Template customization works
-- [ ] Integration: CRUD operations work
+- [x] Unit: Create project with valid schema
+- [x] Unit: Schema validation rejects invalid data (21 tests)
+- [x] Unit: Clone project from template
+- [x] Unit: Template customization works
+- [x] Integration: CRUD operations work (19 tests)
+- [x] Integration: Project-scoped queries work
 - [ ] Integration: Default project created on first access
-- [ ] Integration: Project-scoped queries work

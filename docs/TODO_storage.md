@@ -6,13 +6,15 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 
 **Architecture:** Uses the generalized project-based schema. See `docs/TODO_generalization.md`.
 
-## Status
+## Status: COMPLETE
+
+**All repositories, services, and API endpoints implemented**
 
 **Completed:**
 - Database connection module (`src/database.py` with SQLAlchemy)
 - Redis connection module (`src/redis_client.py`)
 - Health checks for DB, Redis, and Qdrant
-- **SQLAlchemy ORM models** (PR #4 - legacy tables)
+- **SQLAlchemy ORM models** - All tables (Project, Source, Extraction, Entity, etc.)
 - **Qdrant client initialization** (PR #6)
 - **Job persistence integrated** (PR #6)
 - **Page storage** (PR #7 - via scraper worker)
@@ -25,11 +27,9 @@ Handles PostgreSQL storage for metadata and Qdrant for vector embeddings. Provid
 - **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch upsert, search, delete
 - **EmbeddingService** (2 methods, 7 tests) - Single embed, batch embed with retry logic
 - **SearchService** (1 method, 14 tests) - Hybrid semantic + JSONB search with over-fetching strategy
+- **Pagination support** - All list endpoints have limit/offset parameters
 
-**Pending:**
-- Pagination support
-
-**Search API:**
+**Search API - COMPLETE:**
 - [x] **Search API endpoint** (`POST /api/v1/projects/{project_id}/search` - 14 tests)
 - [x] Request/response models (`SearchRequest`, `SearchResponse`, `SearchResultItem`)
 - [x] Hybrid vector + JSONB filtering
@@ -584,29 +584,30 @@ src/
 
 ## Implementation Tasks
 
-### Phase 1: Schema Setup
-- [ ] Update init.sql with generalized schema
-- [ ] Create ORM models (Project, Source, Extraction, Entity)
-- [ ] Test table creation
+### Phase 1: Schema Setup - COMPLETE
+- [x] Update init.sql with generalized schema
+- [x] Create ORM models (Project, Source, Extraction, Entity)
+- [x] Test table creation
 
-### Phase 2: Repositories
-- [ ] Create SourceRepository
-- [ ] Create ExtractionRepository with JSONB query support
-- [ ] Create EntityRepository
-- [ ] Update JobRepository with project_id
+### Phase 2: Repositories - COMPLETE
+- [x] Create SourceRepository (23 tests)
+- [x] Create ExtractionRepository with JSONB query support (26 tests)
+- [x] Create EntityRepository (28 tests)
+- [x] Create ProjectRepository (19 tests)
+- [x] Update JobRepository with project_id
 
-### Phase 3: Qdrant Integration
-- [x] Create QdrantRepository
+### Phase 3: Qdrant Integration - COMPLETE
+- [x] Create QdrantRepository (12 tests)
 - [x] Implement collection initialization
 - [x] Implement upsert/search/delete
 
-### Phase 4: Embedding Service
-- [x] Create EmbeddingService
+### Phase 4: Embedding Service - COMPLETE
+- [x] Create EmbeddingService (7 tests)
 - [x] Test with BGE-large-en endpoint
 - [x] Implement batching
 
-### Phase 5: Search Service
-- [x] Create SearchService
+### Phase 5: Search Service - COMPLETE
+- [x] Create SearchService (14 tests)
 - [x] Implement hybrid search (vector + JSONB)
 - [x] **Create search API endpoint** (`api/v1/search.py` - 14 tests)
 
