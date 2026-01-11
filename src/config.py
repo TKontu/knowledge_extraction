@@ -126,6 +126,24 @@ class Settings(BaseSettings):
         description="Enable Prometheus metrics",
     )
 
+    # Rate limiting
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Enable rate limiting",
+    )
+    rate_limit_requests: int = Field(
+        default=100,
+        description="Requests per window",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        description="Window size in seconds",
+    )
+    rate_limit_burst: int = Field(
+        default=20,
+        description="Burst allowance above limit",
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
