@@ -39,6 +39,8 @@
       "Bash(git log:*)",
       "Bash(git branch:*)",
       "Bash(git show:*)",
+      "Bash(git fetch origin)",
+      "Bash(git checkout main && git pull origin main)",
       "Bash(alembic history:*)",
       "Bash(alembic current:*)",
       "Bash(alembic heads:*)",

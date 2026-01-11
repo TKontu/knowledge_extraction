@@ -54,3 +54,7 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude - CLAUDE.md is instance-specific (orchestrator vs executor)
+# Templates in .claude/templates/ ARE tracked
+CLAUDE.md
