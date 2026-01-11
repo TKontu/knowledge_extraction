@@ -1,23 +1,24 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.v1.extraction import router as extraction_router
-from api.v1.scrape import router as scrape_router
-from api.v1.projects import router as projects_router
-from api.v1.search import router as search_router
 from api.v1.entities import router as entities_router
-from api.v1.reports import router as reports_router
+from api.v1.extraction import router as extraction_router
 from api.v1.jobs import router as jobs_router
 from api.v1.metrics import router as metrics_router
+from api.v1.projects import router as projects_router
+from api.v1.reports import router as reports_router
+from api.v1.scrape import router as scrape_router
+from api.v1.search import router as search_router
 from config import settings
 from database import check_database_connection
 from logging_config import configure_logging
 from middleware.auth import APIKeyMiddleware
+from middleware.rate_limit import RateLimitMiddleware
 from middleware.request_id import RequestIDMiddleware
 from middleware.request_logging import RequestLoggingMiddleware
 from qdrant_connection import check_qdrant_connection
@@ -61,6 +62,9 @@ app.add_middleware(
 
 # Add authentication middleware
 app.add_middleware(APIKeyMiddleware)
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware)
 
 # Add logging middleware (order matters - request logging before request ID)
 app.add_middleware(RequestLoggingMiddleware)
