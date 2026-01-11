@@ -1,7 +1,8 @@
 """Data models for API requests and responses."""
 
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -223,10 +224,12 @@ class ProjectCreate(BaseModel):
     description: str | None = Field(None, description="Project description")
     source_config: dict = Field(
         default={"type": "web", "group_by": "company"},
-        description="Source configuration"
+        description="Source configuration",
     )
     extraction_schema: dict = Field(..., description="JSONB extraction schema")
-    entity_types: list = Field(default=[], description="List of entity type definitions")
+    entity_types: list = Field(
+        default=[], description="List of entity type definitions"
+    )
     prompt_templates: dict = Field(default={}, description="Custom prompt templates")
     is_template: bool = Field(default=False, description="Whether this is a template")
 
@@ -237,7 +240,9 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, description="Updated project name")
     description: str | None = Field(None, description="Updated description")
     source_config: dict | None = Field(None, description="Updated source configuration")
-    extraction_schema: dict | None = Field(None, description="Updated extraction schema")
+    extraction_schema: dict | None = Field(
+        None, description="Updated extraction schema"
+    )
     entity_types: list | None = Field(None, description="Updated entity types")
     prompt_templates: dict | None = Field(None, description="Updated prompt templates")
     is_active: bool | None = Field(None, description="Updated active status")
@@ -268,3 +273,41 @@ class ProjectFromTemplate(BaseModel):
     name: str = Field(..., min_length=1, description="New project name")
     description: str | None = Field(None, description="Project description")
     customizations: dict = Field(default={}, description="Override specific fields")
+
+
+# Entity API models
+
+
+class EntityResponse(BaseModel):
+    """Single entity in response."""
+
+    id: str = Field(..., description="Entity UUID")
+    entity_type: str = Field(..., description="Entity type")
+    value: str = Field(..., description="Original entity value")
+    normalized_value: str = Field(..., description="Normalized value for matching")
+    source_group: str = Field(..., description="Source group identifier")
+    attributes: dict[str, Any] = Field(..., description="Entity attributes")
+    created_at: str = Field(..., description="Creation timestamp")
+
+
+class EntityListResponse(BaseModel):
+    """Response for entity list endpoint."""
+
+    entities: list[EntityResponse] = Field(..., description="List of entities")
+    total: int = Field(..., description="Total count of entities")
+    limit: int = Field(..., description="Page size")
+    offset: int = Field(..., description="Pagination offset")
+
+
+class EntityTypeCount(BaseModel):
+    """Count of entities per type."""
+
+    entity_type: str = Field(..., description="Entity type name")
+    count: int = Field(..., description="Number of entities of this type")
+
+
+class EntityTypesResponse(BaseModel):
+    """Response for entity types summary."""
+
+    types: list[EntityTypeCount] = Field(..., description="List of type counts")
+    total_entities: int = Field(..., description="Total number of entities")
