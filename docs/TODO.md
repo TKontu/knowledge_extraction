@@ -15,13 +15,15 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - PR #8: LLM integration with document chunking and client
 
 **Current State:**
-- 365 tests passing (102 new tests in generalization + API phase)
+- 377 tests passing (114 new tests in generalization + API phase)
 - Complete scraping pipeline operational (Firecrawl + rate limiting + worker)
 - Document chunking with semantic header splitting implemented
 - LLM client with retry logic and JSON mode extraction ready
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
-- **Repository layer complete** (Project, Source, Extraction, Entity repositories)
+- **Repository layer complete** (Project, Source, Extraction, Entity, Qdrant repositories)
+- **Vector search complete** (EmbeddingService, SearchService with hybrid search)
+- **Project CRUD API complete** (POST /projects, GET /projects, etc.)
 - **Extraction API endpoints complete** (POST /extract, GET /extractions with filtering)
 
 **Architectural Direction:**
@@ -111,9 +113,9 @@ See: `docs/TODO_scraper.md`
 - [ ] Retry logic with exponential backoff (nice-to-have)
 
 **Refactoring Required:**
-- [ ] Update scraper to create `sources` instead of `pages`
-- [ ] Add project_id context to scrape jobs
-- [ ] Replace `company` with `source_group`
+- [x] Update scraper to create `sources` instead of `pages` ✅ **DONE**
+- [x] Add project_id context to scrape jobs ✅ **DONE**
+- [x] Replace `company` with `source_group` ✅ **DONE**
 
 **Milestone**: Can scrape URLs and store markdown automatically
 
@@ -161,12 +163,13 @@ See: `docs/TODO_project_system.md`
 - [x] **SchemaValidator** (dynamic Pydantic from JSONB, 21 tests)
 - [x] **Project ORM model** with relationships
 - [x] **COMPANY_ANALYSIS_TEMPLATE** - default project template
+- [x] **Project CRUD API endpoints** (POST, GET, PUT, DELETE /api/v1/projects)
+- [x] **Clone project from template** (POST /api/v1/projects/from-template)
+- [x] **List templates** (GET /api/v1/projects/templates)
 
 **Pending:**
-- [ ] Project CRUD API endpoints
 - [ ] Additional project templates (research_survey, contract_review)
-- [ ] Project-scoped search and queries
-- [ ] Clone project from template
+- [ ] Project-scoped search API endpoint
 - [ ] Seed script for default project
 
 **Milestone**: Can create and manage extraction projects with custom schemas
@@ -214,12 +217,13 @@ See: `docs/TODO_storage.md`
 - [x] **ProjectRepository** (9 methods, 19 tests) - From Phase 4
 - [x] **JSONB field filtering** (query_jsonb, filter_by_data with PostgreSQL/SQLite support)
 - [x] Filter support (source_group, entity_type, confidence ranges, etc.)
+- [x] **QdrantRepository** (5 methods, 12 tests) - Collection init, upsert, batch, search, delete
+- [x] **EmbeddingService** (2 methods, 7 tests) - Single + batch embedding via BGE-large-en
+- [x] **SearchService** (hybrid search, 14 tests) - Vector + JSONB filtering with over-fetching
 
 **Pending:**
-- [ ] Qdrant repository (embeddings CRUD)
-- [ ] Embedding service (BGE-large-en via vLLM)
-- [ ] Semantic search endpoint
-- [ ] Pagination
+- [ ] Semantic search API endpoint (hybrid vector + JSONB)
+- [ ] Pagination support in API
 
 ### Deduplication
 See: `docs/TODO_deduplication.md`
@@ -263,7 +267,14 @@ See: `docs/TODO_reports.md`
 - [x] **Extraction endpoints** (`api/v1/extraction.py`)
   - POST /api/v1/projects/{project_id}/extract
   - GET /api/v1/projects/{project_id}/extractions
-- [ ] **Project endpoints** (`POST /projects`, `GET /projects/{id}`)
+- [x] **Project endpoints** (`api/v1/projects.py`)
+  - POST /api/v1/projects
+  - GET /api/v1/projects
+  - GET /api/v1/projects/{id}
+  - PUT /api/v1/projects/{id}
+  - DELETE /api/v1/projects/{id}
+  - POST /api/v1/projects/from-template
+  - GET /api/v1/projects/templates
 - [ ] Legacy extract endpoints (`POST /api/v1/extract`, `GET /api/v1/profiles`)
 - [ ] Search endpoint (`POST /search`)
 - [ ] Entity query endpoints (`GET /entities`, `GET /entities/{type}`)
@@ -334,14 +345,14 @@ See: `docs/TODO_reports.md`
 | LLM Integration | `docs/TODO_llm_integration.md` | 3 | Foundation Complete |
 | **Knowledge Layer** | `docs/TODO_knowledge_layer.md` | 5 | **Repository Complete (28 tests)** |
 | Deduplication | `docs/TODO_deduplication.md` | 6 | Entity dedup done |
-| **Storage** | `docs/TODO_storage.md` | 6 | **Repository Complete (77 tests)** |
+| **Storage** | `docs/TODO_storage.md` | 6 | **Qdrant Complete (89 tests)** |
 | Reports | `docs/TODO_reports.md` | 7 | Not started |
 
 ---
 
 ## Test Coverage
 
-**Current: 365 tests passing** (102 new in generalization + API phase)
+**Current: 377 tests passing** (114 new in generalization + API phase)
 - 14 authentication tests
 - 6 CORS tests
 - 8 database connection tests
@@ -363,6 +374,9 @@ See: `docs/TODO_reports.md`
 - 23 SourceRepository tests (generalization)
 - 26 ExtractionRepository tests (generalization)
 - 28 EntityRepository tests (generalization)
+- 12 QdrantRepository tests (NEW)
+- 7 EmbeddingService tests (NEW)
+- 14 SearchService tests (NEW)
 - 25 Extraction endpoint tests (NEW)
 
 ---
@@ -376,7 +390,7 @@ The following components need updates for generalization:
 | `orm_models.py` | pages, facts | sources, extractions, projects | High | ✅ **DONE** |
 | `repositories/` | N/A | Project, Source, Extraction, Entity | High | ✅ **DONE** |
 | `services/projects/schema.py` | N/A | SchemaValidator | High | ✅ **DONE** |
-| `scraper/worker.py` | Creates Page | Creates Source | High | TODO |
+| `scraper/worker.py` | Creates Page | Creates Source | High | ✅ **DONE** |
 | `extraction/extractor.py` | Fixed schema | Project schema | High | TODO |
 | `extraction/profiles.py` | Hardcoded profiles | Project config | Medium | TODO |
 | `api/v1/scrape.py` | Uses company | Uses source_group + project | Medium | TODO |

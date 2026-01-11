@@ -211,3 +211,61 @@ class ExtractionListResponse(BaseModel):
         ...,
         description="Pagination offset",
     )
+
+
+# Project-related Pydantic models for API
+
+
+class ProjectCreate(BaseModel):
+    """Request model for creating a new project."""
+
+    name: str = Field(..., min_length=1, description="Unique project name")
+    description: str | None = Field(None, description="Project description")
+    source_config: dict = Field(
+        default={"type": "web", "group_by": "company"},
+        description="Source configuration"
+    )
+    extraction_schema: dict = Field(..., description="JSONB extraction schema")
+    entity_types: list = Field(default=[], description="List of entity type definitions")
+    prompt_templates: dict = Field(default={}, description="Custom prompt templates")
+    is_template: bool = Field(default=False, description="Whether this is a template")
+
+
+class ProjectUpdate(BaseModel):
+    """Request model for updating an existing project."""
+
+    name: str | None = Field(None, min_length=1, description="Updated project name")
+    description: str | None = Field(None, description="Updated description")
+    source_config: dict | None = Field(None, description="Updated source configuration")
+    extraction_schema: dict | None = Field(None, description="Updated extraction schema")
+    entity_types: list | None = Field(None, description="Updated entity types")
+    prompt_templates: dict | None = Field(None, description="Updated prompt templates")
+    is_active: bool | None = Field(None, description="Updated active status")
+
+
+class ProjectResponse(BaseModel):
+    """Response model for project data."""
+
+    id: UUID = Field(..., description="Project UUID")
+    name: str = Field(..., description="Project name")
+    description: str | None = Field(None, description="Project description")
+    source_config: dict = Field(..., description="Source configuration")
+    extraction_schema: dict = Field(..., description="Extraction schema")
+    entity_types: list = Field(..., description="Entity types")
+    prompt_templates: dict = Field(..., description="Prompt templates")
+    is_template: bool = Field(..., description="Is template flag")
+    is_active: bool = Field(..., description="Is active flag")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectFromTemplate(BaseModel):
+    """Request model for creating a project from a template."""
+
+    template: str = Field(..., description="Template name to clone from")
+    name: str = Field(..., min_length=1, description="New project name")
+    description: str | None = Field(None, description="Project description")
+    customizations: dict = Field(default={}, description="Override specific fields")

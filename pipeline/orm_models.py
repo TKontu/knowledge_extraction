@@ -72,6 +72,11 @@ class Job(Base):
         primary_key=True,
         default=uuid4
     )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID,
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True
+    )
     type: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, default="queued")
     priority: Mapped[int] = mapped_column(Integer, default=0)
@@ -191,7 +196,7 @@ class Profile(Base):
     )
     name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     categories: Mapped[list[str]] = mapped_column(
-        JSON,
+        ARRAY(Text),
         nullable=False
     )
     prompt_focus: Mapped[str] = mapped_column(Text, nullable=False)
@@ -222,31 +227,35 @@ class Report(Base):
         primary_key=True,
         default=uuid4
     )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True
+    )
     type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    title: Mapped[str] = mapped_column(Text, nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    companies: Mapped[list[str]] = mapped_column(
+    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_groups: Mapped[list] = mapped_column(
         JSON,
-        nullable=False
+        default=list
     )
-    categories: Mapped[Optional[list[str]]] = mapped_column(
+    categories: Mapped[list] = mapped_column(
         JSON,
-        nullable=True
+        default=list
     )
-    fact_ids: Mapped[Optional[list[str]]] = mapped_column(
+    extraction_ids: Mapped[list] = mapped_column(
         JSON,
-        nullable=True
+        default=list
     )
     format: Mapped[str] = mapped_column(Text, default="md")
-    generated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        index=True
-    )
     meta_data: Mapped[dict] = mapped_column(
         "metadata",
         JSON,
         default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
     )
 
     def __repr__(self) -> str:

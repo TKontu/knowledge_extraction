@@ -4,7 +4,7 @@
 
 Transform from "company technical facts extractor" to a **general-purpose extraction pipeline** that supports any domain, schema, and entity types.
 
-**Status:** Design phase - requires incremental migration from existing implementation.
+**Status:** Phase 1 & 2 Complete - Repository layer and ScraperWorker refactored to use Sources with project context (96 tests passing).
 
 **Related Documentation:**
 - See `docs/TODO_project_system.md` for project management implementation
@@ -341,33 +341,34 @@ JOIN pages p ON f.page_id = p.id;
 
 ### Phase 1: Project Layer Foundation
 
-- [ ] Add `projects` table via Alembic migration
-- [ ] Create Project ORM model
-- [ ] Create ProjectRepository
-- [ ] Create default "company_analysis" project with current schema
-- [ ] Create SchemaValidator class (dynamic Pydantic models)
+- [x] Add `projects` table via Alembic migration ✅ **DONE** (in init.sql + orm_models.py)
+- [x] Create Project ORM model ✅ **DONE**
+- [x] Create ProjectRepository ✅ **DONE** (19 tests)
+- [x] Create default "company_analysis" project with current schema ✅ **DONE** (via get_default_project())
+- [x] Create SchemaValidator class (dynamic Pydantic models) ✅ **DONE** (21 tests)
 - [ ] Add `project_id` to existing jobs table
 
 ### Phase 2: Source Abstraction
 
-- [ ] Add `sources` table via migration
-- [ ] Create Source ORM model (mirrors existing Page)
-- [ ] Create SourceRepository
-- [ ] Update scraper worker to create Sources (with project context)
+- [x] Add `sources` table via migration ✅ **DONE**
+- [x] Create Source ORM model (mirrors existing Page) ✅ **DONE**
+- [x] Create SourceRepository ✅ **DONE** (23 tests)
+- [x] Update scraper worker to create Sources (with project context) ✅ **DONE** (16 tests passing)
 - [ ] Create backward-compatible adapter (page API → source creation)
 
 ### Phase 3: Extraction Abstraction
 
-- [ ] Add `extractions` table via migration
-- [ ] Create Extraction ORM model
-- [ ] Create ExtractionRepository with JSONB query support
+- [x] Add `extractions` table via migration ✅ **DONE**
+- [x] Create Extraction ORM model ✅ **DONE**
+- [x] Create ExtractionRepository with JSONB query support ✅ **DONE** (26 tests)
 - [ ] Update extraction pipeline to use project schema
 - [ ] Update LLM prompts to use dynamic field definitions
 - [ ] Migrate validation to use project schema
 
 ### Phase 4: Entity Generalization
 
-- [ ] Update entities table with project_id
+- [x] Update entities table with project_id ✅ **DONE**
+- [x] Create EntityRepository ✅ **DONE** (28 tests with deduplication)
 - [ ] Update entity extraction to use project entity_types
 - [ ] Create EntityTypeValidator
 
