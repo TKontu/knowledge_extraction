@@ -275,6 +275,39 @@ class ProjectFromTemplate(BaseModel):
     customizations: dict = Field(default={}, description="Override specific fields")
 
 
+# Search API models
+
+
+class SearchRequest(BaseModel):
+    """Request body for search endpoint."""
+
+    query: str = Field(..., min_length=1, max_length=1000, description="Search query")
+    limit: int = Field(default=10, ge=1, le=100, description="Max results")
+    source_groups: list[str] | None = Field(
+        default=None, description="Filter by source groups"
+    )
+    filters: dict[str, Any] | None = Field(default=None, description="JSONB filters")
+
+
+class SearchResultItem(BaseModel):
+    """Single search result."""
+
+    extraction_id: str
+    score: float
+    data: dict[str, Any]
+    source_group: str
+    source_uri: str
+    confidence: float | None
+
+
+class SearchResponse(BaseModel):
+    """Response for search endpoint."""
+
+    results: list[SearchResultItem]
+    query: str
+    total: int
+
+
 # Entity API models
 
 
