@@ -3,7 +3,7 @@
 import time
 from uuid import UUID
 
-from models import ExtractionProfile, ExtractedFact, ExtractionResult
+from models import ExtractedFact, ExtractionProfile, ExtractionResult
 from services.llm.chunking import chunk_document
 
 
