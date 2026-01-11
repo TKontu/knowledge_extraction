@@ -240,9 +240,7 @@ class ExtractionRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def filter_by_data(
-        self, project_id: UUID, filters: dict
-    ) -> list[Extraction]:
+    async def filter_by_data(self, project_id: UUID, filters: dict) -> list[Extraction]:
         """Filter extractions by multiple JSONB data fields.
 
         Args:

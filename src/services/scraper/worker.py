@@ -1,17 +1,18 @@
 """Background worker for processing scrape jobs."""
 
-from datetime import datetime, UTC
-from typing import Optional
+from datetime import UTC, datetime
 from urllib.parse import urlparse
-from uuid import UUID
 
+import structlog
 from sqlalchemy.orm import Session
 
 from orm_models import Job
-from services.scraper.client import FirecrawlClient, ScrapeResult
+from services.projects.repository import ProjectRepository
+from services.scraper.client import FirecrawlClient
 from services.scraper.rate_limiter import DomainRateLimiter, RateLimitExceeded
 from services.storage.repositories.source import SourceRepository
-from services.projects.repository import ProjectRepository
+
+logger = structlog.get_logger(__name__)
 
 
 class ScraperWorker:
@@ -39,7 +40,7 @@ class ScraperWorker:
         self,
         db: Session,
         firecrawl_client: FirecrawlClient,
-        rate_limiter: Optional[DomainRateLimiter] = None,
+        rate_limiter: DomainRateLimiter | None = None,
     ) -> None:
         """Initialize ScraperWorker.
 
@@ -67,6 +68,7 @@ class ScraperWorker:
         Raises:
             None: All exceptions are caught and stored in job.error.
         """
+        logger.info("job_processing_started", job_id=str(job.id), job_type=job.type)
         try:
             # Update job status to running
             job.status = "running"
@@ -75,9 +77,12 @@ class ScraperWorker:
 
             # Extract payload data
             urls = job.payload.get("urls", [])
-            source_group = job.payload.get("source_group") or job.payload.get("company", "")  # Backward compat
-            profile = job.payload.get("profile")
+            source_group = job.payload.get("source_group") or job.payload.get(
+                "company", ""
+            )  # Backward compat
             project_id = job.payload.get("project_id")
+
+            logger.info("job_processing_urls", job_id=str(job.id), url_count=len(urls))
 
             # Get or create default project if project_id not provided
             if not project_id:
@@ -104,7 +109,7 @@ class ScraperWorker:
 
                     # Store successful scrapes
                     if result.success and result.markdown:
-                        source = await self.source_repo.create(
+                        await self.source_repo.create(
                             project_id=project_id,
                             uri=result.url,
                             source_group=source_group,
@@ -118,13 +123,23 @@ class ScraperWorker:
                             status="completed",
                         )
                         sources_scraped += 1
+                        logger.debug(
+                            "url_scraped_successfully",
+                            job_id=str(job.id),
+                            url=url,
+                            domain=domain,
+                        )
                     else:
                         sources_failed += 1
+                        logger.warning("url_scrape_failed", job_id=str(job.id), url=url)
 
                 except RateLimitExceeded:
                     # Rate limit hit for this domain, skip this URL
                     sources_failed += 1
                     rate_limited += 1
+                    logger.warning(
+                        "url_rate_limited", job_id=str(job.id), url=url, domain=domain
+                    )
                     continue
 
             # Commit all sources
@@ -138,8 +153,17 @@ class ScraperWorker:
                     job.error = f"All {sources_failed} URLs failed ({rate_limited} rate limited)"
                 else:
                     job.error = f"All {sources_failed} URLs failed to scrape"
+                logger.error(
+                    "job_processing_failed", job_id=str(job.id), error=job.error
+                )
             else:
                 job.status = "completed"
+                logger.info(
+                    "job_processing_completed",
+                    job_id=str(job.id),
+                    sources_scraped=sources_scraped,
+                    sources_failed=sources_failed,
+                )
 
             job.completed_at = datetime.now(UTC)
             job.result = {
@@ -156,6 +180,12 @@ class ScraperWorker:
             job.error = f"Rate limit exceeded: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
+            logger.error(
+                "job_rate_limit_exceeded",
+                job_id=str(job.id),
+                error=str(e),
+                exc_info=True,
+            )
 
         except Exception as e:
             # Handle unexpected errors
@@ -163,6 +193,9 @@ class ScraperWorker:
             job.error = str(e).lower()
             job.completed_at = datetime.now(UTC)
             self.db.commit()
+            logger.error(
+                "job_processing_error", job_id=str(job.id), error=str(e), exc_info=True
+            )
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL.

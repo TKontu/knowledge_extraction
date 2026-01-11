@@ -116,9 +116,7 @@ class SchemaValidator:
             allowed = field_def.get("values", [])
 
             if value not in allowed:
-                errors.append(
-                    f"{field_name}: must be one of {allowed}, got '{value}'"
-                )
+                errors.append(f"{field_name}: must be one of {allowed}, got '{value}'")
 
         return errors
 

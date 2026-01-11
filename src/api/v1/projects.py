@@ -138,7 +138,11 @@ async def delete_project(
     db.commit()
 
 
-@router.post("/from-template", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/from-template",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_from_template(
     request: ProjectFromTemplate,
     db: Session = Depends(get_db),

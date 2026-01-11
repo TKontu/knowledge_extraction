@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,19 +13,29 @@ from api.v1.search import router as search_router
 from api.v1.entities import router as entities_router
 from config import settings
 from database import check_database_connection
+from logging_config import configure_logging
 from middleware.auth import APIKeyMiddleware
+from middleware.request_id import RequestIDMiddleware
+from middleware.request_logging import RequestLoggingMiddleware
 from qdrant_connection import check_qdrant_connection
 from redis_client import check_redis_connection
 from services.scraper.scheduler import start_scheduler, stop_scheduler
+
+# Configure logging before creating the app
+configure_logging()
+
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
     # Startup: Start the background job scheduler
+    logger.info("application_startup", version="0.1.0")
     await start_scheduler()
     yield
     # Shutdown: Stop the background job scheduler
+    logger.info("application_shutdown")
     await stop_scheduler()
 
 
@@ -47,6 +58,10 @@ app.add_middleware(
 
 # Add authentication middleware
 app.add_middleware(APIKeyMiddleware)
+
+# Add logging middleware (order matters - request logging before request ID)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 # Include API routers
 app.include_router(scrape_router)

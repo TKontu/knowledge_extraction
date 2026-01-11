@@ -18,7 +18,14 @@ COMPANY_ANALYSIS_TEMPLATE = {
                 "name": "category",
                 "type": "enum",
                 "required": True,
-                "values": ["specs", "api", "security", "pricing", "features", "integration"],
+                "values": [
+                    "specs",
+                    "api",
+                    "security",
+                    "pricing",
+                    "features",
+                    "integration",
+                ],
                 "description": "Category of the technical fact",
             },
             {
@@ -48,7 +55,10 @@ COMPANY_ANALYSIS_TEMPLATE = {
                 {"name": "unit", "type": "text"},
             ],
         },
-        {"name": "certification", "description": "Security or compliance certification"},
+        {
+            "name": "certification",
+            "description": "Security or compliance certification",
+        },
         {"name": "pricing", "description": "Cost or price point"},
     ],
     "prompt_templates": {},

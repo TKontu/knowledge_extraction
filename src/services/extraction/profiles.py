@@ -27,9 +27,7 @@ class ProfileRepository:
             ExtractionProfile if found, None otherwise.
         """
         orm_profile = (
-            self._session.query(ORMProfile)
-            .filter(ORMProfile.name == name)
-            .first()
+            self._session.query(ORMProfile).filter(ORMProfile.name == name).first()
         )
 
         if orm_profile is None:
@@ -53,9 +51,7 @@ class ProfileRepository:
             List of built-in extraction profiles.
         """
         orm_profiles = (
-            self._session.query(ORMProfile)
-            .filter(ORMProfile.is_builtin == True)
-            .all()
+            self._session.query(ORMProfile).filter(ORMProfile.is_builtin == True).all()
         )
         return [self._to_dataclass(p) for p in orm_profiles]
 
@@ -68,11 +64,7 @@ class ProfileRepository:
         Returns:
             True if profile exists, False otherwise.
         """
-        count = (
-            self._session.query(ORMProfile)
-            .filter(ORMProfile.name == name)
-            .count()
-        )
+        count = self._session.query(ORMProfile).filter(ORMProfile.name == name).count()
         return count > 0
 
     def _to_dataclass(self, orm_profile: ORMProfile) -> ExtractionProfile:
