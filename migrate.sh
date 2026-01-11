@@ -37,8 +37,8 @@ fi
 
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
-    warn "DATABASE_URL not set. Using default: postgresql://techfacts:techfacts@localhost:5432/techfacts"
-    export DATABASE_URL="postgresql://techfacts:techfacts@localhost:5432/techfacts"
+    warn "DATABASE_URL not set. Using default: postgresql://scristill:scristill@localhost:5432/scristill"
+    export DATABASE_URL="postgresql://scristill:scristill@localhost:5432/scristill"
 fi
 
 # Main command handler

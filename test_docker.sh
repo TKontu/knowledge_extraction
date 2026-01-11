@@ -4,12 +4,12 @@
 
 set -e
 
-echo "=== TechFacts Pipeline - Docker Build Test ==="
+echo "=== Scristill Pipeline - Docker Build Test ==="
 echo ""
 
 # Build the image
 echo "Building Docker image..."
-docker build -t techfacts-pipeline .
+docker build -t scristill-pipeline .
 
 echo ""
 echo "Image built successfully!"
@@ -17,7 +17,7 @@ echo ""
 
 # Check image size
 echo "Image details:"
-docker images techfacts-pipeline
+docker images scristill-pipeline
 
 echo ""
 echo "=== Testing Container ==="
@@ -27,7 +27,7 @@ echo ""
 echo "Starting container..."
 CONTAINER_ID=$(docker run -d -p 8000:8000 \
   -e API_KEY=test-key-12345 \
-  techfacts-pipeline)
+  scristill-pipeline)
 
 echo "Container ID: $CONTAINER_ID"
 echo ""
@@ -99,4 +99,4 @@ echo ""
 echo "=== All Tests Passed! ==="
 echo ""
 echo "To run manually:"
-echo "  docker run -p 8000:8000 -e API_KEY=your-key techfacts-pipeline"
+echo "  docker run -p 8000:8000 -e API_KEY=your-key scristill-pipeline"

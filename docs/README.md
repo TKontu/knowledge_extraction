@@ -1,4 +1,4 @@
-# TechFacts Scraper
+# Scristill
 
 Self-hosted system for scraping technical documentation, extracting structured facts via LLM, and generating comparison reports.
 
@@ -23,7 +23,7 @@ Self-hosted system for scraping technical documentation, extracting structured f
 
 ```bash
 git clone <repo>
-cd techfacts-scraper
+cd scristill
 
 # Copy and edit environment
 cp .env.example .env
@@ -165,7 +165,7 @@ SCRAPE_MAX_CONCURRENT_PER_DOMAIN=2
 # Services
 REDIS_URL=redis://redis:6379
 QDRANT_URL=http://qdrant:6333
-DATABASE_URL=postgresql://user:pass@postgres:5432/techfacts
+DATABASE_URL=postgresql://user:pass@postgres:5432/scristill
 ```
 
 See `.env.example` for full list.
@@ -186,7 +186,7 @@ CU2: Qwen3/Gemma (extraction/reports)
 ## Project Structure
 
 ```
-techfacts-scraper/
+scristill/
 ├── docker-compose.yml
 ├── .env.example
 ├── ARCHITECTURE.md

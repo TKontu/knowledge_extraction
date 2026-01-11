@@ -23,7 +23,7 @@ target_metadata = Base.metadata
 # Get database URL from environment variable, with fallback to default
 database_url = os.getenv(
     "DATABASE_URL",
-    "postgresql://techfacts:techfacts@localhost:5432/techfacts",
+    "postgresql://scristill:scristill@localhost:5432/scristill",
 )
 
 # Convert postgresql:// to postgresql+psycopg:// for psycopg3

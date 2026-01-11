@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="postgresql://techfacts:techfacts@localhost:5432/techfacts",
+        default="postgresql://scristill:scristill@localhost:5432/scristill",
         description="PostgreSQL connection URL",
     )
 

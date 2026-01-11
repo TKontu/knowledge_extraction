@@ -17,7 +17,7 @@ cd /mnt/c/code/knowledge_extraction-orchestrator
 ### 1. Build the Image
 
 ```bash
-docker build -t techfacts-pipeline .
+docker build -t scristill-pipeline .
 ```
 
 Expected output:
@@ -31,7 +31,7 @@ Expected output:
 ```bash
 docker run -p 8000:8000 \
   -e API_KEY=test-key-12345 \
-  techfacts-pipeline
+  scristill-pipeline
 ```
 
 ### 3. Test Endpoints
@@ -49,7 +49,7 @@ curl http://localhost:8000/
 
 # Root endpoint (with API key)
 curl -H "X-API-Key: test-key-12345" http://localhost:8000/
-# Expected: {"service":"TechFacts Pipeline API", ...}
+# Expected: {"service":"Scristill Pipeline API", ...}
 
 # Test CORS headers
 curl -I -H "Origin: http://localhost:8080" http://localhost:8000/health
