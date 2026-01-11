@@ -1,7 +1,8 @@
 """Data models for API requests and responses."""
 
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -223,10 +224,12 @@ class ProjectCreate(BaseModel):
     description: str | None = Field(None, description="Project description")
     source_config: dict = Field(
         default={"type": "web", "group_by": "company"},
-        description="Source configuration"
+        description="Source configuration",
     )
     extraction_schema: dict = Field(..., description="JSONB extraction schema")
-    entity_types: list = Field(default=[], description="List of entity type definitions")
+    entity_types: list = Field(
+        default=[], description="List of entity type definitions"
+    )
     prompt_templates: dict = Field(default={}, description="Custom prompt templates")
     is_template: bool = Field(default=False, description="Whether this is a template")
 
@@ -237,7 +240,9 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, description="Updated project name")
     description: str | None = Field(None, description="Updated description")
     source_config: dict | None = Field(None, description="Updated source configuration")
-    extraction_schema: dict | None = Field(None, description="Updated extraction schema")
+    extraction_schema: dict | None = Field(
+        None, description="Updated extraction schema"
+    )
     entity_types: list | None = Field(None, description="Updated entity types")
     prompt_templates: dict | None = Field(None, description="Updated prompt templates")
     is_active: bool | None = Field(None, description="Updated active status")
@@ -268,3 +273,36 @@ class ProjectFromTemplate(BaseModel):
     name: str = Field(..., min_length=1, description="New project name")
     description: str | None = Field(None, description="Project description")
     customizations: dict = Field(default={}, description="Override specific fields")
+
+
+# Search API models
+
+
+class SearchRequest(BaseModel):
+    """Request body for search endpoint."""
+
+    query: str = Field(..., min_length=1, max_length=1000, description="Search query")
+    limit: int = Field(default=10, ge=1, le=100, description="Max results")
+    source_groups: list[str] | None = Field(
+        default=None, description="Filter by source groups"
+    )
+    filters: dict[str, Any] | None = Field(default=None, description="JSONB filters")
+
+
+class SearchResultItem(BaseModel):
+    """Single search result."""
+
+    extraction_id: str
+    score: float
+    data: dict[str, Any]
+    source_group: str
+    source_uri: str
+    confidence: float | None
+
+
+class SearchResponse(BaseModel):
+    """Response for search endpoint."""
+
+    results: list[SearchResultItem]
+    query: str
+    total: int
