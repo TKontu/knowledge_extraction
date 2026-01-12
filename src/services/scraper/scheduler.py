@@ -17,6 +17,7 @@ from services.knowledge.extractor import EntityExtractor
 from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
 from services.scraper.client import FirecrawlClient
+from services.scraper.crawl_worker import CrawlWorker
 from services.scraper.rate_limiter import DomainRateLimiter, RateLimitConfig
 from services.scraper.retry import RetryConfig
 from services.scraper.worker import ScraperWorker
@@ -54,6 +55,7 @@ class JobScheduler:
         self._running = False
         self._scrape_task: asyncio.Task | None = None
         self._extract_task: asyncio.Task | None = None
+        self._crawl_task: asyncio.Task | None = None
         self._firecrawl_client: FirecrawlClient | None = None
         self._rate_limiter: DomainRateLimiter | None = None
         self._retry_config: RetryConfig | None = None
@@ -84,8 +86,9 @@ class JobScheduler:
             base_delay=settings.scrape_retry_base_delay,
             max_delay=settings.scrape_retry_max_delay,
         )
-        # Start both scrape and extract workers concurrently
+        # Start scrape, crawl, and extract workers concurrently
         self._scrape_task = asyncio.create_task(self._run_scrape_worker())
+        self._crawl_task = asyncio.create_task(self._run_crawl_worker())
         self._extract_task = asyncio.create_task(self._run_extract_worker())
 
     async def stop(self) -> None:
@@ -96,6 +99,8 @@ class JobScheduler:
         self._running = False
         if self._scrape_task:
             await self._scrape_task
+        if self._crawl_task:
+            await self._crawl_task
         if self._extract_task:
             await self._extract_task
         if self._firecrawl_client:
@@ -139,6 +144,40 @@ class JobScheduler:
             except Exception as e:
                 # Log error but keep scheduler running
                 print(f"Error in scrape worker: {e}")
+                await asyncio.sleep(self.poll_interval)
+
+    async def _run_crawl_worker(self) -> None:
+        """Main loop for processing crawl jobs."""
+        shutdown = get_shutdown_manager()
+        while self._running and not shutdown.is_shutting_down:
+            try:
+                db: Session = SessionLocal()
+                try:
+                    # Query for crawl jobs that need processing
+                    job = (
+                        db.query(Job)
+                        .filter(
+                            Job.type == "crawl",
+                            Job.status.in_(["queued", "running"]),
+                        )
+                        .order_by(Job.priority.desc(), Job.created_at.asc())
+                        .first()
+                    )
+
+                    if job:
+                        worker = CrawlWorker(
+                            db=db,
+                            firecrawl_client=self._firecrawl_client,
+                        )
+                        await worker.process_job(job)
+                    else:
+                        await asyncio.sleep(self.poll_interval)
+
+                finally:
+                    db.close()
+
+            except Exception as e:
+                print(f"Error in crawl worker: {e}")
                 await asyncio.sleep(self.poll_interval)
 
     async def _run_extract_worker(self) -> None:

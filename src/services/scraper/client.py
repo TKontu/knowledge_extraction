@@ -1,7 +1,6 @@
 """Firecrawl client for web scraping."""
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -24,12 +23,23 @@ class ScrapeResult:
 
     url: str
     domain: str
-    markdown: Optional[str]
-    title: Optional[str]
+    markdown: str | None
+    title: str | None
     metadata: dict
-    status_code: Optional[int]
+    status_code: int | None
     success: bool
-    error: Optional[str]
+    error: str | None
+
+
+@dataclass
+class CrawlStatus:
+    """Status of a crawl operation."""
+
+    status: str  # "scraping", "completed", "failed"
+    total: int
+    completed: int
+    pages: list[dict]  # List of scraped page data
+    error: str | None = None
 
 
 class ScrapeError(Exception):
@@ -146,6 +156,66 @@ class FirecrawlClient:
                 success=False,
                 error=str(e).lower(),
             )
+
+    async def start_crawl(
+        self,
+        url: str,
+        max_depth: int = 2,
+        limit: int = 100,
+        include_paths: list[str] | None = None,
+        exclude_paths: list[str] | None = None,
+        allow_backward_links: bool = False,
+    ) -> str:
+        """Start async crawl job.
+
+        Args:
+            url: Starting URL.
+            max_depth: How deep to crawl.
+            limit: Maximum pages to crawl.
+            include_paths: URL patterns to include.
+            exclude_paths: URL patterns to exclude.
+            allow_backward_links: Allow sibling/parent URLs.
+
+        Returns:
+            Firecrawl job ID.
+        """
+        response = await self._http_client.post(
+            f"{self.base_url}/v1/crawl",
+            json={
+                "url": url,
+                "maxDepth": max_depth,
+                "limit": limit,
+                "includePaths": include_paths or [],
+                "excludePaths": exclude_paths or [],
+                "allowBackwardLinks": allow_backward_links,
+                "scrapeOptions": {"formats": ["markdown"]},
+            },
+        )
+        data = response.json()
+        if not data.get("success"):
+            raise ScrapeError(data.get("error", "Failed to start crawl"))
+        return data["id"]
+
+    async def get_crawl_status(self, crawl_id: str) -> CrawlStatus:
+        """Get crawl job status.
+
+        Args:
+            crawl_id: Firecrawl job ID.
+
+        Returns:
+            CrawlStatus with progress and pages.
+        """
+        response = await self._http_client.get(
+            f"{self.base_url}/v1/crawl/{crawl_id}"
+        )
+        data = response.json()
+        return CrawlStatus(
+            status=data.get("status", "unknown"),
+            total=data.get("total", 0),
+            completed=data.get("completed", 0),
+            pages=data.get("data", []),
+            error=data.get("error"),
+        )
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL.
