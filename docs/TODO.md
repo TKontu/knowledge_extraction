@@ -4,17 +4,20 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 
 ## Progress Summary
 
-**Completed (28+ PRs merged to main):**
+**Completed (36 PRs merged to main):**
 - PR #1-8: Core infrastructure (FastAPI, Redis, Qdrant, ORM, Firecrawl, LLM)
 - PR #9-20: Repositories, services, and extraction pipeline
 - PR #21-28: Entity extraction, deduplication, reports, jobs API, metrics
+- PR #29-32: Templates, shutdown, rate limiting, CSV/JSON export
+- PR #33-36: Docker hardening, scraper retry, PDF export, security hardening
 
 **Current State:**
-- **611 tests passing** (28 new tests from shutdown/export agents)
+- **642 tests passing** (31 new tests from docker/retry/pdf/security agents)
 - Complete extraction pipeline operational (scrape → chunk → extract → dedupe → entities → vectors)
 - **ExtractionPipelineService complete** - Full orchestration of extraction flow
-- **ExtractionWorker complete** - Background job processing
+- **ExtractionWorker complete** - Background job processing with retry logic
 - **ReportService complete** - Single and comparison reports with entity tables
+- **PDF export complete** - Reports exportable as PDF via Pandoc
 - **Jobs API complete** - GET /api/v1/jobs with filtering
 - **Prometheus metrics complete** - GET /metrics endpoint
 - **Structured logging complete** - structlog config, request ID tracing
@@ -22,6 +25,9 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - **Rate limiting complete** - Per-API-key sliding window rate limiting
 - **Export API complete** - CSV/JSON export for entities and extractions
 - **Project templates complete** - research_survey and contract_review templates added
+- **Security hardening complete** - API key validation, HTTPS option, security headers
+- **Scraper retry complete** - Exponential backoff for transient failures
+- **Docker hardening complete** - Resource limits, deployment docs, init.sql removed
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
 - **Repository layer complete** (Project, Source, Extraction, Entity, Qdrant repositories)
@@ -114,7 +120,7 @@ See: `docs/TODO_scraper.md`
 - [x] **Page storage (raw markdown)** (PR #7)
 - [x] **Basic error handling** (PR #7)
 - [ ] Store outbound links from Firecrawl (enables link graph)
-- [ ] Retry logic with exponential backoff (nice-to-have)
+- [x] **Retry logic with exponential backoff** (PR #34)
 
 **Refactoring Required:**
 - [x] Update scraper to create `sources` instead of `pages` ✅ **DONE**
@@ -266,7 +272,7 @@ See: `docs/TODO_reports.md`
 - [x] Markdown output generation
 
 **Pending (Post-MVP):**
-- [ ] PDF export (via Pandoc)
+- [x] **PDF export (via Pandoc)** - PR #36
 - [ ] Topic and summary report types
 - [ ] Custom prompt templates
 
@@ -322,19 +328,24 @@ See: `docs/TODO_reports.md`
 - [x] **Graceful shutdown handling** (`shutdown.py`, signal handlers) - PR #31
 - [ ] Retry failed jobs (manual trigger)
 
-### Security Hardening
-- [ ] Remove insecure default API key or make it required via env var (src/config.py:16-19)
+### Security Hardening - COMPLETE
+- [x] **API key validation** (required, no insecure default) - PR #35
 - [x] **Application-level rate limiting** (`middleware/rate_limit.py`) - PR #30
-- [ ] Add HTTPS enforcement option in configuration
-- [ ] Document security best practices in README
+- [x] **HTTPS enforcement option** (`middleware/https.py`) - PR #35
+- [x] **Security headers middleware** (`middleware/security_headers.py`) - PR #35
+- [x] **Security documentation** (`docs/SECURITY.md`) - PR #35
 - [ ] Add API key rotation mechanism
 - [ ] Consider JWT authentication for multi-user scenarios
 
-### Completed Agent Tasks (PRs #29-32)
+### Completed Agent Tasks (PRs #29-36)
 - [x] `agent-templates`: research_survey and contract_review templates - PR #29
 - [x] `agent-shutdown`: Graceful shutdown handling - PR #31
 - [x] `agent-ratelimit`: Rate limiting middleware - PR #30
 - [x] `agent-export`: CSV/JSON export endpoints - PR #32
+- [x] `agent-docker`: Docker hardening and deployment docs - PR #33
+- [x] `agent-retry`: Scraper retry with exponential backoff - PR #34
+- [x] `agent-security`: Security hardening and documentation - PR #35
+- [x] `agent-pdf`: PDF export for reports - PR #36
 
 ### Code Quality
 - [x] Fix coverage configuration (changed "app" to "src") - 2026-01-11
@@ -352,13 +363,13 @@ See: `docs/TODO_reports.md`
 - [ ] Increase test coverage to 90%+ (current coverage unknown due to previous config issue)
 - [ ] Add integration tests for full extraction pipeline
 
-### Configuration & Deployment
+### Configuration & Deployment - MOSTLY COMPLETE
 - [x] Fix webui service in docker-compose.yml (commented out until implemented) - 2026-01-11
 - [x] Update .env.example with security warnings and better defaults - 2026-01-11
-- [ ] Add resource limits to docker-compose services (memory, CPU)
-- [ ] Add health check logging for debugging
-- [ ] Create deployment documentation
-- [ ] Add backup/restore procedures for PostgreSQL
+- [x] **Add resource limits to docker-compose services** (memory, CPU) - PR #33
+- [x] **Add health check logging for debugging** - PR #33
+- [x] **Create deployment documentation** (`docs/DEPLOYMENT.md`) - PR #33
+- [x] **Add backup/restore procedures for PostgreSQL** - in DEPLOYMENT.md
 
 ### Project Configuration
 - [ ] Align project naming: pyproject.toml uses "app" but code is in "src/"
@@ -416,7 +427,7 @@ See: `docs/TODO_reports.md`
 
 ## Test Coverage
 
-**Current: 611 tests passing** (28 new from shutdown/export agents)
+**Current: 642 tests passing** (31 new from docker/retry/pdf/security agents)
 
 ### Core Infrastructure
 - 14 authentication tests
@@ -465,9 +476,15 @@ See: `docs/TODO_reports.md`
 - Jobs endpoint tests
 - Metrics endpoint tests
 
-### Shutdown & Export (NEW - PRs #31-32)
+### Shutdown & Export (PRs #31-32)
 - Graceful shutdown tests (test_graceful_shutdown.py)
 - Export API tests (test_export_api.py)
+
+### Docker, Retry, PDF, Security (PRs #33-36)
+- Deployment tests (test_deployment.py)
+- Scraper retry tests (test_scraper_retry.py)
+- PDF export tests (test_pdf_export.py)
+- Security tests (test_security.py)
 
 ---
 
@@ -490,14 +507,17 @@ The following components need updates for generalization:
 
 ## Getting Started
 
-The core extraction pipeline is **complete**. All 4 agent tasks merged (PRs #29-32). Next priorities:
+The core extraction pipeline is **complete**. All 8 agent tasks merged (PRs #29-36). Next priorities:
 
 1. **Run Integration Tests** - Verify pipeline with real LLM
-2. **Phase 0** (Migrations) - Alembic setup for production
-3. **Phase 10** (Web UI) - Dashboard for pipeline management
+2. **Phase 10** (Web UI) - Dashboard for pipeline management
+3. **Production Deployment** - Using docs/DEPLOYMENT.md guide
 
 ### Development
 ```bash
+# Set required API key
+export API_KEY=$(openssl rand -hex 32)
+
 # Run tests
 pytest tests/ -v
 
