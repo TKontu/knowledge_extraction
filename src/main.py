@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.v1.entities import router as entities_router
+from api.v1.export import router as export_router
 from api.v1.extraction import router as extraction_router
 from api.v1.jobs import router as jobs_router
 from api.v1.metrics import router as metrics_router
@@ -106,6 +107,7 @@ app.include_router(entities_router)
 app.include_router(reports_router)
 app.include_router(jobs_router)
 app.include_router(metrics_router)
+app.include_router(export_router)
 
 
 @app.get("/health")
