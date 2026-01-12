@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.v1.crawl import router as crawl_router
 from api.v1.entities import router as entities_router
 from api.v1.export import router as export_router
 from api.v1.extraction import router as extraction_router
@@ -131,6 +132,7 @@ app.add_middleware(RequestIDMiddleware)
 
 # Include API routers
 app.include_router(scrape_router)
+app.include_router(crawl_router)
 app.include_router(extraction_router)
 app.include_router(projects_router)
 app.include_router(search_router)

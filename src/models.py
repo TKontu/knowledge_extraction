@@ -80,6 +80,47 @@ class ScrapeResponse(BaseModel):
         )
 
 
+class CrawlRequest(BaseModel):
+    """Request body for crawl endpoint."""
+
+    url: str = Field(..., description="Starting URL to crawl from")
+    project_id: UUID = Field(..., description="Project ID for sources")
+    company: str = Field(..., min_length=1, description="Source group name")
+    max_depth: int = Field(default=2, ge=1, le=10, description="Crawl depth")
+    limit: int = Field(default=100, ge=1, le=1000, description="Max pages")
+    include_paths: list[str] | None = Field(default=None, description="URL patterns to include")
+    exclude_paths: list[str] | None = Field(default=None, description="URL patterns to exclude")
+    allow_backward_links: bool = Field(default=False, description="Allow parent/sibling URLs")
+    auto_extract: bool = Field(default=True, description="Auto-trigger extraction")
+    profile: str | None = Field(default=None, description="Extraction profile")
+
+
+class CrawlResponse(BaseModel):
+    """Response body for crawl endpoint."""
+
+    job_id: str
+    status: str = "queued"
+    url: str
+    max_depth: int
+    limit: int
+    project_id: str
+    company: str
+
+
+class CrawlStatusResponse(BaseModel):
+    """Response for crawl job status."""
+
+    job_id: str
+    status: str  # queued, running, completed, failed
+    url: str
+    pages_total: int | None = None
+    pages_completed: int | None = None
+    sources_created: int | None = None
+    error: str | None = None
+    created_at: str
+    completed_at: str | None = None
+
+
 class JobStatusResponse(BaseModel):
     """Response body for job status endpoint."""
 
