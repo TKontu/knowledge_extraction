@@ -6,6 +6,9 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
+    pandoc \
+    texlive-xetex \
+    texlive-fonts-recommended \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

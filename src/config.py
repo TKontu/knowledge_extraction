@@ -167,6 +167,16 @@ class Settings(BaseSettings):
         description="Burst allowance above limit",
     )
 
+    # PDF Export
+    pdf_enabled: bool = Field(
+        default=True,
+        description="Enable PDF export (requires Pandoc)",
+    )
+    pandoc_path: str = Field(
+        default="pandoc",
+        description="Path to Pandoc executable",
+    )
+
     @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v: str) -> str:
