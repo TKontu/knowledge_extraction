@@ -3,7 +3,6 @@
 **Agent:** {agent-id}
 **Branch:** `feat/{branch-name}`
 **Priority:** {high|medium|low}
-**Assigned:** {date}
 
 ## Context
 
@@ -23,10 +22,6 @@
 - {Specific requirement 1}
 - {Specific requirement 2}
 
-**Test cases to cover:**
-- {Test case 1}
-- {Test case 2}
-
 ### 2. {Second Task}
 
 **File(s):** `src/path/to/other.py`
@@ -34,22 +29,40 @@
 **Requirements:**
 - {Specific requirement}
 
-**Test cases to cover:**
-- {Test case}
-
 ## Constraints
 
 - {Any limitations or things NOT to do}
 - {Dependencies to be aware of}
+- Do NOT run full test suite - only run tests in Test Scope below
+- Do NOT lint entire codebase - only lint files in Lint Scope below
+
+## Test Scope
+
+**ONLY run these tests - do NOT run `pytest` without arguments:**
+
+```bash
+pytest tests/test_{feature_name}.py -v
+```
+
+## Lint Scope
+
+**ONLY lint these files - do NOT run `ruff check src/`:**
+
+```bash
+ruff check src/path/to/new_file.py src/path/to/modified_file.py
+```
 
 ## Verification
 
-Before creating PR, confirm:
-- [ ] All tasks above completed
-- [ ] `pytest` passes
-- [ ] `ruff check .` clean
-- [ ] No new warnings
+Before creating PR, run ONLY the scoped commands above:
 
-## Notes
+1. `pytest tests/test_{feature}.py -v` - Must pass
+2. `ruff check {your files}` - Must be clean
+3. All tasks above completed
 
-{Any additional information the agent needs}
+## Definition of Done
+
+- [ ] All tasks completed
+- [ ] Tests written and passing (scoped)
+- [ ] Lint clean (scoped)
+- [ ] PR created with title: `feat: {description}`

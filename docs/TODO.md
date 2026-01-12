@@ -10,7 +10,7 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - PR #21-28: Entity extraction, deduplication, reports, jobs API, metrics
 
 **Current State:**
-- **583 tests passing** (90 new tests from pipeline/reports/jobs/metrics agents)
+- **611 tests passing** (28 new tests from shutdown/export agents)
 - Complete extraction pipeline operational (scrape → chunk → extract → dedupe → entities → vectors)
 - **ExtractionPipelineService complete** - Full orchestration of extraction flow
 - **ExtractionWorker complete** - Background job processing
@@ -18,6 +18,10 @@ Master task list. Module-specific details in `docs/TODO_*.md`.
 - **Jobs API complete** - GET /api/v1/jobs with filtering
 - **Prometheus metrics complete** - GET /metrics endpoint
 - **Structured logging complete** - structlog config, request ID tracing
+- **Graceful shutdown complete** - SIGTERM/SIGINT handlers, worker cleanup
+- **Rate limiting complete** - Per-API-key sliding window rate limiting
+- **Export API complete** - CSV/JSON export for entities and extractions
+- **Project templates complete** - research_survey and contract_review templates added
 - All infrastructure services monitored (PostgreSQL, Redis, Qdrant, Firecrawl)
 - Background job scheduler runs automatically
 - **Repository layer complete** (Project, Source, Extraction, Entity, Qdrant repositories)
@@ -171,7 +175,7 @@ See: `docs/TODO_project_system.md`
 - [x] **List templates** (GET /api/v1/projects/templates)
 
 **Pending:**
-- [ ] Additional project templates (research_survey, contract_review)
+- [x] Additional project templates (research_survey, contract_review) - PR #29
 - [ ] Project-scoped search API endpoint
 - [ ] Seed script for default project
 
@@ -310,7 +314,7 @@ See: `docs/TODO_reports.md`
 
 ## Phase 9: Polish & Hardening
 
-### Logging & Monitoring - MOSTLY COMPLETE
+### Logging & Monitoring - COMPLETE
 - [x] **Structured logging with structlog** (`logging_config.py`)
 - [x] **Request ID tracing** (`middleware/request_id.py`)
 - [x] **Request/response logging** (`middleware/request_logging.py`)
@@ -318,22 +322,22 @@ See: `docs/TODO_reports.md`
 - [x] **System metrics collection** (`services/metrics/collector.py`)
 - [x] Job status tracking (queued, running, completed, failed) - PR #7
 - [x] Config validation on startup (pydantic-settings)
-- [ ] Graceful shutdown handling (agent task assigned)
+- [x] **Graceful shutdown handling** (`shutdown.py`, signal handlers) - PR #31
 - [ ] Retry failed jobs (manual trigger)
 
 ### Security Hardening
 - [ ] Remove insecure default API key or make it required via env var (src/config.py:16-19)
-- [ ] Add application-level rate limiting (agent task assigned: `agent-ratelimit`)
+- [x] **Application-level rate limiting** (`middleware/rate_limit.py`) - PR #30
 - [ ] Add HTTPS enforcement option in configuration
 - [ ] Document security best practices in README
 - [ ] Add API key rotation mechanism
 - [ ] Consider JWT authentication for multi-user scenarios
 
-### Active Agent Tasks (docs/TODO-agent-*.md)
-- `agent-templates`: Add research_survey and contract_review templates
-- `agent-shutdown`: Implement graceful shutdown handling
-- `agent-ratelimit`: Add application-level rate limiting middleware
-- `agent-export`: Add CSV/JSON export endpoints
+### Completed Agent Tasks (PRs #29-32)
+- [x] `agent-templates`: research_survey and contract_review templates - PR #29
+- [x] `agent-shutdown`: Graceful shutdown handling - PR #31
+- [x] `agent-ratelimit`: Rate limiting middleware - PR #30
+- [x] `agent-export`: CSV/JSON export endpoints - PR #32
 
 ### Code Quality
 - [x] Fix coverage configuration (changed "app" to "src") - 2026-01-11
@@ -390,7 +394,7 @@ See: `docs/TODO_reports.md`
 - [ ] Proxy rotation support
 - [ ] arq/Celery for parallel extraction (when BackgroundTasks insufficient)
 - [ ] Webhook notifications
-- [ ] Export to CSV/JSON
+- [x] Export to CSV/JSON - PR #32
 - [ ] Multi-user support with auth
 - [ ] HTTPS with nginx reverse proxy
 
@@ -415,7 +419,7 @@ See: `docs/TODO_reports.md`
 
 ## Test Coverage
 
-**Current: 583 tests passing** (90 new from pipeline/reports/jobs/metrics agents)
+**Current: 611 tests passing** (28 new from shutdown/export agents)
 
 ### Core Infrastructure
 - 14 authentication tests
@@ -456,13 +460,17 @@ See: `docs/TODO_reports.md`
 - 17 ExtractionDeduplicator tests
 - 15 Entity endpoint tests
 
-### Pipeline & Reports (NEW)
+### Pipeline & Reports
 - ExtractionPipelineService tests
 - ExtractionWorker tests
 - ReportService tests
 - Reports endpoint tests
 - Jobs endpoint tests
 - Metrics endpoint tests
+
+### Shutdown & Export (NEW - PRs #31-32)
+- Graceful shutdown tests (test_graceful_shutdown.py)
+- Export API tests (test_export_api.py)
 
 ---
 
@@ -485,18 +493,14 @@ The following components need updates for generalization:
 
 ## Getting Started
 
-The core extraction pipeline is **complete**. Next priorities:
+The core extraction pipeline is **complete**. All 4 agent tasks merged (PRs #29-32). Next priorities:
 
 1. **Run Integration Tests** - Verify pipeline with real LLM
-2. **Agent Tasks** - 4 parallel agents assigned (templates, shutdown, rate limiting, export)
-3. **Phase 0** (Migrations) - Alembic setup for production
-4. **Phase 10** (Web UI) - Dashboard for pipeline management
+2. **Phase 0** (Migrations) - Alembic setup for production
+3. **Phase 10** (Web UI) - Dashboard for pipeline management
 
-### Active Development
+### Development
 ```bash
-# Check agent PRs
-gh pr list --state open
-
 # Run tests
 pytest tests/ -v
 

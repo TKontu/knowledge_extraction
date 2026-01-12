@@ -20,9 +20,29 @@ If you catch yourself:
 2. Read `docs/TODO-{your-id}.md` - this is your complete specification
 3. `git checkout -b feat/{task-name}`
 4. For each task: TEST FIRST (RED), then implement (GREEN)
-5. Verify: `pytest && ruff check src/`
+5. Verify: Run ONLY the tests specified in your TODO (see Test Scope section)
 6. Commit, push, create PR
 7. Report completion
+
+## CRITICAL: Skip Redundant Setup
+
+**Check before installing anything:**
+```bash
+# Check if venv exists and has packages
+if [ -d ".venv" ] && [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    pip list | head -3  # If this shows packages, SKIP pip install
+fi
+```
+
+**NEVER re-run these if already done:**
+- `python -m venv .venv` - Skip if `.venv/` directory exists
+- `pip install -r requirements.txt` - Skip if `pip list` shows packages
+- `pip install -r requirements-dev.txt` - Skip if pytest is available
+
+**Only install if:**
+- Your task adds NEW dependencies not in requirements.txt
+- The venv is missing or corrupted
 
 ## Project Structure
 
@@ -50,17 +70,39 @@ All commands run from repo root:
 
 ```
 RED    -> Write test that fails
-         pytest path/to/test.py -v
+         pytest tests/test_YOUR_FEATURE.py -v
          MUST see: FAILED
 
 GREEN  -> Minimal code to pass
-         pytest path/to/test.py -v
+         pytest tests/test_YOUR_FEATURE.py -v
          MUST see: PASSED
 
 REFACTOR -> Clean up (keep green)
 ```
 
 **No production code without a failing test first.**
+
+## CRITICAL: Scoped Testing & Linting
+
+**Run ONLY your tests, not the full suite:**
+```bash
+# CORRECT - Run only your test file(s)
+pytest tests/test_your_feature.py -v
+
+# WRONG - Do NOT run full test suite
+pytest  # This runs 500+ tests - NEVER do this
+```
+
+**Lint ONLY files you changed:**
+```bash
+# CORRECT - Lint only your files
+ruff check src/path/to/your_file.py src/path/to/other_file.py
+
+# WRONG - Do NOT lint entire codebase
+ruff check src/  # This lints everything - NEVER do this
+```
+
+Your TODO file specifies exactly which tests to run and which files to lint.
 
 ## When to Ask Questions
 
@@ -345,12 +387,17 @@ addopts = "-ra -q"
 
 ## Verification Before PR
 
-Run these from repo root. Report actual output, not "should pass":
+Run ONLY your scoped tests and lint ONLY your files. Report actual output:
 
 ```bash
-pytest                  # Must show: X passed
-ruff check src/         # Must show: 0 errors
+# Run ONLY tests specified in your TODO (example)
+pytest tests/test_your_feature.py -v   # Must show: X passed
+
+# Lint ONLY files you created/modified (example)
+ruff check src/your_file.py            # Must show: All checks passed
 ```
+
+**NEVER run `pytest` without arguments or `ruff check src/` on full codebase.**
 
 ## Completion Report Format
 
