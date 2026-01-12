@@ -17,10 +17,14 @@ class ScrapeRequest(BaseModel):
         min_length=1,
         description="List of URLs to scrape",
     )
+    project_id: UUID = Field(
+        ...,
+        description="Project ID to associate scraped sources with",
+    )
     company: str = Field(
         ...,
         min_length=1,
-        description="Company name for the scraped content",
+        description="Company name for the scraped content (used as source_group)",
     )
     profile: str | None = Field(
         default=None,
@@ -50,6 +54,10 @@ class ScrapeResponse(BaseModel):
     url_count: int = Field(
         ...,
         description="Number of URLs in the job",
+    )
+    project_id: str = Field(
+        ...,
+        description="Project ID for the scraped sources",
     )
     company: str = Field(
         ...,

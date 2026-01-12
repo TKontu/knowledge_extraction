@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, UTC
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -156,6 +156,25 @@ class SourceRepository:
 
         self._session.flush()
         return source
+
+    async def get_by_project_and_status(
+        self, project_id: UUID, status: str
+    ) -> List[Source]:
+        """Get sources by project ID and status.
+
+        Args:
+            project_id: Project UUID
+            status: Source status (pending, processing, completed, failed)
+
+        Returns:
+            List of Source instances matching the criteria
+        """
+        result = self._session.execute(
+            select(Source)
+            .where(Source.project_id == project_id, Source.status == status)
+            .order_by(Source.created_at.asc())
+        )
+        return list(result.scalars().all())
 
     async def update_content(
         self,

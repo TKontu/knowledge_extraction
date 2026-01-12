@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import SessionLocal
 from orm_models import Job
+from qdrant_connection import qdrant_client
 from redis_client import redis_client
 from services.extraction.extractor import ExtractionOrchestrator
 from services.extraction.pipeline import ExtractionPipelineService
+from services.extraction.profiles import ProfileRepository
 from services.extraction.worker import ExtractionWorker
 from services.knowledge.extractor import EntityExtractor
 from services.llm.client import LLMClient
@@ -160,12 +162,15 @@ class JobScheduler:
 
                     if job:
                         # Initialize pipeline service with all dependencies
-                        llm_client = LLMClient()
+                        llm_client = LLMClient(settings)
                         orchestrator = ExtractionOrchestrator(
-                            llm_client=llm_client, db=db
+                            llm_client=llm_client
                         )
+                        embedding_service = EmbeddingService(settings)
+                        qdrant_repo = QdrantRepository(qdrant_client)
                         deduplicator = ExtractionDeduplicator(
-                            db=db, embedding_service=EmbeddingService()
+                            embedding_service=embedding_service,
+                            qdrant_repo=qdrant_repo,
                         )
                         entity_extractor = EntityExtractor(
                             llm_client=llm_client,
@@ -178,8 +183,9 @@ class JobScheduler:
                             extraction_repo=ExtractionRepository(db),
                             source_repo=SourceRepository(db),
                             project_repo=ProjectRepository(db),
-                            qdrant_repo=QdrantRepository(),
-                            embedding_service=EmbeddingService(),
+                            qdrant_repo=qdrant_repo,
+                            embedding_service=embedding_service,
+                            profile_repo=ProfileRepository(db),
                         )
 
                         # Process the job

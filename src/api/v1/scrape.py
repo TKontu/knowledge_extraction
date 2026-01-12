@@ -35,6 +35,7 @@ async def create_scrape_job(
     logger.info(
         "scrape_job_created",
         job_id=str(job_id),
+        project_id=str(request.project_id),
         url_count=len(request.urls),
         company=request.company,
         profile=request.profile,
@@ -47,6 +48,7 @@ async def create_scrape_job(
         status="queued",
         payload={
             "urls": request.urls,
+            "project_id": str(request.project_id),
             "company": request.company,
             "profile": request.profile,
         },
@@ -62,6 +64,7 @@ async def create_scrape_job(
         job_id=str(job.id),
         status=job.status,
         url_count=len(request.urls),
+        project_id=str(request.project_id),
         company=request.company,
         profile=request.profile,
     )

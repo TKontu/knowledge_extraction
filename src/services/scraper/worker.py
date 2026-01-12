@@ -125,7 +125,7 @@ class ScraperWorker:
                                 "domain": result.domain,
                                 **result.metadata,
                             },
-                            status="completed",
+                            status="pending",  # Ready for extraction
                         )
                         sources_scraped += 1
                         logger.debug(

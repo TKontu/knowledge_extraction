@@ -5,7 +5,9 @@ from uuid import UUID
 
 import structlog
 
+from models import ExtractionProfile
 from src.services.extraction.extractor import ExtractionOrchestrator
+from src.services.extraction.profiles import ProfileRepository
 from src.services.knowledge.extractor import EntityExtractor
 from src.services.projects.repository import ProjectRepository
 from src.services.storage.deduplication import ExtractionDeduplicator
@@ -13,6 +15,15 @@ from src.services.storage.embedding import EmbeddingService
 from src.services.storage.qdrant.repository import QdrantRepository
 from src.services.storage.repositories.extraction import ExtractionRepository
 from src.services.storage.repositories.source import SourceRepository
+
+# Default fallback profile when database profile not found
+DEFAULT_PROFILE = ExtractionProfile(
+    name="general",
+    categories=["general", "features", "technical", "integration"],
+    prompt_focus="General technical facts about the product, features, integrations, and capabilities",
+    depth="detailed",
+    is_builtin=True,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -54,6 +65,7 @@ class ExtractionPipelineService:
         project_repo: ProjectRepository,
         qdrant_repo: QdrantRepository,
         embedding_service: EmbeddingService,
+        profile_repo: ProfileRepository | None = None,
     ):
         """Initialize pipeline with all dependencies."""
         self._orchestrator = orchestrator
@@ -64,6 +76,7 @@ class ExtractionPipelineService:
         self._project_repo = project_repo
         self._qdrant_repo = qdrant_repo
         self._embedding_service = embedding_service
+        self._profile_repo = profile_repo
 
     async def process_source(
         self,
@@ -94,11 +107,18 @@ class ExtractionPipelineService:
         project = await self._project_repo.get(project_id)
         entity_types = project.entity_types if project else []
 
+        # Load extraction profile
+        profile = None
+        if self._profile_repo:
+            profile = self._profile_repo.get_by_name(profile_name)
+        if profile is None:
+            profile = DEFAULT_PROFILE
+
         # Extract facts via orchestrator
         result = await self._orchestrator.extract(
             page_id=source_id,
             markdown=source.content,
-            profile=None,  # TODO: Load profile
+            profile=profile,
         )
 
         # Process each fact
