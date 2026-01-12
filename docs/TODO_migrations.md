@@ -331,12 +331,12 @@ docker compose exec pipeline alembic upgrade head
 
 ## Tasks
 
-- [ ] Add alembic to requirements.txt
-- [ ] Reconcile ORM models with init.sql (verify match)
-- [ ] Create `alembic.ini`
-- [ ] Create `alembic/env.py` (async-compatible)
-- [ ] Generate initial migration from ORM models
-- [ ] Create seed migration for builtin profiles
+- [x] Add alembic to requirements.txt
+- [x] Reconcile ORM models with init.sql (verify match)
+- [x] Create `alembic.ini`
+- [x] Create `alembic/env.py` (async-compatible with psycopg3)
+- [x] Generate initial migration from ORM models (`001_initial_schema.py`)
+- [x] Create seed migration for builtin profiles (`002_seed_builtin_profiles.py`)
 - [ ] Test upgrade and downgrade paths
 - [ ] Update docker-compose for migrations
 - [ ] Remove init.sql

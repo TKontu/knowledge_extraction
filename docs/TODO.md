@@ -62,16 +62,13 @@ See: `docs/TODO_generalization.md`
 | `company` | `source_group` | Configurable grouping (company, paper, contract) |
 | `profiles` | `project.extraction_schema` | Dynamic extraction configuration |
 
-### Database Migrations
+### Database Migrations - COMPLETE
 See: `docs/TODO_migrations.md`
 
-> **Critical:** Schema evolution requires migrations before production deployment.
-
-- [ ] Install Alembic
-- [ ] Reconcile ORM models with init.sql schema
-- [ ] Create alembic.ini and env.py (async-compatible)
-- [ ] Generate initial migration from ORM models
-- [ ] Create seed migration for builtin profiles/default project
+- [x] Install Alembic (in requirements.txt)
+- [x] Create alembic.ini and env.py (async-compatible with psycopg3)
+- [x] Generate initial migration from ORM models (`20260110_001_initial_schema.py`)
+- [x] Create seed migration for builtin profiles (`20260110_002_seed_builtin_profiles.py`)
 - [ ] Update docker-compose to run migrations on startup
 - [ ] Remove init.sql (replaced by migrations)
 
@@ -405,7 +402,7 @@ See: `docs/TODO_reports.md`
 | Module | File | Phase | Status |
 |--------|------|-------|--------|
 | **Generalization** | `docs/TODO_generalization.md` | 0 | **Schema Complete (96 tests)** |
-| Migrations | `docs/TODO_migrations.md` | 0 | Not started |
+| **Migrations** | `docs/TODO_migrations.md` | 0 | **Complete (2 migrations)** |
 | **Project System** | `docs/TODO_project_system.md` | 4 | **Complete - API + Repository (40 tests)** |
 | Scraper | `docs/TODO_scraper.md` | 2 | **Complete** |
 | Extraction | `docs/TODO_extraction.md` | 3 | **Pipeline Complete** |
