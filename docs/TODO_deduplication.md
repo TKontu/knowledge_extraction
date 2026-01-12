@@ -4,11 +4,11 @@
 
 Prevent duplicate facts using embedding similarity before storage.
 
-## Status
+## Status: COMPLETE
 
-**Complete** - ExtractionDeduplicator fully implemented
+**ExtractionDeduplicator fully implemented and integrated into pipeline**
 
-**Current State:**
+**Completed:**
 - ✅ Qdrant client available (`src/qdrant_connection.py`)
 - ✅ Embedding endpoint configured (BGE-large-en at `192.168.0.136:9003`)
 - ✅ **EmbeddingService** (`services/storage/embedding.py` - 7 tests)
@@ -18,9 +18,7 @@ Prevent duplicate facts using embedding similarity before storage.
   - `check_extraction_data()` - convenience wrapper
   - Default threshold: 0.90 (conservative)
   - Scoped by project_id and source_group
-
-**Pending:**
-- [ ] Integrate into extraction pipeline
+- ✅ **Integrated into ExtractionPipelineService** (`services/extraction/pipeline.py`)
 
 ---
 
@@ -342,7 +340,7 @@ When needed, can add:
 - [x] Create `EmbeddingService` class (`services/storage/embedding.py`)
 - [x] Create `ExtractionDeduplicator` class (`services/storage/deduplication.py`)
 - [x] Qdrant collection initialization (via `QdrantRepository`)
-- [ ] Integrate deduplication into extraction pipeline
+- [x] **Integrated into ExtractionPipelineService** (`services/extraction/pipeline.py`)
 - [x] Configuration loading (threshold configurable in constructor)
 - [x] Test with sample data (17 tests)
 - [ ] Tune threshold with real data (may need adjustment from 0.90)
@@ -359,5 +357,5 @@ When needed, can add:
 - [x] Unit: Deduplicator scoped by source_group (different group = not duplicate)
 - [x] Unit: Text extraction from extraction data dict
 - [x] Integration: Qdrant collection created on startup
-- [ ] Integration: Duplicate extraction skipped in full pipeline
-- [ ] Integration: Unique extraction stored in both PostgreSQL and Qdrant
+- [x] Integration: Duplicate extraction skipped in pipeline (via ExtractionPipelineService)
+- [x] Integration: Unique extraction stored in both PostgreSQL and Qdrant

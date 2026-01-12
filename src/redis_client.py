@@ -1,6 +1,6 @@
 """Redis connection and client management."""
 
-from typing import Generator
+from collections.abc import Generator
 
 import redis
 
@@ -23,6 +23,20 @@ def get_redis() -> Generator[redis.Redis, None, None]:
         Redis client instance.
     """
     yield redis_client
+
+
+def get_redis_client() -> redis.Redis | None:
+    """
+    Get Redis client instance.
+
+    Returns:
+        Redis client instance or None if unavailable.
+    """
+    try:
+        redis_client.ping()
+        return redis_client
+    except Exception:
+        return None
 
 
 def check_redis_connection() -> bool:

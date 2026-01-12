@@ -4,23 +4,29 @@
 
 Generates structured reports from extracted facts and entities. Supports single company deep-dives, comparisons, and topic summaries.
 
-## Status
+## Status: COMPLETE
 
 **Completed:**
 - ✅ Reports table schema in `init.sql`
-- ✅ Report ORM model (`src/orm_models.py` - PR #4)
+- ✅ Report ORM model (`src/orm_models.py`)
 - ✅ LLM configuration available for report generation
+- ✅ **ReportService** (`services/reports/service.py`)
+  - `generate()` - Main report generation method
+  - `_gather_data()` - Aggregate extractions and entities
+  - `_generate_single_report()` - Single source_group report
+  - `_generate_comparison_report()` - Multi-group comparison with entity tables
+  - `_build_entity_table()` - Markdown table from entities
+- ✅ **Report API endpoints** (`api/v1/reports.py`)
+  - POST /api/v1/projects/{project_id}/reports
+  - GET /api/v1/projects/{project_id}/reports
+  - GET /api/v1/projects/{project_id}/reports/{report_id}
+- ✅ **Report types**: single, comparison (ReportType enum)
+- ✅ **Entity-based comparison tables** (structured, not LLM-inferred)
 
-**Pending:**
-- Report type definitions
-- Fact aggregation logic
-- Entity-based structured comparisons
-- Report generation and formatting
-
-**Dependencies:**
-- Requires Phase 3 (Extraction) - facts must exist
-- Requires Phase 4 (Knowledge Layer) - entities enable structured comparisons
-- Requires Phase 5 (Storage) - fact/entity retrieval
+**Pending (Post-MVP):**
+- PDF export (via Pandoc)
+- Topic and summary report types
+- Custom prompt templates
 
 **Related Documentation:**
 - See `docs/TODO_knowledge_layer.md` for entity-based comparisons
