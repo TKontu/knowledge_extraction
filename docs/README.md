@@ -1,21 +1,23 @@
-# Scristill
+# Knowledge Extraction Pipeline
 
-Self-hosted system for scraping technical documentation, extracting structured facts via LLM, and generating comparison reports.
+Self-hosted system for scraping documentation, extracting structured data via LLM, and generating comparison reports. Supports multiple extraction domains through **project-based configuration**.
 
 ## Features
 
+- **Project-Based Extraction**: Define custom schemas, entity types, and prompts per project
 - **Web Scraping**: Firecrawl-based scraping with JS rendering and anti-bot handling
-- **Flexible Extraction**: Configurable extraction profiles for different fact types
-- **Vector Search**: Semantic search across extracted facts via Qdrant
-- **Report Generation**: Single company, comparison, and topic reports
-- **Homelab Optimized**: Designed for your CU1/CU2 infrastructure
+- **LLM Extraction**: Chunking, extraction, validation, and deduplication pipeline
+- **Entity Recognition**: Extract and normalize entities (plans, features, limits, pricing)
+- **Vector Search**: Hybrid semantic + structured search via Qdrant
+- **Report Generation**: Single source and comparison reports with entity tables
+- **Observability**: Prometheus metrics, structured logging, request tracing
+- **583 Tests**: Comprehensive test coverage
 
 ## Quick Start
 
 ### Prerequisites
 
 - Docker & Docker Compose
-- Portainer (recommended)
 - Existing vLLM gateway at `192.168.0.247:9003`
 - BGE-large-en available at `192.168.0.136:9003`
 
@@ -23,21 +25,14 @@ Self-hosted system for scraping technical documentation, extracting structured f
 
 ```bash
 git clone <repo>
-cd scristill
+cd knowledge_extraction
 
 # Copy and edit environment
 cp .env.example .env
 # Edit .env with your settings
 ```
 
-### 2. Deploy via Portainer
-
-1. In Portainer, create new Stack
-2. Upload `docker-compose.yml`
-3. Add environment variables from `.env`
-4. Deploy
-
-Or via CLI:
+### 2. Deploy
 
 ```bash
 docker compose up -d
@@ -46,105 +41,150 @@ docker compose up -d
 ### 3. Verify Services
 
 ```bash
-# Check all services running
-docker compose ps
-
-# Test Firecrawl
-curl http://localhost:3002/health
-
-# Test Pipeline API
+# Health check (includes DB, Redis, Qdrant, Firecrawl status)
 curl http://localhost:8000/health
+
+# Prometheus metrics
+curl http://localhost:8000/metrics
 ```
 
-### 4. First Scrape
+## API Overview
+
+All data operations are **project-scoped**. Create a project first, then scrape, extract, and query within that project.
+
+### Projects
 
 ```bash
-# Scrape a company's docs
+# List available templates
+curl http://localhost:8000/api/v1/projects/templates
+
+# Create project from template
+curl -X POST http://localhost:8000/api/v1/projects/from-template \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "template": "company_analysis",
+    "name": "my_research_project",
+    "description": "Analyzing competitor documentation"
+  }'
+
+# List projects
+curl http://localhost:8000/api/v1/projects \
+  -H "X-API-Key: your-api-key"
+```
+
+### Scraping
+
+```bash
+# Scrape URLs into a project
 curl -X POST http://localhost:8000/api/v1/scrape \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '{
     "urls": ["https://docs.example.com/api"],
-    "company": "Example Inc",
-    "profile": "api_docs"
+    "project_id": "uuid-here",
+    "source_group": "example_inc"
   }'
+
+# Check job status
+curl http://localhost:8000/api/v1/scrape/{job_id} \
+  -H "X-API-Key: your-api-key"
 ```
 
-## Usage
-
-### Scrape URLs
+### Extraction
 
 ```bash
-# Single URL
-curl -X POST http://localhost:8000/api/v1/scrape \
-  -d '{"urls": ["https://company.com/docs"], "company": "CompanyName"}'
-
-# With sitemap discovery
-curl -X POST http://localhost:8000/api/v1/scrape \
-  -d '{"urls": ["https://company.com"], "company": "CompanyName", "discover": true}'
-```
-
-### Extract Facts
-
-```bash
-# Extract with specific profile
-curl -X POST http://localhost:8000/api/v1/extract \
-  -d '{"page_ids": ["uuid-here"], "profile": "technical_specs"}'
-
-# Custom extraction focus
-curl -X POST http://localhost:8000/api/v1/extract \
+# Trigger extraction for a project
+curl -X POST http://localhost:8000/api/v1/projects/{project_id}/extract \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '{
-    "page_ids": ["uuid-here"],
-    "profile": "custom",
-    "custom_focus": "Extract pricing tiers and feature limits"
+    "source_ids": ["uuid1", "uuid2"],
+    "profile": "detailed"
+  }'
+
+# List extractions with filtering
+curl "http://localhost:8000/api/v1/projects/{project_id}/extractions?source_group=example_inc&min_confidence=0.8" \
+  -H "X-API-Key: your-api-key"
+```
+
+### Entities
+
+```bash
+# List entities by type
+curl "http://localhost:8000/api/v1/projects/{project_id}/entities?entity_type=feature" \
+  -H "X-API-Key: your-api-key"
+
+# Get entity type counts
+curl http://localhost:8000/api/v1/projects/{project_id}/entities/types \
+  -H "X-API-Key: your-api-key"
+
+# Find which source_groups have an entity value
+curl "http://localhost:8000/api/v1/projects/{project_id}/entities/by-value?value=SSO" \
+  -H "X-API-Key: your-api-key"
+```
+
+### Search
+
+```bash
+# Hybrid semantic + structured search
+curl -X POST http://localhost:8000/api/v1/projects/{project_id}/search \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "query": "API rate limits",
+    "source_groups": ["company_a", "company_b"],
+    "limit": 20
   }'
 ```
 
-### Search Facts
+### Reports
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/search \
-  -d '{"query": "API rate limits", "filters": {"company": "Example Inc"}}'
-```
+# Single source_group report
+curl -X POST http://localhost:8000/api/v1/projects/{project_id}/reports \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "type": "single",
+    "source_groups": ["example_inc"],
+    "title": "Example Inc Analysis"
+  }'
 
-### Generate Reports
-
-```bash
-# Single company report
-curl -X POST http://localhost:8000/api/v1/reports \
-  -d '{"type": "single", "company": "Example Inc", "format": "md"}'
-
-# Comparison report
-curl -X POST http://localhost:8000/api/v1/reports \
+# Comparison report with entity tables
+curl -X POST http://localhost:8000/api/v1/projects/{project_id}/reports \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '{
     "type": "comparison",
-    "companies": ["Company A", "Company B"],
-    "categories": ["pricing", "api_limits"],
-    "format": "md"
+    "source_groups": ["company_a", "company_b"],
+    "entity_types": ["feature", "limit", "pricing"],
+    "title": "Feature Comparison"
   }'
+
+# List reports
+curl http://localhost:8000/api/v1/projects/{project_id}/reports \
+  -H "X-API-Key: your-api-key"
 ```
 
-## Extraction Profiles
-
-| Profile | Focus | Categories |
-|---------|-------|------------|
-| `technical_specs` | Hardware, requirements, compatibility | specs, hardware, requirements |
-| `api_docs` | Endpoints, auth, rate limits, SDKs | endpoints, auth, rate_limits, sdks |
-| `security` | Certifications, compliance, encryption | certifications, compliance, encryption |
-| `pricing` | Pricing tiers, features, limits | pricing, features, limits |
-| `general` | Broad technical facts | all |
-| `custom` | User-defined focus | user-defined |
-
-### Creating Custom Profiles
+### Jobs & Metrics
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/profiles \
-  -d '{
-    "name": "infrastructure",
-    "categories": ["deployment", "scaling", "regions"],
-    "prompt_focus": "Cloud deployment options, scaling capabilities, regional availability",
-    "depth": "detailed"
-  }'
+# List all jobs with filtering
+curl "http://localhost:8000/api/v1/jobs?status=completed&job_type=extract" \
+  -H "X-API-Key: your-api-key"
+
+# Prometheus metrics
+curl http://localhost:8000/metrics
 ```
+
+## Project Templates
+
+| Template | Use Case | Entity Types |
+|----------|----------|--------------|
+| `company_analysis` | Technical documentation analysis | plan, feature, limit, certification, pricing |
+| `research_survey` | Academic paper extraction (coming soon) | author, method, dataset, metric, citation |
+| `contract_review` | Legal document analysis (coming soon) | party, date, amount, duration, jurisdiction |
 
 ## Configuration
 
@@ -165,7 +205,10 @@ SCRAPE_MAX_CONCURRENT_PER_DOMAIN=2
 # Services
 REDIS_URL=redis://redis:6379
 QDRANT_URL=http://qdrant:6333
-DATABASE_URL=postgresql://user:pass@postgres:5432/scristill
+DATABASE_URL=postgresql://user:pass@postgres:5432/extraction
+
+# Security
+API_KEY=your-secure-api-key
 ```
 
 See `.env.example` for full list.
@@ -175,73 +218,120 @@ See `.env.example` for full list.
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed system design.
 
 ```
-CU1: Firecrawl + Redis + Qdrant + PostgreSQL + Pipeline API
-           ↓
-      vLLM Gateway (192.168.0.247:9003)
-           ↓
-CU1: BGE-large-en (embeddings)
-CU2: Qwen3/Gemma (extraction/reports)
+┌─────────────────────────────────────────────────────────────┐
+│                    Pipeline Service (FastAPI)                │
+│                                                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐ │
+│  │ Scraper │→ │ Chunker │→ │Extractor│→ │ Deduplicator    │ │
+│  │ Worker  │  │         │  │ (LLM)   │  │ (Embeddings)    │ │
+│  └─────────┘  └─────────┘  └─────────┘  └────────┬────────┘ │
+│                                                  │          │
+│                                         ┌────────▼────────┐ │
+│                                         │ Entity Extractor│ │
+│                                         │ (LLM + Normalization)│
+│                                         └────────┬────────┘ │
+│                                                  │          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────▼─────┐    │
+│  │PostgreSQL│  │  Redis   │  │  Qdrant  │  │ Report   │    │
+│  │(metadata)│  │ (queue)  │  │(vectors) │  │ Service  │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Project Structure
 
 ```
-scristill/
-├── docker-compose.yml
-├── .env.example
-├── ARCHITECTURE.md
-├── README.md
-├── TODO.md
+knowledge_extraction/
 ├── src/
-│   ├── main.py
-│   ├── config.py
-│   ├── api/
+│   ├── main.py                 # FastAPI app with lifespan
+│   ├── config.py               # Pydantic settings
+│   ├── orm_models.py           # SQLAlchemy models
+│   ├── api/v1/
+│   │   ├── projects.py         # Project CRUD
+│   │   ├── extraction.py       # Extraction endpoints
+│   │   ├── entities.py         # Entity queries
+│   │   ├── search.py           # Hybrid search
+│   │   ├── reports.py          # Report generation
+│   │   ├── jobs.py             # Job listing
+│   │   └── metrics.py          # Prometheus metrics
 │   ├── services/
+│   │   ├── extraction/
+│   │   │   ├── pipeline.py     # ExtractionPipelineService
+│   │   │   └── worker.py       # Background job processing
+│   │   ├── knowledge/
+│   │   │   └── extractor.py    # EntityExtractor
+│   │   ├── reports/
+│   │   │   └── service.py      # ReportService
+│   │   ├── storage/
+│   │   │   ├── repositories/   # Project, Source, Extraction, Entity repos
+│   │   │   ├── embedding.py    # EmbeddingService
+│   │   │   ├── deduplication.py# ExtractionDeduplicator
+│   │   │   └── search.py       # SearchService
+│   │   ├── scraper/
+│   │   │   ├── firecrawl.py    # FirecrawlClient
+│   │   │   ├── rate_limiter.py # DomainRateLimiter
+│   │   │   └── worker.py       # ScraperWorker
+│   │   └── llm/
+│   │       ├── client.py       # LLMClient
+│   │       └── chunking.py     # Document chunking
 │   └── middleware/
-├── tests/
-├── alembic/
+│       ├── auth.py             # API key authentication
+│       ├── request_id.py       # Request ID tracing
+│       └── request_logging.py  # Structured logging
+├── tests/                      # 583 tests
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── TODO.md                 # Master task list
+│   └── TODO_*.md               # Module-specific docs
+├── alembic/                    # Database migrations
+├── docker-compose.yml
 ├── Dockerfile
-├── requirements.txt
-└── docs/
-    ├── TODO_scraper.md
-    ├── TODO_extraction.md
-    ├── TODO_storage.md
-    └── TODO_reports.md
+└── requirements.txt
 ```
 
 ## Development
 
 ```bash
-# Local development (without Docker)
+# Setup
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
-cd src && uvicorn main:app --reload
+pip install -r requirements-dev.txt
 
 # Run tests
-pytest
+pytest tests/ -v
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Lint and format
+ruff check . --fix
+ruff format .
+
+# Start dev server
+cd src && uvicorn main:app --reload
 ```
 
 ## Troubleshooting
 
 ### Firecrawl not scraping JS content
 
-Check Playwright service is running:
+Check Playwright service:
 ```bash
 docker compose logs playwright
 ```
 
 ### LLM timeouts
 
-Increase timeout in config:
-```yaml
-llm:
-  http_timeout_seconds: 900
-```
+Increase timeout in config or check vLLM gateway status.
+
+### Extraction duplicates
+
+The system uses embedding similarity (0.90 threshold) for deduplication. Adjust `DEDUP_THRESHOLD` if needed.
 
 ### Cloudflare blocks
 
-Enable FlareSolverr in docker-compose and set:
+Enable FlareSolverr in docker-compose:
 ```bash
 USE_FLARESOLVERR=true
 ```
