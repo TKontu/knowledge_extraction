@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
+import httpx
 import structlog
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from orm_models import Job
 from services.projects.repository import ProjectRepository
 from services.scraper.client import FirecrawlClient
 from services.scraper.rate_limiter import DomainRateLimiter, RateLimitExceeded
+from services.scraper.retry import RetryConfig, retry_with_backoff
 from services.storage.repositories.source import SourceRepository
 
 logger = structlog.get_logger(__name__)
@@ -41,6 +43,7 @@ class ScraperWorker:
         db: Session,
         firecrawl_client: FirecrawlClient,
         rate_limiter: DomainRateLimiter | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         """Initialize ScraperWorker.
 
@@ -48,10 +51,16 @@ class ScraperWorker:
             db: Database session.
             firecrawl_client: Firecrawl client for scraping.
             rate_limiter: Optional rate limiter (default: None).
+            retry_config: Optional retry configuration (default: None).
         """
         self.db = db
         self.client = firecrawl_client
         self.rate_limiter = rate_limiter
+        self.retry_config = retry_config or RetryConfig(
+            max_retries=3,
+            base_delay=2.0,
+            max_delay=60.0,
+        )
 
         # Initialize repositories
         self.source_repo = SourceRepository(db)
@@ -100,15 +109,11 @@ class ScraperWorker:
                     # Extract domain for rate limiting
                     domain = self._extract_domain(url)
 
-                    # Acquire rate limit permission if rate limiter is available
-                    if self.rate_limiter:
-                        await self.rate_limiter.acquire(domain)
-
-                    # Scrape the URL
-                    result = await self.client.scrape(url)
+                    # Scrape with retry
+                    result = await self._scrape_url_with_retry(url, domain)
 
                     # Store successful scrapes
-                    if result.success and result.markdown:
+                    if result and result.success and result.markdown:
                         await self.source_repo.create(
                             project_id=project_id,
                             uri=result.url,
@@ -196,6 +201,40 @@ class ScraperWorker:
             logger.error(
                 "job_processing_error", job_id=str(job.id), error=str(e), exc_info=True
             )
+
+    async def _scrape_url_with_retry(self, url: str, domain: str):
+        """Scrape URL with retry logic.
+
+        Args:
+            url: URL to scrape.
+            domain: Domain for rate limiting.
+
+        Returns:
+            ScrapeResult on success, None on failure after retries.
+
+        Raises:
+            RateLimitExceeded: If rate limit is exceeded (not retried).
+        """
+        async def do_scrape():
+            if self.rate_limiter:
+                await self.rate_limiter.acquire(domain)
+            return await self.client.scrape(url)
+
+        try:
+            return await retry_with_backoff(
+                func=do_scrape,
+                config=self.retry_config,
+                retryable_exceptions=(httpx.HTTPError, TimeoutError, ConnectionError),
+                operation_name=f"scrape:{domain}",
+            )
+        except (httpx.HTTPError, TimeoutError, ConnectionError) as e:
+            # Retryable exceptions exhausted - log and return None
+            logger.error("scrape_failed_after_retries", url=url, error=str(e))
+            return None
+        except RateLimitExceeded:
+            # Re-raise rate limit exceptions to be handled at job level
+            raise
+        # Let all other exceptions propagate to job-level error handler
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL.
