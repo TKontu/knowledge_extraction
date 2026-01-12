@@ -112,6 +112,20 @@ class Settings(BaseSettings):
         description="Scrape timeout in seconds",
     )
 
+    # Scraper Retry Configuration
+    scrape_retry_max_attempts: int = Field(
+        default=3,
+        description="Maximum retry attempts for failed scrapes",
+    )
+    scrape_retry_base_delay: float = Field(
+        default=2.0,
+        description="Base delay between retries in seconds",
+    )
+    scrape_retry_max_delay: float = Field(
+        default=60.0,
+        description="Maximum delay between retries in seconds",
+    )
+
     # Logging & Monitoring
     log_level: str = Field(
         default="INFO",
