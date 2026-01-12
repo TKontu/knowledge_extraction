@@ -23,6 +23,7 @@ from services.storage.qdrant.repository import QdrantRepository
 from services.storage.repositories.entity import EntityRepository
 from services.storage.repositories.extraction import ExtractionRepository
 from services.storage.repositories.source import SourceRepository
+from shutdown import get_shutdown_manager
 
 
 class JobScheduler:
@@ -95,7 +96,8 @@ class JobScheduler:
 
         Continuously polls database for queued scrape jobs and processes them.
         """
-        while self._running:
+        shutdown = get_shutdown_manager()
+        while self._running and not shutdown.is_shutting_down:
             try:
                 # Get a database session
                 db: Session = SessionLocal()
@@ -133,7 +135,8 @@ class JobScheduler:
 
         Continuously polls database for queued extract jobs and processes them.
         """
-        while self._running:
+        shutdown = get_shutdown_manager()
+        while self._running and not shutdown.is_shutting_down:
             try:
                 # Get a database session
                 db: Session = SessionLocal()
