@@ -1,8 +1,13 @@
+import os
+
+# Set test API key before any imports that load settings
+# This must be at the very top to avoid validation errors
+os.environ.setdefault("API_KEY", "test-api-key-for-pytest-minimum-16-chars")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-import os
 
 
 @pytest.fixture
