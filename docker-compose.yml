@@ -1,20 +1,29 @@
-version: "3.8"
-
 services:
   # ===================
   # Firecrawl Stack
   # ===================
   firecrawl-api:
-    image: mendableai/firecrawl:latest
+    image: ghcr.io/firecrawl/firecrawl:latest
     ports:
       - "3002:3002"
     environment:
+      - PORT=3002
+      - HOST=0.0.0.0
       - REDIS_URL=redis://redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://redis:6379
       - NUM_WORKERS_PER_QUEUE=2
       - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3000
+      - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
+      - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
     depends_on:
-      - redis
-      - playwright
+      firecrawl-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      playwright:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     restart: unless-stopped
     networks:
       - scristill
@@ -27,7 +36,7 @@ services:
           memory: 256M
 
   playwright:
-    image: mendableai/firecrawl-playwright:latest
+    image: ghcr.io/firecrawl/playwright-service:latest
     ports:
       - "3000:3000"
     restart: unless-stopped
@@ -41,6 +50,29 @@ services:
         reservations:
           memory: 256M
 
+  # Firecrawl's dedicated PostgreSQL with NUQ schema pre-loaded
+  firecrawl-db:
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - firecrawl_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+
   # ===================
   # Data Stores
   # ===================
@@ -51,6 +83,27 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
     networks:
       - scristill
@@ -247,6 +300,8 @@ volumes:
   redis_data:
   postgres_data:
   qdrant_data:
+  rabbitmq_data:
+  firecrawl_postgres_data:
 
 networks:
   scristill:
