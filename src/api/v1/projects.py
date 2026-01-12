@@ -10,7 +10,20 @@ from database import get_db
 from models import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectFromTemplate
 from orm_models import Extraction
 from services.projects.repository import ProjectRepository
-from services.projects.templates import COMPANY_ANALYSIS_TEMPLATE
+from services.projects.templates import (
+    COMPANY_ANALYSIS_TEMPLATE,
+    RESEARCH_SURVEY_TEMPLATE,
+    CONTRACT_REVIEW_TEMPLATE,
+    BOOK_CATALOG_TEMPLATE,
+)
+
+# Template registry for lookup
+TEMPLATES = {
+    "company_analysis": COMPANY_ANALYSIS_TEMPLATE,
+    "research_survey": RESEARCH_SURVEY_TEMPLATE,
+    "contract_review": CONTRACT_REVIEW_TEMPLATE,
+    "book_catalog": BOOK_CATALOG_TEMPLATE,
+}
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -61,7 +74,7 @@ async def list_projects(
 @router.get("/templates", response_model=list[str])
 async def list_templates() -> list[str]:
     """List available project templates."""
-    return ["company_analysis"]
+    return list(TEMPLATES.keys())
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -149,10 +162,10 @@ async def create_from_template(
 ) -> ProjectResponse:
     """Create a new project from a template."""
     # Check if template exists
-    if request.template != "company_analysis":
+    if request.template not in TEMPLATES:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Template '{request.template}' not found. Available: ['company_analysis']",
+            detail=f"Template '{request.template}' not found. Available: {list(TEMPLATES.keys())}",
         )
 
     repo = ProjectRepository(db)
@@ -166,7 +179,7 @@ async def create_from_template(
         )
 
     # Clone from template
-    template = COMPANY_ANALYSIS_TEMPLATE.copy()
+    template = TEMPLATES[request.template].copy()
 
     # Create project from template
     db_project = await repo.create(

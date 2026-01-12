@@ -189,8 +189,84 @@ CONTRACT_REVIEW_TEMPLATE = {
     "is_template": True,
 }
 
+# Template for book catalog extraction
+BOOK_CATALOG_TEMPLATE = {
+    "name": "book_catalog",
+    "description": "Extract book information from online bookstores and catalogs",
+    "source_config": {"type": "web", "group_by": "category"},
+    "extraction_schema": {
+        "name": "book_info",
+        "fields": [
+            {
+                "name": "title",
+                "type": "text",
+                "required": True,
+                "description": "Book title",
+            },
+            {
+                "name": "price",
+                "type": "text",
+                "required": True,
+                "description": "Book price with currency",
+            },
+            {
+                "name": "availability",
+                "type": "enum",
+                "required": False,
+                "values": ["in_stock", "out_of_stock", "limited", "unknown"],
+                "default": "unknown",
+                "description": "Stock availability status",
+            },
+            {
+                "name": "rating",
+                "type": "integer",
+                "required": False,
+                "min": 1,
+                "max": 5,
+                "description": "Star rating (1-5)",
+            },
+            {
+                "name": "category",
+                "type": "text",
+                "required": False,
+                "description": "Book genre or category",
+            },
+            {
+                "name": "description",
+                "type": "text",
+                "required": False,
+                "description": "Book description or synopsis",
+            },
+            {
+                "name": "confidence",
+                "type": "float",
+                "min": 0.0,
+                "max": 1.0,
+                "default": 0.8,
+            },
+        ],
+    },
+    "entity_types": [
+        {"name": "book", "description": "Book title"},
+        {"name": "author", "description": "Book author"},
+        {
+            "name": "price",
+            "description": "Book price",
+            "attributes": [
+                {"name": "amount", "type": "number"},
+                {"name": "currency", "type": "text"},
+            ],
+        },
+        {"name": "category", "description": "Book genre or category"},
+        {"name": "publisher", "description": "Book publisher"},
+    ],
+    "prompt_templates": {},
+    "is_template": True,
+}
+
 __all__ = [
     "COMPANY_ANALYSIS_TEMPLATE",
     "RESEARCH_SURVEY_TEMPLATE",
     "CONTRACT_REVIEW_TEMPLATE",
+    "BOOK_CATALOG_TEMPLATE",
 ]
