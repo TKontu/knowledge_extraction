@@ -18,6 +18,13 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
 
   playwright:
     image: mendableai/firecrawl-playwright:latest
@@ -26,6 +33,13 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
 
   # ===================
   # Data Stores
@@ -40,6 +54,13 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
 
   postgres:
     image: postgres:16-alpine
@@ -61,6 +82,13 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -74,6 +102,13 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1'
+        reservations:
+          memory: 512M
 
   # ===================
   # Anti-Bot (Optional)
@@ -139,20 +174,20 @@ services:
     environment:
       # Database
       DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
-      
+
       # Redis
       REDIS_URL: redis://redis:6379
-      
+
       # Qdrant
       QDRANT_URL: http://qdrant:6333
-      
+
       # Firecrawl
       FIRECRAWL_URL: http://firecrawl-api:3002
-      
+
       # FlareSolverr (optional)
       FLARESOLVERR_URL: http://flaresolverr:8191
       USE_FLARESOLVERR: ${USE_FLARESOLVERR:-false}
-      
+
       # Security
       API_KEY: ${API_KEY}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
@@ -163,7 +198,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
       LLM_MODEL: ${LLM_MODEL:-gemma3-12b-awq}
       RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-bge-large-en}
-      
+
       # Scraping config
       SCRAPE_DELAY_MIN: ${SCRAPE_DELAY_MIN:-2}
       SCRAPE_DELAY_MAX: ${SCRAPE_DELAY_MAX:-5}
@@ -171,13 +206,13 @@ services:
       SCRAPE_DAILY_LIMIT_PER_DOMAIN: ${SCRAPE_DAILY_LIMIT_PER_DOMAIN:-500}
       SCRAPE_MAX_RETRIES: ${SCRAPE_MAX_RETRIES:-3}
       SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-60}
-      
+
       # LLM timeouts (matching your config)
       LLM_HTTP_TIMEOUT: ${LLM_HTTP_TIMEOUT:-900}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-5}
       LLM_RETRY_BACKOFF_MIN: ${LLM_RETRY_BACKOFF_MIN:-2}
       LLM_RETRY_BACKOFF_MAX: ${LLM_RETRY_BACKOFF_MAX:-60}
-      
+
       # Logging & Monitoring
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
@@ -199,6 +234,14 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
 
 volumes:
   redis_data:

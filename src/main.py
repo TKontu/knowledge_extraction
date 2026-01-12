@@ -132,6 +132,9 @@ async def health_check() -> JSONResponse:
     except Exception:
         db_connected = False
 
+    if not db_connected:
+        logger.warning("health_check_failed", component="database")
+
     # Check Redis connectivity
     redis_connected = False
     try:
@@ -139,12 +142,18 @@ async def health_check() -> JSONResponse:
     except Exception:
         redis_connected = False
 
+    if not redis_connected:
+        logger.warning("health_check_failed", component="redis")
+
     # Check Qdrant connectivity
     qdrant_connected = False
     try:
         qdrant_connected = check_qdrant_connection()
     except Exception:
         qdrant_connected = False
+
+    if not qdrant_connected:
+        logger.warning("health_check_failed", component="qdrant")
 
     return JSONResponse(
         content={
