@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import structlog
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from orm_models import Job
 from services.scraper.client import FirecrawlClient
@@ -47,8 +48,9 @@ class CrawlWorker:
                     allow_backward_links=payload.get("allow_backward_links", False),
                 )
 
-                # Store Firecrawl job ID
+                # Store Firecrawl job ID (must flag_modified for JSON column)
                 job.payload["firecrawl_job_id"] = firecrawl_job_id
+                flag_modified(job, "payload")
                 job.status = "running"
                 job.started_at = datetime.now(UTC)
                 self.db.commit()
@@ -112,6 +114,8 @@ class CrawlWorker:
                     await self._create_extraction_job(job)
 
         except Exception as e:
+            # Rollback any failed transaction before updating job status
+            self.db.rollback()
             job.status = "failed"
             job.error = str(e)
             job.completed_at = datetime.now(UTC)
