@@ -14,12 +14,21 @@ class Settings(BaseSettings):
 
     # Security
     api_key: str = Field(
-        default="dev-key-change-in-production",
-        description="API key for authentication",
+        description="API key for authentication (required - no default)",
     )
     allowed_origins: str = Field(
         default="http://localhost:8080",
         description="Comma-separated CORS origins",
+    )
+
+    # Security - HTTPS
+    enforce_https: bool = Field(
+        default=False,
+        description="Redirect HTTP to HTTPS (enable in production)",
+    )
+    https_redirect_host: str | None = Field(
+        default=None,
+        description="Host to redirect to for HTTPS (optional)",
     )
 
     # Database
@@ -143,6 +152,27 @@ class Settings(BaseSettings):
         default=20,
         description="Burst allowance above limit",
     )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate API key is set and not a known insecure value."""
+        insecure_values = {
+            "dev-key-change-in-production",
+            "changeme",
+            "test",
+            "dev",
+            "development",
+        }
+        if not v:
+            raise ValueError("API_KEY environment variable must be set")
+        if v.lower() in insecure_values:
+            raise ValueError(
+                f"Insecure API key '{v}'. Please set a strong API_KEY in production."
+            )
+        if len(v) < 16:
+            raise ValueError("API key must be at least 16 characters")
+        return v
 
     @field_validator("log_level")
     @classmethod
