@@ -21,9 +21,11 @@ from config import settings
 from database import check_database_connection
 from logging_config import configure_logging
 from middleware.auth import APIKeyMiddleware
+from middleware.https import HTTPSRedirectMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.request_id import RequestIDMiddleware
 from middleware.request_logging import RequestLoggingMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
 from qdrant_connection import check_qdrant_connection
 from redis_client import check_redis_connection
 from services.scraper.scheduler import start_scheduler, stop_scheduler
@@ -39,6 +41,25 @@ async def handle_signal(sig: signal.Signals) -> None:
     """Handle shutdown signals."""
     logger.info("signal_received", signal=sig.name)
     await shutdown_manager.initiate_shutdown()
+
+
+def check_security_config() -> None:
+    """Log security configuration status."""
+    issues = []
+
+    # Check API key strength
+    if len(settings.api_key) < 32:
+        issues.append("API key is shorter than recommended (32+ characters)")
+
+    # Check HTTPS enforcement
+    if not settings.enforce_https:
+        issues.append("HTTPS enforcement is disabled")
+
+    if issues:
+        for issue in issues:
+            logger.warning("security_config_issue", issue=issue)
+    else:
+        logger.info("security_config_valid")
 
 
 @asynccontextmanager
@@ -59,6 +80,10 @@ async def lifespan(app: FastAPI):
 
     # Startup: Start the background job scheduler
     logger.info("application_startup", version="0.1.0")
+
+    # Check security configuration
+    check_security_config()
+
     await start_scheduler()
 
     # Register cleanup callbacks
@@ -87,6 +112,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# Add HTTPS redirect middleware (checks setting internally)
+app.add_middleware(HTTPSRedirectMiddleware)
+
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Add authentication middleware
 app.add_middleware(APIKeyMiddleware)
@@ -132,6 +163,9 @@ async def health_check() -> JSONResponse:
     except Exception:
         db_connected = False
 
+    if not db_connected:
+        logger.warning("health_check_failed", component="database")
+
     # Check Redis connectivity
     redis_connected = False
     try:
@@ -139,12 +173,18 @@ async def health_check() -> JSONResponse:
     except Exception:
         redis_connected = False
 
+    if not redis_connected:
+        logger.warning("health_check_failed", component="redis")
+
     # Check Qdrant connectivity
     qdrant_connected = False
     try:
         qdrant_connected = check_qdrant_connection()
     except Exception:
         qdrant_connected = False
+
+    if not qdrant_connected:
+        logger.warning("health_check_failed", component="qdrant")
 
     return JSONResponse(
         content={

@@ -16,6 +16,7 @@ from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
 from services.scraper.client import FirecrawlClient
 from services.scraper.rate_limiter import DomainRateLimiter, RateLimitConfig
+from services.scraper.retry import RetryConfig
 from services.scraper.worker import ScraperWorker
 from services.storage.deduplication import ExtractionDeduplicator
 from services.storage.embedding import EmbeddingService
@@ -53,6 +54,7 @@ class JobScheduler:
         self._extract_task: asyncio.Task | None = None
         self._firecrawl_client: FirecrawlClient | None = None
         self._rate_limiter: DomainRateLimiter | None = None
+        self._retry_config: RetryConfig | None = None
 
     async def start(self) -> None:
         """Start the background scheduler.
@@ -73,6 +75,12 @@ class JobScheduler:
         self._rate_limiter = DomainRateLimiter(
             redis_client=redis_client,
             config=rate_limit_config,
+        )
+        # Initialize retry config
+        self._retry_config = RetryConfig(
+            max_retries=settings.scrape_retry_max_attempts,
+            base_delay=settings.scrape_retry_base_delay,
+            max_delay=settings.scrape_retry_max_delay,
         )
         # Start both scrape and extract workers concurrently
         self._scrape_task = asyncio.create_task(self._run_scrape_worker())
@@ -116,6 +124,7 @@ class JobScheduler:
                             db=db,
                             firecrawl_client=self._firecrawl_client,
                             rate_limiter=self._rate_limiter,
+                            retry_config=self._retry_config,
                         )
                         await worker.process_job(job)
                     else:
