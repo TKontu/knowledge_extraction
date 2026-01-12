@@ -1,3 +1,5 @@
+import asyncio
+import signal
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -24,6 +26,7 @@ from middleware.request_logging import RequestLoggingMiddleware
 from qdrant_connection import check_qdrant_connection
 from redis_client import check_redis_connection
 from services.scraper.scheduler import start_scheduler, stop_scheduler
+from shutdown import get_shutdown_manager, shutdown_manager
 
 # Configure logging before creating the app
 configure_logging()
@@ -31,16 +34,40 @@ configure_logging()
 logger = structlog.get_logger(__name__)
 
 
+async def handle_signal(sig: signal.Signals) -> None:
+    """Handle shutdown signals."""
+    logger.info("signal_received", signal=sig.name)
+    await shutdown_manager.initiate_shutdown()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
+    loop = asyncio.get_event_loop()
+
+    # Register signal handlers (skip in test environment if not supported)
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: asyncio.create_task(handle_signal(s))
+            )
+    except NotImplementedError:
+        # Signal handlers not supported (e.g., Windows or test environment)
+        logger.debug("signal_handlers_not_supported", reason="platform limitation")
+
     # Startup: Start the background job scheduler
     logger.info("application_startup", version="0.1.0")
     await start_scheduler()
+
+    # Register cleanup callbacks
+    shutdown_manager.register_cleanup(stop_scheduler)
+
     yield
+
     # Shutdown: Stop the background job scheduler
     logger.info("application_shutdown")
-    await stop_scheduler()
+    await shutdown_manager.initiate_shutdown()
 
 
 app = FastAPI(
@@ -84,6 +111,18 @@ app.include_router(metrics_router)
 @app.get("/health")
 async def health_check() -> JSONResponse:
     """Health check endpoint - returns service status."""
+    shutdown = get_shutdown_manager()
+
+    if shutdown.is_shutting_down:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "shutting_down",
+                "service": "scristill-pipeline",
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
+
     # Check database connectivity
     db_connected = False
     try:
