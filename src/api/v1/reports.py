@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -11,6 +12,7 @@ from models import ReportRequest, ReportResponse
 from orm_models import Report
 from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
+from services.reports.pdf import PDFConversionError, PDFConverter
 from services.reports.service import ReportService
 from services.storage.repositories.entity import EntityRepository
 from services.storage.repositories.extraction import ExtractionRepository
@@ -192,4 +194,88 @@ async def get_report(
         extraction_count=len(report.extraction_ids),
         entity_count=0,  # TODO: count entities from report data
         generated_at=report.created_at.isoformat(),
+    )
+
+
+@router.get(
+    "/projects/{project_id}/reports/{report_id}/pdf",
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "PDF file",
+        },
+        404: {"description": "Report not found"},
+        503: {"description": "PDF conversion unavailable"},
+    },
+)
+async def export_report_pdf(
+    project_id: UUID,
+    report_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Export a report as PDF.
+
+    Args:
+        project_id: Project UUID
+        report_id: Report UUID
+        db: Database session
+
+    Returns:
+        PDF file response
+
+    Raises:
+        HTTPException: If report not found or PDF conversion fails
+    """
+    # Get report
+    report = db.query(Report).filter(
+        Report.id == report_id,
+        Report.project_id == project_id,
+    ).first()
+
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} not found",
+        )
+
+    if not report.content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Report has no content to export",
+        )
+
+    # Convert to PDF
+    converter = PDFConverter()
+
+    # Check if pandoc is available
+    if not await converter.is_available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PDF export not available (Pandoc not installed)",
+        )
+
+    try:
+        pdf_content = await converter.convert(
+            markdown=report.content,
+            title=report.title,
+        )
+    except PDFConversionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PDF conversion failed: {str(e)}",
+        ) from e
+
+    # Generate filename
+    filename = f"report_{report_id}.pdf"
+    if report.title:
+        # Sanitize title for filename
+        safe_title = "".join(c for c in report.title if c.isalnum() or c in " -_")[:50]
+        filename = f"{safe_title}.pdf"
+
+    return Response(
+        content=pdf_content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
     )

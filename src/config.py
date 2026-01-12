@@ -144,6 +144,16 @@ class Settings(BaseSettings):
         description="Burst allowance above limit",
     )
 
+    # PDF Export
+    pdf_enabled: bool = Field(
+        default=True,
+        description="Enable PDF export (requires Pandoc)",
+    )
+    pandoc_path: str = Field(
+        default="pandoc",
+        description="Path to Pandoc executable",
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
