@@ -12,6 +12,23 @@ from orm_models import Job
 
 logger = structlog.get_logger(__name__)
 
+# Default paths to prioritize for company information extraction
+# These patterns help crawlers find "about us", company info, and product pages
+DEFAULT_COMPANY_INCLUDE_PATHS = [
+    "*about*",
+    "*company*",
+    "*history*",
+    "*who-we-are*",
+    "*our-story*",
+    "*corporate*",
+    "*products*",
+    "*solutions*",
+    "*services*",
+    "*capabilities*",
+    "*contact*",
+    "*locations*",
+]
+
 router = APIRouter(prefix="/api/v1", tags=["crawl"])
 
 
@@ -22,6 +39,11 @@ async def create_crawl_job(
     """Create a new crawl job."""
     job_id = uuid4()
 
+    # Use default company paths if none specified
+    include_paths = request.include_paths
+    if include_paths is None:
+        include_paths = DEFAULT_COMPANY_INCLUDE_PATHS
+
     logger.info(
         "crawl_job_created",
         job_id=str(job_id),
@@ -29,6 +51,7 @@ async def create_crawl_job(
         project_id=str(request.project_id),
         max_depth=request.max_depth,
         limit=request.limit,
+        include_paths_count=len(include_paths) if include_paths else 0,
     )
 
     job = Job(
@@ -41,7 +64,7 @@ async def create_crawl_job(
             "company": request.company,
             "max_depth": request.max_depth,
             "limit": request.limit,
-            "include_paths": request.include_paths,
+            "include_paths": include_paths,
             "exclude_paths": request.exclude_paths,
             "allow_backward_links": request.allow_backward_links,
             "auto_extract": request.auto_extract,

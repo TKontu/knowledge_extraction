@@ -142,11 +142,18 @@ class ExtractionRepository:
         )
         return list(result.scalars().all())
 
-    async def list(self, filters: ExtractionFilters) -> list[Extraction]:
+    async def list(
+        self,
+        filters: ExtractionFilters,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Extraction]:
         """List extractions with optional filtering.
 
         Args:
             filters: ExtractionFilters instance with filter criteria
+            limit: Maximum number of results to return (None for no limit)
+            offset: Number of results to skip
 
         Returns:
             List of Extraction instances matching filters, sorted by created_at desc
@@ -173,6 +180,12 @@ class ExtractionRepository:
 
         # Sort by created_at descending (most recent first)
         query = query.order_by(Extraction.created_at.desc())
+
+        # Apply pagination
+        if offset > 0:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
 
         result = self._session.execute(query)
         return list(result.scalars().all())
