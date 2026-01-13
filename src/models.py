@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -88,9 +88,15 @@ class CrawlRequest(BaseModel):
     company: str = Field(..., min_length=1, description="Source group name")
     max_depth: int = Field(default=2, ge=1, le=10, description="Crawl depth")
     limit: int = Field(default=100, ge=1, le=1000, description="Max pages")
-    include_paths: list[str] | None = Field(default=None, description="URL patterns to include")
-    exclude_paths: list[str] | None = Field(default=None, description="URL patterns to exclude")
-    allow_backward_links: bool = Field(default=False, description="Allow parent/sibling URLs")
+    include_paths: list[str] | None = Field(
+        default=None, description="URL patterns to include"
+    )
+    exclude_paths: list[str] | None = Field(
+        default=None, description="URL patterns to exclude"
+    )
+    allow_backward_links: bool = Field(
+        default=False, description="Allow parent/sibling URLs"
+    )
     auto_extract: bool = Field(default=True, description="Auto-trigger extraction")
     profile: str | None = Field(default=None, description="Extraction profile")
 
@@ -404,6 +410,7 @@ class ReportType(str, Enum):
 
     SINGLE = "single"
     COMPARISON = "comparison"
+    TABLE = "table"
 
 
 class ReportRequest(BaseModel):
@@ -422,6 +429,13 @@ class ReportRequest(BaseModel):
     title: str | None = Field(default=None, description="Custom report title")
     max_extractions: int = Field(
         default=50, ge=1, le=200, description="Max extractions per source_group"
+    )
+    columns: list[str] | None = Field(
+        default=None,
+        description="Specific field names to include as columns (None = all fields)",
+    )
+    output_format: Literal["md", "xlsx"] = Field(
+        default="md", description="Output format for TABLE reports"
     )
 
     @field_validator("source_groups")

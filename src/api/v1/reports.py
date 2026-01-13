@@ -227,10 +227,14 @@ async def export_report_pdf(
         HTTPException: If report not found or PDF conversion fails
     """
     # Get report
-    report = db.query(Report).filter(
-        Report.id == report_id,
-        Report.project_id == project_id,
-    ).first()
+    report = (
+        db.query(Report)
+        .filter(
+            Report.id == report_id,
+            Report.project_id == project_id,
+        )
+        .first()
+    )
 
     if not report:
         raise HTTPException(
@@ -278,4 +282,42 @@ async def export_report_pdf(
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
         },
+    )
+
+
+@router.get("/projects/{project_id}/reports/{report_id}/download")
+async def download_report(
+    project_id: UUID,
+    report_id: UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Download report in original format (markdown or xlsx)."""
+    report = (
+        db.query(Report)
+        .filter(Report.id == report_id, Report.project_id == project_id)
+        .first()
+    )
+
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} not found",
+        )
+
+    # Sanitize filename
+    safe_title = "".join(c for c in report.title if c.isalnum() or c in " -_")[:50]
+
+    if report.format == "xlsx" and report.binary_content:
+        return Response(
+            content=report.binary_content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_title}.xlsx"'
+            },
+        )
+
+    return Response(
+        content=report.content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{safe_title}.md"'},
     )
