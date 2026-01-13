@@ -88,6 +88,22 @@ class ReportService:
             if excel_bytes:
                 binary_content = excel_bytes
                 report_format = "xlsx"
+        elif request.type == ReportType.SCHEMA_TABLE:
+            from services.reports.schema_table import SchemaTableReport
+
+            schema_report = SchemaTableReport(self._db)
+            md_content, excel_bytes = await schema_report.generate(
+                project_id=project_id,
+                source_groups=request.source_groups,
+                output_format=request.output_format,
+            )
+            content = md_content
+            if excel_bytes:
+                binary_content = excel_bytes
+                report_format = "xlsx"
+            title = (
+                request.title or f"Schema Report: {', '.join(request.source_groups)}"
+            )
         elif request.type == ReportType.SINGLE:
             content = await self._generate_single_report(data, request.title)
             title = request.title or f"{request.source_groups[0]} - Extraction Report"

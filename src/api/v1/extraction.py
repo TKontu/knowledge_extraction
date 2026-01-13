@@ -236,3 +236,55 @@ async def list_extractions(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post("/projects/{project_id}/extract-schema")
+async def extract_schema(
+    project_id: str,
+    source_groups: list[str] | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Run schema-based extraction on project sources.
+
+    This uses the drivetrain company template with 7 field groups,
+    running multiple focused LLM calls per source.
+
+    Args:
+        project_id: Project UUID.
+        source_groups: Optional filter by company names.
+
+    Returns:
+        Summary of extraction results.
+    """
+    from config import settings
+    from orm_models import Project
+    from services.extraction.pipeline import SchemaExtractionPipeline
+    from services.extraction.schema_extractor import SchemaExtractor
+    from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+
+    # Validate project_id format
+    try:
+        project_uuid = UUID(project_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid project_id format. Must be a valid UUID.",
+        )
+
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_uuid).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Create extraction pipeline
+    extractor = SchemaExtractor(settings)
+    orchestrator = SchemaExtractionOrchestrator(extractor)
+    pipeline = SchemaExtractionPipeline(orchestrator, db)
+
+    # Run extraction
+    result = await pipeline.extract_project(
+        project_id=project_uuid,
+        source_groups=source_groups,
+    )
+
+    return result

@@ -230,3 +230,110 @@ class ExtractionPipelineService:
 
         # Process batch
         return await self.process_batch(source_ids, project_id, profile_name)
+
+
+class SchemaExtractionPipeline:
+    """Runs schema extraction on sources and stores results."""
+
+    def __init__(
+        self,
+        orchestrator,  # SchemaExtractionOrchestrator
+        db_session,
+    ):
+        self._orchestrator = orchestrator
+        self._db = db_session
+
+    async def extract_source(
+        self,
+        source,  # Source ORM object
+        company_name: str,
+    ) -> list:  # list[Extraction]
+        """Extract all field groups from a source.
+
+        Args:
+            source: Source ORM object with markdown content.
+            company_name: Company name (source_group).
+
+        Returns:
+            List of created Extraction objects.
+        """
+        from orm_models import Extraction
+
+        if not source.content:
+            logger.warning("source_has_no_content", source_id=str(source.id))
+            return []
+
+        # Run extraction for all field groups
+        results = await self._orchestrator.extract_all_groups(
+            source_id=source.id,
+            markdown=source.content,
+            company_name=company_name,
+        )
+
+        # Store each result as an extraction
+        extractions = []
+        for result in results:
+            extraction = Extraction(
+                project_id=source.project_id,
+                source_id=source.id,
+                data=result["data"],
+                extraction_type=result["extraction_type"],
+                source_group=company_name,
+                confidence=result.get("confidence"),
+                profile_used="drivetrain_schema",
+            )
+            self._db.add(extraction)
+            extractions.append(extraction)
+
+        self._db.flush()
+        return extractions
+
+    async def extract_project(
+        self,
+        project_id: UUID,
+        source_groups: list[str] | None = None,
+    ) -> dict:
+        """Extract all sources in a project.
+
+        Args:
+            project_id: Project UUID.
+            source_groups: Optional filter by company names.
+
+        Returns:
+            Summary dict with extraction counts.
+        """
+        from orm_models import Source
+        from services.extraction.field_groups import ALL_FIELD_GROUPS
+
+        query = self._db.query(Source).filter(
+            Source.project_id == project_id,
+            Source.status == "ready",
+        )
+
+        if source_groups:
+            query = query.filter(Source.source_group.in_(source_groups))
+
+        sources = query.all()
+
+        logger.info(
+            "project_extraction_started",
+            project_id=str(project_id),
+            source_count=len(sources),
+        )
+
+        total_extractions = 0
+        for source in sources:
+            extractions = await self.extract_source(
+                source=source,
+                company_name=source.source_group,
+            )
+            total_extractions += len(extractions)
+
+        self._db.commit()
+
+        return {
+            "project_id": str(project_id),
+            "sources_processed": len(sources),
+            "extractions_created": total_extractions,
+            "field_groups": len(ALL_FIELD_GROUPS),
+        }
