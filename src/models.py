@@ -411,6 +411,7 @@ class ReportType(str, Enum):
     SINGLE = "single"
     COMPARISON = "comparison"
     TABLE = "table"
+    SCHEMA_TABLE = "schema_table"
 
 
 class ReportRequest(BaseModel):
