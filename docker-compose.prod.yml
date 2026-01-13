@@ -171,7 +171,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PIPELINE_PORT:-8000}:8000"
+      - "8742:8000"
     environment:
       # Database
       DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
