@@ -14,6 +14,7 @@ from sqlalchemy import (
     ARRAY,
     JSON,
     ForeignKey,
+    LargeBinary,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -197,6 +198,7 @@ class Report(Base):
     categories: Mapped[list] = mapped_column(JSON, default=list)
     extraction_ids: Mapped[list] = mapped_column(JSON, default=list)
     format: Mapped[str] = mapped_column(Text, default="md")
+    binary_content: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

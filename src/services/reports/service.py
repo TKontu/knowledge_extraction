@@ -7,6 +7,7 @@ from uuid import UUID
 from models import ReportRequest, ReportType
 from orm_models import Report
 from services.llm.client import LLMClient
+from services.reports.excel_formatter import ExcelFormatter
 from services.storage.repositories.entity import EntityFilters, EntityRepository
 from services.storage.repositories.extraction import (
     ExtractionFilters,
@@ -70,19 +71,29 @@ class ReportService:
         )
 
         # Generate markdown content based on report type
-        if request.type == ReportType.SINGLE:
+        binary_content = None
+        report_format = "md"
+
+        if request.type == ReportType.TABLE:
+            # Create title if not provided (need it before generation)
+            title = request.title or f"Table: {' vs '.join(request.source_groups)}"
+
+            md_content, excel_bytes = await self._generate_table_report(
+                data=data,
+                title=title,
+                columns=request.columns,
+                output_format=request.output_format,
+            )
+            content = md_content
+            if excel_bytes:
+                binary_content = excel_bytes
+                report_format = "xlsx"
+        elif request.type == ReportType.SINGLE:
             content = await self._generate_single_report(data, request.title)
+            title = request.title or f"{request.source_groups[0]} - Extraction Report"
         else:
             content = await self._generate_comparison_report(data, request.title)
-
-        # Create title if not provided
-        if not request.title:
-            if request.type == ReportType.SINGLE:
-                title = f"{request.source_groups[0]} - Extraction Report"
-            else:
-                title = f"Comparison: {' vs '.join(request.source_groups)}"
-        else:
-            title = request.title
+            title = request.title or f"Comparison: {' vs '.join(request.source_groups)}"
 
         # Create and save report
         report = Report(
@@ -93,7 +104,8 @@ class ReportService:
             source_groups=request.source_groups,
             categories=request.categories or [],
             extraction_ids=[],
-            format="md",
+            format=report_format,
+            binary_content=binary_content,
         )
 
         self._db.add(report)
@@ -334,3 +346,144 @@ class ReportService:
             rows.append("| " + " | ".join(row_data) + " |")
 
         return "\n".join([header, separator] + rows)
+
+    def _humanize(self, field_name: str) -> str:
+        """Convert field_name to Human Readable Label."""
+        return field_name.replace("_", " ").title()
+
+    async def _aggregate_for_table(
+        self,
+        data: ReportData,
+        columns: list[str] | None,
+    ) -> tuple[list[dict], list[str]]:
+        """Aggregate extractions into table rows.
+
+        For each source_group, consolidate multiple extractions
+        into a single row.
+
+        Args:
+            data: Report data with extractions by group
+            columns: Specific columns to include, or None for all
+
+        Returns:
+            Tuple of (rows list, columns list)
+        """
+        rows = []
+        all_columns: set[str] = set()
+
+        for source_group in data.source_groups:
+            extractions = data.extractions_by_group.get(source_group, [])
+            row: dict = {"source_group": source_group}
+
+            # Collect all field values from extractions
+            field_values: dict[str, list] = {}
+            for ext in extractions:
+                ext_data = ext.get("data", {})
+                for field, value in ext_data.items():
+                    if field not in field_values:
+                        field_values[field] = []
+                    if value is not None:
+                        field_values[field].append(value)
+                        all_columns.add(field)
+
+            # Aggregate values per field
+            for field, values in field_values.items():
+                if not values:
+                    row[field] = None
+                elif isinstance(values[0], bool):
+                    # Majority vote for booleans
+                    row[field] = sum(values) > len(values) / 2
+                elif isinstance(values[0], (int, float)):
+                    # Use max for numbers
+                    row[field] = max(values)
+                elif isinstance(values[0], list):
+                    # Flatten and dedupe lists
+                    flat: list = []
+                    for v in values:
+                        flat.extend(v)
+                    row[field] = list(dict.fromkeys(flat))
+                else:
+                    # For text, take longest non-empty
+                    row[field] = max(values, key=len) if values else None
+
+            rows.append(row)
+
+        # Determine column order
+        final_columns = ["source_group"]
+        if columns:
+            final_columns.extend(c for c in columns if c in all_columns)
+        else:
+            final_columns.extend(sorted(all_columns))
+
+        return rows, final_columns
+
+    def _build_markdown_table(
+        self,
+        rows: list[dict],
+        columns: list[str],
+        title: str | None,
+    ) -> str:
+        """Build markdown table from rows."""
+        lines = []
+        if title:
+            lines.append(f"# {title}")
+            lines.append("")
+            lines.append(
+                f"Generated: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            )
+            lines.append("")
+
+        # Column labels
+        labels = [self._humanize(c) for c in columns]
+        lines.append("| " + " | ".join(labels) + " |")
+        lines.append("|" + "|".join(["---"] * len(columns)) + "|")
+
+        # Data rows
+        for row in rows:
+            values = []
+            for col in columns:
+                val = row.get(col)
+                if val is None:
+                    values.append("N/A")
+                elif isinstance(val, bool):
+                    values.append("Yes" if val else "No")
+                elif isinstance(val, list):
+                    values.append(", ".join(str(v) for v in val))
+                else:
+                    values.append(str(val))
+            lines.append("| " + " | ".join(values) + " |")
+
+        return "\n".join(lines)
+
+    async def _generate_table_report(
+        self,
+        data: ReportData,
+        title: str | None,
+        columns: list[str] | None,
+        output_format: str,
+    ) -> tuple[str, bytes | None]:
+        """Generate table report in markdown or Excel.
+
+        Args:
+            data: Aggregated report data
+            title: Report title
+            columns: Fields to include as columns
+            output_format: Output format ("md" or "xlsx")
+
+        Returns:
+            Tuple of (markdown_content, excel_bytes or None)
+        """
+        rows, final_columns = await self._aggregate_for_table(data, columns)
+
+        md_content = self._build_markdown_table(rows, final_columns, title)
+
+        if output_format == "xlsx":
+            formatter = ExcelFormatter()
+            excel_bytes = formatter.create_workbook(
+                rows=rows,
+                columns=final_columns,
+                sheet_name=title or "Company Comparison",
+            )
+            return md_content, excel_bytes
+
+        return md_content, None
