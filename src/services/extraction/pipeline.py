@@ -1,5 +1,6 @@
 """Extraction pipeline service for orchestrating the complete extraction flow."""
 
+import asyncio
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -305,9 +306,11 @@ class SchemaExtractionPipeline:
         from orm_models import Source
         from services.extraction.field_groups import ALL_FIELD_GROUPS
 
+        # Include sources that are ready or already extracted (have content)
         query = self._db.query(Source).filter(
             Source.project_id == project_id,
-            Source.status == "ready",
+            Source.status.in_(["ready", "extracted", "pending"]),
+            Source.content.isnot(None),
         )
 
         if source_groups:
@@ -321,13 +324,21 @@ class SchemaExtractionPipeline:
             source_count=len(sources),
         )
 
-        total_extractions = 0
-        for source in sources:
-            extractions = await self.extract_source(
-                source=source,
-                company_name=source.source_group,
-            )
-            total_extractions += len(extractions)
+        # Process sources in parallel with semaphore to limit concurrency
+        semaphore = asyncio.Semaphore(4)  # Max 4 concurrent source extractions
+
+        async def extract_with_limit(source) -> int:
+            async with semaphore:
+                extractions = await self.extract_source(
+                    source=source,
+                    company_name=source.source_group,
+                )
+                return len(extractions)
+
+        extraction_counts = await asyncio.gather(
+            *[extract_with_limit(s) for s in sources]
+        )
+        total_extractions = sum(extraction_counts)
 
         self._db.commit()
 

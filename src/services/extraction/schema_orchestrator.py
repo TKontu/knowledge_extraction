@@ -1,5 +1,6 @@
 """Orchestrates multi-pass schema extraction across field groups."""
 
+import asyncio
 from uuid import UUID
 
 import structlog
@@ -49,7 +50,9 @@ class SchemaExtractionOrchestrator:
             chunks=len(chunks),
         )
 
-        for group in groups:
+        # Extract all field groups in parallel for better KV cache utilization
+        async def extract_group(group: FieldGroup) -> dict:
+            """Extract a single field group from all chunks."""
             group_result = {
                 "extraction_type": group.name,
                 "source_id": source_id,
@@ -81,7 +84,10 @@ class SchemaExtractionOrchestrator:
                 group_result["data"] = merged
                 group_result["confidence"] = merged.pop("confidence", 0.8)
 
-            results.append(group_result)
+            return group_result
+
+        # Run all field groups in parallel
+        results = await asyncio.gather(*[extract_group(g) for g in groups])
 
         logger.info(
             "schema_extraction_completed",
@@ -131,7 +137,20 @@ class SchemaExtractionOrchestrator:
                         flat.extend(v)
                     else:
                         flat.append(v)
-                merged[field.name] = list(dict.fromkeys(flat))
+                # Dedupe - handle both hashable (strings) and unhashable (dicts)
+                if flat and isinstance(flat[0], dict):
+                    # For list of dicts, dedupe by JSON string representation
+                    import json
+                    seen = set()
+                    unique = []
+                    for item in flat:
+                        key = json.dumps(item, sort_keys=True)
+                        if key not in seen:
+                            seen.add(key)
+                            unique.append(item)
+                    merged[field.name] = unique
+                else:
+                    merged[field.name] = list(dict.fromkeys(flat))
             else:  # text, enum
                 merged[field.name] = max(values, key=lambda x: len(str(x)) if x else 0)
 

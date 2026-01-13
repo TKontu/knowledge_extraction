@@ -125,7 +125,19 @@ class SchemaTableReport:
                         flat.extend(v)
                     else:
                         flat.append(v)
-                merged[field.name] = list(dict.fromkeys(flat))
+                # Dedupe - handle both hashable (strings) and unhashable (dicts)
+                if flat and isinstance(flat[0], dict):
+                    import json
+                    seen = set()
+                    unique = []
+                    for item in flat:
+                        key = json.dumps(item, sort_keys=True)
+                        if key not in seen:
+                            seen.add(key)
+                            unique.append(item)
+                    merged[field.name] = unique
+                else:
+                    merged[field.name] = list(dict.fromkeys(flat))
             else:
                 # Text - concatenate unique non-empty values
                 unique = list(dict.fromkeys([str(v) for v in values if v]))

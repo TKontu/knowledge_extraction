@@ -1,0 +1,262 @@
+services:
+  # ===================
+  # Firecrawl Stack
+  # ===================
+  firecrawl-api:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    environment:
+      - PORT=3002
+      - HOST=0.0.0.0
+      - REDIS_URL=redis://redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://redis:6379
+      - NUM_WORKERS_PER_QUEUE=2
+      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3000
+      - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
+      - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      firecrawl-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      playwright:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
+
+  playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
+
+  firecrawl-db:
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - firecrawl_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+
+  # ===================
+  # Data Stores
+  # ===================
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-scristill}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-scristill}
+      POSTGRES_DB: ${DB_NAME:-scristill}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-scristill}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1'
+        reservations:
+          memory: 512M
+
+  # ===================
+  # Database Migrations
+  # ===================
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - scristill
+    restart: "no"
+
+  # ===================
+  # Pipeline Service
+  # ===================
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PIPELINE_PORT:-8000}:8000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
+
+      # Redis
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+      # Qdrant
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+
+      # Firecrawl
+      FIRECRAWL_URL: ${FIRECRAWL_URL:-http://firecrawl-api:3002}
+
+      # FlareSolverr (optional)
+      FLARESOLVERR_URL: ${FLARESOLVERR_URL:-http://flaresolverr:8191}
+      USE_FLARESOLVERR: ${USE_FLARESOLVERR:-false}
+
+      # Security (REQUIRED - set in Portainer)
+      API_KEY: ${API_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+
+      # LLM (REQUIRED - set in Portainer)
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      OPENAI_EMBEDDING_BASE_URL: ${OPENAI_EMBEDDING_BASE_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-gemma3-12b-awq}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-bge-large-en}
+
+      # Scraping config
+      SCRAPE_DELAY_MIN: ${SCRAPE_DELAY_MIN:-2}
+      SCRAPE_DELAY_MAX: ${SCRAPE_DELAY_MAX:-5}
+      SCRAPE_MAX_CONCURRENT_PER_DOMAIN: ${SCRAPE_MAX_CONCURRENT_PER_DOMAIN:-2}
+      SCRAPE_DAILY_LIMIT_PER_DOMAIN: ${SCRAPE_DAILY_LIMIT_PER_DOMAIN:-500}
+      SCRAPE_MAX_RETRIES: ${SCRAPE_MAX_RETRIES:-3}
+      SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-60}
+
+      # LLM timeouts
+      LLM_HTTP_TIMEOUT: ${LLM_HTTP_TIMEOUT:-900}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-5}
+      LLM_RETRY_BACKOFF_MIN: ${LLM_RETRY_BACKOFF_MIN:-2}
+      LLM_RETRY_BACKOFF_MAX: ${LLM_RETRY_BACKOFF_MAX:-60}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+    volumes:
+      - reports_data:/app/reports
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      firecrawl-api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - scristill
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+volumes:
+  redis_data:
+  postgres_data:
+  qdrant_data:
+  rabbitmq_data:
+  firecrawl_postgres_data:
+  reports_data:
+
+networks:
+  scristill:
+    driver: bridge
