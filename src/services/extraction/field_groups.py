@@ -96,6 +96,12 @@ SERVICES_GROUP = FieldGroup(
             default=False,
         ),
         FieldDefinition(
+            name="provides_field_service",
+            field_type="boolean",
+            description="Provides on-site/field service at customer locations",
+            default=False,
+        ),
+        FieldDefinition(
             name="service_types",
             field_type="list",
             description="Types: repair, maintenance, refurbishment, installation, commissioning, field service",
@@ -103,8 +109,9 @@ SERVICES_GROUP = FieldGroup(
     ],
     prompt_hint="""Look for SERVICE offerings:
 - Repair services, maintenance programs, overhaul
-- Service centers, field service teams
-- Spare parts supply, technical support""",
+- Service centers, field service teams (on-site service at customer locations)
+- Spare parts supply, technical support
+- Field service = technicians travel to customer site""",
 )
 
 COMPANY_INFO_GROUP = FieldGroup(

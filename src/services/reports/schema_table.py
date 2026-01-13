@@ -173,6 +173,7 @@ class SchemaTableReport:
             "provides_services",
             "services_gearboxes",
             "services_motors",
+            "provides_field_service",
             "service_types",
             # Company
             "company_name",
@@ -199,6 +200,7 @@ class SchemaTableReport:
             "provides_services": "Services",
             "services_gearboxes": "Svc Gearboxes",
             "services_motors": "Svc Motors",
+            "provides_field_service": "Field Service",
             "service_types": "Service Types",
             "company_name": "Legal Name",
             "employee_count": "Employees",
