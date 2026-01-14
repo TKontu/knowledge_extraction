@@ -218,8 +218,14 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
+
+      # File paths
+      INPUT_PATH: ${INPUT_PATH:-/app/input}
+      OUTPUT_PATH: ${OUTPUT_PATH:-/app/output}
     volumes:
       - reports_data:/app/reports
+      - ${INPUT_PATH:-./input}:/app/input:ro
+      - ${OUTPUT_PATH:-./output}:/app/output
     depends_on:
       migrate:
         condition: service_completed_successfully
