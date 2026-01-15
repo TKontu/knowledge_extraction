@@ -147,6 +147,25 @@ services:
           memory: 512M
 
   # ===================
+  # Anti-Bot Protection
+  # ===================
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
+
+  # ===================
   # Database Migrations
   # ===================
   migrate:
@@ -185,9 +204,9 @@ services:
       # Firecrawl
       FIRECRAWL_URL: ${FIRECRAWL_URL:-http://firecrawl-api:3002}
 
-      # FlareSolverr (optional)
+      # FlareSolverr
       FLARESOLVERR_URL: ${FLARESOLVERR_URL:-http://flaresolverr:8191}
-      USE_FLARESOLVERR: ${USE_FLARESOLVERR:-false}
+      USE_FLARESOLVERR: ${USE_FLARESOLVERR:-true}
 
       # Security (REQUIRED - set in Portainer)
       API_KEY: ${API_KEY}
@@ -236,6 +255,8 @@ services:
       qdrant:
         condition: service_started
       firecrawl-api:
+        condition: service_started
+      flaresolverr:
         condition: service_started
     restart: unless-stopped
     networks:
