@@ -1,0 +1,80 @@
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+2026-01-15 18:26:16.072 UTC [1] LOG:  starting PostgreSQL 17.6 (Debian 17.6-2.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-01-15 18:26:16.072 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-01-15 18:26:16.072 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-01-15 18:26:16.078 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-01-15 18:26:16.086 UTC [29] LOG:  database system was shut down at 2026-01-15 18:25:51 UTC
+2026-01-15 18:26:16.137 UTC [1] LOG:  database system is ready to accept connections
+2026-01-15 18:26:16.153 UTC [32] LOG:  pg_cron scheduler started
+2026-01-15 18:26:31.163 UTC [32] LOG:  cron job 8 starting: 
+	  UPDATE nuq.queue_crawl_finished SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) < 9;
+	  WITH stallfail AS (UPDATE nuq.queue_crawl_finished SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) >= 9 RETURNING id)
+	  SELECT pg_notify('nuq.queue_crawl_finished', (id::text || '|' || 'failed'::text)) FROM stallfail;
+	
+2026-01-15 18:26:31.172 UTC [32] LOG:  cron job 3 starting: 
+	  UPDATE nuq.queue_scrape SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) < 9;
+	  WITH stallfail AS (UPDATE nuq.queue_scrape SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) >= 9 RETURNING id)
+	  SELECT pg_notify('nuq.queue_scrape', (id::text || '|' || 'failed'::text)) FROM stallfail;
+	
+2026-01-15 18:26:31.182 UTC [32] LOG:  cron job 10 starting: 
+	  WITH finished_groups AS (
+	    UPDATE nuq.group_crawl
+	    SET status = 'completed'::nuq.group_status,
+	        expires_at = now() + MAKE_INTERVAL(secs => nuq.group_crawl.ttl / 1000)
+	    WHERE status = 'active'::nuq.group_status
+	      AND NOT EXISTS (
+	        SELECT 1 FROM nuq.queue_scrape
+	        WHERE nuq.queue_scrape.status IN ('active', 'queued')
+	          AND nuq.queue_scrape.group_id = nuq.group_crawl.id
+	      )
+	      AND NOT EXISTS (
+	        SELECT 1 FROM nuq.queue_scrape_backlog
+	        WHERE nuq.queue_scrape_backlog.group_id = nuq.group_crawl.id
+	      )
+	    RETURNING id, owner_id
+	  )
+	  INSERT INTO nuq.queue_crawl_finished (data, owner_id, group_id)
+	  SELECT '{}'::jsonb, finished_groups.owner_id, finished_groups.id
+	  FROM finished_groups;
+	
+2026-01-15 18:26:31.212 UTC [32] LOG:  cron job 3 COMMAND completed: UPDATE 0 0
+2026-01-15 18:26:31.216 UTC [32] LOG:  cron job 3 completed: 0 rows
+2026-01-15 18:26:31.219 UTC [32] LOG:  cron job 8 COMMAND completed: UPDATE 0 0
+2026-01-15 18:26:31.225 UTC [32] LOG:  cron job 8 completed: 0 rows
+2026-01-15 18:26:31.230 UTC [32] LOG:  cron job 10 COMMAND completed: INSERT 0 0 0
+2026-01-15 18:26:46.206 UTC [32] LOG:  cron job 3 starting: 
+	  UPDATE nuq.queue_scrape SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) < 9;
+	  WITH stallfail AS (UPDATE nuq.queue_scrape SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) >= 9 RETURNING id)
+	  SELECT pg_notify('nuq.queue_scrape', (id::text || '|' || 'failed'::text)) FROM stallfail;
+	
+2026-01-15 18:26:46.214 UTC [32] LOG:  cron job 8 starting: 
+	  UPDATE nuq.queue_crawl_finished SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) < 9;
+	  WITH stallfail AS (UPDATE nuq.queue_crawl_finished SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) >= 9 RETURNING id)
+	  SELECT pg_notify('nuq.queue_crawl_finished', (id::text || '|' || 'failed'::text)) FROM stallfail;
+	
+2026-01-15 18:26:46.221 UTC [32] LOG:  cron job 10 starting: 
+	  WITH finished_groups AS (
+	    UPDATE nuq.group_crawl
+	    SET status = 'completed'::nuq.group_status,
+	        expires_at = now() + MAKE_INTERVAL(secs => nuq.group_crawl.ttl / 1000)
+	    WHERE status = 'active'::nuq.group_status
+	      AND NOT EXISTS (
+	        SELECT 1 FROM nuq.queue_scrape
+	        WHERE nuq.queue_scrape.status IN ('active', 'queued')
+	          AND nuq.queue_scrape.group_id = nuq.group_crawl.id
+	      )
+	      AND NOT EXISTS (
+	        SELECT 1 FROM nuq.queue_scrape_backlog
+	        WHERE nuq.queue_scrape_backlog.group_id = nuq.group_crawl.id
+	      )
+	    RETURNING id, owner_id
+	  )
+	  INSERT INTO nuq.queue_crawl_finished (data, owner_id, group_id)
+	  SELECT '{}'::jsonb, finished_groups.owner_id, finished_groups.id
+	  FROM finished_groups;
+	
+2026-01-15 18:26:46.251 UTC [32] LOG:  cron job 8 COMMAND completed: UPDATE 0 0
+2026-01-15 18:26:46.255 UTC [32] LOG:  cron job 8 completed: 0 rows
+2026-01-15 18:26:46.265 UTC [32] LOG:  cron job 3 COMMAND completed: UPDATE 0 0
+2026-01-15 18:26:46.269 UTC [32] LOG:  cron job 3 completed: 0 rows
+2026-01-15 18:26:46.272 UTC [32] LOG:  cron job 10 COMMAND completed: INSERT 0 0 0

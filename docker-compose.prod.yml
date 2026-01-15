@@ -13,6 +13,8 @@ services:
       - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3000
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - USE_DB_AUTHENTICATION=false
+      - BULL_AUTH_KEY=${BULL_AUTH_KEY:-@firecrawl2024}
     depends_on:
       firecrawl-db:
         condition: service_healthy

@@ -1,0 +1,19 @@
+ℹ NUQ_DATABASE_URL is set, skipping container management
+ℹ NUQ_RABBITMQ_URL is set, skipping container management
+── Starting services ──
+> api            node dist/src/index.js
+> worker         node dist/src/services/queue-worker.js
+> extract-worker node dist/src/services/extract-worker.js
+> nuq-worker-0   node dist/src/services/worker/nuq-worker.js
+> nuq-worker-1   node dist/src/services/worker/nuq-worker.js
+> nuq-worker-2   node dist/src/services/worker/nuq-worker.js
+> nuq-worker-3   node dist/src/services/worker/nuq-worker.js
+> nuq-worker-4   node dist/src/services/worker/nuq-worker.js
+> nuq-prefetch-worker node dist/src/services/worker/nuq-prefetch-worker.js
+ℹ Waiting for API on localhost:3002
+nuq-worker-0   2026-01-15 18:26:38 warn [:]: Authentication is disabled. Supabase client will not be initialized. {}
+nuq-worker-4   2026-01-15 18:26:38 warn [:]: Authentication is disabled. Supabase client will not be initialized. {}
+nuq-prefetch-worker 2026-01-15 18:26:41 info [:]: NuQ prefetch worker metrics server started 
+nuq-worker-1   2026-01-15 18:26:41 warn [:]: Authentication is disabled. Supabase client will not be initialized. {}
+nuq-worker-2   2026-01-15 18:26:42 warn [:]: Authentication is disabled. Supabase client will not be initialized. {}
+nuq-worker-3   2026-01-15 18:26:44 warn [:]: Authentication is disabled. Supabase client will not be initialized. {}

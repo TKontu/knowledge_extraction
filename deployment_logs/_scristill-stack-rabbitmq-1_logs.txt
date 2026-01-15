@@ -1,0 +1,100 @@
+2026-01-15 18:26:32.375016+00:00 [info] <0.254.0> Running boot step rabbit_exchange_type_direct defined by app rabbit
+2026-01-15 18:26:32.375068+00:00 [info] <0.254.0> Running boot step rabbit_exchange_type_fanout defined by app rabbit
+2026-01-15 18:26:32.375117+00:00 [info] <0.254.0> Running boot step rabbit_exchange_type_headers defined by app rabbit
+2026-01-15 18:26:32.375174+00:00 [info] <0.254.0> Running boot step rabbit_exchange_type_topic defined by app rabbit
+2026-01-15 18:26:32.375222+00:00 [info] <0.254.0> Running boot step rabbit_mirror_queue_mode_all defined by app rabbit
+2026-01-15 18:26:32.375281+00:00 [info] <0.254.0> Running boot step rabbit_mirror_queue_mode_exactly defined by app rabbit
+2026-01-15 18:26:32.375461+00:00 [info] <0.254.0> Running boot step rabbit_mirror_queue_mode_nodes defined by app rabbit
+2026-01-15 18:26:32.375526+00:00 [info] <0.254.0> Running boot step rabbit_priority_queue defined by app rabbit
+2026-01-15 18:26:32.375555+00:00 [info] <0.254.0> Priority queues enabled, real BQ is rabbit_variable_queue
+2026-01-15 18:26:32.375638+00:00 [info] <0.254.0> Running boot step rabbit_queue_location_client_local defined by app rabbit
+2026-01-15 18:26:32.375686+00:00 [info] <0.254.0> Running boot step rabbit_queue_location_min_masters defined by app rabbit
+2026-01-15 18:26:32.375741+00:00 [info] <0.254.0> Running boot step rabbit_queue_location_random defined by app rabbit
+2026-01-15 18:26:32.375780+00:00 [info] <0.254.0> Running boot step kernel_ready defined by app rabbit
+2026-01-15 18:26:32.375802+00:00 [info] <0.254.0> Running boot step rabbit_sysmon_minder defined by app rabbit
+2026-01-15 18:26:32.375941+00:00 [info] <0.254.0> Running boot step rabbit_epmd_monitor defined by app rabbit
+2026-01-15 18:26:32.388028+00:00 [info] <0.567.0> epmd monitor knows us, inter-node communication (distribution) port: 25672
+2026-01-15 18:26:32.388179+00:00 [info] <0.254.0> Running boot step guid_generator defined by app rabbit
+2026-01-15 18:26:32.391630+00:00 [info] <0.254.0> Running boot step rabbit_node_monitor defined by app rabbit
+2026-01-15 18:26:32.391865+00:00 [info] <0.571.0> Starting rabbit_node_monitor (in ignore mode)
+2026-01-15 18:26:32.391971+00:00 [info] <0.254.0> Running boot step delegate_sup defined by app rabbit
+2026-01-15 18:26:32.392416+00:00 [info] <0.254.0> Running boot step rabbit_memory_monitor defined by app rabbit
+2026-01-15 18:26:32.392576+00:00 [info] <0.254.0> Running boot step rabbit_fifo_dlx_sup defined by app rabbit
+2026-01-15 18:26:32.392635+00:00 [info] <0.254.0> Running boot step core_initialized defined by app rabbit
+2026-01-15 18:26:32.392657+00:00 [info] <0.254.0> Running boot step rabbit_channel_tracking_handler defined by app rabbit
+2026-01-15 18:26:32.392710+00:00 [info] <0.254.0> Running boot step rabbit_connection_tracking_handler defined by app rabbit
+2026-01-15 18:26:32.392745+00:00 [info] <0.254.0> Running boot step rabbit_definitions_hashing defined by app rabbit
+2026-01-15 18:26:32.392795+00:00 [info] <0.254.0> Running boot step rabbit_exchange_parameters defined by app rabbit
+2026-01-15 18:26:32.421659+00:00 [info] <0.254.0> Running boot step rabbit_mirror_queue_misc defined by app rabbit
+2026-01-15 18:26:32.422011+00:00 [info] <0.254.0> Running boot step rabbit_policies defined by app rabbit
+2026-01-15 18:26:32.422331+00:00 [info] <0.254.0> Running boot step rabbit_policy defined by app rabbit
+2026-01-15 18:26:32.422402+00:00 [info] <0.254.0> Running boot step rabbit_queue_location_validator defined by app rabbit
+2026-01-15 18:26:32.422454+00:00 [info] <0.254.0> Running boot step rabbit_quorum_memory_manager defined by app rabbit
+2026-01-15 18:26:32.422503+00:00 [info] <0.254.0> Running boot step rabbit_quorum_queue defined by app rabbit
+2026-01-15 18:26:32.422669+00:00 [info] <0.254.0> Running boot step rabbit_stream_coordinator defined by app rabbit
+2026-01-15 18:26:32.423119+00:00 [info] <0.254.0> Running boot step rabbit_vhost_limit defined by app rabbit
+2026-01-15 18:26:32.423292+00:00 [info] <0.254.0> Running boot step rabbit_federation_parameters defined by app rabbitmq_federation
+2026-01-15 18:26:32.423455+00:00 [info] <0.254.0> Running boot step rabbit_federation_supervisor defined by app rabbitmq_federation
+2026-01-15 18:26:32.432746+00:00 [info] <0.254.0> Running boot step rabbit_federation_queue defined by app rabbitmq_federation
+2026-01-15 18:26:32.432894+00:00 [info] <0.254.0> Running boot step rabbit_federation_upstream_exchange defined by app rabbitmq_federation
+2026-01-15 18:26:32.432950+00:00 [info] <0.254.0> Running boot step rabbit_mgmt_db_handler defined by app rabbitmq_management_agent
+2026-01-15 18:26:32.432978+00:00 [info] <0.254.0> Management plugin: using rates mode 'basic'
+2026-01-15 18:26:32.433131+00:00 [info] <0.254.0> Running boot step recovery defined by app rabbit
+2026-01-15 18:26:32.499469+00:00 [info] <0.254.0> Running boot step empty_db_check defined by app rabbit
+2026-01-15 18:26:32.499575+00:00 [info] <0.254.0> Will seed default virtual host and user...
+2026-01-15 18:26:32.499755+00:00 [info] <0.254.0> Adding vhost '/' (description: 'Default virtual host', tags: [])
+2026-01-15 18:26:32.531903+00:00 [info] <0.631.0> Making sure data directory '/var/lib/rabbitmq/mnesia/rabbit@5ba6a3e90450/msg_stores/vhosts/628WB79CIFDYO9LJI6DKMI09L' for vhost '/' exists
+2026-01-15 18:26:32.533551+00:00 [info] <0.631.0> Setting segment_entry_count for vhost '/' with 0 queues to '2048'
+2026-01-15 18:26:32.548289+00:00 [info] <0.631.0> Starting message stores for vhost '/'
+2026-01-15 18:26:32.548579+00:00 [info] <0.640.0> Message store "628WB79CIFDYO9LJI6DKMI09L/msg_store_transient": using rabbit_msg_store_ets_index to provide index
+2026-01-15 18:26:32.550171+00:00 [info] <0.631.0> Started message store of type transient for vhost '/'
+2026-01-15 18:26:32.550430+00:00 [info] <0.644.0> Message store "628WB79CIFDYO9LJI6DKMI09L/msg_store_persistent": using rabbit_msg_store_ets_index to provide index
+2026-01-15 18:26:32.551133+00:00 [warning] <0.644.0> Message store "628WB79CIFDYO9LJI6DKMI09L/msg_store_persistent": rebuilding indices from scratch
+2026-01-15 18:26:32.552243+00:00 [info] <0.631.0> Started message store of type persistent for vhost '/'
+2026-01-15 18:26:32.552457+00:00 [info] <0.631.0> Recovering 0 queues of type rabbit_classic_queue took 18ms
+2026-01-15 18:26:32.552536+00:00 [info] <0.631.0> Recovering 0 queues of type rabbit_quorum_queue took 0ms
+2026-01-15 18:26:32.552635+00:00 [info] <0.631.0> Recovering 0 queues of type rabbit_stream_queue took 0ms
+2026-01-15 18:26:32.558061+00:00 [info] <0.254.0> Created user 'guest'
+2026-01-15 18:26:32.561641+00:00 [info] <0.254.0> Successfully set user tags for user 'guest' to [administrator]
+2026-01-15 18:26:32.565000+00:00 [info] <0.254.0> Successfully set permissions for user 'guest' in virtual host '/' to '.*', '.*', '.*'
+2026-01-15 18:26:32.565094+00:00 [info] <0.254.0> Running boot step rabbit_observer_cli defined by app rabbit
+2026-01-15 18:26:32.565241+00:00 [info] <0.254.0> Running boot step rabbit_looking_glass defined by app rabbit
+2026-01-15 18:26:32.565298+00:00 [info] <0.254.0> Running boot step rabbit_core_metrics_gc defined by app rabbit
+2026-01-15 18:26:32.565601+00:00 [info] <0.254.0> Running boot step background_gc defined by app rabbit
+2026-01-15 18:26:32.565909+00:00 [info] <0.254.0> Running boot step routing_ready defined by app rabbit
+2026-01-15 18:26:32.565985+00:00 [info] <0.254.0> Running boot step pre_flight defined by app rabbit
+2026-01-15 18:26:32.566092+00:00 [info] <0.254.0> Running boot step notify_cluster defined by app rabbit
+2026-01-15 18:26:32.566191+00:00 [info] <0.254.0> Running boot step networking defined by app rabbit
+2026-01-15 18:26:32.566404+00:00 [info] <0.254.0> Running boot step rabbit_quorum_queue_periodic_membership_reconciliation defined by app rabbit
+2026-01-15 18:26:32.566862+00:00 [info] <0.254.0> Running boot step definition_import_worker_pool defined by app rabbit
+2026-01-15 18:26:32.566981+00:00 [info] <0.315.0> Starting worker pool 'definition_import_pool' with 12 processes in it
+2026-01-15 18:26:32.586527+00:00 [info] <0.254.0> Running boot step cluster_name defined by app rabbit
+2026-01-15 18:26:32.586691+00:00 [info] <0.254.0> Initialising internal cluster ID to 'rabbitmq-cluster-id-N0G03RctVHsnxVe6G0VsdQ'
+2026-01-15 18:26:32.590196+00:00 [info] <0.254.0> Running boot step virtual_host_reconciliation defined by app rabbit
+2026-01-15 18:26:32.590598+00:00 [info] <0.254.0> Running boot step direct_client defined by app rabbit
+2026-01-15 18:26:32.590820+00:00 [info] <0.254.0> Running boot step rabbit_federation_exchange defined by app rabbitmq_federation
+2026-01-15 18:26:32.591433+00:00 [info] <0.689.0> Resetting node maintenance status
+2026-01-15 18:26:41.832776+00:00 [info] <0.727.0> Prometheus metrics: HTTP (non-TLS) listener started on port 15692
+2026-01-15 18:26:41.832985+00:00 [info] <0.689.0> Ready to start client connection listeners
+2026-01-15 18:26:41.888387+00:00 [info] <0.771.0> started TCP listener on [::]:5672
+ completed with 4 plugins.
+2026-01-15 18:26:42.306688+00:00 [info] <0.689.0> Server startup complete; 4 plugins started.
+2026-01-15 18:26:42.306688+00:00 [info] <0.689.0>  * rabbitmq_prometheus
+2026-01-15 18:26:42.306688+00:00 [info] <0.689.0>  * rabbitmq_federation
+2026-01-15 18:26:42.306688+00:00 [info] <0.689.0>  * rabbitmq_management_agent
+2026-01-15 18:26:42.306688+00:00 [info] <0.689.0>  * rabbitmq_web_dispatch
+2026-01-15 18:26:42.487558+00:00 [info] <0.9.0> Time to start RabbitMQ: 25584 ms
+2026-01-15 18:27:10.431498+00:00 [info] <0.776.0> accepting AMQP connection <0.776.0> ([fdd0:0:0:7::9]:35900 -> [fdd0:0:0:7::5]:5672)
+2026-01-15 18:27:10.672625+00:00 [info] <0.776.0> connection <0.776.0> ([fdd0:0:0:7::9]:35900 -> [fdd0:0:0:7::5]:5672): user 'guest' authenticated and granted access to vhost '/'
+2026-01-15 18:27:10.962796+00:00 [notice] <0.792.0> queue 'nuq.queue_scrape.prefetch' in vhost '/': candidate -> leader in term: 1 machine version: 3
+2026-01-15 18:27:10.963197+00:00 [info] <0.786.0> ra: started cluster %2F_nuq.queue_scrape.prefetch with 1 servers
+2026-01-15 18:27:10.963197+00:00 [info] <0.786.0> 0 servers failed to start: []
+2026-01-15 18:27:10.963197+00:00 [info] <0.786.0> Leader: {'%2F_nuq.queue_scrape.prefetch',rabbit@5ba6a3e90450}
+2026-01-15 18:27:11.424721+00:00 [info] <0.797.0> accepting AMQP connection <0.797.0> ([fdd0:0:0:7::9]:35916 -> [fdd0:0:0:7::5]:5672)
+2026-01-15 18:27:11.572323+00:00 [info] <0.797.0> connection <0.797.0> ([fdd0:0:0:7::9]:35916 -> [fdd0:0:0:7::5]:5672): user 'guest' authenticated and granted access to vhost '/'
+2026-01-15 18:27:13.228747+00:00 [info] <0.810.0> accepting AMQP connection <0.810.0> ([fdd0:0:0:7::9]:35928 -> [fdd0:0:0:7::5]:5672)
+2026-01-15 18:27:13.331547+00:00 [info] <0.813.0> accepting AMQP connection <0.813.0> ([fdd0:0:0:7::9]:35942 -> [fdd0:0:0:7::5]:5672)
+2026-01-15 18:27:13.572166+00:00 [info] <0.810.0> connection <0.810.0> ([fdd0:0:0:7::9]:35928 -> [fdd0:0:0:7::5]:5672): user 'guest' authenticated and granted access to vhost '/'
+2026-01-15 18:27:13.676113+00:00 [info] <0.813.0> connection <0.813.0> ([fdd0:0:0:7::9]:35942 -> [fdd0:0:0:7::5]:5672): user 'guest' authenticated and granted access to vhost '/'
+2026-01-15 18:27:16.727484+00:00 [info] <0.842.0> accepting AMQP connection <0.842.0> (172.16.2.9:44930 -> 172.16.2.5:5672)
+2026-01-15 18:27:17.368575+00:00 [info] <0.842.0> connection <0.842.0> (172.16.2.9:44930 -> 172.16.2.5:5672): user 'guest' authenticated and granted access to vhost '/'
