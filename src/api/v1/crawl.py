@@ -12,23 +12,10 @@ from orm_models import Job
 
 logger = structlog.get_logger(__name__)
 
-# Default paths to prioritize for company information extraction
-# These patterns help crawlers find "about us", company info, and product pages
-# Note: These are regex patterns for Firecrawl (not glob patterns)
-DEFAULT_COMPANY_INCLUDE_PATHS = [
-    ".*about.*",
-    ".*company.*",
-    ".*history.*",
-    ".*who-we-are.*",
-    ".*our-story.*",
-    ".*corporate.*",
-    ".*products.*",
-    ".*solutions.*",
-    ".*services.*",
-    ".*capabilities.*",
-    ".*contact.*",
-    ".*locations.*",
-]
+# Default: No include_paths filter - crawl everything within the domain
+# This allows maximum content discovery across varied URL structures
+# Filtering happens during extraction, not crawling
+DEFAULT_COMPANY_INCLUDE_PATHS = None
 
 router = APIRouter(prefix="/api/v1", tags=["crawl"])
 
@@ -40,7 +27,7 @@ async def create_crawl_job(
     """Create a new crawl job."""
     job_id = uuid4()
 
-    # Use default company paths if none specified
+    # Use default (no filter) if none specified
     include_paths = request.include_paths
     if include_paths is None:
         include_paths = DEFAULT_COMPANY_INCLUDE_PATHS
