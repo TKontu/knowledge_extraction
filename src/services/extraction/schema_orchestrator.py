@@ -5,6 +5,7 @@ from uuid import UUID
 
 import structlog
 
+from config import settings
 from services.extraction.field_groups import ALL_FIELD_GROUPS, FieldGroup
 from services.extraction.schema_extractor import SchemaExtractor
 from services.llm.chunking import chunk_document
@@ -52,7 +53,7 @@ class SchemaExtractionOrchestrator:
 
         # Extract all field groups in parallel for better KV cache utilization
         async def extract_group(group: FieldGroup) -> dict:
-            """Extract a single field group from all chunks."""
+            """Extract a single field group from all chunks with batching."""
             group_result = {
                 "extraction_type": group.name,
                 "source_id": source_id,
@@ -61,22 +62,12 @@ class SchemaExtractionOrchestrator:
                 "confidence": 0.0,
             }
 
-            # Extract from each chunk and merge
-            chunk_results = []
-            for chunk in chunks:
-                try:
-                    chunk_data = await self._extractor.extract_field_group(
-                        content=chunk.content,
-                        field_group=group,
-                        company_name=company_name,
-                    )
-                    chunk_results.append(chunk_data)
-                except Exception as e:
-                    logger.warning(
-                        "chunk_extraction_failed",
-                        group=group.name,
-                        error=str(e),
-                    )
+            # Extract from chunks in parallel batches
+            chunk_results = await self._extract_chunks_batched(
+                chunks=chunks,
+                group=group,
+                company_name=company_name,
+            )
 
             # Merge chunk results
             if chunk_results:
@@ -96,6 +87,93 @@ class SchemaExtractionOrchestrator:
         )
 
         return results
+
+    async def _extract_chunks_batched(
+        self,
+        chunks: list,
+        group: FieldGroup,
+        company_name: str,
+    ) -> list[dict]:
+        """Extract from chunks in parallel batches with retry logic.
+
+        Args:
+            chunks: List of document chunks to process.
+            group: Field group to extract.
+            company_name: Company name for context.
+
+        Returns:
+            List of extraction results from successful chunks.
+        """
+        batch_size = settings.extraction_max_concurrent_chunks
+        chunk_results = []
+
+        async def extract_chunk_with_retry(
+            chunk, chunk_idx: int, max_retries: int = 3
+        ) -> dict | None:
+            """Extract from a single chunk with exponential backoff retry."""
+            for attempt in range(max_retries):
+                try:
+                    result = await self._extractor.extract_field_group(
+                        content=chunk.content,
+                        field_group=group,
+                        company_name=company_name,
+                    )
+                    return result
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        backoff = min(
+                            settings.llm_retry_backoff_max,
+                            settings.llm_retry_backoff_min * (2**attempt),
+                        )
+                        logger.warning(
+                            "chunk_extraction_retry",
+                            group=group.name,
+                            chunk_idx=chunk_idx,
+                            attempt=attempt + 1,
+                            backoff=backoff,
+                            error=str(e),
+                        )
+                        await asyncio.sleep(backoff)
+                    else:
+                        logger.error(
+                            "chunk_extraction_failed",
+                            group=group.name,
+                            chunk_idx=chunk_idx,
+                            error=str(e),
+                        )
+                        return None
+
+        # Process chunks in batches to respect concurrency limit
+        for batch_start in range(0, len(chunks), batch_size):
+            batch_end = min(batch_start + batch_size, len(chunks))
+            batch = chunks[batch_start:batch_end]
+
+            logger.debug(
+                "processing_chunk_batch",
+                group=group.name,
+                batch_start=batch_start,
+                batch_size=len(batch),
+                total_chunks=len(chunks),
+            )
+
+            # Execute batch in parallel
+            batch_tasks = [
+                extract_chunk_with_retry(chunk, batch_start + idx)
+                for idx, chunk in enumerate(batch)
+            ]
+            batch_results = await asyncio.gather(*batch_tasks)
+
+            # Filter out None results from failed extractions
+            chunk_results.extend([r for r in batch_results if r is not None])
+
+        logger.info(
+            "chunk_batch_extraction_completed",
+            group=group.name,
+            successful=len(chunk_results),
+            total=len(chunks),
+        )
+
+        return chunk_results
 
     def _merge_chunk_results(
         self, chunk_results: list[dict], group: FieldGroup

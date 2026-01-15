@@ -95,6 +95,12 @@ class Settings(BaseSettings):
         description="Maximum backoff time in seconds",
     )
 
+    # Extraction Concurrency
+    extraction_max_concurrent_chunks: int = Field(
+        default=25,
+        description="Max concurrent chunk extractions to avoid KV cache exhaustion",
+    )
+
     # Scraping Configuration
     scrape_delay_min: int = Field(
         default=2,
