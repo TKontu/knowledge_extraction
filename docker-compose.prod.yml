@@ -4,6 +4,8 @@ services:
   # ===================
   firecrawl-api:
     image: ghcr.io/firecrawl/firecrawl:latest
+    ports:
+      - "3002:3002"
     environment:
       - PORT=3002
       - HOST=0.0.0.0
