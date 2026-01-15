@@ -3,7 +3,7 @@ services:
   # Firecrawl Stack
   # ===================
   firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl:v3.4.6
+    image: ghcr.io/firecrawl/firecrawl:latest
     environment:
       - PORT=3002
       - HOST=0.0.0.0
@@ -36,7 +36,7 @@ services:
           memory: 512M
 
   playwright:
-    image: ghcr.io/firecrawl/playwright-service:v3.4.6
+    image: ghcr.io/firecrawl/playwright-service:latest
     restart: unless-stopped
     networks:
       - scristill
