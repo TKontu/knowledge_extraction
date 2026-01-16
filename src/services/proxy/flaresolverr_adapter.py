@@ -142,12 +142,22 @@ class ProxyAdapter:
             aiohttp Response with proxied content
         """
         try:
+            # DEBUG: Log raw request details
+            logger.debug(
+                "proxy_request_received",
+                method=request.method,
+                path=request.path,
+                host_header=request.headers.get("Host", ""),
+                headers=dict(request.headers),
+            )
+
             # Handle CONNECT method (HTTPS tunneling)
             if request.method == "CONNECT":
                 return await self.handle_connect(request)
 
             # Extract target URL (supports both proxy formats)
             url = self._extract_url(request)
+            logger.debug("proxy_url_extracted", url=url, path=request.path)
 
             # Parse domain and scheme from URL
             parsed = urlparse(url)
@@ -176,12 +186,34 @@ class ProxyAdapter:
             else:
                 # Direct passthrough
                 logger.info("proxy_routing", url=url, method="direct")
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    logger.debug("direct_request_start", url=url)
                     http_response = await client.get(url)
+                    logger.debug(
+                        "direct_request_complete",
+                        url=url,
+                        status=http_response.status_code,
+                        content_length=len(http_response.content),
+                        headers=dict(http_response.headers),
+                    )
+
+                    # Filter out problematic headers
+                    response_headers = {}
+                    skip_headers = {
+                        "content-encoding",  # Let aiohttp handle encoding
+                        "content-length",    # aiohttp will recalculate
+                        "transfer-encoding", # aiohttp will set this
+                        "connection",        # Proxy will manage connections
+                    }
+                    for key, value in http_response.headers.items():
+                        if key.lower() not in skip_headers:
+                            response_headers[key] = value
+
+                    logger.debug("direct_response_sending", headers=response_headers)
                     return aiohttp.web.Response(
                         body=http_response.content,
                         status=http_response.status_code,
-                        headers=dict(http_response.headers),
+                        headers=response_headers,
                     )
 
         except Exception as e:
