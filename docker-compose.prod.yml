@@ -45,7 +45,7 @@ services:
       context: .
       dockerfile: Dockerfile.playwright
     environment:
-      - PROXY_SERVER=http://172.19.0.3:8192
+      - PROXY_SERVER=${PLAYWRIGHT_PROXY_SERVER:-http://proxy-adapter:8192}
     restart: unless-stopped
     cap_add:
       - NET_ADMIN  # Required for iptables transparent proxy
@@ -193,7 +193,7 @@ services:
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
       - FLARESOLVERR_MAX_TIMEOUT=${FLARESOLVERR_MAX_TIMEOUT:-60000}
       - FLARESOLVERR_BLOCKED_DOMAINS=${FLARESOLVERR_BLOCKED_DOMAINS:-weg.net,siemens.com,wattdrive.com}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${PROXY_ADAPTER_LOG_LEVEL:-INFO}
     depends_on:
       - flaresolverr
     networks:

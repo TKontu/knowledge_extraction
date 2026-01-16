@@ -45,7 +45,7 @@ services:
     ports:
       - "3003:3003"
     environment:
-      - PROXY_SERVER=http://172.19.0.3:8192
+      - PROXY_SERVER=${PLAYWRIGHT_PROXY_SERVER:-http://172.19.0.3:8192}
     restart: unless-stopped
     cap_add:
       - NET_ADMIN  # Required for iptables transparent proxy
@@ -200,7 +200,7 @@ services:
       - FLARESOLVERR_URL=http://flaresolverr:8191
       - FLARESOLVERR_MAX_TIMEOUT=60000
       - FLARESOLVERR_BLOCKED_DOMAINS=weg.net,siemens.com,wattdrive.com
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=${PROXY_ADAPTER_LOG_LEVEL:-INFO}
     depends_on:
       - flaresolverr
     restart: unless-stopped
