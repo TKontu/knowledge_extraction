@@ -10,7 +10,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
       - NUM_WORKERS_PER_QUEUE=2
-      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3000
+      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - USE_DB_AUTHENTICATION=false
@@ -41,8 +41,14 @@ services:
           memory: 512M
 
   playwright:
-    image: ghcr.io/firecrawl/playwright-service:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
     restart: unless-stopped
+    cap_add:
+      - NET_ADMIN  # Required for iptables transparent proxy
+    depends_on:
+      - proxy-adapter
     networks:
       - scristill
     deploy:

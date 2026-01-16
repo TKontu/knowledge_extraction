@@ -1,0 +1,19 @@
+# Custom Playwright image with iptables for transparent proxy
+FROM ghcr.io/firecrawl/playwright-service:latest
+
+# Install iptables for transparent proxy NAT rules
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends iptables && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy custom entrypoint script
+COPY docker/playwright-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default command (start Playwright service)
+CMD ["npm", "start"]
