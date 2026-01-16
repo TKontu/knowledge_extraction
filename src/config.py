@@ -158,9 +158,9 @@ class Settings(BaseSettings):
         default=60000,
         description="FlareSolverr timeout in milliseconds",
     )
-    flaresolverr_blocked_domains: list[str] = Field(
-        default_factory=lambda: ["weg.net", "siemens.com", "wattdrive.com"],
-        description="Domains requiring FlareSolverr proxy",
+    flaresolverr_blocked_domains: str | list[str] = Field(
+        default="weg.net,siemens.com,wattdrive.com",
+        description="Domains requiring FlareSolverr proxy (comma-separated or list)",
     )
 
     # Logging & Monitoring
@@ -235,10 +235,26 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid log level. Must be one of: {valid_levels}")
         return v.upper()
 
+    @field_validator("flaresolverr_blocked_domains", mode="after")
+    @classmethod
+    def parse_blocked_domains(cls, v):
+        """Parse comma-separated string into list."""
+        if isinstance(v, str):
+            # Split by comma and strip whitespace
+            return [domain.strip() for domain in v.split(",") if domain.strip()]
+        return v
+
     @property
     def allowed_origins_list(self) -> list[str]:
         """Parse comma-separated origins into list."""
         return [origin.strip() for origin in self.allowed_origins.split(",")]
+
+    @property
+    def flaresolverr_blocked_domains_list(self) -> list[str]:
+        """Get blocked domains as list."""
+        if isinstance(self.flaresolverr_blocked_domains, list):
+            return self.flaresolverr_blocked_domains
+        return [d.strip() for d in self.flaresolverr_blocked_domains.split(",") if d.strip()]
 
 
 # Global settings instance

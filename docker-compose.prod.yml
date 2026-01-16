@@ -177,7 +177,10 @@ services:
       context: .
       dockerfile: Dockerfile.proxy
     container_name: proxy-adapter
+    ports:
+      - "8192:8192"
     environment:
+      - API_KEY=${API_KEY:-proxy-adapter-internal-key}
       - PROXY_ADAPTER_PORT=${PROXY_ADAPTER_PORT:-8192}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
       - FLARESOLVERR_MAX_TIMEOUT=${FLARESOLVERR_MAX_TIMEOUT:-60000}
