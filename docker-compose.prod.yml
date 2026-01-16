@@ -15,6 +15,9 @@ services:
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - USE_DB_AUTHENTICATION=false
       - BULL_AUTH_KEY=${BULL_AUTH_KEY:-@firecrawl2024}
+      - HTTP_PROXY=http://proxy-adapter:8192
+      - HTTPS_PROXY=http://proxy-adapter:8192
+      - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant
     depends_on:
       firecrawl-db:
         condition: service_healthy
@@ -23,6 +26,8 @@ services:
       playwright:
         condition: service_started
       rabbitmq:
+        condition: service_started
+      proxy-adapter:
         condition: service_started
     restart: unless-stopped
     networks:
@@ -166,6 +171,28 @@ services:
           cpus: '1'
         reservations:
           memory: 256M
+
+  proxy-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: proxy-adapter
+    environment:
+      - PROXY_ADAPTER_PORT=8192
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_MAX_TIMEOUT=60000
+      - FLARESOLVERR_BLOCKED_DOMAINS=weg.net,siemens.com,wattdrive.com
+      - LOG_LEVEL=INFO
+    depends_on:
+      - flaresolverr
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    restart: unless-stopped
 
   # ===================
   # Database Migrations
