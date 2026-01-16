@@ -15,6 +15,9 @@ services:
       - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3000
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - HTTP_PROXY=http://proxy-adapter:8192
+      - HTTPS_PROXY=http://proxy-adapter:8192
+      - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant
     depends_on:
       firecrawl-db:
         condition: service_healthy
@@ -177,6 +180,30 @@ services:
     restart: unless-stopped
     networks:
       - scristill
+
+  proxy-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: proxy-adapter
+    environment:
+      - PROXY_ADAPTER_PORT=8192
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_MAX_TIMEOUT=60000
+      - FLARESOLVERR_BLOCKED_DOMAINS=weg.net,siemens.com,wattdrive.com
+      - LOG_LEVEL=INFO
+    depends_on:
+      - flaresolverr
+    profiles:
+      - antibot
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    restart: unless-stopped
 
   # ===================
   # Database Migrations

@@ -141,6 +141,28 @@ class Settings(BaseSettings):
         description="Maximum delay between retries in seconds",
     )
 
+    # FlareSolverr Proxy Adapter
+    proxy_adapter_enabled: bool = Field(
+        default=True,
+        description="Enable proxy adapter service",
+    )
+    proxy_adapter_port: int = Field(
+        default=8192,
+        description="Port for proxy adapter service",
+    )
+    flaresolverr_url: str = Field(
+        default="http://flaresolverr:8191",
+        description="FlareSolverr service URL",
+    )
+    flaresolverr_max_timeout: int = Field(
+        default=60000,
+        description="FlareSolverr timeout in milliseconds",
+    )
+    flaresolverr_blocked_domains: list[str] = Field(
+        default_factory=lambda: ["weg.net", "siemens.com", "wattdrive.com"],
+        description="Domains requiring FlareSolverr proxy",
+    )
+
     # Logging & Monitoring
     log_level: str = Field(
         default="INFO",
