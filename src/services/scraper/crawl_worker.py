@@ -8,6 +8,7 @@ import structlog
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from config import settings
 from orm_models import Job
 from services.scraper.client import FirecrawlClient
 from services.storage.repositories.source import SourceRepository
@@ -39,6 +40,10 @@ class CrawlWorker:
 
             # Step 1: Start crawl if not already started
             if not firecrawl_job_id:
+                # Use configured timeout (convert seconds to milliseconds)
+                # Default 60s, but FlareSolverr may need more for anti-bot bypass
+                scrape_timeout_ms = settings.scrape_timeout * 1000
+
                 firecrawl_job_id = await self.client.start_crawl(
                     url=payload["url"],
                     max_depth=payload.get("max_depth", 2),
@@ -46,6 +51,7 @@ class CrawlWorker:
                     include_paths=payload.get("include_paths"),
                     exclude_paths=payload.get("exclude_paths"),
                     allow_backward_links=payload.get("allow_backward_links", False),
+                    scrape_timeout=scrape_timeout_ms,
                 )
 
                 # Store Firecrawl job ID (must flag_modified for JSON column)

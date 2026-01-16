@@ -268,6 +268,7 @@ class FirecrawlClient:
         ignore_robots_txt: bool = False,
         user_agent: str | None = None,
         check_llms_txt_override: bool = True,
+        scrape_timeout: int = 60000,
     ) -> str:
         """Start async crawl job.
 
@@ -282,6 +283,8 @@ class FirecrawlClient:
             user_agent: Custom user agent string (defaults to ResearchBot).
             check_llms_txt_override: If True, check llms.txt and override
                 robots.txt if AI agents are allowed.
+            scrape_timeout: Playwright page load timeout in milliseconds.
+                Default 60000 (60s) to allow for FlareSolverr anti-bot bypass.
 
         Returns:
             Firecrawl job ID.
@@ -298,8 +301,11 @@ class FirecrawlClient:
                 )
                 ignore_robots_txt = True
 
-        # Build scrape options with custom user agent
-        scrape_options: dict = {"formats": ["markdown"]}
+        # Build scrape options with custom user agent and timeout
+        scrape_options: dict = {
+            "formats": ["markdown"],
+            "timeout": scrape_timeout,  # Playwright page load timeout (ms)
+        }
         if user_agent or not ignore_robots_txt:
             # Use custom user agent
             scrape_options["headers"] = {
