@@ -37,6 +37,10 @@ class CamoufoxSettings(BaseSettings):
         default=60000,
         description="Default page timeout in milliseconds",
     )
+    networkidle_timeout: int = Field(
+        default=10000,
+        description="Timeout for network idle state in milliseconds",
+    )
 
     # Proxy
     proxy: str | None = Field(

@@ -36,6 +36,11 @@ class ScrapeRequest(BaseModel):
         alias="skip_tls_verification",
         description="Skip TLS certificate verification",
     )
+    discover_ajax: bool = Field(
+        default=False,
+        alias="discover_ajax",
+        description="Click interactive elements to discover AJAX URLs",
+    )
 
     model_config = {
         "populate_by_name": True,
@@ -56,6 +61,14 @@ class ScrapeSuccessResponse(BaseModel):
     pageError: str | None = Field(
         default=None,
         description="Error message if page returned error status",
+    )
+    contentType: str | None = Field(
+        default=None,
+        description="Content-Type header from the response",
+    )
+    discoveredUrls: list[str] | None = Field(
+        default=None,
+        description="URLs discovered via AJAX click interception",
     )
 
 

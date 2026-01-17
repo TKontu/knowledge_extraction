@@ -2,7 +2,10 @@
 
 import asyncio
 
+import structlog
 from sqlalchemy.orm import Session
+
+logger = structlog.get_logger(__name__)
 
 from config import settings
 from database import SessionLocal
@@ -143,7 +146,7 @@ class JobScheduler:
 
             except Exception as e:
                 # Log error but keep scheduler running
-                print(f"Error in scrape worker: {e}")
+                logger.error("scrape_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
     async def _run_crawl_worker(self) -> None:
@@ -177,7 +180,7 @@ class JobScheduler:
                     db.close()
 
             except Exception as e:
-                print(f"Error in crawl worker: {e}")
+                logger.error("crawl_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
     async def _run_extract_worker(self) -> None:
@@ -242,7 +245,7 @@ class JobScheduler:
 
             except Exception as e:
                 # Log error but keep scheduler running
-                print(f"Error in extract worker: {e}")
+                logger.error("extract_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
     async def __aenter__(self) -> "JobScheduler":

@@ -109,7 +109,10 @@ class FirecrawlClient:
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._http_client = httpx.AsyncClient(timeout=timeout)
+        self._http_client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+        )
 
     async def scrape(self, url: str) -> ScrapeResult:
         """Scrape a URL and return structured result.
@@ -274,7 +277,7 @@ class FirecrawlClient:
 
         Args:
             url: Starting URL.
-            max_depth: How deep to crawl.
+            max_depth: How deep to crawl from the starting URL (relative depth).
             limit: Maximum pages to crawl.
             include_paths: URL patterns to include.
             exclude_paths: URL patterns to exclude.
@@ -289,6 +292,13 @@ class FirecrawlClient:
         Returns:
             Firecrawl job ID.
         """
+        # Calculate the starting URL's depth and adjust maxDepth for Firecrawl
+        # Firecrawl uses absolute depth from domain root, but we want relative depth
+        parsed_url = urlparse(url)
+        url_path = parsed_url.path.strip("/")
+        starting_depth = len(url_path.split("/")) if url_path else 0
+        absolute_max_depth = starting_depth + max_depth
+
         # Check llms.txt to see if we should override robots.txt
         if check_llms_txt_override and not ignore_robots_txt:
             llms_result = await self.check_llms_txt(url)
@@ -316,7 +326,7 @@ class FirecrawlClient:
             f"{self.base_url}/v1/crawl",
             json={
                 "url": url,
-                "maxDepth": max_depth,
+                "maxDepth": absolute_max_depth,
                 "limit": limit,
                 "includePaths": include_paths or [],
                 "excludePaths": exclude_paths or [],
@@ -325,7 +335,16 @@ class FirecrawlClient:
                 "scrapeOptions": scrape_options,
             },
         )
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.error(
+                "firecrawl_invalid_response",
+                endpoint="start_crawl",
+                status_code=response.status_code,
+                error=str(e),
+            )
+            raise ScrapeError(f"Invalid JSON response from Firecrawl: {e}") from e
         if not data.get("success"):
             raise ScrapeError(data.get("error", "Failed to start crawl"))
         return data["id"]
@@ -342,7 +361,23 @@ class FirecrawlClient:
         response = await self._http_client.get(
             f"{self.base_url}/v1/crawl/{crawl_id}"
         )
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.error(
+                "firecrawl_invalid_response",
+                endpoint="get_crawl_status",
+                crawl_id=crawl_id,
+                status_code=response.status_code,
+                error=str(e),
+            )
+            return CrawlStatus(
+                status="error",
+                total=0,
+                completed=0,
+                pages=[],
+                error=f"Invalid JSON response from Firecrawl: {e}",
+            )
         return CrawlStatus(
             status=data.get("status", "unknown"),
             total=data.get("total", 0),

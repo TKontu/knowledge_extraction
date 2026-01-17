@@ -7,8 +7,8 @@ services:
     # To use upstream image instead: comment build section, uncomment image line
     # image: ghcr.io/firecrawl/firecrawl:latest
     build:
-      context: ./vendor/firecrawl
-      dockerfile: apps/api/Dockerfile
+      context: ./vendor/firecrawl/apps/api
+      dockerfile: Dockerfile
     ports:
       - "3002:3002"
     environment:

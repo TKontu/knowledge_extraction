@@ -7,10 +7,11 @@ using Camoufox for anti-bot protected scraping.
 import logging
 import sys
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 import structlog
 import uvicorn
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 
 from src.services.camoufox.config import settings
@@ -21,6 +22,28 @@ from src.services.camoufox.models import (
     ScrapeSuccessResponse,
 )
 from src.services.camoufox.scraper import scraper
+
+
+ALLOWED_URL_SCHEMES = {"http", "https"}
+
+
+def is_valid_url(url: str) -> bool:
+    """Validate URL has allowed scheme and netloc.
+
+    Only allows http and https schemes to prevent SSRF attacks
+    via file://, ftp://, gopher://, etc.
+
+    Args:
+        url: URL string to validate.
+
+    Returns:
+        True if URL is valid with allowed scheme, False otherwise.
+    """
+    try:
+        result = urlparse(url)
+        return result.scheme in ALLOWED_URL_SCHEMES and bool(result.netloc)
+    except Exception:
+        return False
 
 
 def configure_logging() -> None:
@@ -118,6 +141,7 @@ async def health_check() -> HealthResponse:
     response_model=ScrapeSuccessResponse,
     responses={
         200: {"model": ScrapeSuccessResponse},
+        400: {"model": ScrapeErrorResponse},
         500: {"model": ScrapeErrorResponse},
     },
 )
@@ -133,6 +157,18 @@ async def scrape_url(request: ScrapeRequest) -> JSONResponse:
     Returns:
         JSON response with content and status, or error message.
     """
+    # Validate URL (matching Firecrawl's api.ts:234-240)
+    if not request.url:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "URL is required"},
+        )
+    if not is_valid_url(request.url):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Invalid URL"},
+        )
+
     log = logger.bind(url=request.url)
     log.info("scrape_request_received")
 
@@ -151,13 +187,23 @@ async def scrape_url(request: ScrapeRequest) -> JSONResponse:
         content_length=len(result.get("content", "")),
     )
 
+    # Build response - only include optional fields if they have values
+    # Firecrawl's Zod schema expects pageError and contentType to be
+    # either strings or undefined (not null)
+    response_content: dict = {
+        "content": result["content"],
+        "pageStatusCode": result["pageStatusCode"],
+    }
+    if result.get("pageError"):
+        response_content["pageError"] = result["pageError"]
+    if result.get("contentType"):
+        response_content["contentType"] = result["contentType"]
+    if result.get("discoveredUrls"):
+        response_content["discoveredUrls"] = result["discoveredUrls"]
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content={
-            "content": result["content"],
-            "pageStatusCode": result["pageStatusCode"],
-            "pageError": result.get("pageError"),
-        },
+        content=response_content,
     )
 
 
