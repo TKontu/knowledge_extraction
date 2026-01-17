@@ -178,7 +178,7 @@ services:
   pipeline:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/pipeline:${PIPELINE_TAG:-latest}
     ports:
-      - "8000:8000"
+      - "${PIPELINE_PORT:-8742}:8000"
     environment:
       DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
       REDIS_URL: redis://redis:6379
