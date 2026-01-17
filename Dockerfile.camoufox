@@ -1,0 +1,60 @@
+# Camoufox Browser Service Dockerfile
+# Anti-bot protected web scraping with Firecrawl-compatible API
+
+FROM python:3.12-slim
+
+# Install Firefox dependencies required by Camoufox's custom Firefox binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    libgtk-3-0 \
+    libdbus-glib-1-2 \
+    libxt6 \
+    libx11-xcb1 \
+    libasound2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxfixes3 \
+    libxcursor1 \
+    libxi6 \
+    libxrender1 \
+    libxtst6 \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements-camoufox.txt .
+RUN pip install --no-cache-dir -r requirements-camoufox.txt
+
+# Download Camoufox's custom Firefox binary
+# This MUST happen after pip install camoufox
+RUN python -m camoufox fetch
+
+# Copy service code
+COPY src/services/camoufox/ ./src/services/camoufox/
+
+# Set Python path for module imports
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Default port
+EXPOSE 3003
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3003/health')" || exit 1
+
+# Run the service
+CMD ["python", "-m", "src.services.camoufox.server"]

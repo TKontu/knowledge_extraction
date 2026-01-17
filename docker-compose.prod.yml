@@ -1,20 +1,26 @@
+# Production compose file - uses pre-built images instead of local builds
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Required: Set REGISTRY_PREFIX in .env or environment
+# Example: REGISTRY_PREFIX=ghcr.io/tkontu
+
 services:
   # ===================
   # Firecrawl Stack
   # ===================
   firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl:latest
+    image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/firecrawl-api:${FIRECRAWL_TAG:-latest}
+    ports:
+      - "3002:3002"
     environment:
       - PORT=3002
       - HOST=0.0.0.0
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
       - NUM_WORKERS_PER_QUEUE=2
-      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3003/scrape
+      - PLAYWRIGHT_MICROSERVICE_URL=http://camoufox:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
-      - USE_DB_AUTHENTICATION=false
-      - BULL_AUTH_KEY=${BULL_AUTH_KEY:-@firecrawl2024}
       - HTTP_PROXY=http://proxy-adapter:8192
       - HTTPS_PROXY=http://proxy-adapter:8192
       - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant
@@ -23,12 +29,33 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      playwright:
+      camoufox:
         condition: service_started
       rabbitmq:
         condition: service_started
-      proxy-adapter:
-        condition: service_started
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
+
+  camoufox:
+    image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/camoufox:${CAMOUFOX_TAG:-latest}
+    ports:
+      - "3004:3003"
+    environment:
+      - CAMOUFOX_PORT=3003
+      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-10}
+      - CAMOUFOX_TIMEOUT=${CAMOUFOX_TIMEOUT:-180000}
+      - CAMOUFOX_PROXY=${CAMOUFOX_PROXY:-}
+      - CAMOUFOX_HEADLESS=${CAMOUFOX_HEADLESS:-true}
+      - CAMOUFOX_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CAMOUFOX_LOG_FORMAT=${LOG_FORMAT:-json}
     restart: unless-stopped
     networks:
       - scristill
@@ -39,27 +66,6 @@ services:
           cpus: '2'
         reservations:
           memory: 512M
-
-  playwright:
-    build:
-      context: .
-      dockerfile: Dockerfile.playwright
-    environment:
-      - PROXY_SERVER=${PLAYWRIGHT_PROXY_SERVER:-http://proxy-adapter:8192}
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN  # Required for iptables transparent proxy
-    depends_on:
-      - proxy-adapter
-    networks:
-      - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1'
-        reservations:
-          memory: 256M
 
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
@@ -75,35 +81,26 @@ services:
     restart: unless-stopped
     networks:
       - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
 
   # ===================
   # Data Stores
   # ===================
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
     networks:
       - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
 
   rabbitmq:
-    image: rabbitmq:3-alpine
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
@@ -112,16 +109,11 @@ services:
     restart: unless-stopped
     networks:
       - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
 
   postgres:
     image: postgres:16-alpine
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${DB_USER:-scristill}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-scristill}
@@ -136,16 +128,12 @@ services:
     restart: unless-stopped
     networks:
       - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1'
-        reservations:
-          memory: 256M
 
   qdrant:
     image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
@@ -153,144 +141,75 @@ services:
     restart: unless-stopped
     networks:
       - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '1'
-        reservations:
-          memory: 512M
 
   # ===================
   # Anti-Bot Protection
   # ===================
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
+    ports:
+      - "8191:8191"
     environment:
-      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
-      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+      - LOG_LEVEL=info
     restart: unless-stopped
     networks:
       - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1'
-        reservations:
-          memory: 256M
 
   proxy-adapter:
-    build:
-      context: .
-      dockerfile: Dockerfile.proxy
-    container_name: proxy-adapter
+    image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/proxy-adapter:${PROXY_ADAPTER_TAG:-latest}
     ports:
       - "8192:8192"
     environment:
-      - API_KEY=${API_KEY:-proxy-adapter-internal-key}
-      - PROXY_ADAPTER_PORT=${PROXY_ADAPTER_PORT:-8192}
-      - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
-      - FLARESOLVERR_MAX_TIMEOUT=${FLARESOLVERR_MAX_TIMEOUT:-60000}
-      - FLARESOLVERR_BLOCKED_DOMAINS=${FLARESOLVERR_BLOCKED_DOMAINS:-weg.net,siemens.com,wattdrive.com}
+      - API_KEY=${API_KEY:-proxy-adapter-dev-key}
+      - PROXY_ADAPTER_PORT=8192
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_MAX_TIMEOUT=60000
+      - FLARESOLVERR_BLOCKED_DOMAINS=weg.net,siemens.com,wattdrive.com
       - LOG_LEVEL=${PROXY_ADAPTER_LOG_LEVEL:-INFO}
     depends_on:
       - flaresolverr
-    networks:
-      - scristill
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
     restart: unless-stopped
-
-  # ===================
-  # Database Migrations
-  # ===================
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: python -m alembic upgrade head
-    environment:
-      DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - scristill
-    restart: "no"
 
   # ===================
   # Pipeline Service
   # ===================
   pipeline:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/pipeline:${PIPELINE_TAG:-latest}
     ports:
-      - "8742:8000"
+      - "8000:8000"
     environment:
-      # Database
       DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
-
-      # Redis
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-
-      # Qdrant
-      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-
-      # Firecrawl
-      FIRECRAWL_URL: ${FIRECRAWL_URL:-http://firecrawl-api:3002}
-
-      # FlareSolverr
-      FLARESOLVERR_URL: ${FLARESOLVERR_URL:-http://flaresolverr:8191}
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      FIRECRAWL_URL: http://firecrawl-api:3002
+      FLARESOLVERR_URL: http://flaresolverr:8191
       USE_FLARESOLVERR: ${USE_FLARESOLVERR:-true}
-
-      # Security (REQUIRED - set in Portainer)
       API_KEY: ${API_KEY}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
-
-      # LLM (REQUIRED - set in Portainer)
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
-      OPENAI_EMBEDDING_BASE_URL: ${OPENAI_EMBEDDING_BASE_URL}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-http://192.168.0.247:9003/v1}
+      OPENAI_EMBEDDING_BASE_URL: ${OPENAI_EMBEDDING_BASE_URL:-http://192.168.0.136:9003/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
       LLM_MODEL: ${LLM_MODEL:-gemma3-12b-awq}
       RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-bge-large-en}
-
-      # Scraping config
       SCRAPE_DELAY_MIN: ${SCRAPE_DELAY_MIN:-2}
       SCRAPE_DELAY_MAX: ${SCRAPE_DELAY_MAX:-5}
       SCRAPE_MAX_CONCURRENT_PER_DOMAIN: ${SCRAPE_MAX_CONCURRENT_PER_DOMAIN:-2}
       SCRAPE_DAILY_LIMIT_PER_DOMAIN: ${SCRAPE_DAILY_LIMIT_PER_DOMAIN:-500}
       SCRAPE_MAX_RETRIES: ${SCRAPE_MAX_RETRIES:-3}
       SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-60}
-
-      # LLM timeouts
       LLM_HTTP_TIMEOUT: ${LLM_HTTP_TIMEOUT:-900}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-5}
       LLM_RETRY_BACKOFF_MIN: ${LLM_RETRY_BACKOFF_MIN:-2}
       LLM_RETRY_BACKOFF_MAX: ${LLM_RETRY_BACKOFF_MAX:-60}
-
-      # Extraction concurrency
-      EXTRACTION_MAX_CONCURRENT_CHUNKS: ${EXTRACTION_MAX_CONCURRENT_CHUNKS:-25}
-
-      # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
-
-      # File paths
-      INPUT_PATH: ${INPUT_PATH:-/app/input}
-      OUTPUT_PATH: ${OUTPUT_PATH:-/app/output}
     volumes:
-      - reports_data:/app/reports
-      - ${INPUT_PATH:-./input}:/app/input:ro
-      - ${OUTPUT_PATH:-./output}:/app/output
+      - ./prompts:/app/prompts:ro
+      - ./reports:/app/reports
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_started
       postgres:
@@ -299,25 +218,9 @@ services:
         condition: service_started
       firecrawl-api:
         condition: service_started
-      flaresolverr:
-        condition: service_started
     restart: unless-stopped
     networks:
       - scristill
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
-        reservations:
-          memory: 512M
-          cpus: '0.5'
 
 volumes:
   redis_data:
@@ -325,7 +228,6 @@ volumes:
   qdrant_data:
   rabbitmq_data:
   firecrawl_postgres_data:
-  reports_data:
 
 networks:
   scristill:

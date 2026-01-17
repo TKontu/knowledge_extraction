@@ -1,0 +1,568 @@
+"""Camoufox browser management and scraping logic.
+
+This module manages a single Camoufox browser instance with per-request contexts,
+matching Firecrawl's Playwright service pattern exactly.
+"""
+
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Any
+
+import structlog
+from camoufox.async_api import AsyncCamoufox
+from playwright.async_api import Browser, BrowserContext, Page, Response
+
+from src.services.camoufox.config import CamoufoxSettings, settings
+from src.services.camoufox.models import ScrapeRequest
+
+logger = structlog.get_logger(__name__)
+
+# HTTP error messages matching Firecrawl's get_error.ts
+HTTP_ERROR_MESSAGES = {
+    400: "Bad Request",
+    401: "Unauthorized",
+    402: "Payment Required",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    406: "Not Acceptable",
+    407: "Proxy Authentication Required",
+    408: "Request Timeout",
+    409: "Conflict",
+    410: "Gone",
+    411: "Length Required",
+    412: "Precondition Failed",
+    413: "Payload Too Large",
+    414: "URI Too Long",
+    415: "Unsupported Media Type",
+    416: "Range Not Satisfiable",
+    417: "Expectation Failed",
+    418: "I'm a Teapot",
+    421: "Misdirected Request",
+    422: "Unprocessable Entity",
+    423: "Locked",
+    424: "Failed Dependency",
+    425: "Too Early",
+    426: "Upgrade Required",
+    428: "Precondition Required",
+    429: "Too Many Requests",
+    431: "Request Header Fields Too Large",
+    451: "Unavailable For Legal Reasons",
+    500: "Internal Server Error",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout",
+    505: "HTTP Version Not Supported",
+    506: "Variant Also Negotiates",
+    507: "Insufficient Storage",
+    508: "Loop Detected",
+    510: "Not Extended",
+    511: "Network Authentication Required",
+}
+
+# Ad-serving domains to block (matching Firecrawl's api.ts)
+AD_SERVING_DOMAINS = [
+    "doubleclick.net",
+    "adservice.google.com",
+    "googlesyndication.com",
+    "googletagservices.com",
+    "googletagmanager.com",
+    "google-analytics.com",
+    "adsystem.com",
+    "adservice.com",
+    "adnxs.com",
+    "ads-twitter.com",
+    "facebook.net",
+    "fbcdn.net",
+    "amazon-adsystem.com",
+]
+
+
+def get_error_message(status_code: int | None) -> str | None:
+    """Get human-readable error message for HTTP status code.
+
+    Args:
+        status_code: HTTP status code or None.
+
+    Returns:
+        Error message string or None if no error.
+    """
+    if status_code is None:
+        return "No response received"
+    if status_code < 300:
+        return None
+    return HTTP_ERROR_MESSAGES.get(status_code, "Unknown Error")
+
+
+class CamoufoxScraper:
+    """Manages a single Camoufox browser with per-request contexts.
+
+    This follows Firecrawl's pattern of creating a new context per request
+    and closing it immediately after scraping. No session persistence.
+    """
+
+    def __init__(self, config: CamoufoxSettings | None = None) -> None:
+        """Initialize scraper with configuration.
+
+        Args:
+            config: Optional settings override. Uses global settings if None.
+        """
+        self.config = config or settings
+        self._browser: Browser | None = None
+        self._camoufox: AsyncCamoufox | None = None
+        self._semaphore = asyncio.Semaphore(self.config.max_concurrent_pages)
+        self._active_pages = 0
+        self._lock = asyncio.Lock()
+
+    @property
+    def active_pages(self) -> int:
+        """Get current number of active pages."""
+        return self._active_pages
+
+    @property
+    def max_concurrent_pages(self) -> int:
+        """Get maximum concurrent pages allowed."""
+        return self.config.max_concurrent_pages
+
+    async def start(self) -> None:
+        """Start the Camoufox browser instance."""
+        if self._browser is not None:
+            logger.warning("browser_already_running")
+            return
+
+        logger.info(
+            "starting_camoufox_browser",
+            headless=self.config.headless,
+            max_concurrent_pages=self.config.max_concurrent_pages,
+        )
+
+        # Build launch options
+        launch_options: dict[str, Any] = {
+            "headless": self.config.headless,
+        }
+
+        # Add proxy if configured
+        if self.config.proxy:
+            launch_options["proxy"] = {"server": self.config.proxy}
+            logger.info("proxy_configured", proxy=self.config.proxy)
+
+        # Start Camoufox with geoip for realistic fingerprints
+        try:
+            self._camoufox = AsyncCamoufox(geoip=True, **launch_options)
+            self._browser = await self._camoufox.start()
+        except Exception as e:
+            logger.error("browser_start_failed", error=str(e))
+            raise RuntimeError(f"Failed to start Camoufox browser: {e}") from e
+
+        logger.info("camoufox_browser_started")
+
+    async def stop(self) -> None:
+        """Stop the Camoufox browser instance gracefully."""
+        if self._browser is None:
+            return
+
+        logger.info("stopping_camoufox_browser", active_pages=self._active_pages)
+
+        # Wait for active pages to complete (with timeout)
+        wait_count = 0
+        while self._active_pages > 0 and wait_count < 30:
+            await asyncio.sleep(1)
+            wait_count += 1
+
+        if self._active_pages > 0:
+            logger.warning(
+                "forcing_browser_shutdown", remaining_pages=self._active_pages
+            )
+
+        try:
+            if self._browser:
+                await self._browser.close()
+        except Exception as e:
+            logger.error("browser_stop_error", error=str(e))
+        finally:
+            self._browser = None
+            self._camoufox = None
+
+        logger.info("camoufox_browser_stopped")
+
+    @asynccontextmanager
+    async def _acquire_page(self):
+        """Context manager to acquire and release a page slot."""
+        async with self._lock:
+            self._active_pages += 1
+        try:
+            yield
+        finally:
+            async with self._lock:
+                self._active_pages -= 1
+
+    async def _discover_ajax_urls(self, page: Page, log) -> list[str]:
+        """Discover AJAX URLs by clicking interactive elements.
+
+        Finds clickable elements (tabs, buttons with data attributes),
+        clicks each one, and captures the network requests made.
+
+        Args:
+            page: Playwright page object.
+            log: Bound logger instance.
+
+        Returns:
+            List of discovered AJAX URLs.
+        """
+        discovered_urls: set[str] = set()
+        base_url = page.url
+
+        # Set up request interception to capture AJAX calls
+        async def capture_request(request):
+            url = request.url
+            resource_type = request.resource_type
+            # Capture XHR, fetch, and document requests that aren't the base page
+            # Also capture requests with common AJAX query patterns
+            if (
+                url != base_url
+                and not any(domain in url for domain in AD_SERVING_DOMAINS)
+                and (
+                    resource_type in ("xhr", "fetch", "document")
+                    or "ajax" in url.lower()
+                    or "api" in url.lower()
+                )
+            ):
+                # Skip common non-AJAX resources
+                if not any(url.endswith(ext) for ext in (
+                    ".css", ".js", ".png", ".jpg", ".gif", ".svg", ".woff", ".woff2"
+                )):
+                    discovered_urls.add(url)
+
+        page.on("request", capture_request)
+
+        try:
+            # Find clickable elements that likely trigger AJAX
+            # Look for: tabs, buttons with data-* attributes, links with # or javascript:
+            clickable_selectors = [
+                # Tab-like elements (common AJAX patterns)
+                "[data-toggle='tab']",
+                "[role='tab']",
+                ".nav-tabs a",
+                ".tab-link",
+                ".year-link",  # Oscar films page pattern
+                # Elements with year/filter data attributes
+                "[data-year]",
+                "[data-filter]",
+                "[data-id]",
+                # Links that don't navigate (hash links, javascript:)
+                "a[href='#']",  # Exact hash links (common AJAX trigger)
+                "a[href^='#']",  # Hash links with anchors
+                "a[href^='javascript:']",
+                # Buttons that aren't submit buttons
+                "button:not([type='submit'])",
+                # Clickable divs/spans with cursor pointer (via class names)
+                ".clickable",
+                "[onclick]",
+            ]
+
+            # Combine selectors
+            selector = ", ".join(clickable_selectors)
+
+            # Get all matching elements
+            elements = await page.query_selector_all(selector)
+            log.info("ajax_discovery_elements_found", count=len(elements))
+
+            # Click each element and wait for network activity
+            for i, element in enumerate(elements[:20]):  # Limit to 20 clicks
+                try:
+                    # Check if element is visible and clickable
+                    is_visible = await element.is_visible()
+                    if not is_visible:
+                        continue
+
+                    # Get element info for logging
+                    tag = await element.evaluate("el => el.tagName")
+                    text = await element.evaluate(
+                        "el => el.textContent?.trim()?.substring(0, 30) || ''"
+                    )
+                    elem_id = await element.evaluate("el => el.id || ''")
+                    elem_class = await element.evaluate("el => el.className || ''")
+                    href = await element.evaluate(
+                        "el => el.getAttribute('href') || ''"
+                    )
+
+                    # Skip navigation links that would leave the page
+                    if href and href not in ("#", "javascript:void(0)", "javascript:;", ""):
+                        # Skip absolute URLs and paths that would navigate away
+                        if (
+                            href.startswith("/")
+                            or href.startswith("http")
+                            or href.startswith("mailto:")
+                            or href.startswith("tel:")
+                        ):
+                            log.debug(
+                                "ajax_discovery_skipping_nav",
+                                index=i,
+                                href=href,
+                            )
+                            continue
+
+                    log.info(
+                        "ajax_discovery_clicking",
+                        index=i,
+                        tag=tag,
+                        text=text,
+                        id=elem_id,
+                        class_name=elem_class,
+                    )
+
+                    # Click and wait for network activity
+                    await element.click()
+                    # Wait for AJAX - some sites have intentional delays up to 2-3 seconds
+                    await page.wait_for_timeout(3000)
+
+                    # Try to wait for network idle (JS-heavy sites may take longer)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception:
+                        pass  # Timeout is fine - continue anyway
+
+                except Exception as e:
+                    log.debug("ajax_discovery_click_failed", index=i, error=str(e))
+                    continue
+
+            log.info("ajax_discovery_complete", urls_found=len(discovered_urls))
+
+        except Exception as e:
+            log.warning("ajax_discovery_error", error=str(e))
+
+        finally:
+            # Remove the request listener
+            page.remove_listener("request", capture_request)
+
+        return list(discovered_urls)
+
+    async def _inline_iframes_in_dom(self, page: Page, log) -> int:
+        """Replace iframe elements with their content directly in the DOM.
+
+        Uses JavaScript evaluation to access iframe contentDocument and
+        replace each iframe with a div containing its content.
+
+        Args:
+            page: Playwright page object.
+            log: Bound logger instance.
+
+        Returns:
+            Number of iframes processed.
+        """
+        try:
+            processed = await page.evaluate("""
+                () => {
+                    let count = 0;
+                    const iframes = document.querySelectorAll('iframe');
+                    iframes.forEach(iframe => {
+                        try {
+                            const doc = iframe.contentDocument ||
+                                       (iframe.contentWindow ? iframe.contentWindow.document : null);
+                            if (doc && doc.body) {
+                                const div = document.createElement('div');
+                                div.setAttribute('data-iframe-src', iframe.src || '');
+                                div.setAttribute('data-original-tag', 'iframe');
+                                div.innerHTML = doc.body.innerHTML;
+                                iframe.parentNode.replaceChild(div, iframe);
+                                count++;
+                            }
+                        } catch (e) {
+                            // Cross-origin iframe - cannot access content
+                            // Leave iframe as-is
+                        }
+                    });
+                    return count;
+                }
+            """)
+            if processed > 0:
+                log.debug("iframes_inlined", count=processed)
+            return processed
+        except Exception as e:
+            log.warning("iframe_inline_error", error=str(e))
+            return 0
+
+    async def scrape(self, request: ScrapeRequest) -> dict[str, Any]:
+        """Scrape a URL and return the rendered HTML content.
+
+        Creates a new browser context per request, matching Firecrawl's pattern.
+        No session persistence across requests.
+
+        Args:
+            request: Scrape request with URL and options.
+
+        Returns:
+            Dictionary with content, pageStatusCode, and optional pageError.
+            On failure, returns dictionary with error key.
+        """
+        if self._browser is None:
+            return {"error": "Browser not started"}
+
+        async with self._semaphore:
+            async with self._acquire_page():
+                return await self._do_scrape(request)
+
+    async def _do_scrape(self, request: ScrapeRequest) -> dict[str, Any]:
+        """Internal scrape implementation.
+
+        Args:
+            request: Scrape request with URL and options.
+
+        Returns:
+            Scrape result dictionary.
+        """
+        context: BrowserContext | None = None
+        page: Page | None = None
+
+        log = logger.bind(url=request.url, timeout=request.timeout)
+        log.info("scrape_started")
+
+        try:
+            # Create new context for this request (matches Firecrawl pattern)
+            context_options: dict[str, Any] = {}
+
+            # Handle TLS verification
+            if request.skip_tls_verification:
+                context_options["ignore_https_errors"] = True
+
+            context = await self._browser.new_context(**context_options)
+
+            # Set up ad-blocking route (matching Firecrawl's api.ts)
+            async def block_ads(route):
+                url = route.request.url
+                if any(domain in url for domain in AD_SERVING_DOMAINS):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await context.route("**/*", block_ads)
+
+            page = await context.new_page()
+
+            # Apply custom headers to page (not context - matches Firecrawl)
+            if request.headers:
+                await page.set_extra_http_headers(request.headers)
+
+            # Navigate to URL (wait_until="load" matches Firecrawl)
+            response: Response | None = await page.goto(
+                request.url,
+                timeout=request.timeout,
+                wait_until="load",
+            )
+
+            # Wait for network idle (JavaScript execution)
+            try:
+                await page.wait_for_load_state(
+                    "networkidle", timeout=self.config.networkidle_timeout
+                )
+            except Exception:
+                # Network idle timeout is not fatal - continue with what we have
+                log.debug("network_idle_timeout")
+
+            # Additional wait if specified
+            if request.wait_after_load > 0:
+                await asyncio.sleep(request.wait_after_load / 1000)
+
+            # Discover AJAX URLs if requested (before getting content)
+            discovered_urls: list[str] = []
+            if request.discover_ajax:
+                discovered_urls = await self._discover_ajax_urls(page, log)
+
+            # Wait for specific selector if provided (Firecrawl throws on failure)
+            if request.check_selector:
+                try:
+                    await page.wait_for_selector(
+                        request.check_selector,
+                        timeout=min(request.timeout, 10000),
+                    )
+                except Exception:
+                    log.warning("selector_not_found", selector=request.check_selector)
+                    return {"error": "Required selector not found"}
+
+            # Extract content-type header from response
+            content_type: str | None = None
+            if response:
+                headers = await response.all_headers()
+                content_type = next(
+                    (v for k, v in headers.items() if k.lower() == "content-type"),
+                    None,
+                )
+
+            # For JSON/plain-text, return raw body instead of DOM
+            if content_type and (
+                "application/json" in content_type.lower()
+                or "text/plain" in content_type.lower()
+            ):
+                body = await response.body()
+                # Parse charset from content-type header
+                charset = "utf-8"
+                if content_type:
+                    for part in content_type.split(";"):
+                        if part.strip().lower().startswith("charset="):
+                            charset = part.split("=", 1)[1].strip().strip("\"'")
+                            break
+                try:
+                    content = body.decode(charset)
+                except (UnicodeDecodeError, LookupError):
+                    content = body.decode("utf-8", errors="replace")
+            else:
+                # Inline iframe contents into the DOM before extraction
+                await self._inline_iframes_in_dom(page, log)
+
+                # Get the rendered content (DOM after JavaScript execution)
+                content = await page.content()
+
+            # Determine status code and any error (matching Firecrawl's get_error.ts)
+            status_code = response.status if response else None
+            page_error = get_error_message(status_code)
+
+            # Use 0 if no response received (not 200, which falsely indicates success)
+            if status_code is None:
+                status_code = 0
+
+            if page_error:
+                log.warning("page_error_status", status=status_code, error=page_error)
+
+            log.info(
+                "scrape_completed",
+                status=status_code,
+                content_length=len(content),
+                content_type=content_type,
+                discovered_urls=len(discovered_urls) if discovered_urls else 0,
+            )
+
+            result = {
+                "content": content,
+                "pageStatusCode": status_code,
+                "pageError": page_error,
+                "contentType": content_type,
+            }
+
+            # Include discovered URLs if any were found
+            if discovered_urls:
+                result["discoveredUrls"] = discovered_urls
+
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+            log.error("scrape_failed", error=error_msg)
+            return {"error": f"An error occurred while fetching the page: {error_msg}"}
+
+        finally:
+            # Always close page and context (matching Firecrawl pattern)
+            if page:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            if context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+
+
+# Global scraper instance
+scraper = CamoufoxScraper()

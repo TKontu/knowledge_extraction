@@ -3,7 +3,12 @@ services:
   # Firecrawl Stack
   # ===================
   firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl:latest
+    # Build from local fork (vendor/firecrawl submodule)
+    # To use upstream image instead: comment build section, uncomment image line
+    # image: ghcr.io/firecrawl/firecrawl:latest
+    build:
+      context: ./vendor/firecrawl/apps/api
+      dockerfile: Dockerfile
     ports:
       - "3002:3002"
     environment:
@@ -12,7 +17,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
       - NUM_WORKERS_PER_QUEUE=2
-      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3003/scrape
+      - PLAYWRIGHT_MICROSERVICE_URL=http://camoufox:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - HTTP_PROXY=http://proxy-adapter:8192
@@ -23,7 +28,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      playwright:
+      camoufox:
         condition: service_started
       rabbitmq:
         condition: service_started
@@ -60,6 +65,36 @@ services:
           cpus: '1'
         reservations:
           memory: 256M
+
+  # Camoufox Browser Service - Anti-bot protected scraping
+  # Uses Camoufox (0% detection rate) for HTTPS support on protected sites
+  # Migration: Once validated, update firecrawl-api PLAYWRIGHT_MICROSERVICE_URL
+  #            to http://camoufox:3003/scrape and remove playwright service
+  camoufox:
+    build:
+      context: .
+      dockerfile: Dockerfile.camoufox
+    container_name: camoufox-service
+    ports:
+      - "3004:3003"  # External 3004 for parallel testing, internal 3003
+    environment:
+      - CAMOUFOX_PORT=3003
+      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-10}
+      - CAMOUFOX_TIMEOUT=${CAMOUFOX_TIMEOUT:-60000}
+      - CAMOUFOX_PROXY=${CAMOUFOX_PROXY:-}
+      - CAMOUFOX_HEADLESS=${CAMOUFOX_HEADLESS:-true}
+      - CAMOUFOX_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CAMOUFOX_LOG_FORMAT=${LOG_FORMAT:-json}
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 512M
 
   # Firecrawl's dedicated PostgreSQL with NUQ schema pre-loaded
   firecrawl-db:

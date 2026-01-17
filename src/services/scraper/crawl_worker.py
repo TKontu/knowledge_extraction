@@ -15,8 +15,6 @@ from services.storage.repositories.source import SourceRepository
 
 logger = structlog.get_logger(__name__)
 
-POLL_INTERVAL = 10  # seconds between status checks
-
 
 class CrawlWorker:
     """Worker for processing crawl jobs."""
@@ -119,6 +117,18 @@ class CrawlWorker:
                 if payload.get("auto_extract", True):
                     await self._create_extraction_job(job)
 
+            elif status.status not in ("scraping", "failed", "completed"):
+                # Handle unknown status from Firecrawl
+                logger.error(
+                    "crawl_unknown_status",
+                    job_id=str(job.id),
+                    status=status.status,
+                )
+                job.status = "failed"
+                job.error = f"Unexpected crawl status: {status.status}"
+                job.completed_at = datetime.now(UTC)
+                self.db.commit()
+
         except Exception as e:
             # Rollback any failed transaction before updating job status
             self.db.rollback()
@@ -140,6 +150,18 @@ class CrawlWorker:
             url = metadata.get("url") or metadata.get("sourceURL", "")
 
             if not markdown or not url:
+                logger.warning(
+                    "crawl_page_skipped",
+                    job_id=str(job.id),
+                    url=url or "missing",
+                    reason="missing_markdown" if not markdown else "missing_url",
+                )
+                continue
+
+            # Check for duplicate URL
+            existing = await self.source_repo.get_by_uri(project_id, url)
+            if existing:
+                logger.debug("source_already_exists", uri=url)
                 continue
 
             domain = urlparse(url).netloc
