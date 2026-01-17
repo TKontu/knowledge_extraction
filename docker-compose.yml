@@ -3,7 +3,12 @@ services:
   # Firecrawl Stack
   # ===================
   firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl:latest
+    # Build from local fork (vendor/firecrawl submodule)
+    # To use upstream image instead: comment build section, uncomment image line
+    # image: ghcr.io/firecrawl/firecrawl:latest
+    build:
+      context: ./vendor/firecrawl
+      dockerfile: apps/api/Dockerfile
     ports:
       - "3002:3002"
     environment:
@@ -12,7 +17,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
       - NUM_WORKERS_PER_QUEUE=2
-      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3003/scrape
+      - PLAYWRIGHT_MICROSERVICE_URL=http://camoufox:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - HTTP_PROXY=http://proxy-adapter:8192
@@ -23,7 +28,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      playwright:
+      camoufox:
         condition: service_started
       rabbitmq:
         condition: service_started

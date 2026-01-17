@@ -1,0 +1,3 @@
+[submodule "vendor/firecrawl"]
+	path = vendor/firecrawl
+	url = https://github.com/TKontu/firecrawl.git
