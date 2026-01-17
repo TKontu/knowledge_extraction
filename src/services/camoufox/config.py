@@ -34,8 +34,8 @@ class CamoufoxSettings(BaseSettings):
 
     # Timeouts (in milliseconds to match Firecrawl)
     timeout: int = Field(
-        default=60000,
-        description="Default page timeout in milliseconds",
+        default=180000,
+        description="Default page timeout in milliseconds (3 minutes)",
     )
     networkidle_timeout: int = Field(
         default=10000,

@@ -19,8 +19,8 @@ class ScrapeRequest(BaseModel):
         description="Milliseconds to wait after page load",
     )
     timeout: int = Field(
-        default=15000,
-        description="Page load timeout in milliseconds",
+        default=180000,
+        description="Page load timeout in milliseconds (3 minutes)",
     )
     headers: dict[str, str] | None = Field(
         default=None,
