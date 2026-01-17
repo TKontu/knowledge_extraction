@@ -61,6 +61,36 @@ services:
         reservations:
           memory: 256M
 
+  # Camoufox Browser Service - Anti-bot protected scraping
+  # Uses Camoufox (0% detection rate) for HTTPS support on protected sites
+  # Migration: Once validated, update firecrawl-api PLAYWRIGHT_MICROSERVICE_URL
+  #            to http://camoufox:3003/scrape and remove playwright service
+  camoufox:
+    build:
+      context: .
+      dockerfile: Dockerfile.camoufox
+    container_name: camoufox-service
+    ports:
+      - "3004:3003"  # External 3004 for parallel testing, internal 3003
+    environment:
+      - CAMOUFOX_PORT=3003
+      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-10}
+      - CAMOUFOX_TIMEOUT=${CAMOUFOX_TIMEOUT:-60000}
+      - CAMOUFOX_PROXY=${CAMOUFOX_PROXY:-}
+      - CAMOUFOX_HEADLESS=${CAMOUFOX_HEADLESS:-true}
+      - CAMOUFOX_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CAMOUFOX_LOG_FORMAT=${LOG_FORMAT:-json}
+    restart: unless-stopped
+    networks:
+      - scristill
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 512M
+
   # Firecrawl's dedicated PostgreSQL with NUQ schema pre-loaded
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
