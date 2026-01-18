@@ -19,6 +19,7 @@ def configure_logging() -> None:
 
     # Determine if we're in development or production
     is_json = settings_obj.log_format.lower() == "json"
+    log_level = getattr(logging, settings_obj.log_level.upper())
 
     # Shared processors
     shared_processors = [
@@ -31,19 +32,23 @@ def configure_logging() -> None:
     ]
 
     if is_json:
-        # Production: JSON output
+        # Production: JSON output with WriteLoggerFactory to avoid duplication
         structlog.configure(
             processors=shared_processors
             + [
                 structlog.processors.format_exc_info,
                 structlog.processors.JSONRenderer(),
             ],
-            wrapper_class=structlog.make_filtering_bound_logger(
-                getattr(logging, settings_obj.log_level.upper())
-            ),
+            wrapper_class=structlog.make_filtering_bound_logger(log_level),
             context_class=dict,
-            logger_factory=structlog.PrintLoggerFactory(),
+            logger_factory=structlog.WriteLoggerFactory(file=sys.stdout),
             cache_logger_on_first_use=True,
+        )
+        # Disable standard library logging to avoid duplication
+        logging.basicConfig(
+            format="%(message)s",
+            stream=sys.stdout,
+            level=logging.CRITICAL + 1,  # Effectively disable
         )
     else:
         # Development: colored console output
@@ -52,20 +57,16 @@ def configure_logging() -> None:
             + [
                 structlog.dev.ConsoleRenderer(colors=True),
             ],
-            wrapper_class=structlog.make_filtering_bound_logger(
-                getattr(logging, settings_obj.log_level.upper())
-            ),
+            wrapper_class=structlog.make_filtering_bound_logger(log_level),
             context_class=dict,
             logger_factory=structlog.PrintLoggerFactory(),
             cache_logger_on_first_use=True,
         )
+        logging.basicConfig(
+            format="%(message)s",
+            stream=sys.stdout,
+            level=log_level,
+        )
 
-    # Also configure standard library logging
-    log_level = getattr(logging, settings_obj.log_level.upper())
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=log_level,
-    )
     # Explicitly set root logger level
     logging.root.setLevel(log_level)

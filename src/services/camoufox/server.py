@@ -49,6 +49,7 @@ def is_valid_url(url: str) -> bool:
 def configure_logging() -> None:
     """Configure structlog for the service."""
     is_json = settings.log_format.lower() == "json"
+    log_level = getattr(logging, settings.log_level.upper())
 
     shared_processors = [
         structlog.contextvars.merge_contextvars,
@@ -60,39 +61,42 @@ def configure_logging() -> None:
     ]
 
     if is_json:
+        # JSON format: use WriteLoggerFactory to avoid duplication
         structlog.configure(
             processors=shared_processors
             + [
                 structlog.processors.format_exc_info,
                 structlog.processors.JSONRenderer(),
             ],
-            wrapper_class=structlog.make_filtering_bound_logger(
-                getattr(logging, settings.log_level.upper())
-            ),
+            wrapper_class=structlog.make_filtering_bound_logger(log_level),
             context_class=dict,
-            logger_factory=structlog.PrintLoggerFactory(),
+            logger_factory=structlog.WriteLoggerFactory(file=sys.stdout),
             cache_logger_on_first_use=True,
         )
+        # Disable standard library logging to avoid duplication
+        logging.basicConfig(
+            format="%(message)s",
+            stream=sys.stdout,
+            level=logging.CRITICAL + 1,  # Effectively disable
+        )
     else:
+        # Console format: use PrintLoggerFactory for colored output
         structlog.configure(
             processors=shared_processors
             + [
                 structlog.dev.ConsoleRenderer(colors=True),
             ],
-            wrapper_class=structlog.make_filtering_bound_logger(
-                getattr(logging, settings.log_level.upper())
-            ),
+            wrapper_class=structlog.make_filtering_bound_logger(log_level),
             context_class=dict,
             logger_factory=structlog.PrintLoggerFactory(),
             cache_logger_on_first_use=True,
         )
+        logging.basicConfig(
+            format="%(message)s",
+            stream=sys.stdout,
+            level=log_level,
+        )
 
-    log_level = getattr(logging, settings.log_level.upper())
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=log_level,
-    )
     logging.root.setLevel(log_level)
 
 
@@ -209,11 +213,16 @@ async def scrape_url(request: ScrapeRequest) -> JSONResponse:
 
 def main() -> None:
     """Run the Camoufox service."""
+    # Disable uvicorn access logs when using JSON format to avoid duplication
+    log_config = None if settings.log_format.lower() == "json" else None
+
     uvicorn.run(
         "src.services.camoufox.server:app",
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        access_log=False,  # Disable access logs to avoid duplication
+        log_config=log_config,
     )
 
 

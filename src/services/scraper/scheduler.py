@@ -58,7 +58,7 @@ class JobScheduler:
         self._running = False
         self._scrape_task: asyncio.Task | None = None
         self._extract_task: asyncio.Task | None = None
-        self._crawl_task: asyncio.Task | None = None
+        self._crawl_tasks: list[asyncio.Task] = []
         self._firecrawl_client: FirecrawlClient | None = None
         self._rate_limiter: DomainRateLimiter | None = None
         self._retry_config: RetryConfig | None = None
@@ -91,7 +91,14 @@ class JobScheduler:
         )
         # Start scrape, crawl, and extract workers concurrently
         self._scrape_task = asyncio.create_task(self._run_scrape_worker())
-        self._crawl_task = asyncio.create_task(self._run_crawl_worker())
+
+        # Spawn multiple crawl workers for multi-domain parallelism
+        num_crawl_workers = settings.max_concurrent_crawls
+        self._crawl_tasks = [
+            asyncio.create_task(self._run_single_crawl_worker(worker_id=i))
+            for i in range(num_crawl_workers)
+        ]
+
         self._extract_task = asyncio.create_task(self._run_extract_worker())
 
     async def stop(self) -> None:
@@ -102,8 +109,8 @@ class JobScheduler:
         self._running = False
         if self._scrape_task:
             await self._scrape_task
-        if self._crawl_task:
-            await self._crawl_task
+        if self._crawl_tasks:
+            await asyncio.gather(*self._crawl_tasks, return_exceptions=True)
         if self._extract_task:
             await self._extract_task
         if self._firecrawl_client:
@@ -149,68 +156,56 @@ class JobScheduler:
                 logger.error("scrape_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
-    async def _run_crawl_worker(self) -> None:
-        """Main loop for processing crawl jobs with multi-domain parallelism."""
+    async def _run_single_crawl_worker(self, worker_id: int) -> None:
+        """Single crawl worker that processes one job at a time.
+
+        This worker continuously polls for crawl jobs and processes them to completion.
+        Multiple instances of this worker run in parallel to enable multi-domain parallelism.
+
+        Args:
+            worker_id: Unique identifier for this worker (for logging).
+        """
         shutdown = get_shutdown_manager()
+        logger.info("crawl_worker_started", worker_id=worker_id)
+
         while self._running and not shutdown.is_shutting_down:
             try:
                 db: Session = SessionLocal()
                 try:
                     # Query for crawl jobs that need processing
-                    # Get up to max_concurrent_crawls jobs
-                    jobs = (
+                    job = (
                         db.query(Job)
                         .filter(
                             Job.type == "crawl",
                             Job.status.in_(["queued", "running"]),
                         )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
-                        .limit(settings.max_concurrent_crawls)
-                        .all()
+                        .first()
                     )
 
-                    if jobs:
-                        # Process jobs in parallel using asyncio.gather
-                        tasks = []
-                        for job in jobs:
-                            # Create separate DB session for each worker
-                            job_db = SessionLocal()
-                            worker = CrawlWorker(
-                                db=job_db,
-                                firecrawl_client=self._firecrawl_client,
-                            )
-                            # Create task and store DB session for cleanup
-                            task = self._process_crawl_job_with_cleanup(
-                                worker, job, job_db
-                            )
-                            tasks.append(task)
-
-                        # Wait for all jobs to process (they poll internally)
-                        await asyncio.gather(*tasks, return_exceptions=True)
+                    if job:
+                        worker = CrawlWorker(
+                            db=db,
+                            firecrawl_client=self._firecrawl_client,
+                        )
+                        await worker.process_job(job)
                     else:
+                        # No jobs available, wait before polling again
                         await asyncio.sleep(self.poll_interval)
 
                 finally:
                     db.close()
 
             except Exception as e:
-                logger.error("crawl_worker_error", error=str(e), exc_info=True)
+                logger.error(
+                    "crawl_worker_error",
+                    worker_id=worker_id,
+                    error=str(e),
+                    exc_info=True,
+                )
                 await asyncio.sleep(self.poll_interval)
 
-    async def _process_crawl_job_with_cleanup(
-        self, worker: CrawlWorker, job: Job, db: Session
-    ) -> None:
-        """Process a single crawl job and cleanup its DB session.
-
-        Args:
-            worker: CrawlWorker instance.
-            job: Job to process.
-            db: Database session to cleanup after processing.
-        """
-        try:
-            await worker.process_job(job)
-        finally:
-            db.close()
+        logger.info("crawl_worker_stopped", worker_id=worker_id)
 
     async def _run_extract_worker(self) -> None:
         """Main loop for processing extraction jobs.

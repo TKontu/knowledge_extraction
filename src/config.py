@@ -123,8 +123,8 @@ class Settings(BaseSettings):
         description="Maximum scrape retries",
     )
     scrape_timeout: int = Field(
-        default=60,
-        description="Scrape timeout in seconds",
+        default=180,
+        description="Scrape timeout in seconds (3 minutes for anti-bot protected sites)",
     )
 
     # Crawl Rate Limiting Configuration

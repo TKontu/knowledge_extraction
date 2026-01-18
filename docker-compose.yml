@@ -22,7 +22,7 @@ services:
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - HTTP_PROXY=http://proxy-adapter:8192
       - HTTPS_PROXY=http://proxy-adapter:8192
-      - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant
+      - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant,camoufox,firecrawl-db,rabbitmq
     depends_on:
       firecrawl-db:
         condition: service_healthy
@@ -330,7 +330,7 @@ services:
       SCRAPE_MAX_CONCURRENT_PER_DOMAIN: ${SCRAPE_MAX_CONCURRENT_PER_DOMAIN:-2}
       SCRAPE_DAILY_LIMIT_PER_DOMAIN: ${SCRAPE_DAILY_LIMIT_PER_DOMAIN:-500}
       SCRAPE_MAX_RETRIES: ${SCRAPE_MAX_RETRIES:-3}
-      SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-60}
+      SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-180}
       CRAWL_DELAY_MS: ${CRAWL_DELAY_MS:-2000}
       CRAWL_MAX_CONCURRENCY: ${CRAWL_MAX_CONCURRENCY:-2}
       MAX_CONCURRENT_CRAWLS: ${MAX_CONCURRENT_CRAWLS:-6}
