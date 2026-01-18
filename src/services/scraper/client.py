@@ -272,8 +272,10 @@ class FirecrawlClient:
         user_agent: str | None = None,
         check_llms_txt_override: bool = True,
         scrape_timeout: int = 60000,
+        delay_ms: int | None = None,
+        max_concurrency: int | None = None,
     ) -> str:
-        """Start async crawl job.
+        """Start async crawl job with rate limiting.
 
         Args:
             url: Starting URL.
@@ -288,6 +290,8 @@ class FirecrawlClient:
                 robots.txt if AI agents are allowed.
             scrape_timeout: Playwright page load timeout in milliseconds.
                 Default 60000 (60s) to allow for FlareSolverr anti-bot bypass.
+            delay_ms: Delay between requests in milliseconds (respectful crawling).
+            max_concurrency: Max concurrent requests (rate limiting).
 
         Returns:
             Firecrawl job ID.
@@ -322,18 +326,27 @@ class FirecrawlClient:
                 "User-Agent": user_agent or DEFAULT_USER_AGENT
             }
 
+        # Build crawl request with rate limiting options
+        crawl_request = {
+            "url": url,
+            "maxDepth": absolute_max_depth,
+            "limit": limit,
+            "includePaths": include_paths or [],
+            "excludePaths": exclude_paths or [],
+            "allowBackwardLinks": allow_backward_links,
+            "ignoreRobotsTxt": ignore_robots_txt,
+            "scrapeOptions": scrape_options,
+        }
+
+        # Add rate limiting parameters if specified
+        if delay_ms is not None:
+            crawl_request["delay"] = delay_ms
+        if max_concurrency is not None:
+            crawl_request["maxConcurrency"] = max_concurrency
+
         response = await self._http_client.post(
             f"{self.base_url}/v1/crawl",
-            json={
-                "url": url,
-                "maxDepth": absolute_max_depth,
-                "limit": limit,
-                "includePaths": include_paths or [],
-                "excludePaths": exclude_paths or [],
-                "allowBackwardLinks": allow_backward_links,
-                "ignoreRobotsTxt": ignore_robots_txt,
-                "scrapeOptions": scrape_options,
-            },
+            json=crawl_request,
         )
         try:
             data = response.json()

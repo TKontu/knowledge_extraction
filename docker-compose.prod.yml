@@ -17,7 +17,7 @@ services:
       - HOST=0.0.0.0
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
-      - NUM_WORKERS_PER_QUEUE=2
+      - NUM_WORKERS_PER_QUEUE=6
       - PLAYWRIGHT_MICROSERVICE_URL=http://camoufox:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -39,10 +39,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3G
+          memory: 8G
           cpus: '1'
         reservations:
-          memory: 256M
+          memory: 512M
 
   camoufox:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/camoufox:${CAMOUFOX_TAG:-latest}
@@ -50,8 +50,11 @@ services:
       - "3004:3003"
     environment:
       - CAMOUFOX_PORT=3003
-      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-10}
+      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-40}
       - CAMOUFOX_TIMEOUT=${CAMOUFOX_TIMEOUT:-180000}
+      - CAMOUFOX_NETWORKIDLE_TIMEOUT=${CAMOUFOX_NETWORKIDLE_TIMEOUT:-5000}
+      - CAMOUFOX_CONTENT_STABILITY_CHECKS=${CAMOUFOX_CONTENT_STABILITY_CHECKS:-2}
+      - CAMOUFOX_CONTENT_STABILITY_INTERVAL=${CAMOUFOX_CONTENT_STABILITY_INTERVAL:-500}
       - CAMOUFOX_PROXY=${CAMOUFOX_PROXY:-}
       - CAMOUFOX_HEADLESS=${CAMOUFOX_HEADLESS:-true}
       - CAMOUFOX_LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -62,10 +65,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '2'
+          memory: 16G
+          cpus: '3'
         reservations:
-          memory: 512M
+          memory: 1G
 
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
@@ -214,6 +217,9 @@ services:
       SCRAPE_DAILY_LIMIT_PER_DOMAIN: ${SCRAPE_DAILY_LIMIT_PER_DOMAIN:-500}
       SCRAPE_MAX_RETRIES: ${SCRAPE_MAX_RETRIES:-3}
       SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-60}
+      CRAWL_DELAY_MS: ${CRAWL_DELAY_MS:-2000}
+      CRAWL_MAX_CONCURRENCY: ${CRAWL_MAX_CONCURRENCY:-2}
+      MAX_CONCURRENT_CRAWLS: ${MAX_CONCURRENT_CRAWLS:-6}
       LLM_HTTP_TIMEOUT: ${LLM_HTTP_TIMEOUT:-900}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-5}
       LLM_RETRY_BACKOFF_MIN: ${LLM_RETRY_BACKOFF_MIN:-2}

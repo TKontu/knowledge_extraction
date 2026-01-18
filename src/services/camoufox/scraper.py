@@ -338,6 +338,83 @@ class CamoufoxScraper:
 
         return list(discovered_urls)
 
+    async def _wait_for_content_ready(
+        self, page: Page, timeout_ms: int, log
+    ) -> None:
+        """Wait for content to be ready using a tiered approach.
+
+        Strategy:
+        1. Wait for DOM to load (fast, reliable baseline)
+        2. Try networkidle with short timeout (avoid long waits)
+        3. Fall back to content stability check if networkidle times out
+
+        This prevents the 60-second timeout issue where pages complete
+        quickly but we wait unnecessarily for full network quiescence.
+
+        Args:
+            page: Playwright page object.
+            timeout_ms: Network idle timeout in milliseconds.
+            log: Bound logger instance.
+        """
+        try:
+            # Step 1: Ensure DOM is loaded (fast, reliable)
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+            log.debug("dom_content_loaded")
+
+            # Step 2: Try networkidle with SHORT timeout (5s default)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                log.debug("network_idle_achieved")
+            except Exception:
+                # Network never went idle - that's acceptable
+                # Many modern sites with persistent connections never reach true idle
+                log.debug("network_idle_timeout_acceptable")
+
+                # Step 3: Check if content is stable (stopped changing)
+                await self._wait_for_content_stability(page, log)
+
+        except Exception as e:
+            log.warning("page_load_incomplete", error=str(e))
+            # Continue anyway - we may have partial content
+
+    async def _wait_for_content_stability(self, page: Page, log) -> None:
+        """Wait until page content stops changing.
+
+        Checks if the page HTML length remains stable across multiple
+        checks, indicating JavaScript execution has completed.
+
+        Args:
+            page: Playwright page object.
+            log: Bound logger instance.
+        """
+        checks = self.config.content_stability_checks
+        interval_ms = self.config.content_stability_interval
+
+        last_length = 0
+        stable_count = 0
+
+        # Max iterations = checks * 2 to avoid infinite loops
+        for _ in range(checks * 2):
+            try:
+                current_length = await page.evaluate("document.body.innerHTML.length")
+
+                if current_length == last_length:
+                    stable_count += 1
+                    if stable_count >= checks:
+                        log.debug("content_stable", checks=stable_count)
+                        return  # Content is stable
+                else:
+                    stable_count = 0
+                    last_length = current_length
+
+                await asyncio.sleep(interval_ms / 1000)
+
+            except Exception as e:
+                log.debug("content_stability_check_failed", error=str(e))
+                return  # Continue with what we have
+
+        log.debug("content_stability_max_iterations_reached")
+
     async def _inline_iframes_in_dom(self, page: Page, log) -> int:
         """Replace iframe elements with their content directly in the DOM.
 
@@ -451,14 +528,10 @@ class CamoufoxScraper:
                 wait_until="load",
             )
 
-            # Wait for network idle (JavaScript execution)
-            try:
-                await page.wait_for_load_state(
-                    "networkidle", timeout=self.config.networkidle_timeout
-                )
-            except Exception:
-                # Network idle timeout is not fatal - continue with what we have
-                log.debug("network_idle_timeout")
+            # Use smart waiting strategy (DOM + networkidle + content stability)
+            await self._wait_for_content_ready(
+                page, self.config.networkidle_timeout, log
+            )
 
             # Additional wait if specified
             if request.wait_after_load > 0:

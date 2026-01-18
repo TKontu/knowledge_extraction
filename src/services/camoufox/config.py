@@ -38,8 +38,18 @@ class CamoufoxSettings(BaseSettings):
         description="Default page timeout in milliseconds (3 minutes)",
     )
     networkidle_timeout: int = Field(
-        default=10000,
-        description="Timeout for network idle state in milliseconds",
+        default=5000,
+        description="Network idle timeout in milliseconds (reduced for faster scraping)",
+    )
+
+    # Content stability detection
+    content_stability_checks: int = Field(
+        default=2,
+        description="Number of stability checks before considering content ready",
+    )
+    content_stability_interval: int = Field(
+        default=500,
+        description="Interval between content stability checks in milliseconds",
     )
 
     # Proxy

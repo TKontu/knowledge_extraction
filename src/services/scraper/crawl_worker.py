@@ -50,6 +50,8 @@ class CrawlWorker:
                     exclude_paths=payload.get("exclude_paths"),
                     allow_backward_links=payload.get("allow_backward_links", False),
                     scrape_timeout=scrape_timeout_ms,
+                    delay_ms=settings.crawl_delay_ms,
+                    max_concurrency=settings.crawl_max_concurrency,
                 )
 
                 # Store Firecrawl job ID (must flag_modified for JSON column)

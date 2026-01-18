@@ -150,29 +150,43 @@ class JobScheduler:
                 await asyncio.sleep(self.poll_interval)
 
     async def _run_crawl_worker(self) -> None:
-        """Main loop for processing crawl jobs."""
+        """Main loop for processing crawl jobs with multi-domain parallelism."""
         shutdown = get_shutdown_manager()
         while self._running and not shutdown.is_shutting_down:
             try:
                 db: Session = SessionLocal()
                 try:
                     # Query for crawl jobs that need processing
-                    job = (
+                    # Get up to max_concurrent_crawls jobs
+                    jobs = (
                         db.query(Job)
                         .filter(
                             Job.type == "crawl",
                             Job.status.in_(["queued", "running"]),
                         )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
-                        .first()
+                        .limit(settings.max_concurrent_crawls)
+                        .all()
                     )
 
-                    if job:
-                        worker = CrawlWorker(
-                            db=db,
-                            firecrawl_client=self._firecrawl_client,
-                        )
-                        await worker.process_job(job)
+                    if jobs:
+                        # Process jobs in parallel using asyncio.gather
+                        tasks = []
+                        for job in jobs:
+                            # Create separate DB session for each worker
+                            job_db = SessionLocal()
+                            worker = CrawlWorker(
+                                db=job_db,
+                                firecrawl_client=self._firecrawl_client,
+                            )
+                            # Create task and store DB session for cleanup
+                            task = self._process_crawl_job_with_cleanup(
+                                worker, job, job_db
+                            )
+                            tasks.append(task)
+
+                        # Wait for all jobs to process (they poll internally)
+                        await asyncio.gather(*tasks, return_exceptions=True)
                     else:
                         await asyncio.sleep(self.poll_interval)
 
@@ -182,6 +196,21 @@ class JobScheduler:
             except Exception as e:
                 logger.error("crawl_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
+
+    async def _process_crawl_job_with_cleanup(
+        self, worker: CrawlWorker, job: Job, db: Session
+    ) -> None:
+        """Process a single crawl job and cleanup its DB session.
+
+        Args:
+            worker: CrawlWorker instance.
+            job: Job to process.
+            db: Database session to cleanup after processing.
+        """
+        try:
+            await worker.process_job(job)
+        finally:
+            db.close()
 
     async def _run_extract_worker(self) -> None:
         """Main loop for processing extraction jobs.

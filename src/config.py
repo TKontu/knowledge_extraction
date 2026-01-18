@@ -127,6 +127,34 @@ class Settings(BaseSettings):
         description="Scrape timeout in seconds",
     )
 
+    # Crawl Rate Limiting Configuration
+    crawl_delay_ms: int = Field(
+        default=2000,
+        description="Delay between crawl requests in milliseconds (respectful crawling)",
+    )
+    crawl_max_concurrency: int = Field(
+        default=2,
+        description="Max concurrent requests during crawl (per domain rate limiting)",
+    )
+    max_concurrent_crawls: int = Field(
+        default=6,
+        description="Max parallel crawl jobs (different domains) - adjust based on available resources",
+    )
+
+    # Camoufox Timeout Strategy
+    camoufox_networkidle_timeout: int = Field(
+        default=5000,
+        description="Network idle timeout in milliseconds (reduced for faster scraping)",
+    )
+    camoufox_content_stability_checks: int = Field(
+        default=2,
+        description="Number of stability checks before considering content ready",
+    )
+    camoufox_content_stability_interval: int = Field(
+        default=500,
+        description="Interval between content stability checks in milliseconds",
+    )
+
     # Scraper Retry Configuration
     scrape_retry_max_attempts: int = Field(
         default=3,
