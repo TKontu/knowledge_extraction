@@ -173,11 +173,12 @@ class JobScheduler:
                 db: Session = SessionLocal()
                 try:
                     # Query for crawl jobs that need processing
+                    # Only pick up queued jobs to prevent multiple workers from grabbing the same job
                     job = (
                         db.query(Job)
                         .filter(
                             Job.type == "crawl",
-                            Job.status.in_(["queued", "running"]),
+                            Job.status == "queued",
                         )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .first()
