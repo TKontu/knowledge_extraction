@@ -65,3 +65,5 @@ output/*
 
 # Input directory (may contain sensitive URLs/data)
 input/
+
+/deployment_logs
