@@ -194,7 +194,12 @@ services:
   # Pipeline Service
   # ===================
   pipeline:
-    image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/pipeline:${PIPELINE_TAG:-latest}
+    # Build from source instead of pulling image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Fallback to image if build not available
+    # image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/pipeline:${PIPELINE_TAG:-latest}
     ports:
       - "${PIPELINE_PORT:-8742}:8000"
     environment:
