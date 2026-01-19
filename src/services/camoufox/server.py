@@ -174,7 +174,13 @@ async def scrape_url(request: ScrapeRequest) -> JSONResponse:
         )
 
     log = logger.bind(url=request.url)
-    log.info("scrape_request_received")
+    log.info(
+        "scrape_request_received",
+        headers=request.headers,
+        timeout=request.timeout,
+        wait_after_load=request.wait_after_load,
+        check_selector=request.check_selector,
+    )
 
     result = await scraper.scrape(request)
 
