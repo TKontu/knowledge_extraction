@@ -14,12 +14,20 @@
   - Failed pages get unlocked from `visited_unique` set → rediscovered through links → infinite re-queue
   - Pages timing out: `/pages/frames/`, `/pages/ajax-javascript/`, `/pages/advanced/?gotcha=*`, `/pages/forms/?page_num=*`
 - ✅ **Implemented HTTP error handling fixes (TDD approach)**
-  - **Fix 1**: Added standard browser headers to Camoufox (11 Firefox headers)
+  - **Fix 1**: Added standard browser headers to Camoufox (Sec-Fetch-*, Accept, etc.)
   - **Fix 2**: Filter HTTP errors (status >= 400) before storing sources
   - **Fix 3**: Track HTTP status in source metadata for observability
   - **Tests**: 15 new tests (5 for headers + 10 for filtering), all passing
   - Files modified: `src/services/camoufox/scraper.py`, `src/services/scraper/crawl_worker.py`
-  - Ready to deploy and test
+- ✅ **Fixed header conflicts with Camoufox internal handling**
+  - **Root Cause**: Our STANDARD_BROWSER_HEADERS included Accept-Language and Accept-Encoding
+    which Camoufox handles internally via BrowserForge fingerprints
+  - **The Conflict**: Using `page.set_extra_http_headers()` with these headers interfered with
+    Camoufox's C++-level header injection, potentially causing User-Agent to not be set
+  - **Fix**: Removed Accept-Language and Accept-Encoding from STANDARD_BROWSER_HEADERS
+  - **Architectural Decision**: Let Camoufox handle User-Agent, Accept-Language, Accept-Encoding
+    internally; only use `set_extra_http_headers()` for headers Camoufox doesn't handle
+  - See: https://camoufox.com - HTTP Headers section
 
 ## In Progress
 - ⚠️ **Infinite retry loop still occurring on production crawls**
