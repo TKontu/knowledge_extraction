@@ -189,6 +189,7 @@ def upgrade() -> None:
         sa.Column("result", postgresql.JSONB(), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()")),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="SET NULL"),
@@ -197,6 +198,7 @@ def upgrade() -> None:
     op.create_index("idx_jobs_type", "jobs", ["type"])
     op.create_index("idx_jobs_project", "jobs", ["project_id"])
     op.create_index("idx_jobs_created_at", "jobs", ["created_at"])
+    op.create_index("idx_jobs_updated_at", "jobs", ["updated_at"])
 
     # Profiles Table
     op.create_table(
