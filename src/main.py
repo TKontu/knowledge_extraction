@@ -27,9 +27,10 @@ from middleware.rate_limit import RateLimitMiddleware
 from middleware.request_id import RequestIDMiddleware
 from middleware.request_logging import RequestLoggingMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
-from qdrant_connection import check_qdrant_connection
+from qdrant_connection import check_qdrant_connection, qdrant_client
 from redis_client import check_redis_connection
 from services.scraper.scheduler import start_scheduler, stop_scheduler
+from services.storage.qdrant.repository import QdrantRepository
 from shutdown import get_shutdown_manager, shutdown_manager
 
 # Configure logging before creating the app
@@ -84,6 +85,11 @@ async def lifespan(app: FastAPI):
 
     # Check security configuration
     check_security_config()
+
+    # Initialize Qdrant collection
+    qdrant_repo = QdrantRepository(qdrant_client)
+    await qdrant_repo.init_collection()
+    logger.info("qdrant_collection_initialized", collection="extractions")
 
     await start_scheduler()
 
