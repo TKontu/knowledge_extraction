@@ -78,6 +78,22 @@ AD_SERVING_DOMAINS = [
     "amazon-adsystem.com",
 ]
 
+# Standard browser headers to send with all requests
+# These make Camoufox appear as a real Firefox browser
+STANDARD_BROWSER_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
+}
+
 
 def get_error_message(status_code: int | None) -> str | None:
     """Get human-readable error message for HTTP status code.
@@ -517,9 +533,15 @@ class CamoufoxScraper:
 
             page = await context.new_page()
 
-            # Apply custom headers to page (not context - matches Firecrawl)
+            # Merge standard browser headers with custom headers
+            # Standard headers make Camoufox appear as real Firefox
+            headers_to_apply = {**STANDARD_BROWSER_HEADERS}
             if request.headers:
-                await page.set_extra_http_headers(request.headers)
+                # Custom headers override standard ones
+                headers_to_apply.update(request.headers)
+
+            # Always apply headers (not conditional)
+            await page.set_extra_http_headers(headers_to_apply)
 
             # Navigate to URL (wait_until="load" matches Firecrawl)
             response: Response | None = await page.goto(
