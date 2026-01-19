@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import get_db
 from models import SearchRequest, SearchResponse, SearchResultItem
+from qdrant_connection import qdrant_client
 from services.projects.repository import ProjectRepository
 from services.storage.embedding import EmbeddingService
 from services.storage.qdrant.repository import QdrantRepository
@@ -57,7 +58,7 @@ async def search_extractions(
 
     # Initialize services
     embedding_service = EmbeddingService(settings)
-    qdrant_repo = QdrantRepository(settings)
+    qdrant_repo = QdrantRepository(qdrant_client)
     extraction_repo = ExtractionRepository(db)
 
     search_service = SearchService(
