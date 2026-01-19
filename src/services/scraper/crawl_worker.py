@@ -161,6 +161,18 @@ class CrawlWorker:
                 )
                 continue
 
+            # Filter HTTP errors (400+) - don't store error pages
+            status_code = metadata.get("statusCode")
+            if status_code and status_code >= 400:
+                logger.warning(
+                    "page_http_error_skipped",
+                    job_id=str(job.id),
+                    url=url,
+                    status_code=status_code,
+                    reason="HTTP error pages not stored as sources",
+                )
+                continue
+
             # Check for duplicate URL
             existing = await self.source_repo.get_by_uri(project_id, url)
             if existing:
@@ -176,7 +188,11 @@ class CrawlWorker:
                 source_type="web",
                 title=metadata.get("title", ""),
                 content=markdown,
-                meta_data={"domain": domain, **metadata},
+                meta_data={
+                    "domain": domain,
+                    "http_status": status_code,
+                    **metadata
+                },
                 status="pending",
             )
             sources_created += 1
