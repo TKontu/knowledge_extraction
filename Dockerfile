@@ -1,9 +1,12 @@
 FROM python:3.12-slim
 
 # Cache buster - change this to force rebuild
-ARG CACHE_BUST=2026-01-19-v2
+ARG CACHE_BUST=2026-01-19-v3
 
 WORKDIR /app
+
+# Prevent Python from writing pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Install system dependencies
 RUN apt-get update && \
