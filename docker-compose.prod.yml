@@ -179,7 +179,10 @@ services:
   # Database Migrations
   # ===================
   migrate:
-    image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/pipeline:${PIPELINE_TAG:-latest}
+    # Build from source to match pipeline image
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: python -m alembic upgrade head
     environment:
       DATABASE_URL: postgresql://${DB_USER:-scristill}:${DB_PASSWORD:-scristill}@postgres:5432/${DB_NAME:-scristill}
@@ -236,8 +239,6 @@ services:
       - ./prompts:/app/prompts:ro
       - ./reports:/app/reports
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_started
       postgres:
