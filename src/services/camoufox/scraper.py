@@ -543,8 +543,20 @@ class CamoufoxScraper:
             # Standard headers make Camoufox appear as real Firefox
             headers_to_apply = {**STANDARD_BROWSER_HEADERS}
             if request.headers:
-                # Custom headers override standard ones
-                headers_to_apply.update(request.headers)
+                # Filter out headers that Camoufox handles internally
+                # These would override the browser fingerprint and break anti-bot evasion
+                protected_headers = {"user-agent", "accept-language", "accept-encoding"}
+                filtered_headers = {
+                    k: v for k, v in request.headers.items()
+                    if k.lower() not in protected_headers
+                }
+                if filtered_headers != request.headers:
+                    log.info(
+                        "filtered_protected_headers",
+                        original_count=len(request.headers),
+                        filtered_count=len(filtered_headers),
+                    )
+                headers_to_apply.update(filtered_headers)
 
             # Always apply headers (not conditional)
             await page.set_extra_http_headers(headers_to_apply)
