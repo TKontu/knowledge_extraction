@@ -6,6 +6,120 @@ from qdrant_client import QdrantClient
 from uuid import uuid4
 
 
+class TestQdrantInitializationWithRetry:
+    """Test Qdrant initialization with retry logic for production robustness."""
+
+    @pytest.mark.asyncio
+    async def test_init_succeeds_on_first_try(self):
+        """Should initialize collection successfully on first attempt."""
+        from main import lifespan, app
+        from qdrant_connection import qdrant_client
+
+        # Mock init_collection to succeed immediately
+        with patch("main.QdrantRepository") as mock_repo_class:
+            mock_repo = Mock()
+            mock_repo.init_collection = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+
+            async with lifespan(app):
+                pass
+
+            # Should call init_collection exactly once
+            mock_repo.init_collection.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_init_retries_on_transient_failure(self):
+        """Should retry initialization if Qdrant is temporarily unavailable.
+
+        This tests the scenario where Qdrant container starts but isn't ready
+        to accept connections yet.
+        """
+        from main import lifespan, app
+
+        # Mock init_collection to fail first, then succeed
+        with patch("main.QdrantRepository") as mock_repo_class:
+            mock_repo = Mock()
+            # Fail on first call, succeed on second
+            mock_repo.init_collection = AsyncMock(
+                side_effect=[
+                    ConnectionError("Connection refused"),  # First attempt fails
+                    None,  # Second attempt succeeds
+                ]
+            )
+            mock_repo_class.return_value = mock_repo
+
+            # This will FAIL until we add retry logic
+            async with lifespan(app):
+                pass
+
+            # Should have retried and eventually succeeded
+            assert mock_repo.init_collection.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_init_logs_warning_on_final_failure(self):
+        """Should log warning but not crash if init fails after all retries.
+
+        Application should start even if Qdrant is unavailable - collection
+        will be created on first use.
+        """
+        from main import lifespan, app
+        import structlog
+
+        # Mock init_collection to always fail
+        with patch("main.QdrantRepository") as mock_repo_class:
+            mock_repo = Mock()
+            mock_repo.init_collection = AsyncMock(
+                side_effect=ConnectionError("Connection refused")
+            )
+            mock_repo_class.return_value = mock_repo
+
+            # Mock logger to verify warning is logged
+            with patch("main.logger") as mock_logger:
+                # This should NOT crash, just log warning
+                async with lifespan(app):
+                    pass
+
+                # Should have logged a warning about the failure
+                # This will FAIL until we add error handling
+                warning_calls = [
+                    call for call in mock_logger.warning.call_args_list
+                    if "qdrant" in str(call).lower()
+                ]
+                assert len(warning_calls) > 0, "Should log warning about Qdrant init failure"
+
+    @pytest.mark.asyncio
+    async def test_init_uses_exponential_backoff(self):
+        """Should use exponential backoff between retries (2^attempt seconds)."""
+        from main import lifespan, app
+        import asyncio
+
+        # Mock init_collection to fail multiple times
+        with patch("main.QdrantRepository") as mock_repo_class:
+            mock_repo = Mock()
+            mock_repo.init_collection = AsyncMock(
+                side_effect=[
+                    ConnectionError("Connection refused"),
+                    ConnectionError("Connection refused"),
+                    None,  # Succeed on third attempt
+                ]
+            )
+            mock_repo_class.return_value = mock_repo
+
+            # Mock asyncio.sleep to verify backoff timing
+            with patch("main.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                async with lifespan(app):
+                    pass
+
+                # Should have slept with exponential backoff
+                # This will FAIL until we implement backoff
+                sleep_calls = [call[0][0] for call in mock_sleep.call_args_list]
+
+                # Expect: 1 second after first failure, 2 seconds after second failure
+                assert len(sleep_calls) >= 2, "Should sleep between retries"
+                assert sleep_calls[0] == 1, "First retry should wait 1 second"
+                assert sleep_calls[1] == 2, "Second retry should wait 2 seconds"
+
+
 class TestQdrantInitialization:
     """Test that Qdrant collection is initialized during application startup."""
 

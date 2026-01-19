@@ -86,10 +86,36 @@ async def lifespan(app: FastAPI):
     # Check security configuration
     check_security_config()
 
-    # Initialize Qdrant collection
+    # Initialize Qdrant collection with retry logic
     qdrant_repo = QdrantRepository(qdrant_client)
-    await qdrant_repo.init_collection()
-    logger.info("qdrant_collection_initialized", collection="extractions")
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            await qdrant_repo.init_collection()
+            logger.info("qdrant_collection_initialized", collection="extractions", attempt=attempt + 1)
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Exponential backoff: 1s, 2s, 4s, 8s
+                wait_time = 2 ** attempt
+                logger.warning(
+                    "qdrant_init_retry",
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    wait_seconds=wait_time,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                await asyncio.sleep(wait_time)
+            else:
+                # Final attempt failed - log warning but don't crash
+                logger.warning(
+                    "qdrant_init_failed",
+                    max_retries=max_retries,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    detail="Collection will be created on first use if needed",
+                )
 
     await start_scheduler()
 
