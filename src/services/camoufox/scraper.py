@@ -79,11 +79,17 @@ AD_SERVING_DOMAINS = [
 ]
 
 # Standard browser headers to send with all requests
-# These make Camoufox appear as a real Firefox browser
+# These supplement Camoufox's built-in header handling
+#
+# IMPORTANT: Do NOT include headers that Camoufox handles internally:
+# - User-Agent (set from navigator.userAgent fingerprint)
+# - Accept-Language (set from locale fingerprint)
+# - Accept-Encoding (set internally)
+#
+# Adding these would conflict with Camoufox's C++-level header injection.
+# See: https://camoufox.com - HTTP Headers section
 STANDARD_BROWSER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
     "DNT": "1",
     "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",

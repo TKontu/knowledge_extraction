@@ -1,6 +1,15 @@
 """Tests for Camoufox browser header handling.
 
 TDD: These tests should fail first, then pass after implementation.
+
+ARCHITECTURAL NOTE:
+Camoufox handles these headers internally via BrowserForge fingerprints:
+- User-Agent (from navigator.userAgent)
+- Accept-Language (from locale fingerprint)
+- Accept-Encoding (internally)
+
+We do NOT include these in STANDARD_BROWSER_HEADERS to avoid conflicts
+with Camoufox's C++-level header injection.
 """
 
 import pytest
@@ -47,11 +56,10 @@ class TestCamoufoxBrowserHeaders:
         assert hasattr(STANDARD_BROWSER_HEADERS, "__getitem__"), \
             "STANDARD_BROWSER_HEADERS should be a dict"
 
-        # Should contain key browser headers
+        # Should contain headers that SUPPLEMENT Camoufox's internal handling
+        # NOTE: User-Agent, Accept-Language, Accept-Encoding are handled by Camoufox
         expected_headers = [
             "Accept",
-            "Accept-Language",
-            "Accept-Encoding",
             "DNT",
             "Connection",
             "Upgrade-Insecure-Requests",
@@ -64,6 +72,14 @@ class TestCamoufoxBrowserHeaders:
         for header in expected_headers:
             assert header in STANDARD_BROWSER_HEADERS, \
                 f"Missing expected header: {header}"
+
+        # These should NOT be in our headers (handled by Camoufox internally)
+        assert "User-Agent" not in STANDARD_BROWSER_HEADERS, \
+            "User-Agent should be handled by Camoufox, not manually set"
+        assert "Accept-Language" not in STANDARD_BROWSER_HEADERS, \
+            "Accept-Language should be handled by Camoufox, not manually set"
+        assert "Accept-Encoding" not in STANDARD_BROWSER_HEADERS, \
+            "Accept-Encoding should be handled by Camoufox, not manually set"
 
     @pytest.mark.asyncio
     async def test_standard_headers_applied_to_all_requests(self, scraper, mock_browser):
@@ -86,9 +102,8 @@ class TestCamoufoxBrowserHeaders:
         call_args = page.set_extra_http_headers.call_args
         applied_headers = call_args[0][0]
 
-        # Verify standard headers are present
+        # Verify standard headers are present (those we add)
         assert "Accept" in applied_headers
-        assert "Accept-Language" in applied_headers
         assert "Sec-Fetch-Dest" in applied_headers
         assert "Sec-Fetch-Mode" in applied_headers
 
