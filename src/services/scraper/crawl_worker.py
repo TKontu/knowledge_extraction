@@ -71,12 +71,13 @@ class CrawlWorker:
             # Step 2: Check crawl status
             status = await self.client.get_crawl_status(firecrawl_job_id)
 
-            # Update progress in result
+            # Update progress in result and touch updated_at to prevent redundant polling
             job.result = {
                 "pages_total": status.total,
                 "pages_completed": status.completed,
                 "sources_created": 0,
             }
+            job.updated_at = datetime.now(UTC)
             self.db.commit()
 
             if status.status == "scraping":

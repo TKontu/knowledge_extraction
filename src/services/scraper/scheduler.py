@@ -1,6 +1,7 @@
 """Background task scheduler for processing scrape jobs."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy.orm import Session
@@ -176,21 +177,38 @@ class JobScheduler:
             try:
                 db: Session = SessionLocal()
                 try:
-                    # Atomically claim a job using SELECT FOR UPDATE SKIP LOCKED
-                    # Query both 'queued' and 'running' jobs because crawls need polling:
-                    # - 'queued': needs to be started
-                    # - 'running': needs to be polled for completion
-                    # Row-level locking prevents race conditions - only one worker can lock each job
+                    # Strategy: Prefer queued jobs, only poll running jobs if stale
+                    # This prevents multiple workers from redundantly polling the same job
+
+                    # First, try to get a queued job (highest priority)
                     job = (
                         db.query(Job)
                         .filter(
                             Job.type == "crawl",
-                            Job.status.in_(["queued", "running"]),
+                            Job.status == "queued",
                         )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .with_for_update(skip_locked=True)
                         .first()
                     )
+
+                    # If no queued jobs, try to get a running job that needs polling
+                    # Only poll if it hasn't been updated recently (avoid redundant polls)
+                    if not job:
+                        stale_threshold = datetime.now(UTC) - timedelta(
+                            seconds=self.poll_interval
+                        )
+                        job = (
+                            db.query(Job)
+                            .filter(
+                                Job.type == "crawl",
+                                Job.status == "running",
+                                Job.updated_at < stale_threshold,
+                            )
+                            .order_by(Job.priority.desc(), Job.created_at.asc())
+                            .with_for_update(skip_locked=True)
+                            .first()
+                        )
 
                     if job:
                         worker = CrawlWorker(
