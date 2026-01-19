@@ -127,16 +127,20 @@ class JobScheduler:
                 # Get a database session
                 db: Session = SessionLocal()
                 try:
-                    # Query for queued scrape jobs
+                    # Atomically claim a job using SELECT FOR UPDATE SKIP LOCKED
+                    # This prevents race conditions where multiple workers grab the same job
+                    # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
                         .filter(Job.type == "scrape", Job.status == "queued")
                         .order_by(Job.priority.desc(), Job.created_at.asc())
+                        .with_for_update(skip_locked=True)
                         .first()
                     )
 
                     if job:
                         # Process the job with rate limiting
+                        # The worker will handle status transitions within its own transaction
                         worker = ScraperWorker(
                             db=db,
                             firecrawl_client=self._firecrawl_client,
@@ -172,15 +176,19 @@ class JobScheduler:
             try:
                 db: Session = SessionLocal()
                 try:
-                    # Query for crawl jobs that need processing
-                    # Only pick up queued jobs to prevent multiple workers from grabbing the same job
+                    # Atomically claim a job using SELECT FOR UPDATE SKIP LOCKED
+                    # Query both 'queued' and 'running' jobs because crawls need polling:
+                    # - 'queued': needs to be started
+                    # - 'running': needs to be polled for completion
+                    # Row-level locking prevents race conditions - only one worker can lock each job
                     job = (
                         db.query(Job)
                         .filter(
                             Job.type == "crawl",
-                            Job.status == "queued",
+                            Job.status.in_(["queued", "running"]),
                         )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
+                        .with_for_update(skip_locked=True)
                         .first()
                     )
 
@@ -219,11 +227,14 @@ class JobScheduler:
                 # Get a database session
                 db: Session = SessionLocal()
                 try:
-                    # Query for queued extract jobs
+                    # Atomically claim a job using SELECT FOR UPDATE SKIP LOCKED
+                    # This prevents race conditions where multiple workers grab the same job
+                    # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
                         .filter(Job.type == "extract", Job.status == "queued")
                         .order_by(Job.priority.desc(), Job.created_at.asc())
+                        .with_for_update(skip_locked=True)
                         .first()
                     )
 
@@ -256,6 +267,7 @@ class JobScheduler:
                         )
 
                         # Process the job
+                        # The worker will handle status transitions within its own transaction
                         worker = ExtractionWorker(
                             db=db,
                             pipeline_service=pipeline_service,
