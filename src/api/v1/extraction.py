@@ -258,9 +258,11 @@ async def extract_schema(
     """
     from config import settings
     from orm_models import Project
+    from redis_client import get_async_redis
     from services.extraction.pipeline import SchemaExtractionPipeline
     from services.extraction.schema_extractor import SchemaExtractor
     from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+    from services.llm.queue import LLMRequestQueue
 
     # Validate project_id format
     try:
@@ -276,8 +278,19 @@ async def extract_schema(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Create LLM queue if enabled (requires async Redis client)
+    llm_queue = None
+    if settings.llm_queue_enabled:
+        async_redis = await get_async_redis()
+        llm_queue = LLMRequestQueue(
+            redis=async_redis,
+            stream_key="llm:requests",
+            max_queue_depth=1000,
+            backpressure_threshold=500,
+        )
+
     # Create extraction pipeline
-    extractor = SchemaExtractor(settings)
+    extractor = SchemaExtractor(settings, llm_queue=llm_queue)
     orchestrator = SchemaExtractionOrchestrator(extractor)
     pipeline = SchemaExtractionPipeline(orchestrator, db)
 
