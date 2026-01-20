@@ -118,7 +118,10 @@ def get_error_message(status_code: int | None) -> str | None:
 
 
 class CamoufoxScraper:
-    """Manages a single Camoufox browser with per-request contexts.
+    """Manages a pool of Camoufox browsers with per-request contexts.
+
+    Uses multiple browser instances to enable true parallelism, since a single
+    Firefox browser cannot handle concurrent page.goto() calls efficiently.
 
     This follows Firecrawl's pattern of creating a new context per request
     and closing it immediately after scraping. No session persistence.
@@ -131,11 +134,12 @@ class CamoufoxScraper:
             config: Optional settings override. Uses global settings if None.
         """
         self.config = config or settings
-        self._browser: Browser | None = None
-        self._camoufox: AsyncCamoufox | None = None
+        self._browsers: list[Browser] = []
+        self._camoufox_instances: list[AsyncCamoufox] = []
         self._semaphore = asyncio.Semaphore(self.config.max_concurrent_pages)
         self._active_pages = 0
         self._lock = asyncio.Lock()
+        self._browser_index = 0  # For round-robin selection
 
     @property
     def active_pages(self) -> int:
@@ -147,14 +151,32 @@ class CamoufoxScraper:
         """Get maximum concurrent pages allowed."""
         return self.config.max_concurrent_pages
 
+    def _get_next_browser(self) -> Browser:
+        """Get the next browser in round-robin order.
+
+        Returns:
+            Browser instance from the pool.
+
+        Raises:
+            RuntimeError: If no browsers are available.
+        """
+        if not self._browsers:
+            raise RuntimeError("No browsers available in pool")
+
+        browser = self._browsers[self._browser_index]
+        self._browser_index = (self._browser_index + 1) % len(self._browsers)
+        return browser
+
     async def start(self) -> None:
-        """Start the Camoufox browser instance."""
-        if self._browser is not None:
-            logger.warning("browser_already_running")
+        """Start the Camoufox browser pool."""
+        if self._browsers:
+            logger.warning("browser_pool_already_running")
             return
 
+        browser_count = self.config.browser_count
         logger.info(
-            "starting_camoufox_browser",
+            "starting_camoufox_browser_pool",
+            browser_count=browser_count,
             headless=self.config.headless,
             max_concurrent_pages=self.config.max_concurrent_pages,
         )
@@ -169,22 +191,38 @@ class CamoufoxScraper:
             launch_options["proxy"] = {"server": self.config.proxy}
             logger.info("proxy_configured", proxy=self.config.proxy)
 
-        # Start Camoufox with geoip for realistic fingerprints
-        try:
-            self._camoufox = AsyncCamoufox(geoip=True, **launch_options)
-            self._browser = await self._camoufox.start()
-        except Exception as e:
-            logger.error("browser_start_failed", error=str(e))
-            raise RuntimeError(f"Failed to start Camoufox browser: {e}") from e
+        # Start multiple Camoufox browsers
+        for i in range(browser_count):
+            try:
+                camoufox = AsyncCamoufox(geoip=True, **launch_options)
+                browser = await camoufox.start()
+                self._camoufox_instances.append(camoufox)
+                self._browsers.append(browser)
+                logger.info("browser_started", browser_index=i)
+            except Exception as e:
+                logger.error("browser_start_failed", browser_index=i, error=str(e))
+                # Continue starting other browsers - partial pool is better than none
+                continue
 
-        logger.info("camoufox_browser_started")
+        if not self._browsers:
+            raise RuntimeError("Failed to start any Camoufox browsers")
+
+        logger.info(
+            "camoufox_browser_pool_started",
+            started_count=len(self._browsers),
+            requested_count=browser_count,
+        )
 
     async def stop(self) -> None:
-        """Stop the Camoufox browser instance gracefully."""
-        if self._browser is None:
+        """Stop all Camoufox browser instances gracefully."""
+        if not self._browsers:
             return
 
-        logger.info("stopping_camoufox_browser", active_pages=self._active_pages)
+        logger.info(
+            "stopping_camoufox_browser_pool",
+            browser_count=len(self._browsers),
+            active_pages=self._active_pages,
+        )
 
         # Wait for active pages to complete (with timeout)
         wait_count = 0
@@ -194,19 +232,22 @@ class CamoufoxScraper:
 
         if self._active_pages > 0:
             logger.warning(
-                "forcing_browser_shutdown", remaining_pages=self._active_pages
+                "forcing_browser_pool_shutdown", remaining_pages=self._active_pages
             )
 
-        try:
-            if self._browser:
-                await self._browser.close()
-        except Exception as e:
-            logger.error("browser_stop_error", error=str(e))
-        finally:
-            self._browser = None
-            self._camoufox = None
+        # Close all browsers
+        for i, browser in enumerate(self._browsers):
+            try:
+                await browser.close()
+                logger.debug("browser_closed", browser_index=i)
+            except Exception as e:
+                logger.error("browser_close_error", browser_index=i, error=str(e))
 
-        logger.info("camoufox_browser_stopped")
+        self._browsers = []
+        self._camoufox_instances = []
+        self._browser_index = 0
+
+        logger.info("camoufox_browser_pool_stopped")
 
     @asynccontextmanager
     async def _acquire_page(self):
@@ -485,8 +526,8 @@ class CamoufoxScraper:
     async def scrape(self, request: ScrapeRequest) -> dict[str, Any]:
         """Scrape a URL and return the rendered HTML content.
 
-        Creates a new browser context per request, matching Firecrawl's pattern.
-        No session persistence across requests.
+        Creates a new browser context per request on a browser from the pool,
+        using round-robin selection for even distribution.
 
         Args:
             request: Scrape request with URL and options.
@@ -495,18 +536,23 @@ class CamoufoxScraper:
             Dictionary with content, pageStatusCode, and optional pageError.
             On failure, returns dictionary with error key.
         """
-        if self._browser is None:
-            return {"error": "Browser not started"}
+        if not self._browsers:
+            return {"error": "Browser pool not started"}
 
         async with self._semaphore:
+            # Select browser before acquiring page slot (round-robin)
+            browser = self._get_next_browser()
             async with self._acquire_page():
-                return await self._do_scrape(request)
+                return await self._do_scrape(request, browser)
 
-    async def _do_scrape(self, request: ScrapeRequest) -> dict[str, Any]:
+    async def _do_scrape(
+        self, request: ScrapeRequest, browser: Browser
+    ) -> dict[str, Any]:
         """Internal scrape implementation.
 
         Args:
             request: Scrape request with URL and options.
+            browser: Browser instance from the pool to use.
 
         Returns:
             Scrape result dictionary.
@@ -525,7 +571,7 @@ class CamoufoxScraper:
             if request.skip_tls_verification:
                 context_options["ignore_https_errors"] = True
 
-            context = await self._browser.new_context(**context_options)
+            context = await browser.new_context(**context_options)
 
             # Set up ad-blocking route (matching Firecrawl's api.ts)
             async def block_ads(route):
