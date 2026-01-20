@@ -1,7 +1,10 @@
 """Schema-based LLM extraction with field groups."""
 
 import json
-from typing import Any
+from dataclasses import asdict
+from datetime import datetime, timedelta, UTC
+from typing import Any, TYPE_CHECKING
+from uuid import uuid4
 
 import structlog
 from openai import AsyncOpenAI
@@ -10,24 +13,51 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from config import Settings
 from services.extraction.field_groups import FieldGroup
 
+if TYPE_CHECKING:
+    from src.services.llm.queue import LLMRequestQueue
+
 logger = structlog.get_logger(__name__)
 
 
-class SchemaExtractor:
-    """Extracts structured data based on field group schemas."""
+class LLMExtractionError(Exception):
+    """Raised when LLM extraction fails."""
 
-    def __init__(self, settings: Settings):
-        self.client = AsyncOpenAI(
-            base_url=settings.openai_base_url,
-            api_key=settings.openai_api_key,
-            timeout=settings.llm_http_timeout,
-        )
+    pass
+
+
+class SchemaExtractor:
+    """Extracts structured data based on field group schemas.
+
+    Supports two modes:
+    - Direct mode: Calls LLM directly (when llm_queue is None)
+    - Queue mode: Submits to Redis queue for processing (when llm_queue is provided)
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        llm_queue: "LLMRequestQueue | None" = None,
+    ):
+        """Initialize SchemaExtractor.
+
+        Args:
+            settings: Application settings.
+            llm_queue: Optional LLM request queue. If provided, uses queue mode.
+        """
+        self.settings = settings
+        self.llm_queue = llm_queue
         self.model = settings.llm_model
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=4, max=60),
-    )
+        # Only create direct client if not using queue
+        if llm_queue is None:
+            self.client = AsyncOpenAI(
+                base_url=settings.openai_base_url,
+                api_key=settings.openai_api_key,
+                timeout=settings.llm_http_timeout,
+            )
+        else:
+            self.client = None
+
     async def extract_field_group(
         self,
         content: str,
@@ -43,6 +73,125 @@ class SchemaExtractor:
 
         Returns:
             Dictionary of extracted field values.
+
+        Raises:
+            LLMExtractionError: If extraction fails.
+        """
+        if self.llm_queue is not None:
+            return await self._extract_via_queue(content, field_group, company_name)
+        else:
+            return await self._extract_direct(content, field_group, company_name)
+
+    async def _extract_via_queue(
+        self,
+        content: str,
+        field_group: FieldGroup,
+        company_name: str | None,
+    ) -> dict[str, Any]:
+        """Extract via LLM request queue.
+
+        Args:
+            content: Markdown content.
+            field_group: Field group definition.
+            company_name: Optional company name.
+
+        Returns:
+            Extracted field values.
+
+        Raises:
+            LLMExtractionError: If queue returns error or timeout.
+        """
+        from services.llm.models import LLMRequest
+
+        # Build prompts first (for consistency with direct extraction)
+        system_prompt = self._build_system_prompt(field_group)
+        user_prompt = self._build_user_prompt(content, field_group, company_name)
+
+        # Build request
+        request_timeout = getattr(self.settings, "llm_request_timeout", 300)
+        request = LLMRequest(
+            request_id=str(uuid4()),
+            request_type="extract_field_group",
+            payload={
+                "content": content,
+                "field_group": {
+                    "name": field_group.name,
+                    "description": field_group.description,
+                    "fields": [
+                        {
+                            "name": f.name,
+                            "field_type": f.field_type,
+                            "description": f.description,
+                            "required": f.required,
+                            "default": f.default,
+                            "enum_values": f.enum_values,
+                        }
+                        for f in field_group.fields
+                    ],
+                    "prompt_hint": field_group.prompt_hint,
+                    "is_entity_list": field_group.is_entity_list,
+                },
+                "company_name": company_name,
+                "model": self.model,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            },
+            priority=5,
+            created_at=datetime.now(UTC),
+            timeout_at=datetime.now(UTC) + timedelta(seconds=request_timeout),
+        )
+
+        logger.info(
+            "schema_extraction_queued",
+            request_id=request.request_id,
+            field_group=field_group.name,
+            content_length=len(content),
+        )
+
+        # Submit and wait
+        await self.llm_queue.submit(request)
+        response = await self.llm_queue.wait_for_result(
+            request.request_id,
+            timeout=request_timeout,
+        )
+
+        # Handle response status
+        if response.status == "error":
+            raise LLMExtractionError(f"LLM extraction failed: {response.error}")
+        elif response.status == "timeout":
+            raise LLMExtractionError(f"LLM extraction timeout: {response.error}")
+
+        # Apply defaults and return
+        result = self._apply_defaults(response.result or {}, field_group)
+
+        logger.info(
+            "schema_extraction_completed",
+            request_id=request.request_id,
+            field_group=field_group.name,
+            processing_time_ms=response.processing_time_ms,
+        )
+
+        return result
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=4, max=60),
+    )
+    async def _extract_direct(
+        self,
+        content: str,
+        field_group: FieldGroup,
+        company_name: str | None,
+    ) -> dict[str, Any]:
+        """Extract via direct LLM call.
+
+        Args:
+            content: Markdown content.
+            field_group: Field group definition.
+            company_name: Optional company name.
+
+        Returns:
+            Extracted field values.
         """
         system_prompt = self._build_system_prompt(field_group)
         user_prompt = self._build_user_prompt(content, field_group, company_name)

@@ -2,8 +2,10 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import structlog
+from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
 logger = structlog.get_logger(__name__)
@@ -12,13 +14,15 @@ from config import settings
 from database import SessionLocal
 from orm_models import Job
 from qdrant_connection import qdrant_client
-from redis_client import redis_client
+from redis_client import get_async_redis, redis_client
 from services.extraction.extractor import ExtractionOrchestrator
 from services.extraction.pipeline import ExtractionPipelineService
 from services.extraction.profiles import ProfileRepository
 from services.extraction.worker import ExtractionWorker
 from services.knowledge.extractor import EntityExtractor
 from services.llm.client import LLMClient
+from services.llm.queue import LLMRequestQueue
+from services.llm.worker import LLMWorker
 from services.projects.repository import ProjectRepository
 from services.scraper.client import FirecrawlClient
 from services.scraper.crawl_worker import CrawlWorker
@@ -63,6 +67,10 @@ class JobScheduler:
         self._firecrawl_client: FirecrawlClient | None = None
         self._rate_limiter: DomainRateLimiter | None = None
         self._retry_config: RetryConfig | None = None
+        self._llm_queue: LLMRequestQueue | None = None
+        self._llm_worker: LLMWorker | None = None
+        self._llm_worker_task: asyncio.Task | None = None
+        self._async_redis = None  # Async Redis client for LLM queue
 
     async def start(self) -> None:
         """Start the background scheduler.
@@ -90,6 +98,33 @@ class JobScheduler:
             base_delay=settings.scrape_retry_base_delay,
             max_delay=settings.scrape_retry_max_delay,
         )
+
+        # Initialize LLM request queue and worker with async Redis
+        self._async_redis = await get_async_redis()
+        self._llm_queue = LLMRequestQueue(
+            redis=self._async_redis,
+            stream_key="llm:requests",
+            max_queue_depth=1000,
+            backpressure_threshold=500,
+        )
+        llm_client = AsyncOpenAI(
+            base_url=settings.openai_base_url,
+            api_key=settings.openai_api_key,
+            timeout=settings.llm_http_timeout,
+        )
+        self._llm_worker = LLMWorker(
+            redis=self._async_redis,
+            llm_client=llm_client,
+            worker_id=f"llm-worker-{uuid4().hex[:8]}",
+            stream_key="llm:requests",
+            initial_concurrency=settings.llm_worker_concurrency,
+            max_concurrency=settings.llm_worker_max_concurrency,
+            min_concurrency=settings.llm_worker_min_concurrency,
+            model=settings.llm_model,
+        )
+        await self._llm_worker.initialize()
+        self._llm_worker_task = asyncio.create_task(self._llm_worker.start())
+
         # Start scrape, crawl, and extract workers concurrently
         self._scrape_task = asyncio.create_task(self._run_scrape_worker())
 
@@ -114,8 +149,14 @@ class JobScheduler:
             await asyncio.gather(*self._crawl_tasks, return_exceptions=True)
         if self._extract_task:
             await self._extract_task
+        if self._llm_worker:
+            await self._llm_worker.stop()
+        if self._llm_worker_task:
+            await self._llm_worker_task
         if self._firecrawl_client:
             await self._firecrawl_client.close()
+        if self._async_redis:
+            await self._async_redis.close()
 
     async def _run_scrape_worker(self) -> None:
         """Main loop for processing scrape jobs.
@@ -138,6 +179,29 @@ class JobScheduler:
                         .with_for_update(skip_locked=True)
                         .first()
                     )
+
+                    # If no queued jobs, check for stale running jobs that need recovery
+                    if not job:
+                        stale_threshold = datetime.now(UTC) - timedelta(
+                            seconds=self.poll_interval
+                        )
+                        job = (
+                            db.query(Job)
+                            .filter(
+                                Job.type == "scrape",
+                                Job.status == "running",
+                                Job.updated_at < stale_threshold,
+                            )
+                            .order_by(Job.priority.desc(), Job.created_at.asc())
+                            .with_for_update(skip_locked=True)
+                            .first()
+                        )
+                        if job:
+                            logger.warning(
+                                "scrape_recovering_stale_job",
+                                job_id=str(job.id),
+                                updated_at=str(job.updated_at),
+                            )
 
                     if job:
                         # Process the job with rate limiting
@@ -256,9 +320,34 @@ class JobScheduler:
                         .first()
                     )
 
+                    # If no queued jobs, check for stale running jobs that need recovery
+                    if not job:
+                        stale_threshold = datetime.now(UTC) - timedelta(
+                            seconds=self.poll_interval
+                        )
+                        job = (
+                            db.query(Job)
+                            .filter(
+                                Job.type == "extract",
+                                Job.status == "running",
+                                Job.updated_at < stale_threshold,
+                            )
+                            .order_by(Job.priority.desc(), Job.created_at.asc())
+                            .with_for_update(skip_locked=True)
+                            .first()
+                        )
+                        if job:
+                            logger.warning(
+                                "extract_recovering_stale_job",
+                                job_id=str(job.id),
+                                updated_at=str(job.updated_at),
+                            )
+
                     if job:
                         # Initialize pipeline service with all dependencies
-                        llm_client = LLMClient(settings)
+                        # Pass LLM queue to LLMClient when queue mode is enabled
+                        llm_queue = self._llm_queue if settings.llm_queue_enabled else None
+                        llm_client = LLMClient(settings, llm_queue=llm_queue)
                         orchestrator = ExtractionOrchestrator(
                             llm_client=llm_client
                         )

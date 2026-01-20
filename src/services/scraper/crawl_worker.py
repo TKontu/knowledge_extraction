@@ -173,15 +173,11 @@ class CrawlWorker:
                 )
                 continue
 
-            # Check for duplicate URL
-            existing = await self.source_repo.get_by_uri(project_id, url)
-            if existing:
-                logger.debug("source_already_exists", uri=url)
-                continue
-
             domain = urlparse(url).netloc
 
-            await self.source_repo.create(
+            # Use upsert to handle race conditions when concurrent crawlers
+            # process the same URL. The unique constraint prevents duplicates.
+            source, created = await self.source_repo.upsert(
                 project_id=project_id,
                 uri=url,
                 source_group=company,
@@ -195,7 +191,10 @@ class CrawlWorker:
                 },
                 status="pending",
             )
-            sources_created += 1
+            if created:
+                sources_created += 1
+            else:
+                logger.debug("source_already_exists", uri=url)
 
         self.db.commit()
         return sources_created

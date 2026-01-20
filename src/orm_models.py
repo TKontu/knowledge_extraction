@@ -15,6 +15,7 @@ from sqlalchemy import (
     JSON,
     ForeignKey,
     LargeBinary,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -284,6 +285,9 @@ class Source(Base):
     """Source table for generalized document sources."""
 
     __tablename__ = "sources"
+    __table_args__ = (
+        UniqueConstraint("project_id", "uri", name="uq_sources_project_uri"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(

@@ -1,4 +1,8 @@
-"""Tests for EntityExtractor."""
+"""Tests for EntityExtractor.
+
+Note: EntityExtractor now delegates LLM calls to LLMClient.extract_entities().
+The prompt building and LLM communication are handled by LLMClient.
+"""
 
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -23,57 +27,6 @@ class TestEntityExtractor:
 
         assert extractor._llm_client == llm_client
         assert extractor._entity_repo == entity_repo
-
-
-class TestBuildPrompt:
-    """Test EntityExtractor._build_prompt() method."""
-
-    def test_build_prompt_includes_extraction_data(self) -> None:
-        """Should include extraction data in prompt."""
-        llm_client = AsyncMock()
-        entity_repo = AsyncMock(spec=EntityRepository)
-        extractor = EntityExtractor(llm_client, entity_repo)
-
-        extraction_data = {
-            "fact_text": "Pro plan supports 10,000 API calls per minute",
-            "category": "api",
-        }
-        entity_types = [
-            {"name": "plan", "description": "Pricing tier"},
-            {"name": "limit", "description": "Quota or threshold"},
-        ]
-        source_group = "acme_corp"
-
-        prompt = extractor._build_prompt(
-            extraction_data=extraction_data,
-            entity_types=entity_types,
-            source_group=source_group,
-        )
-
-        assert "Pro plan supports 10,000 API calls per minute" in prompt["user"]
-        assert "plan" in prompt["system"]
-        assert "limit" in prompt["system"]
-        assert "Pricing tier" in prompt["system"]
-
-    def test_build_prompt_specifies_json_output_format(self) -> None:
-        """Should specify JSON output format in system prompt."""
-        llm_client = AsyncMock()
-        entity_repo = AsyncMock(spec=EntityRepository)
-        extractor = EntityExtractor(llm_client, entity_repo)
-
-        extraction_data = {"fact_text": "Test fact"}
-        entity_types = [{"name": "feature", "description": "Product capability"}]
-
-        prompt = extractor._build_prompt(
-            extraction_data=extraction_data,
-            entity_types=entity_types,
-            source_group="test_company",
-        )
-
-        assert "entities" in prompt["system"]
-        assert "type" in prompt["system"]
-        assert "value" in prompt["system"]
-        assert "normalized" in prompt["system"]
 
 
 class TestNormalize:
@@ -107,13 +60,14 @@ class TestNormalize:
         assert result == "10000_per_minute"
 
     def test_normalize_pricing_extracts_amount(self) -> None:
-        """Should normalize pricing by extracting amount in cents and period."""
+        """Should normalize pricing by extracting amount in microcents and period."""
         llm_client = AsyncMock()
         entity_repo = AsyncMock(spec=EntityRepository)
         extractor = EntityExtractor(llm_client, entity_repo)
 
         result = extractor._normalize("pricing", "$99.99/month")
-        assert result == "9999_per_month"
+        # $99.99 = 99,990,000 microcents
+        assert result == "99990000_microcents_per_month"
 
     def test_normalize_unknown_type_default(self) -> None:
         """Should use default normalization for unknown types."""
@@ -125,100 +79,78 @@ class TestNormalize:
         assert result == "some value"
 
 
-class TestCallLLM:
-    """Test EntityExtractor._call_llm() method."""
+class TestNormalizePricingPrecision:
+    """Tests for pricing normalization precision (microcents)."""
 
-    async def test_call_llm_returns_parsed_entities(self) -> None:
-        """Should call LLM and return parsed entities."""
+    def test_normalize_sub_cent_price_preserves_precision(self) -> None:
+        """Should preserve sub-cent prices using microcents ($0.001 -> 1000 microcents)."""
         llm_client = AsyncMock()
         entity_repo = AsyncMock(spec=EntityRepository)
         extractor = EntityExtractor(llm_client, entity_repo)
 
-        # Mock LLM response
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content='{"entities": [{"type": "plan", "value": "Pro Plan"}]}'
-                )
-            )
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # $0.001/request = 1000 microcents
+        result = extractor._normalize("pricing", "$0.001/request")
+        assert result == "1000_microcents_per_request"
 
-        prompt = {"system": "system prompt", "user": "user prompt"}
-        entities = await extractor._call_llm(prompt)
-
-        assert len(entities) == 1
-        assert entities[0]["type"] == "plan"
-        assert entities[0]["value"] == "Pro Plan"
-
-    async def test_call_llm_handles_empty_response(self) -> None:
-        """Should handle empty entity list from LLM."""
+    def test_normalize_very_small_price(self) -> None:
+        """Should handle very small prices ($0.0001)."""
         llm_client = AsyncMock()
         entity_repo = AsyncMock(spec=EntityRepository)
         extractor = EntityExtractor(llm_client, entity_repo)
 
-        # Mock LLM response with no entities
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(message=AsyncMock(content='{"entities": []}'))
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # $0.0001/request = 100 microcents
+        result = extractor._normalize("pricing", "$0.0001/request")
+        assert result == "100_microcents_per_request"
 
-        prompt = {"system": "system prompt", "user": "user prompt"}
-        entities = await extractor._call_llm(prompt)
-
-        assert entities == []
-
-    async def test_call_llm_handles_invalid_json(self) -> None:
-        """Should handle malformed JSON by returning empty list."""
+    def test_normalize_regular_cents_still_works(self) -> None:
+        """Should handle regular cents ($0.05)."""
         llm_client = AsyncMock()
         entity_repo = AsyncMock(spec=EntityRepository)
         extractor = EntityExtractor(llm_client, entity_repo)
 
-        # Mock LLM response with invalid JSON
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock(message=AsyncMock(content="not valid json"))]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # $0.05/call = 50000 microcents
+        result = extractor._normalize("pricing", "$0.05/call")
+        assert result == "50000_microcents_per_call"
 
-        prompt = {"system": "system prompt", "user": "user prompt"}
-        entities = await extractor._call_llm(prompt)
-
-        assert entities == []
-
-    async def test_call_llm_uses_json_mode(self) -> None:
-        """Should call LLM with JSON response format."""
+    def test_normalize_dollar_amounts(self) -> None:
+        """Should handle dollar amounts ($99.99)."""
         llm_client = AsyncMock()
         entity_repo = AsyncMock(spec=EntityRepository)
         extractor = EntityExtractor(llm_client, entity_repo)
 
-        # Mock LLM response
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(message=AsyncMock(content='{"entities": []}'))
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # $99.99/month = 99,990,000 microcents
+        result = extractor._normalize("pricing", "$99.99/month")
+        assert result == "99990000_microcents_per_month"
 
-        prompt = {"system": "system prompt", "user": "user prompt"}
-        await extractor._call_llm(prompt)
+    def test_normalize_whole_dollars(self) -> None:
+        """Should handle whole dollar amounts ($10)."""
+        llm_client = AsyncMock()
+        entity_repo = AsyncMock(spec=EntityRepository)
+        extractor = EntityExtractor(llm_client, entity_repo)
 
-        # Verify response_format was set to json_object
-        call_args = llm_client.client.chat.completions.create.call_args
-        assert call_args.kwargs["response_format"] == {"type": "json_object"}
-        assert call_args.kwargs["temperature"] == 0.1
-        assert call_args.kwargs["model"] == "gpt-4"
+        # $10/month = 10,000,000 microcents
+        result = extractor._normalize("pricing", "$10/month")
+        assert result == "10000000_microcents_per_month"
+
+    def test_normalize_free_price(self) -> None:
+        """Should handle free price ($0)."""
+        llm_client = AsyncMock()
+        entity_repo = AsyncMock(spec=EntityRepository)
+        extractor = EntityExtractor(llm_client, entity_repo)
+
+        # $0/month = 0 microcents
+        result = extractor._normalize("pricing", "$0/month")
+        assert result == "0_microcents_per_month"
+
+    def test_normalize_price_with_comma_separator(self) -> None:
+        """Should handle prices with comma separator ($1,000.50)."""
+        llm_client = AsyncMock()
+        entity_repo = AsyncMock(spec=EntityRepository)
+        extractor = EntityExtractor(llm_client, entity_repo)
+
+        # $1,000.50/year = 1,000,500,000 microcents
+        result = extractor._normalize("pricing", "$1,000.50/year")
+        assert result == "1000500000_microcents_per_year"
 
 
 class TestStoreEntities:
@@ -319,7 +251,11 @@ class TestStoreEntities:
 
 
 class TestExtract:
-    """Test EntityExtractor.extract() main method."""
+    """Test EntityExtractor.extract() main method.
+
+    Note: extract() now delegates LLM calls to llm_client.extract_entities().
+    These tests mock extract_entities() instead of llm_client.client.chat.completions.create().
+    """
 
     async def test_extract_full_pipeline(self) -> None:
         """Should run full extraction pipeline end-to-end."""
@@ -336,19 +272,10 @@ class TestExtract:
         ]
         source_group = "test_company"
 
-        # Mock LLM response
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content='{"entities": [{"type": "plan", "value": "Pro plan", "attributes": {}}]}'
-                )
-            )
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # Mock LLMClient.extract_entities() response
+        llm_client.extract_entities = AsyncMock(return_value=[
+            {"type": "plan", "value": "Pro plan", "attributes": {}}
+        ])
 
         # Mock entity storage
         mock_entity = Entity(
@@ -373,7 +300,11 @@ class TestExtract:
 
         assert len(entities) == 1
         assert entities[0] == mock_entity
-        llm_client.client.chat.completions.create.assert_called_once()
+        llm_client.extract_entities.assert_called_once_with(
+            extraction_data=extraction_data,
+            entity_types=entity_types,
+            source_group=source_group,
+        )
         entity_repo.get_or_create.assert_called_once()
 
     async def test_extract_links_entities_to_extraction(self) -> None:
@@ -388,19 +319,10 @@ class TestExtract:
         entity_types = [{"name": "plan", "description": "Pricing tier"}]
         source_group = "test_company"
 
-        # Mock LLM response
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content='{"entities": [{"type": "plan", "value": "Pro", "attributes": {}}]}'
-                )
-            )
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # Mock LLMClient.extract_entities() response
+        llm_client.extract_entities = AsyncMock(return_value=[
+            {"type": "plan", "value": "Pro", "attributes": {}}
+        ])
 
         # Mock entity storage
         mock_entity = Entity(
@@ -440,19 +362,10 @@ class TestExtract:
         entity_types = [{"name": "plan", "description": "Pricing tier"}]
         source_group = "test_company"
 
-        # Mock LLM response with entity
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content='{"entities": [{"type": "plan", "value": "Pro", "attributes": {}}]}'
-                )
-            )
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # Mock LLMClient.extract_entities() response
+        llm_client.extract_entities = AsyncMock(return_value=[
+            {"type": "plan", "value": "Pro", "attributes": {}}
+        ])
 
         mock_entity = Entity(
             id=uuid4(),
@@ -490,15 +403,8 @@ class TestExtract:
         entity_types = [{"name": "plan", "description": "Pricing tier"}]
         source_group = "test_company"
 
-        # Mock LLM response with no entities
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(message=AsyncMock(content='{"entities": []}'))
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # Mock LLMClient.extract_entities() response with no entities
+        llm_client.extract_entities = AsyncMock(return_value=[])
 
         entity_repo.link_to_extraction = AsyncMock()
 
@@ -532,19 +438,12 @@ class TestExtract:
         ]
         source_group = "test_company"
 
-        # Mock LLM response with multiple entities
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content='{"entities": [{"type": "plan", "value": "Pro", "attributes": {}}, {"type": "feature", "value": "SSO", "attributes": {}}, {"type": "limit", "value": "10,000 requests/min", "attributes": {}}]}'
-                )
-            )
-        ]
-        llm_client.client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-        llm_client.model = "gpt-4"
+        # Mock LLMClient.extract_entities() response with multiple entities
+        llm_client.extract_entities = AsyncMock(return_value=[
+            {"type": "plan", "value": "Pro", "attributes": {}},
+            {"type": "feature", "value": "SSO", "attributes": {}},
+            {"type": "limit", "value": "10,000 requests/min", "attributes": {}},
+        ])
 
         # Mock entity storage for each entity
         mock_entities = [

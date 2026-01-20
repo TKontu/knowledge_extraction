@@ -2,20 +2,37 @@
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
 from models import ExtractionProfile
-from src.services.extraction.extractor import ExtractionOrchestrator
-from src.services.extraction.profiles import ProfileRepository
-from src.services.knowledge.extractor import EntityExtractor
-from src.services.projects.repository import ProjectRepository
-from src.services.storage.deduplication import ExtractionDeduplicator
-from src.services.storage.embedding import EmbeddingService
-from src.services.storage.qdrant.repository import QdrantRepository
-from src.services.storage.repositories.extraction import ExtractionRepository
-from src.services.storage.repositories.source import SourceRepository
+
+if TYPE_CHECKING:
+    from services.llm.queue import LLMRequestQueue
+
+
+class QueueFullError(Exception):
+    """Raised when LLM queue is persistently full and cannot accept new requests."""
+
+    pass
+
+
+# Backpressure constants
+BACKPRESSURE_WAIT_BASE = 2.0  # Base wait time in seconds
+MAX_BACKPRESSURE_RETRIES = 10  # Max retries before raising QueueFullError
+
+
+from services.extraction.extractor import ExtractionOrchestrator
+from services.extraction.profiles import ProfileRepository
+from services.knowledge.extractor import EntityExtractor
+from services.projects.repository import ProjectRepository
+from services.storage.deduplication import ExtractionDeduplicator
+from services.storage.embedding import EmbeddingService
+from services.storage.qdrant.repository import QdrantRepository
+from services.storage.repositories.extraction import ExtractionRepository
+from services.storage.repositories.source import SourceRepository
 
 # Default fallback profile when database profile not found
 DEFAULT_PROFILE = ExtractionProfile(
@@ -67,6 +84,7 @@ class ExtractionPipelineService:
         qdrant_repo: QdrantRepository,
         embedding_service: EmbeddingService,
         profile_repo: ProfileRepository | None = None,
+        llm_queue: "LLMRequestQueue | None" = None,
     ):
         """Initialize pipeline with all dependencies."""
         self._orchestrator = orchestrator
@@ -78,6 +96,7 @@ class ExtractionPipelineService:
         self._qdrant_repo = qdrant_repo
         self._embedding_service = embedding_service
         self._profile_repo = profile_repo
+        self._llm_queue = llm_queue
 
     async def process_source(
         self,
@@ -186,25 +205,123 @@ class ExtractionPipelineService:
             errors=errors,
         )
 
+    async def _wait_for_queue_capacity(self) -> None:
+        """Wait for LLM queue to have capacity.
+
+        Uses exponential backoff to poll queue status.
+
+        Raises:
+            QueueFullError: If queue remains full after max retries.
+        """
+        if self._llm_queue is None:
+            return
+
+        for attempt in range(MAX_BACKPRESSURE_RETRIES):
+            status = await self._llm_queue.get_backpressure_status()
+
+            if not status.get("should_wait", False):
+                return
+
+            wait_time = BACKPRESSURE_WAIT_BASE * (1.5 ** attempt)
+            logger.info(
+                "pipeline_backpressure_wait",
+                attempt=attempt + 1,
+                max_retries=MAX_BACKPRESSURE_RETRIES,
+                wait_seconds=wait_time,
+                queue_depth=status.get("queue_depth"),
+                pressure=status.get("pressure"),
+            )
+            await asyncio.sleep(wait_time)
+
+        # All retries exhausted
+        raise QueueFullError(
+            f"LLM queue persistently full after {MAX_BACKPRESSURE_RETRIES} retries"
+        )
+
     async def process_batch(
         self,
         source_ids: list[UUID],
         project_id: UUID,
         profile_name: str = "general",
+        max_concurrent: int = 10,
+        chunk_size: int | None = None,
     ) -> BatchPipelineResult:
-        """Process multiple sources."""
-        results = []
-        sources_failed = 0
+        """Process multiple sources in parallel.
 
-        for source_id in source_ids:
-            result = await self.process_source(source_id, project_id, profile_name)
-            results.append(result)
-            if result.errors:
-                sources_failed += 1
+        Args:
+            source_ids: List of source UUIDs to process.
+            project_id: Project UUID.
+            profile_name: Extraction profile name.
+            max_concurrent: Maximum concurrent source extractions.
+            chunk_size: Optional chunk size for processing in batches.
+                       If provided, backpressure is checked between chunks.
 
-        total_extractions = sum(r.extractions_created for r in results)
-        total_deduplicated = sum(r.extractions_deduplicated for r in results)
-        total_entities = sum(r.entities_extracted for r in results)
+        Returns:
+            BatchPipelineResult with aggregated results.
+
+        Raises:
+            QueueFullError: If LLM queue is persistently full.
+        """
+        # Check backpressure before starting
+        await self._wait_for_queue_capacity()
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def process_with_limit(source_id: UUID) -> PipelineResult:
+            """Process a single source with concurrency control."""
+            async with semaphore:
+                return await self.process_source(source_id, project_id, profile_name)
+
+        # Process in chunks if chunk_size is specified
+        if chunk_size and len(source_ids) > chunk_size:
+            all_results = []
+            for i in range(0, len(source_ids), chunk_size):
+                chunk = source_ids[i : i + chunk_size]
+
+                # Check backpressure between chunks
+                if i > 0:
+                    await self._wait_for_queue_capacity()
+
+                chunk_results = await asyncio.gather(
+                    *[process_with_limit(sid) for sid in chunk],
+                    return_exceptions=True,
+                )
+                all_results.extend(chunk_results)
+            results = all_results
+        else:
+            # Process all sources in parallel with bounded concurrency
+            results = await asyncio.gather(
+                *[process_with_limit(sid) for sid in source_ids],
+                return_exceptions=True,
+            )
+
+        # Handle exceptions in results
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(
+                    "source_processing_failed",
+                    source_id=str(source_ids[i]),
+                    error=str(result),
+                )
+                processed_results.append(
+                    PipelineResult(
+                        source_id=source_ids[i],
+                        extractions_created=0,
+                        extractions_deduplicated=0,
+                        entities_extracted=0,
+                        entities_deduplicated=0,
+                        errors=[f"Processing failed: {str(result)}"],
+                    )
+                )
+            else:
+                processed_results.append(result)
+
+        # Aggregate results
+        sources_failed = sum(1 for r in processed_results if r.errors)
+        total_extractions = sum(r.extractions_created for r in processed_results)
+        total_deduplicated = sum(r.extractions_deduplicated for r in processed_results)
+        total_entities = sum(r.entities_extracted for r in processed_results)
 
         return BatchPipelineResult(
             sources_processed=len(source_ids),
@@ -212,7 +329,7 @@ class ExtractionPipelineService:
             total_extractions=total_extractions,
             total_deduplicated=total_deduplicated,
             total_entities=total_entities,
-            results=results,
+            results=processed_results,
         )
 
     async def process_project_pending(
@@ -293,12 +410,15 @@ class SchemaExtractionPipeline:
         self,
         project_id: UUID,
         source_groups: list[str] | None = None,
+        skip_extracted: bool = True,
     ) -> dict:
         """Extract all sources in a project.
 
         Args:
             project_id: Project UUID.
             source_groups: Optional filter by company names.
+            skip_extracted: If True, skip sources with 'extracted' status.
+                           Defaults to True to avoid re-extracting.
 
         Returns:
             Summary dict with extraction counts.
@@ -306,10 +426,15 @@ class SchemaExtractionPipeline:
         from orm_models import Source
         from services.extraction.field_groups import ALL_FIELD_GROUPS
 
-        # Include sources that are ready or already extracted (have content)
+        # Build list of allowed statuses based on skip_extracted flag
+        allowed_statuses = ["ready", "pending"]
+        if not skip_extracted:
+            allowed_statuses.append("extracted")
+
+        # Include sources that are ready (and optionally extracted)
         query = self._db.query(Source).filter(
             Source.project_id == project_id,
-            Source.status.in_(["ready", "extracted", "pending"]),
+            Source.status.in_(allowed_statuses),
             Source.content.isnot(None),
         )
 
@@ -325,7 +450,8 @@ class SchemaExtractionPipeline:
         )
 
         # Process sources in parallel with semaphore to limit concurrency
-        semaphore = asyncio.Semaphore(4)  # Max 4 concurrent source extractions
+        # Higher concurrency keeps vLLM queue full for better throughput
+        semaphore = asyncio.Semaphore(10)  # Max 10 concurrent source extractions
 
         async def extract_with_limit(source) -> int:
             async with semaphore:
@@ -336,9 +462,21 @@ class SchemaExtractionPipeline:
                 return len(extractions)
 
         extraction_counts = await asyncio.gather(
-            *[extract_with_limit(s) for s in sources]
+            *[extract_with_limit(s) for s in sources],
+            return_exceptions=True,
         )
-        total_extractions = sum(extraction_counts)
+        # Filter out exceptions and sum only successful results
+        total_extractions = sum(
+            c for c in extraction_counts if isinstance(c, int)
+        )
+        # Log any failures
+        for i, result in enumerate(extraction_counts):
+            if isinstance(result, Exception):
+                logger.error(
+                    "schema_extraction_failed",
+                    source_id=str(sources[i].id),
+                    error=str(result),
+                )
 
         self._db.commit()
 

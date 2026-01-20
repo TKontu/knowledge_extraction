@@ -1,6 +1,9 @@
-"""LLM client for fact extraction."""
+"""LLM client for fact and entity extraction."""
 
 import json
+from datetime import datetime, timedelta, UTC
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import structlog
 from openai import AsyncOpenAI
@@ -9,29 +12,74 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from config import Settings
 from models import ExtractedFact
 
+if TYPE_CHECKING:
+    from src.services.llm.queue import LLMRequestQueue
+
 logger = structlog.get_logger(__name__)
 
 
-class LLMClient:
-    """Client for interacting with LLM for fact extraction."""
+class LLMExtractionError(Exception):
+    """Raised when LLM extraction fails."""
 
-    def __init__(self, settings: Settings):
+    pass
+
+
+class LLMClient:
+    """Client for interacting with LLM for fact and entity extraction.
+
+    Supports two modes:
+    - Direct mode: Calls LLM directly (when llm_queue is None)
+    - Queue mode: Submits to Redis queue for processing (when llm_queue is provided)
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        llm_queue: "LLMRequestQueue | None" = None,
+    ):
         """Initialize LLM client.
 
         Args:
             settings: Application settings.
+            llm_queue: Optional LLM request queue. If provided, uses queue mode.
         """
-        self.client = AsyncOpenAI(
-            base_url=settings.openai_base_url,
-            api_key=settings.openai_api_key,
-            timeout=settings.llm_http_timeout,
-        )
+        self.settings = settings
+        self.llm_queue = llm_queue
         self.model = settings.llm_model
+        self._closed = False
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=4, max=60),
-    )
+        # Only create direct client if not using queue
+        if llm_queue is None:
+            self.client = AsyncOpenAI(
+                base_url=settings.openai_base_url,
+                api_key=settings.openai_api_key,
+                timeout=settings.llm_http_timeout,
+            )
+        else:
+            self.client = None
+
+    async def close(self) -> None:
+        """Close the LLM client and release resources.
+
+        Safe to call multiple times (idempotent).
+        In queue mode, this is a no-op since no direct client exists.
+        """
+        if self._closed:
+            return
+
+        self._closed = True
+
+        if self.client is not None:
+            await self.client.close()
+
+    async def __aenter__(self) -> "LLMClient":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager and close client."""
+        await self.close()
+
     async def extract_facts(
         self, content: str, categories: list[str], profile_name: str = "general"
     ) -> list[ExtractedFact]:
@@ -46,7 +94,118 @@ class LLMClient:
             List of extracted facts.
 
         Raises:
-            Exception: If LLM call fails or returns invalid JSON.
+            LLMExtractionError: If LLM call fails or returns invalid JSON.
+        """
+        if self.llm_queue is not None:
+            return await self._extract_facts_via_queue(content, categories, profile_name)
+        else:
+            return await self._extract_facts_direct(content, categories, profile_name)
+
+    async def _extract_facts_via_queue(
+        self,
+        content: str,
+        categories: list[str],
+        profile_name: str,
+    ) -> list[ExtractedFact]:
+        """Extract facts via LLM request queue.
+
+        Args:
+            content: Markdown content.
+            categories: List of allowed categories.
+            profile_name: Name of extraction profile.
+
+        Returns:
+            List of extracted facts.
+
+        Raises:
+            LLMExtractionError: If queue returns error or timeout.
+        """
+        from services.llm.models import LLMRequest
+
+        # Build prompts (same as direct mode)
+        system_prompt = self._build_system_prompt(categories)
+        user_prompt = self._build_user_prompt(content)
+
+        # Build request with prompts in payload
+        request_timeout = getattr(self.settings, "llm_request_timeout", 300)
+        request = LLMRequest(
+            request_id=str(uuid4()),
+            request_type="extract_facts",
+            payload={
+                "content": content,
+                "categories": categories,
+                "profile_name": profile_name,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "model": self.model,
+            },
+            priority=5,
+            created_at=datetime.now(UTC),
+            timeout_at=datetime.now(UTC) + timedelta(seconds=request_timeout),
+        )
+
+        logger.info(
+            "fact_extraction_queued",
+            request_id=request.request_id,
+            content_length=len(content),
+            categories=categories,
+            profile=profile_name,
+        )
+
+        # Submit and wait (handle queue errors)
+        from services.llm.queue import QueueFullError, RequestTimeoutError
+
+        try:
+            await self.llm_queue.submit(request)
+            response = await self.llm_queue.wait_for_result(
+                request.request_id,
+                timeout=request_timeout,
+            )
+        except QueueFullError as e:
+            logger.error("llm_queue_full", request_id=request.request_id, error=str(e))
+            raise LLMExtractionError(f"LLM queue full: {e}") from e
+        except RequestTimeoutError as e:
+            logger.error("llm_request_timeout", request_id=request.request_id, error=str(e))
+            raise LLMExtractionError(f"LLM request timeout: {e}") from e
+
+        # Handle response status
+        if response.status == "error":
+            raise LLMExtractionError(f"LLM extraction failed: {response.error}")
+        elif response.status == "timeout":
+            raise LLMExtractionError(f"LLM extraction timeout: {response.error}")
+
+        # Parse facts from result
+        result_data = response.result or {}
+        facts = self._parse_facts_from_result(result_data)
+
+        logger.info(
+            "fact_extraction_completed",
+            request_id=request.request_id,
+            facts_extracted=len(facts),
+            processing_time_ms=response.processing_time_ms,
+        )
+
+        return facts
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=4, max=60),
+    )
+    async def _extract_facts_direct(
+        self,
+        content: str,
+        categories: list[str],
+        profile_name: str,
+    ) -> list[ExtractedFact]:
+        """Extract facts via direct LLM call.
+
+        Args:
+            content: Markdown content.
+            categories: List of allowed categories.
+            profile_name: Name of extraction profile.
+
+        Returns:
+            List of extracted facts.
         """
         system_prompt = self._build_system_prompt(categories)
         user_prompt = self._build_user_prompt(content)
@@ -72,20 +231,7 @@ class LLMClient:
             result_text = response.choices[0].message.content
             result_data = json.loads(result_text)
 
-            # Parse facts and filter out incomplete ones
-            facts: list[ExtractedFact] = []
-            for fact_data in result_data.get("facts", []):
-                try:
-                    fact = ExtractedFact(
-                        fact=fact_data["fact"],
-                        category=fact_data["category"],
-                        confidence=fact_data.get("confidence", 0.8),
-                        source_quote=fact_data.get("source_quote"),
-                    )
-                    facts.append(fact)
-                except (KeyError, TypeError):
-                    # Skip facts with missing required fields
-                    continue
+            facts = self._parse_facts_from_result(result_data)
 
             logger.info(
                 "llm_extraction_completed", model=self.model, facts_extracted=len(facts)
@@ -96,6 +242,30 @@ class LLMClient:
                 "llm_extraction_failed", model=self.model, error=str(e), exc_info=True
             )
             raise
+
+    def _parse_facts_from_result(self, result_data: dict) -> list[ExtractedFact]:
+        """Parse facts from LLM result data.
+
+        Args:
+            result_data: Dictionary with 'facts' key.
+
+        Returns:
+            List of ExtractedFact objects.
+        """
+        facts: list[ExtractedFact] = []
+        for fact_data in result_data.get("facts", []):
+            try:
+                fact = ExtractedFact(
+                    fact=fact_data["fact"],
+                    category=fact_data["category"],
+                    confidence=fact_data.get("confidence", 0.8),
+                    source_quote=fact_data.get("source_quote"),
+                )
+                facts.append(fact)
+            except (KeyError, TypeError):
+                # Skip facts with missing required fields
+                continue
+        return facts
 
     def _build_system_prompt(self, categories: list[str]) -> str:
         """Build system prompt for extraction.
@@ -144,3 +314,233 @@ Rules:
 ---
 {content}
 ---"""
+
+    async def extract_entities(
+        self,
+        extraction_data: dict,
+        entity_types: list[dict],
+        source_group: str,
+    ) -> list[dict]:
+        """Extract entities from extraction data using LLM.
+
+        Args:
+            extraction_data: Extraction data dictionary.
+            entity_types: List of entity type definitions.
+            source_group: Source grouping identifier (e.g., company name).
+
+        Returns:
+            List of entity dictionaries.
+
+        Raises:
+            LLMExtractionError: If LLM call fails.
+        """
+        if self.llm_queue is not None:
+            return await self._extract_entities_via_queue(
+                extraction_data, entity_types, source_group
+            )
+        else:
+            return await self._extract_entities_direct(
+                extraction_data, entity_types, source_group
+            )
+
+    async def _extract_entities_via_queue(
+        self,
+        extraction_data: dict,
+        entity_types: list[dict],
+        source_group: str,
+    ) -> list[dict]:
+        """Extract entities via LLM request queue.
+
+        Args:
+            extraction_data: Extraction data dictionary.
+            entity_types: List of entity type definitions.
+            source_group: Source grouping identifier.
+
+        Returns:
+            List of entity dictionaries.
+
+        Raises:
+            LLMExtractionError: If queue returns error or timeout.
+        """
+        from services.llm.models import LLMRequest
+
+        # Build prompts
+        prompts = self._build_entity_prompts(extraction_data, entity_types, source_group)
+
+        # Build request with prompts in payload
+        request_timeout = getattr(self.settings, "llm_request_timeout", 300)
+        request = LLMRequest(
+            request_id=str(uuid4()),
+            request_type="extract_entities",
+            payload={
+                "extraction_data": extraction_data,
+                "entity_types": entity_types,
+                "source_group": source_group,
+                "system_prompt": prompts["system"],
+                "user_prompt": prompts["user"],
+                "model": self.model,
+            },
+            priority=5,
+            created_at=datetime.now(UTC),
+            timeout_at=datetime.now(UTC) + timedelta(seconds=request_timeout),
+        )
+
+        logger.info(
+            "entity_extraction_queued",
+            request_id=request.request_id,
+            source_group=source_group,
+            entity_types=[et["name"] for et in entity_types],
+        )
+
+        # Submit and wait (handle queue errors)
+        from services.llm.queue import QueueFullError, RequestTimeoutError
+
+        try:
+            await self.llm_queue.submit(request)
+            response = await self.llm_queue.wait_for_result(
+                request.request_id,
+                timeout=request_timeout,
+            )
+        except QueueFullError as e:
+            logger.error("llm_queue_full", request_id=request.request_id, error=str(e))
+            raise LLMExtractionError(f"LLM queue full: {e}") from e
+        except RequestTimeoutError as e:
+            logger.error("llm_request_timeout", request_id=request.request_id, error=str(e))
+            raise LLMExtractionError(f"LLM request timeout: {e}") from e
+
+        # Handle response status
+        if response.status == "error":
+            raise LLMExtractionError(f"Entity extraction failed: {response.error}")
+        elif response.status == "timeout":
+            raise LLMExtractionError(f"Entity extraction timeout: {response.error}")
+
+        # Return entities
+        result = response.result or {}
+        entities = result.get("entities", [])
+
+        logger.info(
+            "entity_extraction_completed",
+            request_id=request.request_id,
+            entities_extracted=len(entities),
+            processing_time_ms=response.processing_time_ms,
+        )
+
+        return entities
+
+    async def _extract_entities_direct(
+        self,
+        extraction_data: dict,
+        entity_types: list[dict],
+        source_group: str,
+    ) -> list[dict]:
+        """Extract entities via direct LLM call.
+
+        Args:
+            extraction_data: Extraction data dictionary.
+            entity_types: List of entity type definitions.
+            source_group: Source grouping identifier.
+
+        Returns:
+            List of entity dictionaries.
+        """
+        prompts = self._build_entity_prompts(extraction_data, entity_types, source_group)
+
+        logger.info(
+            "entity_extraction_started",
+            model=self.model,
+            source_group=source_group,
+            entity_types=[et["name"] for et in entity_types],
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": prompts["system"]},
+                    {"role": "user", "content": prompts["user"]},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+            )
+
+            content = response.choices[0].message.content
+            parsed = json.loads(content)
+            entities = parsed.get("entities", [])
+
+            logger.info(
+                "entity_extraction_completed",
+                model=self.model,
+                entities_extracted=len(entities),
+            )
+
+            return entities
+
+        except json.JSONDecodeError as e:
+            logger.warning("failed_to_parse_llm_response", error=str(e))
+            return []
+        except Exception as e:
+            logger.error("llm_call_failed", error=str(e))
+            raise LLMExtractionError(f"Entity extraction failed: {e}") from e
+
+    def _build_entity_prompts(
+        self,
+        extraction_data: dict,
+        entity_types: list[dict],
+        source_group: str,
+    ) -> dict[str, str]:
+        """Build prompts for entity extraction.
+
+        Args:
+            extraction_data: Extraction data dictionary.
+            entity_types: List of entity type definitions.
+            source_group: Source grouping identifier.
+
+        Returns:
+            Dictionary with 'system' and 'user' prompts.
+        """
+        # Build entity type documentation
+        entity_docs = []
+        for et in entity_types:
+            name = et["name"]
+            desc = et.get("description", "")
+            entity_docs.append(f"- {name}: {desc}")
+        entity_types_doc = "\n".join(entity_docs)
+
+        # Get primary text field from extraction data
+        text_content = (
+            extraction_data.get("fact_text")
+            or extraction_data.get("text")
+            or str(extraction_data)
+        )
+
+        system_prompt = f"""Extract entities from this extracted data. Return JSON with entities found.
+
+Source Group: "{source_group}"
+
+Entity types to extract:
+{entity_types_doc}
+
+Output format:
+{{
+  "entities": [
+    {{
+      "type": "entity_type_name",
+      "value": "original text",
+      "normalized": "normalized_value",
+      "attributes": {{}}
+    }}
+  ]
+}}
+
+Guidelines:
+- Only extract entities explicitly mentioned in the data
+- Do not infer or guess entities not present
+- Normalize values for deduplication (lowercase, canonical form)
+- For limits: extract numeric values and units in attributes
+- For pricing: extract amounts and periods in attributes"""
+
+        user_prompt = f"""Extract entities from this data:
+
+{text_content}"""
+
+        return {"system": system_prompt, "user": user_prompt}
