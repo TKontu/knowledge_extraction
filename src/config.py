@@ -97,8 +97,8 @@ class Settings(BaseSettings):
 
     # Extraction Concurrency
     extraction_max_concurrent_chunks: int = Field(
-        default=25,
-        description="Max concurrent chunk extractions to avoid KV cache exhaustion",
+        default=80,
+        description="Max concurrent chunk extractions for optimal vLLM KV cache utilization",
     )
 
     # Scraping Configuration
