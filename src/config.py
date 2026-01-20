@@ -69,7 +69,7 @@ class Settings(BaseSettings):
         description="API key for LLM gateway",
     )
     llm_model: str = Field(
-        default="gemma3-12b-awq",
+        default="Qwen3-30B-A3B-Instruct-4bit",
         description="LLM model name for extraction",
     )
     rag_embedding_model: str = Field(
@@ -99,6 +99,24 @@ class Settings(BaseSettings):
     extraction_max_concurrent_chunks: int = Field(
         default=80,
         description="Max concurrent chunk extractions for optimal vLLM KV cache utilization",
+    )
+
+    # LLM Worker Queue Settings
+    llm_worker_concurrency: int = Field(
+        default=10,
+        description="Initial concurrency for LLM worker (requests in flight)",
+    )
+    llm_worker_max_concurrency: int = Field(
+        default=50,
+        description="Maximum concurrency for LLM worker",
+    )
+    llm_worker_min_concurrency: int = Field(
+        default=5,
+        description="Minimum concurrency for LLM worker",
+    )
+    llm_request_timeout: int = Field(
+        default=300,
+        description="Timeout for LLM requests in seconds",
     )
 
     # Scraping Configuration
