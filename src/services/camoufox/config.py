@@ -13,6 +13,7 @@ class CamoufoxSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,  # Allow using field name or alias
     )
 
     # Server
@@ -26,10 +27,14 @@ class CamoufoxSettings(BaseSettings):
     )
 
     # Browser pool
+    browser_count: int = Field(
+        default=5,
+        description="Number of browser instances in the pool (enables true parallelism)",
+    )
     max_concurrent_pages: int = Field(
         default=10,
         alias="pool_size",
-        description="Maximum concurrent browser pages",
+        description="Maximum concurrent browser pages across all browsers",
     )
 
     # Timeouts (in milliseconds to match Firecrawl)

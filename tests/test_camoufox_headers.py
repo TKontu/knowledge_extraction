@@ -85,7 +85,7 @@ class TestCamoufoxBrowserHeaders:
     async def test_standard_headers_applied_to_all_requests(self, scraper, mock_browser):
         """Test that standard browser headers are applied to ALL requests."""
         browser, page = mock_browser
-        scraper._browser = browser
+        scraper._browsers = [browser]  # Use browser pool
 
         # Create request WITHOUT custom headers
         request = ScrapeRequest(
@@ -93,7 +93,7 @@ class TestCamoufoxBrowserHeaders:
             timeout=30000,
         )
 
-        await scraper._do_scrape(request)
+        await scraper._do_scrape(request, browser)
 
         # Verify set_extra_http_headers was called
         page.set_extra_http_headers.assert_called_once()
@@ -111,7 +111,7 @@ class TestCamoufoxBrowserHeaders:
     async def test_custom_headers_merged_with_standard(self, scraper, mock_browser):
         """Test that custom headers are merged with standard headers."""
         browser, page = mock_browser
-        scraper._browser = browser
+        scraper._browsers = [browser]  # Use browser pool
 
         # Create request WITH custom headers
         custom_headers = {
@@ -125,7 +125,7 @@ class TestCamoufoxBrowserHeaders:
             headers=custom_headers,
         )
 
-        await scraper._do_scrape(request)
+        await scraper._do_scrape(request, browser)
 
         # Get the headers that were applied
         call_args = page.set_extra_http_headers.call_args
@@ -141,7 +141,7 @@ class TestCamoufoxBrowserHeaders:
     async def test_custom_headers_override_standard(self, scraper, mock_browser):
         """Test that custom headers can override standard ones."""
         browser, page = mock_browser
-        scraper._browser = browser
+        scraper._browsers = [browser]  # Use browser pool
 
         # Create request that overrides a standard header
         custom_headers = {
@@ -154,7 +154,7 @@ class TestCamoufoxBrowserHeaders:
             headers=custom_headers,
         )
 
-        await scraper._do_scrape(request)
+        await scraper._do_scrape(request, browser)
 
         # Get the headers that were applied
         call_args = page.set_extra_http_headers.call_args
@@ -167,7 +167,7 @@ class TestCamoufoxBrowserHeaders:
     async def test_headers_not_conditional_on_request_headers(self, scraper, mock_browser):
         """Test that headers are ALWAYS applied, not conditionally."""
         browser, page = mock_browser
-        scraper._browser = browser
+        scraper._browsers = [browser]  # Use browser pool
 
         # Request WITHOUT custom headers
         request = ScrapeRequest(
@@ -176,7 +176,7 @@ class TestCamoufoxBrowserHeaders:
             # No headers field set
         )
 
-        await scraper._do_scrape(request)
+        await scraper._do_scrape(request, browser)
 
         # set_extra_http_headers should STILL be called
         page.set_extra_http_headers.assert_called_once()
