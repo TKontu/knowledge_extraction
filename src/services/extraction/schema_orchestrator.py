@@ -94,7 +94,11 @@ class SchemaExtractionOrchestrator:
         group: FieldGroup,
         company_name: str,
     ) -> list[dict]:
-        """Extract from chunks in parallel batches with retry logic.
+        """Extract from chunks with continuous concurrency control.
+
+        Uses a semaphore for continuous request flow instead of batch-and-wait.
+        This keeps the vLLM KV cache consistently utilized by allowing new
+        requests to start immediately as old ones complete.
 
         Args:
             chunks: List of document chunks to process.
@@ -104,70 +108,65 @@ class SchemaExtractionOrchestrator:
         Returns:
             List of extraction results from successful chunks.
         """
-        batch_size = settings.extraction_max_concurrent_chunks
-        chunk_results = []
+        max_concurrent = settings.extraction_max_concurrent_chunks
+        semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def extract_chunk_with_retry(
+        async def extract_chunk_with_semaphore(
             chunk, chunk_idx: int, max_retries: int = 3
         ) -> dict | None:
-            """Extract from a single chunk with exponential backoff retry."""
-            for attempt in range(max_retries):
-                try:
-                    result = await self._extractor.extract_field_group(
-                        content=chunk.content,
-                        field_group=group,
-                        company_name=company_name,
-                    )
-                    return result
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        backoff = min(
-                            settings.llm_retry_backoff_max,
-                            settings.llm_retry_backoff_min * (2**attempt),
+            """Extract from a single chunk with semaphore-controlled concurrency."""
+            async with semaphore:
+                for attempt in range(max_retries):
+                    try:
+                        result = await self._extractor.extract_field_group(
+                            content=chunk.content,
+                            field_group=group,
+                            company_name=company_name,
                         )
-                        logger.warning(
-                            "chunk_extraction_retry",
-                            group=group.name,
-                            chunk_idx=chunk_idx,
-                            attempt=attempt + 1,
-                            backoff=backoff,
-                            error=str(e),
-                        )
-                        await asyncio.sleep(backoff)
-                    else:
-                        logger.error(
-                            "chunk_extraction_failed",
-                            group=group.name,
-                            chunk_idx=chunk_idx,
-                            error=str(e),
-                        )
-                        return None
+                        return result
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            backoff = min(
+                                settings.llm_retry_backoff_max,
+                                settings.llm_retry_backoff_min * (2**attempt),
+                            )
+                            logger.warning(
+                                "chunk_extraction_retry",
+                                group=group.name,
+                                chunk_idx=chunk_idx,
+                                attempt=attempt + 1,
+                                backoff=backoff,
+                                error=str(e),
+                            )
+                            await asyncio.sleep(backoff)
+                        else:
+                            logger.error(
+                                "chunk_extraction_failed",
+                                group=group.name,
+                                chunk_idx=chunk_idx,
+                                error=str(e),
+                            )
+                            return None
 
-        # Process chunks in batches to respect concurrency limit
-        for batch_start in range(0, len(chunks), batch_size):
-            batch_end = min(batch_start + batch_size, len(chunks))
-            batch = chunks[batch_start:batch_end]
+        logger.debug(
+            "processing_chunks_continuous",
+            group=group.name,
+            total_chunks=len(chunks),
+            max_concurrent=max_concurrent,
+        )
 
-            logger.debug(
-                "processing_chunk_batch",
-                group=group.name,
-                batch_start=batch_start,
-                batch_size=len(batch),
-                total_chunks=len(chunks),
-            )
+        # Launch all chunks immediately - semaphore controls concurrency
+        # This enables continuous flow: new requests start as old ones finish
+        tasks = [
+            extract_chunk_with_semaphore(chunk, idx) for idx, chunk in enumerate(chunks)
+        ]
+        results = await asyncio.gather(*tasks)
 
-            # Execute batch in parallel
-            batch_tasks = [
-                extract_chunk_with_retry(chunk, batch_start + idx)
-                for idx, chunk in enumerate(batch)
-            ]
-            batch_results = await asyncio.gather(*batch_tasks)
-
-            # Filter out None results from failed extractions
-            chunk_results.extend([r for r in batch_results if r is not None])
+        # Filter out None results from failed extractions
+        chunk_results = [r for r in results if r is not None]
 
         logger.info(
-            "chunk_batch_extraction_completed",
+            "chunk_extraction_completed",
             group=group.name,
             successful=len(chunk_results),
             total=len(chunks),
