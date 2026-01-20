@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -19,7 +18,11 @@ logger = structlog.get_logger(__name__)
 
 
 class EntityExtractor:
-    """Extracts entities from extraction data using LLM."""
+    """Extracts entities from extraction data using LLM.
+
+    Delegates LLM calls to LLMClient.extract_entities(), which supports
+    both direct mode and queue mode for Redis-based batching.
+    """
 
     def __init__(
         self,
@@ -29,75 +32,11 @@ class EntityExtractor:
         """Initialize entity extractor.
 
         Args:
-            llm_client: LLM client for entity extraction
-            entity_repo: Entity repository for storage and deduplication
+            llm_client: LLM client for entity extraction (supports queue mode).
+            entity_repo: Entity repository for storage and deduplication.
         """
         self._llm_client = llm_client
         self._entity_repo = entity_repo
-
-    def _build_prompt(
-        self,
-        extraction_data: dict,
-        entity_types: list[dict],
-        source_group: str,
-    ) -> dict[str, str]:
-        """Build prompts for entity extraction.
-
-        Args:
-            extraction_data: Extraction data dictionary
-            entity_types: List of entity type definitions from project
-            source_group: Source grouping identifier (e.g., company name)
-
-        Returns:
-            Dictionary with 'system' and 'user' prompts
-        """
-        # Build entity type documentation
-        entity_docs = []
-        for et in entity_types:
-            name = et["name"]
-            desc = et.get("description", "")
-            entity_docs.append(f"- {name}: {desc}")
-        entity_types_doc = "\n".join(entity_docs)
-
-        # Get primary text field from extraction data
-        text_content = (
-            extraction_data.get("fact_text")
-            or extraction_data.get("text")
-            or str(extraction_data)
-        )
-
-        system_prompt = f"""
-Extract entities from this extracted data. Return JSON with entities found.
-
-Source Group: "{source_group}"
-
-Entity types to extract:
-{entity_types_doc}
-
-Output format:
-{{
-  "entities": [
-    {{
-      "type": "entity_type_name",
-      "value": "original text",
-      "normalized": "normalized_value",
-      "attributes": {{}}
-    }}
-  ]
-}}
-
-Guidelines:
-- Only extract entities explicitly mentioned in the data
-- Do not infer or guess entities not present
-- Normalize values for deduplication (lowercase, canonical form)
-- For limits: extract numeric values and units in attributes
-- For pricing: extract amounts and periods in attributes"""
-
-        user_prompt = f"""Extract entities from this data:
-
-{text_content}"""
-
-        return {"system": system_prompt, "user": user_prompt}
 
     def _normalize(self, entity_type: str, value: str) -> str:
         """Normalize entity value for deduplication.
@@ -144,52 +83,24 @@ Guidelines:
                 return f"{number}_per_{unit}"
 
         elif entity_type == "pricing":
-            # Extract amount in cents and period
+            # Extract amount in microcents (millionths of a dollar) and period
+            # This preserves sub-cent prices like $0.001/request
             # Remove currency symbols and commas
             normalized = normalized.replace("$", "").replace(",", "")
 
             # Look for number + period pattern
             match = re.search(r"(\d+(?:\.\d+)?)\s*(?:/|per)\s*(\w+)", normalized)
             if match:
-                amount = match.group(1)
+                amount_str = match.group(1)
                 period = match.group(2)
-                # Convert to cents (remove decimal point)
-                cents = str(int(float(amount) * 100)) if "." in amount else amount
-                return f"{cents}_per_{period}"
+                # Convert to microcents (millionths of dollar) for full precision
+                # $1.00 = 1,000,000 microcents
+                # $0.001 = 1,000 microcents
+                microcents = int(float(amount_str) * 1_000_000)
+                return f"{microcents}_microcents_per_{period}"
 
         # For plan, feature, and unknown types: use default lowercase + strip
         return normalized
-
-    async def _call_llm(self, prompt: dict[str, str]) -> list[dict]:
-        """Call LLM and parse entity response.
-
-        Args:
-            prompt: Dictionary with 'system' and 'user' prompts
-
-        Returns:
-            List of entity dictionaries
-        """
-        try:
-            response = await self._llm_client.client.chat.completions.create(
-                model=self._llm_client.model,
-                messages=[
-                    {"role": "system", "content": prompt["system"]},
-                    {"role": "user", "content": prompt["user"]},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-            )
-
-            content = response.choices[0].message.content
-            parsed = json.loads(content)
-            return parsed.get("entities", [])
-
-        except json.JSONDecodeError as e:
-            logger.warning("failed_to_parse_llm_response", error=str(e))
-            return []
-        except Exception as e:
-            logger.error("llm_call_failed", error=str(e))
-            return []
 
     async def _store_entities(
         self,
@@ -240,24 +151,22 @@ Guidelines:
         Returns:
             List of Entity objects
         """
-        # Step 1: Build prompt
-        prompt = self._build_prompt(
+        # Step 1: Call LLM via LLMClient.extract_entities()
+        # This handles both direct and queue modes automatically
+        entity_dicts = await self._llm_client.extract_entities(
             extraction_data=extraction_data,
             entity_types=entity_types,
             source_group=source_group,
         )
 
-        # Step 2: Call LLM
-        entity_dicts = await self._call_llm(prompt)
-
-        # Step 3: Store entities with deduplication
+        # Step 2: Store entities with deduplication and normalization
         stored_entities = await self._store_entities(
             entities=entity_dicts,
             project_id=project_id,
             source_group=source_group,
         )
 
-        # Step 4: Link entities to extraction
+        # Step 3: Link entities to extraction
         entities = []
         for entity, _created in stored_entities:
             await self._entity_repo.link_to_extraction(

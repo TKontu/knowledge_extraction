@@ -6,6 +6,7 @@ from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from orm_models import Source
 
 
@@ -210,3 +211,77 @@ class SourceRepository:
 
         self._session.flush()
         return source
+
+    async def upsert(
+        self,
+        project_id: UUID,
+        uri: str,
+        source_group: str,
+        source_type: str = "web",
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        raw_content: Optional[str] = None,
+        meta_data: Optional[dict] = None,
+        outbound_links: Optional[list] = None,
+        status: str = "pending",
+    ) -> tuple[Source, bool]:
+        """Insert or update source based on (project_id, uri) unique constraint.
+
+        Uses PostgreSQL's ON CONFLICT DO UPDATE to handle race conditions
+        when concurrent crawlers process the same URL.
+
+        Args:
+            project_id: ID of the project this source belongs to
+            uri: URI of the source (URL, file path, etc.)
+            source_group: Grouping identifier (company, paper, contract)
+            source_type: Type of source (web, pdf, api, etc.)
+            title: Optional title of the source
+            content: Optional processed content
+            raw_content: Optional raw content
+            meta_data: Optional metadata dictionary
+            outbound_links: Optional list of outbound links
+            status: Source status (pending, processing, completed, failed)
+
+        Returns:
+            Tuple of (Source instance, created) where created is True if new,
+            False if existing record was updated.
+        """
+        values = {
+            "project_id": project_id,
+            "uri": uri,
+            "source_group": source_group,
+            "source_type": source_type,
+            "title": title,
+            "content": content,
+            "raw_content": raw_content,
+            "meta_data": meta_data or {},
+            "outbound_links": outbound_links or [],
+            "status": status,
+        }
+
+        # PostgreSQL INSERT ... ON CONFLICT DO UPDATE
+        stmt = pg_insert(Source).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_sources_project_uri",
+            set_={
+                "title": stmt.excluded.title,
+                "content": stmt.excluded.content,
+                "raw_content": stmt.excluded.raw_content,
+                "meta_data": stmt.excluded.meta_data,
+                "outbound_links": stmt.excluded.outbound_links,
+                # Don't update status on conflict - keep existing status
+            },
+        ).returning(Source.id)
+
+        result = self._session.execute(stmt)
+        source_id = result.scalar_one()
+
+        # Get the source to return
+        source = await self.get(source_id)
+
+        # Check if it was a create or update by checking created_at
+        # If the source was just created, its created_at will be very recent
+        created = (datetime.now(UTC) - source.created_at).total_seconds() < 1
+
+        self._session.flush()
+        return source, created

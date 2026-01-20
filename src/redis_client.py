@@ -3,16 +3,31 @@
 from collections.abc import Generator
 
 import redis
+import redis.asyncio as aioredis
 
 from config import settings
 
-# Create Redis client
+# Create Redis client (sync)
 redis_client = redis.from_url(
     settings.redis_url,
     decode_responses=True,
     socket_connect_timeout=5,
     socket_timeout=5,
 )
+
+
+async def get_async_redis() -> aioredis.Redis:
+    """Get async Redis client for queue operations.
+
+    Returns:
+        Async Redis client instance.
+    """
+    return aioredis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+    )
 
 
 def get_redis() -> Generator[redis.Redis, None, None]:

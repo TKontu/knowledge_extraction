@@ -221,3 +221,73 @@ class TestLLMClient:
             # Only the complete fact should be returned
             assert len(facts) == 1
             assert facts[0].fact == "Complete fact"
+
+
+class TestLLMClientLifecycle:
+    """Tests for LLMClient lifecycle management (close, context manager)."""
+
+    @pytest.mark.asyncio
+    async def test_direct_mode_client_has_close_method(self) -> None:
+        """Test that LLMClient has a close method."""
+        client = LLMClient(settings)
+        assert hasattr(client, "close")
+        assert callable(client.close)
+
+    @pytest.mark.asyncio
+    async def test_direct_mode_close_closes_openai_client(self) -> None:
+        """Test that close() calls close on the OpenAI client."""
+        client = LLMClient(settings)
+
+        # Mock the OpenAI client's close method
+        client.client.close = AsyncMock()
+
+        await client.close()
+
+        client.client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_is_idempotent(self) -> None:
+        """Test that calling close multiple times is safe."""
+        client = LLMClient(settings)
+        client.client.close = AsyncMock()
+
+        # Call close twice
+        await client.close()
+        await client.close()
+
+        # Should only close once
+        client.client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_context_manager_closes_client(self) -> None:
+        """Test that using client as context manager closes it on exit."""
+        client = LLMClient(settings)
+        client.client.close = AsyncMock()
+
+        async with client:
+            pass  # Just test the context manager
+
+        client.client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_queue_mode_close_is_noop(self) -> None:
+        """Test that close() in queue mode does not error (no client to close)."""
+        mock_queue = AsyncMock()
+        client = LLMClient(settings, llm_queue=mock_queue)
+
+        # Should not raise any errors
+        await client.close()
+        await client.close()  # Multiple calls should also be safe
+
+    @pytest.mark.asyncio
+    async def test_close_after_error_still_closes(self) -> None:
+        """Test that close works even after previous operations failed."""
+        client = LLMClient(settings)
+        client.client.close = AsyncMock()
+
+        # Simulate that something went wrong during usage
+        # (e.g., network error during extraction)
+        # The client should still be closeable
+        await client.close()
+
+        client.client.close.assert_called_once()

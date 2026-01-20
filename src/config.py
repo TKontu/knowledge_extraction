@@ -118,6 +118,10 @@ class Settings(BaseSettings):
         default=300,
         description="Timeout for LLM requests in seconds",
     )
+    llm_queue_enabled: bool = Field(
+        default=False,
+        description="Enable Redis-based LLM request queue for batching and adaptive concurrency",
+    )
 
     # Scraping Configuration
     scrape_delay_min: int = Field(

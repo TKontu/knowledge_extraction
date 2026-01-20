@@ -194,8 +194,9 @@ class ScraperWorker:
 
         except Exception as e:
             # Handle unexpected errors
+            self.db.rollback()  # Rollback any partial changes
             job.status = "failed"
-            job.error = str(e).lower()
+            job.error = str(e)
             job.completed_at = datetime.now(UTC)
             self.db.commit()
             logger.error(
