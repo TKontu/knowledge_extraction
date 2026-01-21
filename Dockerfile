@@ -4,7 +4,7 @@ FROM python:3.12-slim
 ARG CACHE_BUST=2026-01-21-154342
 
 # Version information
-ARG APP_VERSION=v1.3.0
+ARG APP_VERSION=v1.3.1
 ARG GIT_COMMIT=unknown
 
 # Set as environment variables

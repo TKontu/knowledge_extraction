@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
 
     # Startup: Start the background job scheduler
     import os
-    app_version = os.getenv("APP_VERSION", "v1.3.0")
+    app_version = os.getenv("APP_VERSION", "v1.3.1")
     git_commit = os.getenv("GIT_COMMIT", "unknown")
     logger.info(
         "application_startup",
@@ -234,7 +234,7 @@ async def health_check() -> JSONResponse:
         content={
             "status": "ok",
             "service": "scristill-pipeline",
-            "version": os.getenv("APP_VERSION", "v1.3.0"),
+            "version": os.getenv("APP_VERSION", "v1.3.1"),
             "commit": os.getenv("GIT_COMMIT", "unknown"),
             "timestamp": datetime.now(UTC).isoformat(),
             "log_level": settings.log_level,
@@ -257,7 +257,7 @@ async def root() -> dict[str, str]:
     import os
     return {
         "service": "Scristill Pipeline API",
-        "version": os.getenv("APP_VERSION", "v1.3.0"),
+        "version": os.getenv("APP_VERSION", "v1.3.1"),
         "commit": os.getenv("GIT_COMMIT", "unknown"),
         "docs": "/docs",
         "health": "/health",
