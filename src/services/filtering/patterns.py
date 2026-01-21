@@ -30,44 +30,43 @@ DEFAULT_EXCLUDED_LANGUAGES = [
 def generate_language_exclusion_patterns(
     excluded_languages: Sequence[LanguageCode],
 ) -> list[str]:
-    """Generate glob patterns to exclude language-specific URLs.
+    """Generate regex patterns to exclude language-specific URLs.
 
     Creates patterns for common language URL structures:
     - Path-based: /de/, /de-DE/, /page-de/
     - Query-based: ?lang=de, ?language=de
-    - Subdomain-based: de.example.com
 
     Args:
         excluded_languages: List of language codes to exclude.
 
     Returns:
-        List of glob patterns for Firecrawl exclude_paths.
+        List of regex patterns for Firecrawl exclude_paths.
 
     Example:
         >>> patterns = generate_language_exclusion_patterns([LanguageCode.DE, LanguageCode.FI])
         >>> patterns
-        ['*/de/*', '*/de-*', '*-de/*', '*/fi/*', '*/fi-*', '*-fi/*', ...]
+        ['.*/de/.*', '.*/de-.*', '.*-de/.*', '.*/fi/.*', '.*/fi-.*', '.*-fi/.*', ...]
     """
     patterns = []
 
     for lang in excluded_languages:
         lang_code = lang.value.lower()
 
-        # Path-based patterns
+        # Path-based patterns (proper regex syntax for Firecrawl)
         patterns.extend(
             [
-                f"*/{lang_code}/*",  # /de/page
-                f"*/{lang_code}-*",  # /de-DE/page
-                f"*-{lang_code}/*",  # /page-de/content
+                f".*/{lang_code}/.*",  # /de/page
+                f".*/{lang_code}-.*",  # /de-DE/page
+                f".*-{lang_code}/.*",  # /page-de/content
             ]
         )
 
-        # Query parameter patterns
+        # Query parameter patterns (proper regex syntax)
         patterns.extend(
             [
-                f"*?*lang={lang_code}*",  # ?lang=de
-                f"*?*language={lang_code}*",  # ?language=de
-                f"*?*locale={lang_code}*",  # ?locale=de
+                f".*\\?.*lang={lang_code}.*",  # ?lang=de
+                f".*\\?.*language={lang_code}.*",  # ?language=de
+                f".*\\?.*locale={lang_code}.*",  # ?locale=de
             ]
         )
 
@@ -85,46 +84,20 @@ def should_exclude_url(url: str, excluded_patterns: list[str]) -> bool:
 
     Args:
         url: URL to check.
-        excluded_patterns: List of glob patterns.
+        excluded_patterns: List of regex patterns.
 
     Returns:
         True if URL should be excluded, False otherwise.
 
     Note:
-        This is a simplified client-side check. Firecrawl uses more sophisticated
-        glob matching on the server side.
+        Patterns are already in regex format, ready for Firecrawl.
     """
     url_lower = url.lower()
 
     for pattern in excluded_patterns:
-        # Convert glob pattern to regex
-        regex_pattern = _glob_to_regex(pattern)
-
-        if re.search(regex_pattern, url_lower):
+        # Patterns are already regex, use directly
+        if re.search(pattern, url_lower):
             logger.debug("url_matches_exclusion_pattern", url=url, pattern=pattern)
             return True
 
     return False
-
-
-def _glob_to_regex(pattern: str) -> str:
-    """Convert glob pattern to regex.
-
-    Args:
-        pattern: Glob pattern (e.g., "*/de/*").
-
-    Returns:
-        Regex pattern string.
-
-    Example:
-        >>> _glob_to_regex("*/de/*")
-        '.*\\\\/de\\\\/.*'
-    """
-    # Escape special regex characters except * and ?
-    pattern = re.escape(pattern)
-
-    # Replace escaped glob wildcards with regex equivalents
-    pattern = pattern.replace(r"\*", ".*")  # * -> .*
-    pattern = pattern.replace(r"\?", ".")  # ? -> .
-
-    return pattern
