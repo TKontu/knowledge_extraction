@@ -191,6 +191,34 @@ class Settings(BaseSettings):
         description="Maximum delay between retries in seconds",
     )
 
+    # Language Filtering Configuration
+    language_filtering_enabled: bool = Field(
+        default=True,
+        description="Enable language-based content filtering",
+    )
+    language_detection_confidence_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence threshold for language detection (0.0-1.0)",
+    )
+    language_detection_timeout_seconds: float = Field(
+        default=5.0,
+        description="Timeout for language detection per page in seconds",
+    )
+    excluded_language_codes: str | list[str] = Field(
+        default="de,fi,fr,es,it,nl,pt,pl,ru,sv,no,da",
+        description="Comma-separated list of ISO 639-1 language codes to exclude",
+    )
+
+    @field_validator("excluded_language_codes", mode="after")
+    @classmethod
+    def parse_excluded_languages(cls, v: str | list[str]) -> list[str]:
+        """Parse comma-separated string into list."""
+        if isinstance(v, str):
+            return [code.strip().lower() for code in v.split(",") if code.strip()]
+        return [code.lower() for code in v]
+
     # FlareSolverr Proxy Adapter
     proxy_adapter_enabled: bool = Field(
         default=True,

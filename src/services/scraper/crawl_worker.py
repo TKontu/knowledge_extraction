@@ -1,5 +1,6 @@
 """Background worker for processing crawl jobs."""
 
+import asyncio
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -153,6 +154,19 @@ class CrawlWorker:
         company = job.payload["company"]
         sources_created = 0
 
+        # Get language filtering settings from job payload (Layer 2: Content-Based Post-Filtering)
+        language_detection_enabled = job.payload.get("language_detection_enabled", True)
+        allowed_languages = job.payload.get("allowed_languages") or ["en"]
+
+        # Initialize language service if needed
+        lang_service = None
+        if language_detection_enabled and settings.language_filtering_enabled:
+            from services.filtering.language import get_language_service
+
+            lang_service = get_language_service(
+                confidence_threshold=settings.language_detection_confidence_threshold
+            )
+
         for page in pages:
             metadata = page.get("metadata", {})
             markdown = page.get("markdown", "")
@@ -178,6 +192,49 @@ class CrawlWorker:
                     reason="HTTP error pages not stored as sources",
                 )
                 continue
+
+            # Language detection (if enabled)
+            if lang_service:
+                try:
+                    # Detect language with timeout
+                    result = await asyncio.wait_for(
+                        lang_service.detect(markdown, url=url),
+                        timeout=settings.language_detection_timeout_seconds,
+                    )
+
+                    if result.language not in allowed_languages:
+                        logger.info(
+                            "page_language_filtered",
+                            job_id=str(job.id),
+                            url=url,
+                            detected_language=result.language,
+                            confidence=result.confidence,
+                            allowed_languages=allowed_languages,
+                            detection_method=result.detected_from,
+                        )
+                        continue
+
+                    # Store language detection result in metadata
+                    metadata["detected_language"] = result.language
+                    metadata["language_confidence"] = result.confidence
+
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "language_detection_timeout",
+                        job_id=str(job.id),
+                        url=url,
+                        timeout=settings.language_detection_timeout_seconds,
+                    )
+                    # Continue storing page (timeout shouldn't block crawl)
+                except Exception as e:
+                    logger.error(
+                        "language_detection_error",
+                        job_id=str(job.id),
+                        url=url,
+                        error=str(e),
+                        exc_info=True,
+                    )
+                    # Continue storing page (detection error shouldn't break crawl)
 
             domain = urlparse(url).netloc
 
