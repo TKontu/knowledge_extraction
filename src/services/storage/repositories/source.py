@@ -264,11 +264,11 @@ class SourceRepository:
         stmt = stmt.on_conflict_do_update(
             constraint="uq_sources_project_uri",
             set_={
-                "title": stmt.excluded.title,
-                "content": stmt.excluded.content,
-                "raw_content": stmt.excluded.raw_content,
-                "meta_data": stmt.excluded.meta_data,
-                "outbound_links": stmt.excluded.outbound_links,
+                Source.title: stmt.excluded.title,
+                Source.content: stmt.excluded.content,
+                Source.raw_content: stmt.excluded.raw_content,
+                Source.meta_data: stmt.excluded.metadata,  # Fixed: use db column name
+                Source.outbound_links: stmt.excluded.outbound_links,
                 # Don't update status on conflict - keep existing status
             },
         ).returning(Source.id)
