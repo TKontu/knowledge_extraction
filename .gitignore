@@ -67,3 +67,4 @@ output/*
 input/
 
 /deployment_logs
+/debug
