@@ -19,6 +19,10 @@ CACHE_BUST=$(date +%Y-%m-%d-%H%M%S)
 echo "🔄 Updating cache buster: $CACHE_BUST"
 sed -i "s/^ARG CACHE_BUST=.*/ARG CACHE_BUST=$CACHE_BUST/" Dockerfile
 
+# Get git commit hash
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+echo "📝 Git commit: $GIT_COMMIT"
+
 # Build and push function
 build_and_push() {
     local service=$1
@@ -33,6 +37,8 @@ build_and_push() {
 
     docker build \
         --platform linux/amd64 \
+        --build-arg APP_VERSION="$TAG" \
+        --build-arg GIT_COMMIT="$GIT_COMMIT" \
         -t "$image_name" \
         -f "$dockerfile" \
         "$context"

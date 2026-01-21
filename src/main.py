@@ -81,7 +81,16 @@ async def lifespan(app: FastAPI):
         logger.debug("signal_handlers_not_supported", reason="platform limitation")
 
     # Startup: Start the background job scheduler
-    logger.info("application_startup", version="0.1.0")
+    import os
+    app_version = os.getenv("APP_VERSION", "v1.3.0")
+    git_commit = os.getenv("GIT_COMMIT", "unknown")
+    logger.info(
+        "application_startup",
+        service="pipeline",
+        version=app_version,
+        commit=git_commit,
+        environment=os.getenv("ENVIRONMENT", "production")
+    )
 
     # Check security configuration
     check_security_config()
@@ -220,10 +229,13 @@ async def health_check() -> JSONResponse:
     if not qdrant_connected:
         logger.warning("health_check_failed", component="qdrant")
 
+    import os
     return JSONResponse(
         content={
             "status": "ok",
             "service": "scristill-pipeline",
+            "version": os.getenv("APP_VERSION", "v1.3.0"),
+            "commit": os.getenv("GIT_COMMIT", "unknown"),
             "timestamp": datetime.now(UTC).isoformat(),
             "log_level": settings.log_level,
             "database": {
@@ -242,9 +254,11 @@ async def health_check() -> JSONResponse:
 @app.get("/")
 async def root() -> dict[str, str]:
     """Root endpoint - provides API information."""
+    import os
     return {
         "service": "Scristill Pipeline API",
-        "version": "0.1.0",
+        "version": os.getenv("APP_VERSION", "v1.3.0"),
+        "commit": os.getenv("GIT_COMMIT", "unknown"),
         "docs": "/docs",
         "health": "/health",
     }

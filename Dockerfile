@@ -1,7 +1,15 @@
 FROM python:3.12-slim
 
 # Cache buster - change this to force rebuild
-ARG CACHE_BUST=2026-01-21-150925
+ARG CACHE_BUST=2026-01-21-154342
+
+# Version information
+ARG APP_VERSION=v1.3.0
+ARG GIT_COMMIT=unknown
+
+# Set as environment variables
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
 
 WORKDIR /app
 
