@@ -196,11 +196,15 @@ class ScraperWorker:
             # Handle unexpected errors
             self.db.rollback()  # Rollback any partial changes
             job.status = "failed"
-            job.error = str(e)
+            job.error = f"{type(e).__name__}: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
             logger.error(
-                "job_processing_error", job_id=str(job.id), error=str(e), exc_info=True
+                "job_processing_error",
+                job_id=str(job.id),
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
             )
 
     async def _scrape_url_with_retry(self, url: str, domain: str):

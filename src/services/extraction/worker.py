@@ -134,12 +134,13 @@ class ExtractionWorker:
             # Handle unexpected errors
             self.db.rollback()  # Rollback any partial changes
             job.status = "failed"
-            job.error = str(e)
+            job.error = f"{type(e).__name__}: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
             logger.error(
                 "extraction_job_error",
                 job_id=str(job.id),
                 error=str(e),
+                error_type=type(e).__name__,
                 exc_info=True,
             )

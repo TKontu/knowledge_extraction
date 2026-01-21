@@ -136,10 +136,16 @@ class CrawlWorker:
             # Rollback any failed transaction before updating job status
             self.db.rollback()
             job.status = "failed"
-            job.error = str(e)
+            job.error = f"{type(e).__name__}: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
-            logger.error("crawl_error", job_id=str(job.id), error=str(e))
+            logger.error(
+                "crawl_error",
+                job_id=str(job.id),
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
+            )
 
     async def _store_pages(self, job: Job, pages: list[dict]) -> int:
         """Store crawled pages as Source records."""
