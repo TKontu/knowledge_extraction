@@ -99,6 +99,18 @@ class CrawlRequest(BaseModel):
     )
     auto_extract: bool = Field(default=True, description="Auto-trigger extraction")
     profile: str | None = Field(default=None, description="Extraction profile")
+    prefer_english_only: bool = Field(
+        default=True,
+        description="Filter non-English pages (URL patterns + content detection)",
+    )
+    language_detection_enabled: bool = Field(
+        default=True,
+        description="Enable content-based language detection (post-crawl)",
+    )
+    allowed_languages: list[str] | None = Field(
+        default=None,
+        description="ISO 639-1 codes of allowed languages (default: ['en'])",
+    )
 
 
 class CrawlResponse(BaseModel):

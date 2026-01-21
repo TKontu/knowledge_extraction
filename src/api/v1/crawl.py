@@ -6,9 +6,12 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from config import settings
 from database import get_db
 from models import CrawlRequest, CrawlResponse, CrawlStatusResponse
 from orm_models import Job
+from services.filtering.language import LanguageCode
+from services.filtering.patterns import generate_language_exclusion_patterns
 
 logger = structlog.get_logger(__name__)
 
@@ -32,6 +35,28 @@ async def create_crawl_job(
     if include_paths is None:
         include_paths = DEFAULT_COMPANY_INCLUDE_PATHS
 
+    # Auto-generate language exclusion patterns (Layer 1: URL Pattern Pre-Filtering)
+    exclude_paths = list(request.exclude_paths) if request.exclude_paths else []
+    if request.prefer_english_only and settings.language_filtering_enabled:
+        # Determine which languages to exclude
+        allowed_languages = request.allowed_languages or ["en"]
+        excluded_langs = [
+            lang for lang in settings.excluded_language_codes if lang not in allowed_languages
+        ]
+
+        # Generate patterns and extend exclude_paths
+        lang_patterns = generate_language_exclusion_patterns(
+            [LanguageCode(code) for code in excluded_langs]
+        )
+        exclude_paths.extend(lang_patterns)
+
+        logger.info(
+            "language_filtering_enabled",
+            job_id=str(job_id),
+            excluded_languages=excluded_langs,
+            pattern_count=len(lang_patterns),
+        )
+
     logger.info(
         "crawl_job_created",
         job_id=str(job_id),
@@ -40,6 +65,7 @@ async def create_crawl_job(
         max_depth=request.max_depth,
         limit=request.limit,
         include_paths_count=len(include_paths) if include_paths else 0,
+        exclude_paths_count=len(exclude_paths),
     )
 
     job = Job(
@@ -53,10 +79,12 @@ async def create_crawl_job(
             "max_depth": request.max_depth,
             "limit": request.limit,
             "include_paths": include_paths,
-            "exclude_paths": request.exclude_paths,
+            "exclude_paths": exclude_paths,
             "allow_backward_links": request.allow_backward_links,
             "auto_extract": request.auto_extract,
             "profile": request.profile,
+            "language_detection_enabled": request.language_detection_enabled,
+            "allowed_languages": request.allowed_languages or ["en"],
             "firecrawl_job_id": None,  # Set when crawl starts
         },
     )

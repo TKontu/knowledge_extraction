@@ -1,37 +1,31 @@
-# Handoff: v1.2.2 - Critical Bug Fix & Error Handling
+# Handoff: v1.2.2 Deployed & Verified
 
 **Session Date**: 2026-01-21
-**Branch**: `feat/improve-error-handling` (merged to main)
-**Previous**: v1.2.0 - LLM Queue Integration (deployed)
+**Version**: v1.2.2 (deployed and tested)
+**Branch**: main
 
 ## Completed
 
-### 1. Critical Bug Fix (C1) - Crawl Failures
-- ✅ **Root Cause**: `meta_data` AttributeError in `source.py:270`
-  - ON CONFLICT upsert referenced `stmt.excluded.meta_data` (doesn't exist)
-  - Database column is named `metadata`, not `meta_data`
-  - Caused 100% crawl job failures with cryptic error message
-- ✅ **Fix**: Use SQLAlchemy Column objects in upsert statement
-  - Changed to: `Source.meta_data: stmt.excluded.metadata`
-  - Properly maps Python attribute to database column name
-- ✅ **Impact**: Resolved crawl job failures (e.g., Job 1e0335de: 48 pages crawled, 0 sources stored)
+### 1. Critical Bug Fix (C1) - Meta_data AttributeError
+- ✅ **Root Cause**: `source.py:270` - ON CONFLICT upsert referenced `stmt.excluded.meta_data` (doesn't exist)
+  - Database column is `metadata`, not `meta_data`
+  - Caused 100% crawl job failures (48 pages crawled, 0 sources created)
+- ✅ **Fix**: Changed to `Source.meta_data: stmt.excluded.metadata` (use Column objects)
+- ✅ **Commit**: `0cf32b2` - fix: Resolve AttributeError in source upsert ON CONFLICT (Critical C1)
 
 ### 2. Error Handling Improvements (I1)
-- ✅ **Problem**: Error messages lacked type information
-  - Job errors stored as `str(e)` - lost exception class name
-  - Made debugging difficult (e.g., "meta_data" vs "AttributeError: meta_data")
-- ✅ **Fix**: Enhanced error formatting in all workers
-  - Format: `f"{type(e).__name__}: {str(e)}"` in `job.error`
-  - Added `error_type` field to structured logs
-  - Added `exc_info=True` for full stack traces
+- ✅ **Problem**: Error messages lacked exception type information
+- ✅ **Fix**: Enhanced all workers to format errors as `f"{type(e).__name__}: {str(e)}"`
+- ✅ **Added**: `error_type` field to logs + `exc_info=True` for stack traces
 - ✅ **Files Modified**:
   - `src/services/scraper/crawl_worker.py`
   - `src/services/scraper/worker.py`
   - `src/services/extraction/worker.py`
 - ✅ **TDD**: 11 tests in `tests/test_worker_error_handling.py` (all passing)
+- ✅ **Commit**: `6140c58` - feat: Improve error messages with type information and stack traces
 
-### 3. Build & Deployment
-- ✅ **Docker Images Built & Pushed**:
+### 3. Docker Images Published to GHCR
+- ✅ **Images Built & Pushed**:
   ```
   ghcr.io/tkontu/pipeline:v1.2.2
   ghcr.io/tkontu/camoufox:v1.2.2
@@ -39,91 +33,103 @@
   ghcr.io/tkontu/proxy-adapter:v1.2.2
   ```
 - ✅ **Build Script**: Created `build-and-push.sh` for automated releases
-- ✅ **Authentication**: Configured GHCR with `write:packages` token
+- ✅ **Authentication**: Configured GHCR with `write:packages` token scope
 
-## Previous Release: v1.2.0 (2026-01-20)
-- ✅ Redis streams-based LLM request queue
-- ✅ Adaptive concurrency worker with DLQ support
-- ✅ Backpressure monitoring and signaling
-- ✅ Fixed 2 critical bugs (C0: queue return type, C1: async Redis)
-- ✅ 80+ comprehensive tests
-- ✅ Feature flag: `llm_queue_enabled` (default: False)
+### 4. Fork Management Verified
+- ✅ **Firecrawl Fork**: Properly configured as git submodule at `vendor/firecrawl`
+  - Remote: `https://github.com/TKontu/firecrawl.git`
+  - Current branch: `feature/ajax-discovery`
+  - 5 custom commits with AJAX URL discovery features
+- ✅ **Camoufox**: Custom service (not a fork) - uses upstream PyPI package
+- ✅ **Build Process**: `docker-compose.prod.yml` builds pipeline from source (not GHCR images)
+
+### 5. Remote Deployment & Testing
+- ✅ **Server**: 192.168.0.136:8742 rebuilt with latest source
+- ✅ **CACHE_BUST**: Updated to `2026-01-21-125219` to force fresh rebuild
+- ✅ **Verification Test**: Crawled https://www.scrapethissite.com/pages/
+  - **Before fix**: 48 pages → 0 sources (failed)
+  - **After fix**: 48 pages → 46 sources (96% success) ✅
+  - Job ID: `4d3807db-0184-4318-9a36-a902728b8e2c`
+  - Project ID: `d75e0abb-d1ef-489b-9407-ffbdc5284ca4`
+
+### 6. Repository Cleanup
+- ✅ **Pushed to GitHub**: All commits and documentation updates
+- ✅ **Deleted**: Merged feature branches (feat/improve-error-handling, etc.)
+- ✅ **Cleaned Up**: Removed 7 outdated documentation files
+- ✅ **Updated**: HANDOFF.md with v1.2.2 release notes
+
+## In Progress
+
+None - all work completed and verified.
 
 ## Next Steps
 
-### Immediate (Deploy v1.2.2)
-- [ ] Deploy to production:
-  ```bash
-  export PIPELINE_TAG=v1.2.2
-  export CAMOUFOX_TAG=v1.2.2
-  export FIRECRAWL_TAG=v1.2.2
-  docker compose -f docker-compose.prod.yml pull
-  docker compose -f docker-compose.prod.yml up -d
-  ```
+### Production Readiness
+- [x] Deploy v1.2.2 to remote server (DONE - verified working)
+- [x] Test crawl pipeline end-to-end (DONE - 46/48 sources created)
+- [ ] Monitor production logs for any edge cases
+- [ ] Consider merging Firecrawl `feature/ajax-discovery` branch to main if stable
 
-### Enable LLM Queue (Optional)
-- [ ] Set `llm_queue_enabled=True` in `.env` or `config.py`
-- [ ] Monitor Redis stream: `redis-cli XLEN llm:requests`
-- [ ] Check DLQ if issues: `redis-cli LLEN llm:dlq`
-
-### Cleanup
-- [ ] Delete debug files: `rm *_cmd.txt test_qwen_llm.py`
-- [ ] Add to `.gitignore`: `*_cmd.txt`
-- [ ] Review and archive: `PIPELINE_REVIEW_2026-01-20.md`, `docs/PLAN-redis-llm-queue.md`
+### Optional Enhancements (Future Sessions)
+- [ ] Implement remaining improvements from `docs/PLAN-crawl-improvements.md`:
+  - **I2**: Batch database commits in crawl worker (reduce DB load)
+  - **I3**: Filter HTTP 4xx/5xx errors before storing sources
+  - **M3**: Add crawl performance metrics
+  - **M1**: Detect infinite retry loops proactively
+- [ ] Enable LLM queue feature (set `llm_queue_enabled=True` when ready)
 
 ## Key Files
 
-### LLM Queue System
-- `src/services/llm/queue.py` - LLMRequestQueue with backpressure (returns dict now!)
-- `src/services/llm/worker.py` - LLMWorker with adaptive concurrency and DLQ
-- `src/services/llm/models.py` - LLMRequest/LLMResponse data models
-- `src/services/llm/client.py` - LLMClient with queue mode support
+### Critical Bug Fix
+- `src/services/storage/repositories/source.py:264-274` - Fixed ON CONFLICT upsert mapping
+- `tests/test_worker_error_handling.py` - TDD tests for error handling improvements
 
-### Integration Points
-- `src/services/extraction/pipeline.py` - Backpressure-aware batch processing
-- `src/services/extraction/schema_extractor.py` - Queue-based extraction
-- `src/services/scraper/scheduler.py` - LLMWorker lifecycle management
-- `src/api/v1/extraction.py` - `/extract-schema` endpoint (uses async Redis)
+### Build & Deployment
+- `build-and-push.sh` - Automated Docker image build/push script
+- `Dockerfile` - Cache bust: `2026-01-21-125219`
+- `docker-compose.prod.yml` - Builds pipeline from source (NOT from GHCR images)
 
-### Tests
-- `tests/test_llm_queue.py` - Queue operations (29 tests)
-- `tests/test_llm_worker_*.py` - Worker concurrency, DLQ, prompts
-- `tests/test_extract_schema_async_redis.py` - Async Redis verification
-- `tests/test_extraction_pipeline.py` - Pipeline integration
+### Fork Management
+- `.gitmodules` - Declares Firecrawl submodule
+- `vendor/firecrawl/` - Git submodule pointing to TKontu/firecrawl fork
+- `Dockerfile.camoufox` - Custom Camoufox service wrapper
 
-### Build & Deploy
-- `build-and-push.sh` - Build script for all 4 images
-- `Dockerfile` - Updated cache buster for v1.2.0
-- `docker-compose.prod.yml` - Production compose file
+### Documentation
+- `CRAWL_PIPELINE_REVIEW.md` - Complete pipeline analysis with bug discoveries
+- `docs/ISSUE_VERIFICATION.md` - Proof that I1 is real, M2 is false alarm
+- `docs/PLAN-crawl-improvements.md` - 3-phase improvement roadmap
 
 ## Context
 
 ### Architecture Decisions
-1. **Redis Streams** chosen for queue (vs RabbitMQ) - simpler, already in stack
-2. **Consumer Groups** for distributed processing with multiple workers
-3. **Adaptive Concurrency** scales based on timeout rate (backs off on errors)
-4. **DLQ Implementation** stores failed requests after max retries (3)
-5. **Backpressure as Dict** - changed from string to `{"should_wait": bool, ...}` format
+1. **Production Builds from Source**: `docker-compose.prod.yml` builds pipeline locally (not from GHCR)
+   - Rationale: Allows quick iteration without publishing every change
+   - GHCR images serve as backup/reference versions
+2. **Firecrawl as Submodule**: Custom AJAX discovery features tracked in fork
+   - Branch: `feature/ajax-discovery` (consider merging to main when stable)
+3. **CACHE_BUST Strategy**: Update timestamp to force Docker rebuild when needed
 
-### Important Notes
-- ✅ All 80+ tests passing
-- ✅ Feature flag prevents breaking changes when disabled
-- ✅ LLM model switched from Gemma to Qwen3-30B-A3B-Instruct-4bit (previous commit)
-- ✅ Build script handles multi-platform (linux/amd64) correctly
-- 🔄 `llm_queue_enabled` defaults to `False` - safe to deploy
-
-### Blockers Resolved
-- ❌ ~~Backpressure type mismatch~~ → ✅ Fixed
-- ❌ ~~Sync Redis in async endpoint~~ → ✅ Fixed
-- ❌ ~~Missing error handling~~ → ✅ Added QueueFullError/RequestTimeoutError handling
+### Verification Results
+Test crawl confirmed the fix works:
+- **URL**: https://www.scrapethissite.com/pages/
+- **Settings**: depth=5, limit=50
+- **Results**: 48 pages crawled → 46 sources stored (96% success)
+- **Error**: None (vs. "AttributeError: meta_data" before fix)
 
 ### Performance Notes
-- Queue depth threshold: 500 (configurable)
-- Backpressure triggers at 80% (400 requests)
-- Worker concurrency: 10 initial, 5-50 range, adaptive
-- Request timeout: 300s (5 minutes)
-- DLQ retention: indefinite (manual cleanup needed)
+- Crawl duration: ~3 minutes for 48 pages
+- Source creation rate: 46/48 (2 pages may have had no content or failed scraping)
+- No errors in job status - clean completion
+
+### Important Notes
+- ✅ Remote server at 192.168.0.136:8742 running latest code
+- ✅ All tests passing (11 new error handling tests)
+- ✅ Git history clean - merged branches deleted
+- ✅ GHCR images published for reference (v1.2.2 tag)
+- 🔄 Production uses local builds, not GHCR images (by design)
 
 ---
 
-**Ready for deployment!** Run `/clear` to start fresh for next session.
+**Status**: ✅ v1.2.2 deployed, tested, and verified working in production.
+
+Run `/clear` to start fresh for next session.
