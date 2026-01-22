@@ -33,6 +33,12 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3002/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     restart: unless-stopped
     networks:
       - scristill
@@ -253,7 +259,7 @@ services:
       qdrant:
         condition: service_healthy
       firecrawl-api:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - scristill
