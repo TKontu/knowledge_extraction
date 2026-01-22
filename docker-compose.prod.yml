@@ -34,7 +34,7 @@ services:
       rabbitmq:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3002/ || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 5s
       timeout: 5s
       retries: 12
