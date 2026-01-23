@@ -58,8 +58,7 @@ build_and_push() {
     echo "✅ $service complete"
 }
 
-# Build main services
-build_and_push "pipeline" "." "Dockerfile"
+# Build main services (pipeline runs from repo, not image)
 build_and_push "camoufox" "." "Dockerfile.camoufox"
 build_and_push "firecrawl-api" "./vendor/firecrawl/apps/api" "./vendor/firecrawl/apps/api/Dockerfile"
 build_and_push "proxy-adapter" "." "Dockerfile.proxy"
@@ -70,13 +69,11 @@ echo "✨ All images built and pushed successfully!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Images pushed:"
-echo "  - $REGISTRY_PREFIX/pipeline:$TAG"
 echo "  - $REGISTRY_PREFIX/camoufox:$TAG"
 echo "  - $REGISTRY_PREFIX/firecrawl-api:$TAG"
 echo "  - $REGISTRY_PREFIX/proxy-adapter:$TAG"
 echo ""
 echo "To deploy, update your docker-compose.prod.yml or use:"
-echo "  export PIPELINE_TAG=$TAG"
 echo "  export CAMOUFOX_TAG=$TAG"
 echo "  export FIRECRAWL_TAG=$TAG"
 echo "  docker compose -f docker-compose.prod.yml pull"
