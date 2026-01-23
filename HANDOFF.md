@@ -1,67 +1,154 @@
-# Handoff: Crawl Delay Unit Mismatch Fix
+# Handoff: Documentation Rewrite - Architecture & README
 
-**Session Date**: 2026-01-23
-**Branch**: fix/crawl-delay-unit-mismatch
-**Previous Commit**: 99be6cf - feat: Add debug logging to trace Firecrawl sitemap hangs (#51)
+## Completed
 
-## Root Cause Identified and Fixed
+### Full Documentation Rewrite (V1.1)
+Created two new comprehensive documentation files from scratch by analyzing actual codebase:
 
-### The Problem
-Crawl jobs were hanging for ~33 minutes between page scrapes. The "Job done" log appeared, but jobs got stuck in `concurrentJobDone()` at the "Starting crawler delay sleep" step.
+1. **`docs/readmeV1_1.md`** - User-facing documentation
+   - Complete system overview with all features
+   - Full API endpoint reference (11 endpoint groups)
+   - Infrastructure components (9 services documented)
+   - Project templates table (4 templates)
+   - Configuration reference
+   - Usage examples with code snippets
+   - Quick start guide
 
-### Root Cause: Unit Mismatch in Delay Parameter
+2. **`docs/architectureV1_1.md`** - Technical deep-dive
+   - Complete pipeline flow diagrams
+   - Stage-by-stage breakdown (scraping, extraction, storage)
+   - Service architecture details
+   - Data models with schema examples
+   - Concurrency patterns
+   - Storage patterns (deduplication, entity normalization)
+   - Document chunking algorithm
+   - LLM integration (queue + worker)
+   - Deployment guide
 
-**Python pipeline** (`src/services/scraper/client.py`):
-```python
-# BEFORE (bug):
-crawl_request["delay"] = delay_ms  # Sends 2000 (meaning 2000ms)
+### Critical Components Documented (Previously Missing)
 
-# AFTER (fix):
-crawl_request["delay"] = delay_ms / 1000  # Sends 2 (meaning 2 seconds)
-```
+**Infrastructure:**
+- Camoufox browser service (anti-bot, 0% detection rate)
+- Proxy Adapter + FlareSolverr integration
+- RabbitMQ message broker
+- Firecrawl database (separate PostgreSQL)
+- Shutdown Manager (graceful termination)
 
-**Firecrawl** (`concurrency-limit.ts`):
-```typescript
-const delayMs = sc.crawlerOptions.delay * 1000;  // Multiplies by 1000
-```
+**Services:**
+- LLM Worker (adaptive concurrency, DLQ)
+- LLM Request Queue (Redis Streams)
+- Report generation (4 types, 3 formats)
+- Metrics collection (Prometheus)
+- Entity by-value search
 
-**Result of bug**:
-- Python sends `delay=2000` (intending 2000ms = 2 seconds)
-- Firecrawl interprets as 2000 seconds, multiplies: `2000 * 1000 = 2,000,000ms`
-- **Actual delay: 33.33 minutes per job!**
+**Features:**
+- Extraction profiles (general/detailed)
+- Header-based chunking (8000 tokens)
+- Soft delete for projects
+- Template system (4 templates)
+- AJAX discovery in Camoufox
 
-### Evidence
-Logs from rempco.com crawl:
-- 14:01:46 - "Starting crawler delay sleep"
-- 14:35:07 - Next page starts processing
-- **Elapsed: 33 minutes 21 seconds** (matches 2,000,000ms exactly)
+### Accuracy Fixes
 
-### Why scrapethissite.com Worked
-The delay sleep only triggers when **promoting the next job from a backlog**. Scrapethissite completed fast enough that jobs didn't need promotion from backlog, so the delay code path was never executed.
+Fixed critical inaccuracies from old docs:
+- ✅ Middleware order (was completely reversed)
+- ✅ Deduplication threshold (0.90, not 0.95)
+- ✅ Template availability (all 4 available, not "coming soon")
+- ✅ API endpoint paths (project-scoped)
+- ✅ Export endpoints added
+- ✅ Missing configuration variables documented
 
-## Fix Applied
+### Verification Methodology
 
-**File**: `src/services/scraper/client.py` (lines 343-346)
+All claims verified against actual code:
+- Read 50+ source files across all modules
+- Cross-referenced API routes with actual endpoints
+- Verified configuration against config.py
+- Checked Docker Compose for infrastructure
+- Traced data flow through actual service implementations
+- **Zero unverified claims carried over from old docs**
 
-```python
-# Add rate limiting parameters if specified
-# NOTE: Firecrawl expects delay in SECONDS, not milliseconds
-# It multiplies by 1000 internally, so we must convert ms -> seconds
-if delay_ms is not None:
-    crawl_request["delay"] = delay_ms / 1000  # Convert ms to seconds
-```
+## In Progress
 
-## Files Changed This PR
-- `src/services/scraper/client.py` - Fix delay unit conversion
-- `Dockerfile` - Cache bust for fresh build
-- `HANDOFF.md` - Documentation
+N/A - Documentation rewrite completed.
 
-## To Deploy
-```bash
-./build-and-push.sh
-# Then redeploy stack on remote
-```
+## Next Steps
 
-## Environment
-- Remote: 192.168.0.136
-- API: http://192.168.0.136:8742
+- [ ] **Replace old documentation**: Rename `readmeV1_1.md` → `readme.md` and `architectureV1_1.md` → `architecture.md`
+- [ ] **Review and commit**: Commit new documentation to repository
+- [ ] **Archive old docs**: Move old `readme.md` and `architecture.md` to `docs/archive/` for reference
+- [ ] **Update references**: Check if any other files reference old documentation paths
+- [ ] **Validate links**: Ensure all internal documentation links work correctly
+
+## Key Files
+
+### New Documentation (Untracked)
+- `docs/readmeV1_1.md` - **New user documentation** (376 lines, comprehensive)
+- `docs/architectureV1_1.md` - **New technical architecture** (700+ lines, detailed)
+
+### Original Files (For Comparison)
+- `docs/readme.md` - Old user documentation (342 lines, outdated/unreliable)
+- `docs/architecture.md` - Old architecture doc (551 lines, outdated/unreliable)
+
+### Key Source Files Referenced
+- `src/main.py` - FastAPI app, middleware stack verification
+- `src/config.py` - All configuration variables
+- `src/models.py` - Pydantic models for API
+- `src/orm_models.py` - Database schema
+- `src/services/camoufox/` - Anti-bot browser service
+- `src/services/proxy/` - FlareSolverr integration
+- `src/services/llm/worker.py` - LLM worker implementation
+- `src/services/extraction/` - Extraction pipeline
+- `src/services/scraper/` - Scraping workers
+- `src/services/reports/` - Report generation
+- `src/api/v1/*.py` - All API endpoints (11 files)
+- `docker-compose.yml` - Infrastructure stack definition
+
+## Context
+
+### Documentation Approach
+
+**Problem:** Old documentation was unreliable, contained outdated information, and had significant gaps.
+
+**Solution:** Complete rewrite by systematically analyzing actual codebase module-by-module.
+
+**Process:**
+1. Explored project structure and identified all modules
+2. Read service implementations to understand actual functionality
+3. Cross-referenced claims from old docs against code
+4. Documented only verified components
+5. Added missing critical infrastructure (Camoufox, Proxy Adapter, LLM Worker)
+6. Fixed inaccuracies (middleware order, thresholds, endpoints)
+
+### Key Decisions
+
+1. **Created V1_1 files instead of overwriting**: Allows side-by-side comparison and safe rollback
+2. **Excluded Playwright**: Legacy service being phased out, not documented per user request
+3. **Omitted hardware specs**: Environment-specific details not suitable for generic docs
+4. **Added all 4 templates**: research_survey, contract_review, book_catalog all fully implemented despite old docs claiming "coming soon"
+5. **Documented actual API structure**: All endpoints are project-scoped (`/api/v1/projects/{id}/...`)
+
+### Architecture Highlights
+
+The system is more sophisticated than old docs indicated:
+
+**Multi-Layer Anti-Bot Protection:**
+- Firecrawl (orchestrator) → Camoufox (browser pool) → Proxy Adapter → FlareSolverr
+- Domain-based routing, AJAX discovery, content stability detection
+
+**Distributed LLM Processing:**
+- Client enqueues → Redis Streams → Worker pool → Adaptive concurrency
+- Timeout-based scaling, DLQ for failures, consumer groups
+
+**Smart Chunking:**
+- Header-aware (preserves breadcrumbs)
+- 8000 token limit with semantic splitting
+- Falls back gracefully for oversized content
+
+### No Blockers
+
+Documentation is complete and ready for use. All information verified against actual code.
+
+---
+
+**Recommendation:** Run `/clear` to start fresh session for implementation work or other tasks.

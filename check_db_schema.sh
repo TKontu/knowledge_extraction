@@ -1,1 +1,0 @@
-docker exec -it knowledge_extraction-orchestrator-postgres-1 psql -U scristill -d scristill -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name='jobs' ORDER BY ordinal_position;"
