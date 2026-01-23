@@ -340,8 +340,10 @@ class FirecrawlClient:
         }
 
         # Add rate limiting parameters if specified
+        # NOTE: Firecrawl expects delay in SECONDS, not milliseconds
+        # It multiplies by 1000 internally, so we must convert ms -> seconds
         if delay_ms is not None:
-            crawl_request["delay"] = delay_ms
+            crawl_request["delay"] = delay_ms / 1000  # Convert ms to seconds
         if max_concurrency is not None:
             crawl_request["maxConcurrency"] = max_concurrency
 
