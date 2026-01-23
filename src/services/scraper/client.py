@@ -1,5 +1,6 @@
 """Firecrawl client for web scraping."""
 
+import time
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -371,9 +372,18 @@ class FirecrawlClient:
         Returns:
             CrawlStatus with progress and pages.
         """
+        logger.debug(
+            "firecrawl_get_crawl_status_request",
+            crawl_id=crawl_id,
+            endpoint=f"/v1/crawl/{crawl_id}",
+        )
+
+        start_time = time.monotonic()
         response = await self._http_client.get(
             f"{self.base_url}/v1/crawl/{crawl_id}"
         )
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+
         try:
             data = response.json()
         except Exception as e:
@@ -382,6 +392,7 @@ class FirecrawlClient:
                 endpoint="get_crawl_status",
                 crawl_id=crawl_id,
                 status_code=response.status_code,
+                duration_ms=duration_ms,
                 error=str(e),
             )
             return CrawlStatus(
@@ -391,6 +402,16 @@ class FirecrawlClient:
                 pages=[],
                 error=f"Invalid JSON response from Firecrawl: {e}",
             )
+
+        logger.debug(
+            "firecrawl_get_crawl_status_response",
+            crawl_id=crawl_id,
+            status=data.get("status", "unknown"),
+            total=data.get("total", 0),
+            completed=data.get("completed", 0),
+            duration_ms=duration_ms,
+        )
+
         return CrawlStatus(
             status=data.get("status", "unknown"),
             total=data.get("total", 0),

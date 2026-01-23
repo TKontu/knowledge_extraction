@@ -1,6 +1,7 @@
 """Background worker for processing crawl jobs."""
 
 import asyncio
+import time
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -15,6 +16,19 @@ from services.scraper.client import FirecrawlClient
 from services.storage.repositories.source import SourceRepository
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_stale_warning(elapsed_seconds: float) -> str | None:
+    """Get stale warning level based on elapsed time."""
+    if elapsed_seconds >= 300:
+        return "CRITICAL"
+    if elapsed_seconds >= 120:
+        return "HIGH"
+    if elapsed_seconds >= 60:
+        return "MEDIUM"
+    if elapsed_seconds >= 30:
+        return "LOW"
+    return None
 
 
 class CrawlWorker:
@@ -70,7 +84,15 @@ class CrawlWorker:
                 return  # Will be picked up again on next poll
 
             # Step 2: Check crawl status
+            poll_start = time.monotonic()
             status = await self.client.get_crawl_status(firecrawl_job_id)
+            poll_duration_ms = int((time.monotonic() - poll_start) * 1000)
+
+            # Calculate elapsed time since job started
+            elapsed_seconds = 0.0
+            if job.started_at:
+                elapsed_seconds = (datetime.now(UTC) - job.started_at).total_seconds()
+            stale_warning = _get_stale_warning(elapsed_seconds)
 
             # Update progress in result and touch updated_at to prevent redundant polling
             job.result = {
@@ -82,12 +104,19 @@ class CrawlWorker:
             self.db.commit()
 
             if status.status == "scraping":
-                logger.debug(
-                    "crawl_in_progress",
-                    job_id=str(job.id),
-                    completed=status.completed,
-                    total=status.total,
-                )
+                log_data = {
+                    "job_id": str(job.id),
+                    "firecrawl_job_id": firecrawl_job_id,
+                    "completed": status.completed,
+                    "total": status.total,
+                    "elapsed_seconds": round(elapsed_seconds, 1),
+                    "poll_duration_ms": poll_duration_ms,
+                }
+                if stale_warning:
+                    log_data["stale_warning"] = stale_warning
+                    logger.warning("crawl_status_polled", **log_data)
+                else:
+                    logger.debug("crawl_status_polled", **log_data)
                 return  # Continue polling
 
             if status.status == "failed":

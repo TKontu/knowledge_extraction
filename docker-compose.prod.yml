@@ -24,6 +24,7 @@ services:
       - HTTP_PROXY=http://proxy-adapter:8192
       - HTTPS_PROXY=http://proxy-adapter:8192
       - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant,camoufox,firecrawl-db,rabbitmq
+      - LOGGING_LEVEL=${FIRECRAWL_LOGGING_LEVEL:-info}
     depends_on:
       firecrawl-db:
         condition: service_healthy
