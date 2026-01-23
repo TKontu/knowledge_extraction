@@ -1,135 +1,147 @@
-# Handoff: v1.2.2 Deployed & Verified
+# Handoff: Granular Post-Scrape Logging Implementation
 
-**Session Date**: 2026-01-21
-**Version**: v1.2.2 (deployed and tested)
+**Session Date**: 2026-01-23
 **Branch**: main
+**Previous Commit**: 99be6cf - feat: Add debug logging to trace Firecrawl sitemap hangs (#51)
 
-## Completed
+## Completed This Session
 
-### 1. Critical Bug Fix (C1) - Meta_data AttributeError
-- ✅ **Root Cause**: `source.py:270` - ON CONFLICT upsert referenced `stmt.excluded.meta_data` (doesn't exist)
-  - Database column is `metadata`, not `meta_data`
-  - Caused 100% crawl job failures (48 pages crawled, 0 sources created)
-- ✅ **Fix**: Changed to `Source.meta_data: stmt.excluded.metadata` (use Column objects)
-- ✅ **Commit**: `0cf32b2` - fix: Resolve AttributeError in source upsert ON CONFLICT (Critical C1)
+### Implemented Granular Post-Scrape Phase Logging
 
-### 2. Error Handling Improvements (I1)
-- ✅ **Problem**: Error messages lacked exception type information
-- ✅ **Fix**: Enhanced all workers to format errors as `f"{type(e).__name__}: {str(e)}"`
-- ✅ **Added**: `error_type` field to logs + `exc_info=True` for stack traces
-- ✅ **Files Modified**:
-  - `src/services/scraper/crawl_worker.py`
-  - `src/services/scraper/worker.py`
-  - `src/services/extraction/worker.py`
-- ✅ **TDD**: 11 tests in `tests/test_worker_error_handling.py` (all passing)
-- ✅ **Commit**: `6140c58` - feat: Improve error messages with type information and stack traces
+Based on the gap analysis from the previous session (where "Job done" logged but the job hung for 5+ minutes), I traced the exact code path and added detailed logging to identify WHERE the hang occurs.
 
-### 3. Docker Images Published to GHCR
-- ✅ **Images Built & Pushed**:
-  ```
-  ghcr.io/tkontu/pipeline:v1.2.2
-  ghcr.io/tkontu/camoufox:v1.2.2
-  ghcr.io/tkontu/firecrawl-api:v1.2.2
-  ghcr.io/tkontu/proxy-adapter:v1.2.2
-  ```
-- ✅ **Build Script**: Created `build-and-push.sh` for automated releases
-- ✅ **Authentication**: Configured GHCR with `write:packages` token scope
+**Root Cause Analysis**:
+The "Job done" log at line 577 in `processJob()` is misleading - it logs BEFORE the actual job completion. The full post-scrape code path is:
 
-### 4. Fork Management Verified
-- ✅ **Firecrawl Fork**: Properly configured as git submodule at `vendor/firecrawl`
-  - Remote: `https://github.com/TKontu/firecrawl.git`
-  - Current branch: `feature/ajax-discovery`
-  - 5 custom commits with AJAX URL discovery features
-- ✅ **Camoufox**: Custom service (not a fork) - uses upstream PyPI package
-- ✅ **Build Process**: `docker-compose.prod.yml` builds pipeline from source (not GHCR images)
+1. `processJob()` → logs "Job done" → returns
+2. `processJobInternal()` cleanup:
+   - `deleteJobPriority()` - simple Redis SREM
+   - **`concurrentJobDone()`** - **MOST LIKELY CULPRIT**:
+     - Multiple Redis calls to remove from concurrency limits
+     - Loop (up to 10 iterations) to promote next jobs
+     - Calls `getACUCTeam()` (database/cache call) per iteration
+     - Calls `getNextConcurrentJob()` which does Redis zscan/zrem
+     - **Can SLEEP** if crawler delay is configured (line 342-344)
+     - Calls `promoteJobFromBacklogOrAdd()` (PostgreSQL)
+3. `nuq-worker.ts`: `scrapeQueue.jobFinish()` - PostgreSQL update + RabbitMQ notification
 
-### 5. Remote Deployment & Testing
-- ✅ **Server**: 192.168.0.136:8742 rebuilt with latest source
-- ✅ **CACHE_BUST**: Updated to `2026-01-21-125219` to force fresh rebuild
-- ✅ **Verification Test**: Crawled https://www.scrapethissite.com/pages/
-  - **Before fix**: 48 pages → 0 sources (failed)
-  - **After fix**: 48 pages → 46 sources (96% success) ✅
-  - Job ID: `4d3807db-0184-4318-9a36-a902728b8e2c`
-  - Project ID: `d75e0abb-d1ef-489b-9407-ffbdc5284ca4`
+**Files Modified**:
 
-### 6. Repository Cleanup
-- ✅ **Pushed to GitHub**: All commits and documentation updates
-- ✅ **Deleted**: Merged feature branches (feat/improve-error-handling, etc.)
-- ✅ **Cleaned Up**: Removed 7 outdated documentation files
-- ✅ **Updated**: HANDOFF.md with v1.2.2 release notes
+1. **`vendor/firecrawl/apps/api/src/lib/concurrency-limit.ts`**
+   - Added detailed timing to `concurrentJobDone()`:
+     - ENTRY/EXIT logs with total duration
+     - Per-step timing for each Redis operation
+     - Loop iteration logging with durations
+     - Crawler delay sleep logging (if triggered)
+     - Promotion result logging
 
-## In Progress
+2. **`vendor/firecrawl/apps/api/src/services/worker/scrape-worker.ts`**
+   - Added timing to `processJobWithTracing()`:
+     - ENTRY log with mode and skipNuq flag
+     - Timing for `addJobPriority()`
+     - Timing for each job type processing
+     - Inner/outer finally block logging
+     - Timing around `concurrentJobDone()` call
 
-None - all work completed and verified.
+3. **`vendor/firecrawl/apps/api/src/services/worker/nuq-worker.ts`**
+   - Added logging around job completion:
+     - Timing for `jobFinish()` and `jobFail()` calls
+     - Total elapsed time tracking
+     - "Job fully completed" final log
+
+4. **`vendor/firecrawl/apps/api/src/services/worker/nuq.ts`**
+   - Added step-by-step logging to `jobFinish()` and `jobFail()`:
+     - PostgreSQL UPDATE timing
+     - pg_notify timing (if using Postgres listener)
+     - RabbitMQ sendJobEnd timing (if using RabbitMQ)
+
+### Camoufox Not Needed
+
+**Decision**: Camoufox does NOT need additional logging for this issue.
+
+**Reasoning**: Camoufox is only involved during the actual scraping phase (via Playwright). Since we see "Job done" log successfully, the scrape completed. The hang is entirely in post-processing which is all TypeScript/Redis/PostgreSQL operations - no browser involvement.
+
+## Expected Log Output After Deployment
+
+With debug logging enabled, a job should now produce logs like:
+```
+processJobWithTracing ENTRY {mode: "single_urls", skipNuq: false}
+addJobPriority completed {durationMs: 2}
+processJob completed {durationMs: 3200, success: true}
+Set most-recent-success in Redis {durationMs: 1}
+Starting job cleanup (inner finally) {elapsedSinceEntry: 3205}
+deleteJobPriority completed {durationMs: 1}
+Inner finally cleanup completed {cleanupDurationMs: 3}
+Starting outer finally block {skipNuq: false, elapsedSinceEntry: 3210}
+Starting concurrentJobDone {elapsedSinceEntry: 3210}
+concurrentJobDone ENTRY {...}
+removeConcurrencyLimitActiveJob completed {durationMs: 2}
+cleanOldConcurrencyLimitEntries completed {durationMs: 1}
+... (more detailed concurrency operations)
+concurrentJobDone EXIT {totalDurationMs: 150}
+concurrentJobDone completed {durationMs: 150, elapsedSinceEntry: 3360}
+Outer finally block completed {totalElapsedMs: 3365}
+Job processing completed {success: true, durationMs: 3365}
+Starting jobFinish call {elapsedSinceJobStart: 3370}
+jobFinish: Starting PostgreSQL update {...}
+jobFinish: PostgreSQL update completed {durationMs: 5}
+jobFinish completed {success: true, durationMs: 8}
+Job fully completed {totalElapsedMs: 3380}
+```
+
+If a hang occurs, we'll see exactly which step is blocking (e.g., "Starting concurrentJobDone" with no "EXIT" log, or stuck in a specific iteration).
 
 ## Next Steps
 
-### Production Readiness
-- [x] Deploy v1.2.2 to remote server (DONE - verified working)
-- [x] Test crawl pipeline end-to-end (DONE - 46/48 sources created)
-- [ ] Monitor production logs for any edge cases
-- [ ] Consider merging Firecrawl `feature/ajax-discovery` branch to main if stable
-
-### Optional Enhancements (Future Sessions)
-- [ ] Implement remaining improvements from `docs/PLAN-crawl-improvements.md`:
-  - **I2**: Batch database commits in crawl worker (reduce DB load)
-  - **I3**: Filter HTTP 4xx/5xx errors before storing sources
-  - **M3**: Add crawl performance metrics
-  - **M1**: Detect infinite retry loops proactively
-- [ ] Enable LLM queue feature (set `llm_queue_enabled=True` when ready)
+1. **Build and deploy** the new firecrawl-api image with granular logging
+2. **Test with rempco.com** (or similar hanging URL) to capture exact hang location
+3. **Analyze logs** to determine:
+   - Is it `concurrentJobDone()` hanging?
+   - Is it a specific Redis operation?
+   - Is it the crawler delay sleep being triggered?
+   - Is it `promoteJobFromBacklogOrAdd()` (PostgreSQL)?
+   - Is it `jobFinish()` (PostgreSQL/RabbitMQ)?
+4. **Implement fix** once root cause is identified
 
 ## Key Files
 
-### Critical Bug Fix
-- `src/services/storage/repositories/source.py:264-274` - Fixed ON CONFLICT upsert mapping
-- `tests/test_worker_error_handling.py` - TDD tests for error handling improvements
+### Modified This Session
+- `vendor/firecrawl/apps/api/src/lib/concurrency-limit.ts` - Granular logging for concurrentJobDone
+- `vendor/firecrawl/apps/api/src/services/worker/scrape-worker.ts` - processJobWithTracing timing
+- `vendor/firecrawl/apps/api/src/services/worker/nuq-worker.ts` - jobFinish/jobFail timing
+- `vendor/firecrawl/apps/api/src/services/worker/nuq.ts` - PostgreSQL/RabbitMQ step logging
 
-### Build & Deployment
-- `build-and-push.sh` - Automated Docker image build/push script
-- `Dockerfile` - Cache bust: `2026-01-21-125219`
-- `docker-compose.prod.yml` - Builds pipeline from source (NOT from GHCR images)
-
-### Fork Management
-- `.gitmodules` - Declares Firecrawl submodule
-- `vendor/firecrawl/` - Git submodule pointing to TKontu/firecrawl fork
-- `Dockerfile.camoufox` - Custom Camoufox service wrapper
-
-### Documentation
-- `CRAWL_PIPELINE_REVIEW.md` - Complete pipeline analysis with bug discoveries
-- `docs/ISSUE_VERIFICATION.md` - Proof that I1 is real, M2 is false alarm
-- `docs/PLAN-crawl-improvements.md` - 3-phase improvement roadmap
+### Previously Modified (PR #51)
+- `vendor/firecrawl/apps/api/src/services/worker/nuq-worker.ts` - Lock renewal stale warnings
+- `vendor/firecrawl/apps/api/src/services/worker/scrape-worker.ts` - Job processing entry/exit logs
+- `vendor/firecrawl/apps/api/src/scraper/crawler/sitemap.ts` - Heartbeat logging
+- `src/services/scraper/crawl_worker.py` - Stale crawl warnings
+- `src/services/scraper/client.py` - API timing
 
 ## Context
 
-### Architecture Decisions
-1. **Production Builds from Source**: `docker-compose.prod.yml` builds pipeline locally (not from GHCR)
-   - Rationale: Allows quick iteration without publishing every change
-   - GHCR images serve as backup/reference versions
-2. **Firecrawl as Submodule**: Custom AJAX discovery features tracked in fork
-   - Branch: `feature/ajax-discovery` (consider merging to main when stable)
-3. **CACHE_BUST Strategy**: Update timestamp to force Docker rebuild when needed
+### Suspected Hang Locations (in order of likelihood)
+1. **`concurrentJobDone()`** - Complex function with multiple async operations and potential delays
+2. **`getACUCTeam()`** - Database call inside concurrentJobDone loop
+3. **`promoteJobFromBacklogOrAdd()`** - PostgreSQL operation
+4. **`jobFinish()`** - PostgreSQL update + notification
 
-### Verification Results
-Test crawl confirmed the fix works:
-- **URL**: https://www.scrapethissite.com/pages/
-- **Settings**: depth=5, limit=50
-- **Results**: 48 pages crawled → 46 sources stored (96% success)
-- **Error**: None (vs. "AttributeError: meta_data" before fix)
+### Environment
+- Remote: 192.168.0.136
+- API: http://192.168.0.136:8742
+- API Key: thisismyapikey3215215632
 
-### Performance Notes
-- Crawl duration: ~3 minutes for 48 pages
-- Source creation rate: 46/48 (2 pages may have had no content or failed scraping)
-- No errors in job status - clean completion
-
-### Important Notes
-- ✅ Remote server at 192.168.0.136:8742 running latest code
-- ✅ All tests passing (11 new error handling tests)
-- ✅ Git history clean - merged branches deleted
-- ✅ GHCR images published for reference (v1.2.2 tag)
-- 🔄 Production uses local builds, not GHCR images (by design)
+### Test Projects
+- **Debug Test**: 3950b8f8-879b-4597-8c69-0c5dbe185939 (scrapethissite - worked)
+- **Rempco Test**: dcd42f23-c7c4-42f8-9a90-2e25a22817e9 (rempco.com - hung)
 
 ---
 
-**Status**: ✅ v1.2.2 deployed, tested, and verified working in production.
+**Status**: Granular post-scrape logging implemented. Ready for build and deployment to capture exact hang location.
 
-Run `/clear` to start fresh for next session.
+**To Deploy**:
+```bash
+# From project root
+./build-and-push.sh
+# Then redeploy stack on remote
+```
