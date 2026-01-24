@@ -1,0 +1,65 @@
+name: research_survey
+description: Extract key information from academic papers and research documents
+source_config:
+  type: web
+  group_by: paper
+extraction_context:
+  source_type: research paper
+  source_label: Paper
+  entity_id_fields:
+    - entity_id
+    - name
+    - id
+extraction_schema:
+  name: research_finding
+  version: "1.0"
+  field_groups:
+    - name: research_findings
+      description: Key findings from academic papers
+      is_entity_list: false
+      fields:
+        - name: finding_text
+          field_type: text
+          required: true
+          default: ""
+          description: Key finding or claim
+        - name: category
+          field_type: enum
+          required: true
+          default: result
+          enum_values:
+            - methodology
+            - result
+            - conclusion
+            - limitation
+            - future_work
+          description: Category of the finding
+        - name: confidence
+          field_type: float
+          required: true
+          default: 0.8
+          description: Confidence score
+        - name: source_quote
+          field_type: text
+          required: false
+          description: Source quote
+entity_types:
+  - name: author
+    description: Paper author or researcher
+  - name: institution
+    description: University or research organization
+  - name: method
+    description: Research methodology or technique
+  - name: metric
+    description: Quantitative result or measurement
+    attributes:
+      - name: value
+        type: number
+      - name: unit
+        type: text
+  - name: dataset
+    description: Dataset used in research
+  - name: citation
+    description: Referenced work
+prompt_templates: {}
+is_template: true

@@ -1,0 +1,112 @@
+name: drivetrain_company_simple
+description: Simplified extraction for drivetrain component companies - key facts only
+source_config:
+  type: web
+  group_by: company
+extraction_context:
+  source_type: company documentation
+  source_label: Company
+  entity_id_fields:
+    - product_name
+    - entity_id
+    - name
+    - id
+extraction_schema:
+  name: company_summary
+  version: "1.0"
+  field_groups:
+    - name: company_summary
+      description: Simplified company summary for drivetrain companies
+      is_entity_list: false
+      fields:
+        - name: company_name
+          field_type: text
+          required: true
+          default: ""
+          description: Company name
+        - name: business_type
+          field_type: enum
+          required: true
+          default: unknown
+          enum_values:
+            - manufacturer
+            - service_provider
+            - distributor
+            - both_mfg_and_service
+            - unknown
+          description: Primary business type
+        - name: product_categories
+          field_type: list
+          required: false
+          description: "List of product categories: gearboxes, motors, drivetrain_accessories"
+        - name: service_categories
+          field_type: list
+          required: false
+          description: "List of serviced categories: gearboxes, motors, drivetrain_accessories"
+        - name: employee_count
+          field_type: text
+          required: false
+          description: Number of employees or range
+        - name: site_count
+          field_type: integer
+          required: false
+          description: Number of locations
+        - name: site_locations
+          field_type: list
+          required: false
+          description: List of site locations (city, country)
+        - name: confidence
+          field_type: float
+          required: true
+          default: 0.8
+          description: Confidence score
+    - name: products_list
+      description: List of products with specifications
+      is_entity_list: true
+      fields:
+        - name: product_name
+          field_type: text
+          required: true
+          default: ""
+          description: Product name
+        - name: category
+          field_type: text
+          required: false
+          description: Product category
+        - name: power_kw
+          field_type: float
+          required: false
+          description: Power in kW
+        - name: torque_nm
+          field_type: float
+          required: false
+          description: Torque in Nm
+        - name: speed_rpm
+          field_type: float
+          required: false
+          description: Speed in RPM
+entity_types:
+  - name: product
+    description: Product with specifications
+    attributes:
+      - name: name
+        type: text
+      - name: category
+        type: text
+      - name: power_kw
+        type: number
+      - name: torque_nm
+        type: number
+      - name: speed_rpm
+        type: number
+  - name: location
+    description: Site location
+    attributes:
+      - name: city
+        type: text
+      - name: country
+        type: text
+      - name: type
+        type: text
+prompt_templates: {}
+is_template: true

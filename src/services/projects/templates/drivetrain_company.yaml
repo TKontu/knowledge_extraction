@@ -1,0 +1,313 @@
+name: drivetrain_company_analysis
+description: Extract manufacturing capabilities, services, company info, and product specs from drivetrain component companies
+source_config:
+  type: web
+  group_by: company
+extraction_context:
+  source_type: company documentation
+  source_label: Company
+  entity_id_fields:
+    - product_name
+    - entity_id
+    - name
+    - id
+extraction_schema:
+  name: company_profile
+  version: "1.0"
+  field_groups:
+    - name: manufacturing
+      description: Manufacturing capabilities for drivetrain components
+      is_entity_list: false
+      prompt_hint: |
+        Look for evidence of MANUFACTURING:
+        - "we manufacture", "our production", "made by us", "designed and built"
+        - Factory descriptions, OEM references, production capacity
+        - Do NOT confuse with distribution or reselling
+      fields:
+        - name: manufactures_gearboxes
+          field_type: boolean
+          required: true
+          default: false
+          description: Whether the company manufactures gearboxes/gearheads/gear reducers
+        - name: manufactures_motors
+          field_type: boolean
+          required: true
+          default: false
+          description: Whether the company manufactures motors (electric, servo, stepper, etc.)
+        - name: manufactures_drivetrain_accessories
+          field_type: boolean
+          required: true
+          default: false
+          description: Whether the company manufactures drivetrain accessories (couplings, shafts, bearings, brakes, clutches, etc.)
+        - name: manufacturing_details
+          field_type: text
+          required: false
+          description: Additional details about manufacturing capabilities and specializations
+    - name: services
+      description: Service and repair capabilities
+      is_entity_list: false
+      prompt_hint: |
+        Look for SERVICE offerings:
+        - Repair services, maintenance programs, overhaul
+        - Service centers, field service teams (on-site service at customer locations)
+        - Spare parts supply, technical support
+        - Field service = technicians travel to customer site
+      fields:
+        - name: provides_services
+          field_type: boolean
+          required: true
+          default: false
+          description: Whether the company provides repair/maintenance/refurbishment services
+        - name: services_gearboxes
+          field_type: boolean
+          required: true
+          default: false
+          description: Provides service for gearboxes
+        - name: services_motors
+          field_type: boolean
+          required: true
+          default: false
+          description: Provides service for motors
+        - name: services_drivetrain_accessories
+          field_type: boolean
+          required: true
+          default: false
+          description: Provides service for drivetrain accessories
+        - name: provides_field_service
+          field_type: boolean
+          required: true
+          default: false
+          description: Provides on-site/field service at customer locations
+        - name: service_types
+          field_type: list
+          required: false
+          description: "Types: repair, maintenance, refurbishment, installation, commissioning, field service"
+    - name: company_info
+      description: Company identification and size information
+      is_entity_list: false
+      prompt_hint: |
+        Extract company information:
+        - Look in "About Us", footer, contact pages
+        - Employee counts may be approximate ("over 500 employees")
+        - Headquarters vs manufacturing vs sales locations
+      fields:
+        - name: company_name
+          field_type: text
+          required: true
+          default: ""
+          description: Official company name
+        - name: employee_count
+          field_type: integer
+          required: false
+          description: Number of employees (exact or estimated)
+        - name: employee_count_range
+          field_type: enum
+          required: true
+          default: unknown
+          enum_values:
+            - 1-10
+            - 11-50
+            - 51-200
+            - 201-500
+            - 501-1000
+            - 1001-5000
+            - 5000+
+            - unknown
+          description: Employee count range if exact number unavailable
+        - name: number_of_sites
+          field_type: integer
+          required: false
+          description: Number of company locations/facilities
+        - name: headquarters_location
+          field_type: text
+          required: false
+          description: Headquarters city and country
+    - name: products_gearbox
+      description: Gearbox product information
+      is_entity_list: true
+      prompt_hint: |
+        Extract GEARBOX products only:
+        - Product names, series, model numbers
+        - Convert HP to kW (multiply by 0.746)
+        - Convert lb-ft to Nm (multiply by 1.356)
+        - Gear ratios like "1:50" or "50:1"
+      fields:
+        - name: product_name
+          field_type: text
+          required: true
+          default: ""
+          description: Product name
+        - name: series_name
+          field_type: text
+          required: false
+          description: Product series
+        - name: model_number
+          field_type: text
+          required: false
+          description: Model number
+        - name: subcategory
+          field_type: text
+          required: false
+          description: "planetary, helical, worm, bevel, cycloidal"
+        - name: power_rating_kw
+          field_type: float
+          required: false
+          description: Power rating in kW
+        - name: torque_rating_nm
+          field_type: float
+          required: false
+          description: Torque rating in Nm
+        - name: ratio
+          field_type: text
+          required: false
+          description: Gear ratio
+        - name: efficiency_percent
+          field_type: float
+          required: false
+          description: Efficiency percentage
+    - name: products_motor
+      description: Motor product information
+      is_entity_list: true
+      prompt_hint: |
+        Extract MOTOR products only:
+        - Electric motors, servo motors, stepper motors
+        - Power ratings, speed ratings, voltage
+      fields:
+        - name: product_name
+          field_type: text
+          required: true
+          default: ""
+          description: Product name
+        - name: series_name
+          field_type: text
+          required: false
+          description: Product series
+        - name: model_number
+          field_type: text
+          required: false
+          description: Model number
+        - name: subcategory
+          field_type: text
+          required: false
+          description: "AC, DC, servo, stepper, brushless, induction"
+        - name: power_rating_kw
+          field_type: float
+          required: false
+          description: Power rating in kW
+        - name: speed_rating_rpm
+          field_type: float
+          required: false
+          description: Speed rating in RPM
+        - name: voltage
+          field_type: text
+          required: false
+          description: Voltage
+    - name: products_accessory
+      description: Drivetrain accessory products
+      is_entity_list: true
+      prompt_hint: |
+        Extract ACCESSORY products:
+        - Couplings, shafts, bearings, brakes, clutches
+        - Pulleys, belts, chains, sprockets
+      fields:
+        - name: product_name
+          field_type: text
+          required: true
+          default: ""
+          description: Product name
+        - name: subcategory
+          field_type: text
+          required: false
+          description: "coupling, shaft, bearing, brake, clutch"
+        - name: model_number
+          field_type: text
+          required: false
+          description: Model number
+        - name: torque_rating_nm
+          field_type: float
+          required: false
+          description: Torque rating in Nm
+    - name: company_meta
+      description: Certifications and locations
+      is_entity_list: false
+      prompt_hint: |
+        Extract:
+        - Certifications: ISO 9001, ISO 14001, ATEX, UL, CE, etc.
+        - Locations: manufacturing plants, headquarters, sales offices, service centers
+      fields:
+        - name: certifications
+          field_type: list
+          required: false
+          description: "ISO certifications, industry standards, safety certifications"
+        - name: locations
+          field_type: list
+          required: false
+          description: "List of {city, country, site_type} objects"
+entity_types:
+  - name: company
+    description: Company name and identifier
+    attributes:
+      - name: legal_name
+        type: text
+      - name: trade_name
+        type: text
+  - name: site_location
+    description: Company facility or office location
+    attributes:
+      - name: city
+        type: text
+      - name: state_province
+        type: text
+      - name: country
+        type: text
+      - name: site_type
+        type: text
+  - name: product
+    description: Product offered by the company
+    attributes:
+      - name: product_name
+        type: text
+      - name: product_category
+        type: text
+      - name: product_subcategory
+        type: text
+      - name: power_rating_kw
+        type: number
+      - name: torque_rating_nm
+        type: number
+      - name: speed_rating_rpm
+        type: number
+      - name: ratio
+        type: text
+      - name: model_number
+        type: text
+      - name: series_name
+        type: text
+  - name: service
+    description: Service offered by the company
+    attributes:
+      - name: service_name
+        type: text
+      - name: service_type
+        type: text
+      - name: components_serviced
+        type: text
+  - name: certification
+    description: Industry certification or standard compliance
+    attributes:
+      - name: cert_name
+        type: text
+      - name: cert_body
+        type: text
+prompt_templates:
+  system: |
+    You are extracting information about industrial drivetrain component companies.
+    Focus on identifying:
+    1. Manufacturing capabilities for gearboxes, motors, and drivetrain accessories
+    2. Service capabilities for these components
+    3. Company size and locations
+    4. Product specifications including power, torque, and speed ratings
+
+    Be precise with technical specifications and convert units where possible to standard metric (kW, Nm, RPM).
+    If information is not explicitly stated, mark confidence as lower.
+is_template: true

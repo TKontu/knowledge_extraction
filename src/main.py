@@ -29,6 +29,7 @@ from middleware.request_logging import RequestLoggingMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
 from qdrant_connection import check_qdrant_connection, qdrant_client
 from redis_client import check_redis_connection
+from services.projects.template_loader import TemplateLoadError, load_templates
 from services.scraper.scheduler import start_scheduler, stop_scheduler
 from services.storage.qdrant.repository import QdrantRepository
 from shutdown import get_shutdown_manager, shutdown_manager
@@ -91,6 +92,18 @@ async def lifespan(app: FastAPI):
         commit=git_commit,
         environment=os.getenv("ENVIRONMENT", "production")
     )
+
+    # Load templates from YAML files
+    try:
+        load_templates()
+        logger.info("templates_loaded_successfully")
+    except TemplateLoadError as e:
+        logger.error(
+            "template_load_failed",
+            template=e.template_name,
+            errors=e.errors,
+        )
+        raise
 
     # Check security configuration
     check_security_config()
