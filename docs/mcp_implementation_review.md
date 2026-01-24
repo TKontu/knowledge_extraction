@@ -20,41 +20,28 @@ prompts/workflows.py (workflow templates)
 
 ## Important (should fix)
 
-- [ ] **src/ke_mcp/tools/reports.py:124** - **Field mismatch in get_report**
-  Client expects `generated_at` but API returns it as `generated_at` field. Actually OK.
-  However, the API `ReportResponse.generated_at` at line 196 returns `report.created_at.isoformat()` - this is correct.
+- [ ] **src/ke_mcp/client.py:86-89** - **500 errors not retried** (design choice)
+  Server errors (500+) raise immediately instead of retrying like timeouts.
+  This is arguably intentional - some consider 500s permanent errors that shouldn't retry.
+  **Low priority** - current behavior is reasonable.
 
-- [ ] **src/ke_mcp/client.py:86-89** - **500 errors not retried**
-  Server errors (500+) raise immediately instead of retrying like timeouts. This is inconsistent - transient server errors should also retry.
-  ```python
-  elif response.status_code >= 500:
-      raise APIError(...)  # Should retry instead
-  ```
+## Verified as Non-Issues (false positives)
 
-- [ ] **src/ke_mcp/tools/acquisition.py:170-201** - **get_job_status uses generic job endpoint**
-  The tool calls `client.get_job()` which hits `/api/v1/jobs/{job_id}`, but crawl/scrape jobs should use `/api/v1/crawl/{job_id}` or `/api/v1/scrape/{job_id}` respectively. The generic job endpoint may not have the same response structure.
+The following were initially flagged but verified as working correctly:
 
-## Minor
+1. **Empty string default for api_key** - Empty string `""` is falsy in Python, so `if self.settings.api_key:` correctly skips adding the header.
 
-- [ ] **src/ke_mcp/config.py:48-50** - **Empty string as default for api_key**
-  Default is `""` which will pass truthiness check but fail auth. Consider using `None` as default and checking explicitly.
-  ```python
-  api_key: str = Field(default="", ...)  # Empty string is truthy-ish but invalid
-  ```
+2. **get_job_status uses generic endpoint** - The generic `/jobs/{id}` endpoint returns a `result` dict containing all crawl-specific data. The tool correctly passes this through.
 
-- [ ] **src/ke_mcp/client.py:162-163** - **params handling for details=False**
-  When `details=False`, params is set to `None`. This works but is inconsistent - could pass `{"details": "false"}` for explicitness.
+3. **No 401 handling** - 401 errors fall through to `response.raise_for_status()` which raises `HTTPStatusError`, then converted to `APIError`. Works correctly.
 
-- [ ] **src/ke_mcp/prompts/workflows.py:98-99, 115-116** - **Invalid Python syntax in prompt templates**
-  The prompts show `source_groups={companies}` which is invalid Python (uses raw variable, not JSON).
-  Should be `source_groups=["Company A", "Company B"]` or similar valid format.
+4. **Invalid Python syntax in prompts** - The f-string `{companies}` interpolates to `['Acme Inc', 'Competitor Corp']` which is valid Python syntax.
 
-- [ ] **No 401 handling in _request()** - Client handles 404, 409, 422, 500+ but not 401 (authentication failures). Should map 401 to a specific error or log it clearly.
-
-## Not Issues (verified correct)
+## Verified Correct
 
 - API endpoint paths in client.py match actual FastAPI routes
 - Report response field names match between client expectations and API responses
 - Tool registration pattern is correct for FastMCP
 - Lifespan context properly passes client to tools
 - Error handling with APIError is consistent across all tools
+- Authentication header now uses correct `X-API-Key` format
