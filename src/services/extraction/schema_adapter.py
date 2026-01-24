@@ -195,6 +195,9 @@ class SchemaAdapter:
     def generate_prompt_hint(self, field_group_def: dict) -> str:
         """Generate LLM prompt hint from field group definition.
 
+        The system prompt already lists fields and types, so this hint
+        focuses on extraction strategy and domain-specific guidance.
+
         Args:
             field_group_def: The field group definition dict.
 
@@ -203,6 +206,23 @@ class SchemaAdapter:
         """
         description = field_group_def.get("description", "")
         name = field_group_def.get("name", "")
+        is_entity_list = field_group_def.get("is_entity_list", False)
+        fields = field_group_def.get("fields", [])
 
-        # Generate a basic prompt hint based on description and name
-        return f"Extract {description.lower()} ({name})"
+        hints = []
+
+        if is_entity_list:
+            # Entity lists need guidance on finding multiple items
+            entity_singular = name.rstrip("s") if name.endswith("s") else name
+            hints.append(f"Look for all {name} mentioned in the content.")
+            hints.append(f"Each {entity_singular} should be a separate item in the list.")
+        else:
+            # Regular extraction - focus on where to find info
+            hints.append(f"Look for {description.lower()} in the content.")
+
+        # Add guidance for list fields (complex to extract)
+        list_fields = [f.get("name") for f in fields if f.get("field_type") == "list"]
+        if list_fields:
+            hints.append(f"For list fields, collect all mentioned values.")
+
+        return " ".join(hints)

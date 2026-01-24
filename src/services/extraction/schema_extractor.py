@@ -256,31 +256,52 @@ For boolean fields, only return true if there is clear evidence.
 """
 
     def _build_entity_list_system_prompt(self, field_group: FieldGroup) -> str:
-        """Build system prompt for entity list extraction (products)."""
+        """Build system prompt for entity list extraction.
+
+        Uses the field group name as the output key (e.g., "employees", "locations")
+        instead of hardcoding "products".
+        """
         field_specs = []
+        id_field = None
         for f in field_group.fields:
             spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'
             field_specs.append(spec)
+            # Find the ID field for the example
+            if f.name in ("product_name", "entity_id", "name", "id") and id_field is None:
+                id_field = f.name
 
         fields_str = "\n".join(field_specs)
 
-        return f"""You are extracting {field_group.description} from company documentation.
+        # Use group name as output key
+        output_key = field_group.name
 
-For each product found, extract:
+        # Build example using actual ID field or first field
+        if id_field:
+            example_fields = f'"{id_field}": "...", ...'
+        else:
+            first_field = field_group.fields[0].name if field_group.fields else "field"
+            example_fields = f'"{first_field}": "...", ...'
+
+        # Singular form for "each X" phrasing
+        entity_singular = field_group.name.rstrip("s")
+
+        return f"""You are extracting {field_group.description} from documentation.
+
+For each {entity_singular} found, extract:
 {fields_str}
 
 {field_group.prompt_hint}
 
 Output JSON with structure:
 {{
-  "products": [
-    {{"product_name": "...", "series_name": "...", ...}},
+  "{output_key}": [
+    {{{example_fields}}},
     ...
   ],
   "confidence": 0.0-1.0
 }}
 
-Only include products you find clear evidence for. Return empty list if none found.
+Only include items you find clear evidence for. Return empty list if none found.
 """
 
     def _build_user_prompt(

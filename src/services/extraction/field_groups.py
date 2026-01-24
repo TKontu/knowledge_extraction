@@ -294,7 +294,10 @@ COMPANY_META_GROUP = FieldGroup(
 )
 
 
-# All groups for iteration
+# DEPRECATED: These hardcoded groups are no longer used.
+# Field groups are now loaded dynamically from project.extraction_schema
+# via SchemaAdapter.convert_to_field_groups().
+# Kept for backward compatibility with any external code that might reference them.
 ALL_FIELD_GROUPS = [
     MANUFACTURING_GROUP,
     SERVICES_GROUP,
@@ -305,5 +308,5 @@ ALL_FIELD_GROUPS = [
     COMPANY_META_GROUP,
 ]
 
-# Quick lookup by name
+# DEPRECATED: Use SchemaAdapter to convert project schemas instead.
 FIELD_GROUPS_BY_NAME = {g.name: g for g in ALL_FIELD_GROUPS}
