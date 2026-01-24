@@ -355,6 +355,92 @@ class ProjectFromTemplate(BaseModel):
     customizations: dict = Field(default={}, description="Override specific fields")
 
 
+# Template API models
+
+
+class FieldDefinitionResponse(BaseModel):
+    """Field definition within a field group."""
+
+    name: str = Field(..., description="Field name")
+    field_type: str = Field(..., description="Field type: text, integer, float, boolean, enum, list")
+    description: str | None = Field(None, description="Field description")
+    required: bool = Field(default=False, description="Whether field is required")
+    default: Any | None = Field(None, description="Default value")
+    enum_values: list[str] | None = Field(None, description="Allowed values for enum type")
+
+
+class FieldGroupResponse(BaseModel):
+    """Field group within extraction schema."""
+
+    name: str = Field(..., description="Field group name")
+    description: str | None = Field(None, description="Field group description")
+    is_entity_list: bool = Field(default=False, description="Whether this extracts a list of entities")
+    fields: list[FieldDefinitionResponse] = Field(default_factory=list, description="Fields in this group")
+
+
+class EntityTypeResponse(BaseModel):
+    """Entity type definition."""
+
+    name: str = Field(..., description="Entity type name")
+    description: str | None = Field(None, description="Entity type description")
+
+
+class TemplateResponse(BaseModel):
+    """Full template details response."""
+
+    name: str = Field(..., description="Template name (use with create_from_template)")
+    description: str = Field(..., description="Template description")
+    field_groups: list[FieldGroupResponse] = Field(default_factory=list, description="What this template extracts")
+    entity_types: list[EntityTypeResponse] = Field(default_factory=list, description="Entity types created")
+
+    @classmethod
+    def from_template(cls, template: dict) -> "TemplateResponse":
+        """Create response from template dict."""
+        schema = template.get("extraction_schema", {})
+        field_groups = []
+
+        for fg in schema.get("field_groups", []):
+            fields = [
+                FieldDefinitionResponse(
+                    name=f["name"],
+                    field_type=f.get("field_type", "text"),
+                    description=f.get("description"),
+                    required=f.get("required", False),
+                    default=f.get("default"),
+                    enum_values=f.get("enum_values"),
+                )
+                for f in fg.get("fields", [])
+            ]
+            field_groups.append(FieldGroupResponse(
+                name=fg["name"],
+                description=fg.get("description"),
+                is_entity_list=fg.get("is_entity_list", False),
+                fields=fields,
+            ))
+
+        entity_types = [
+            EntityTypeResponse(
+                name=et["name"],
+                description=et.get("description"),
+            )
+            for et in template.get("entity_types", [])
+        ]
+
+        return cls(
+            name=template["name"],
+            description=template.get("description", ""),
+            field_groups=field_groups,
+            entity_types=entity_types,
+        )
+
+
+class TemplateListResponse(BaseModel):
+    """Response for template list with details."""
+
+    templates: list[TemplateResponse] = Field(..., description="List of templates")
+    count: int = Field(..., description="Number of templates")
+
+
 # Search API models
 
 

@@ -1,7 +1,7 @@
 """Entry point for running the MCP server as a module.
 
 Usage:
-    python -m src.mcp
+    python -m src.ke_mcp
 """
 
 from .server import main

@@ -10,7 +10,7 @@ async def test_create_project_success(mock_context):
     """Test creating project with template."""
     from mcp.server.fastmcp import FastMCP
 
-    from src.mcp.tools.projects import register_project_tools
+    from src.ke_mcp.tools.projects import register_project_tools
 
     mcp = FastMCP("test")
     register_project_tools(mcp)
@@ -37,7 +37,7 @@ async def test_list_projects_empty(mock_context):
 
     from mcp.server.fastmcp import FastMCP
 
-    from src.mcp.tools.projects import register_project_tools
+    from src.ke_mcp.tools.projects import register_project_tools
 
     mcp = FastMCP("test")
     register_project_tools(mcp)

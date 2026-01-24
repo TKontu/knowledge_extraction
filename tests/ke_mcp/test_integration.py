@@ -17,8 +17,8 @@ class TestMCPServerIntegration:
     @pytest.fixture
     async def client(self):
         """Create real client connected to API."""
-        from src.mcp.client import KnowledgeExtractionClient
-        from src.mcp.config import MCPSettings
+        from src.ke_mcp.client import KnowledgeExtractionClient
+        from src.ke_mcp.config import MCPSettings
 
         settings = MCPSettings()
         client = KnowledgeExtractionClient(settings)

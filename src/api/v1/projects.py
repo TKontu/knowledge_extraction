@@ -8,10 +8,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import ProjectCreate, ProjectFromTemplate, ProjectResponse, ProjectUpdate
+from models import (
+    ProjectCreate,
+    ProjectFromTemplate,
+    ProjectResponse,
+    ProjectUpdate,
+    TemplateListResponse,
+    TemplateResponse,
+)
 from orm_models import Extraction
 from services.projects.repository import ProjectRepository
-from services.projects.template_loader import get_template, list_template_names
+from services.projects.template_loader import (
+    get_all_templates,
+    get_template,
+    list_template_names,
+)
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -67,10 +78,51 @@ async def list_projects(
     return [ProjectResponse.model_validate(p) for p in projects]
 
 
-@router.get("/templates", response_model=list[str])
-async def list_templates() -> list[str]:
-    """List available project templates."""
-    return list_template_names()
+@router.get("/templates")
+async def list_templates(
+    details: bool = False,
+) -> list[str] | TemplateListResponse:
+    """List available project templates.
+
+    Args:
+        details: If True, return full template details. If False, return names only.
+
+    Returns:
+        List of template names (default) or TemplateListResponse with full details.
+    """
+    if not details:
+        return list_template_names()
+
+    all_templates = get_all_templates()
+    templates = [
+        TemplateResponse.from_template(t)
+        for t in all_templates.values()
+    ]
+    return TemplateListResponse(templates=templates, count=len(templates))
+
+
+@router.get("/templates/{template_name}", response_model=TemplateResponse)
+async def get_template_details(template_name: str) -> TemplateResponse:
+    """Get detailed information about a specific template.
+
+    Args:
+        template_name: Name of the template (e.g., 'company_analysis', 'default')
+
+    Returns:
+        Full template details including field groups and entity types.
+
+    Raises:
+        HTTPException: 404 if template not found.
+    """
+    template = get_template(template_name)
+    if template is None:
+        available = list_template_names()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{template_name}' not found. Available: {available}",
+        )
+
+    return TemplateResponse.from_template(template)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
