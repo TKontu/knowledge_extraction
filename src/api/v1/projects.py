@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -15,6 +16,7 @@ from services.projects.templates import (
     RESEARCH_SURVEY_TEMPLATE,
     CONTRACT_REVIEW_TEMPLATE,
     BOOK_CATALOG_TEMPLATE,
+    DEFAULT_EXTRACTION_TEMPLATE,
 )
 
 # Template registry for lookup
@@ -23,8 +25,10 @@ TEMPLATES = {
     "research_survey": RESEARCH_SURVEY_TEMPLATE,
     "contract_review": CONTRACT_REVIEW_TEMPLATE,
     "book_catalog": BOOK_CATALOG_TEMPLATE,
+    "default": DEFAULT_EXTRACTION_TEMPLATE,
 }
 
+logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
@@ -42,6 +46,13 @@ async def create_project(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Project with name '{project.name}' already exists",
+        )
+
+    # Log if default template was applied (check schema name)
+    if project.extraction_schema and project.extraction_schema.get("name") == "generic_facts":
+        logger.info(
+            "default_template_assigned",
+            project_name=project.name,
         )
 
     # Create project

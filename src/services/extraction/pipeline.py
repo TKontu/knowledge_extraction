@@ -26,8 +26,10 @@ MAX_BACKPRESSURE_RETRIES = 10  # Max retries before raising QueueFullError
 
 from services.extraction.extractor import ExtractionOrchestrator
 from services.extraction.profiles import ProfileRepository
+from services.extraction.schema_adapter import SchemaAdapter
 from services.knowledge.extractor import EntityExtractor
 from services.projects.repository import ProjectRepository
+from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 from services.storage.deduplication import ExtractionDeduplicator
 from services.storage.embedding import EmbeddingService
 from services.storage.qdrant.repository import QdrantRepository
@@ -365,12 +367,14 @@ class SchemaExtractionPipeline:
         self,
         source,  # Source ORM object
         company_name: str,
+        field_groups: list | None = None,
     ) -> list:  # list[Extraction]
         """Extract all field groups from a source.
 
         Args:
             source: Source ORM object with markdown content.
             company_name: Company name (source_group).
+            field_groups: Pre-converted FieldGroup objects (optional, loaded from project if not provided).
 
         Returns:
             List of created Extraction objects.
@@ -381,11 +385,21 @@ class SchemaExtractionPipeline:
             logger.warning("source_has_no_content", source_id=str(source.id))
             return []
 
+        # Use provided field_groups or require caller to provide them
+        if not field_groups:
+            logger.error(
+                "extract_source_no_field_groups",
+                source_id=str(source.id),
+                message="field_groups must be provided",
+            )
+            return []
+
         # Run extraction for all field groups
         results = await self._orchestrator.extract_all_groups(
             source_id=source.id,
             markdown=source.content,
             company_name=company_name,
+            field_groups=field_groups,
         )
 
         # Store each result as an extraction
@@ -418,13 +432,47 @@ class SchemaExtractionPipeline:
             project_id: Project UUID.
             source_groups: Optional filter by company names.
             skip_extracted: If True, skip sources with 'extracted' status.
-                           Defaults to True to avoid re-extracting.
 
         Returns:
             Summary dict with extraction counts.
         """
-        from orm_models import Source
-        from services.extraction.field_groups import ALL_FIELD_GROUPS
+        from orm_models import Project, Source
+
+        # Load project to get extraction_schema
+        project = self._db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            logger.error("project_not_found", project_id=str(project_id))
+            return {"error": "Project not found", "project_id": str(project_id)}
+
+        # Convert project schema to field groups
+        adapter = SchemaAdapter()
+        schema = project.extraction_schema
+
+        # Fallback to default if schema is missing or invalid
+        if not schema:
+            logger.warning(
+                "project_missing_schema_using_default",
+                project_id=str(project_id),
+            )
+            schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+
+        validation = adapter.validate_extraction_schema(schema)
+        if not validation.is_valid:
+            logger.error(
+                "invalid_extraction_schema_using_default",
+                project_id=str(project_id),
+                errors=validation.errors,
+            )
+            schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+
+        field_groups = adapter.convert_to_field_groups(schema)
+
+        logger.info(
+            "using_project_schema",
+            project_id=str(project_id),
+            schema_name=schema.get("name", "unknown"),
+            field_groups_count=len(field_groups),
+        )
 
         # Build list of allowed statuses based on skip_extracted flag
         allowed_statuses = ["ready", "pending"]
@@ -447,17 +495,18 @@ class SchemaExtractionPipeline:
             "project_extraction_started",
             project_id=str(project_id),
             source_count=len(sources),
+            field_groups_count=len(field_groups),
         )
 
-        # Process sources in parallel with semaphore to limit concurrency
-        # Higher concurrency keeps vLLM queue full for better throughput
-        semaphore = asyncio.Semaphore(10)  # Max 10 concurrent source extractions
+        # Process sources in parallel
+        semaphore = asyncio.Semaphore(10)
 
         async def extract_with_limit(source) -> int:
             async with semaphore:
                 extractions = await self.extract_source(
                     source=source,
                     company_name=source.source_group,
+                    field_groups=field_groups,
                 )
                 return len(extractions)
 
@@ -465,11 +514,11 @@ class SchemaExtractionPipeline:
             *[extract_with_limit(s) for s in sources],
             return_exceptions=True,
         )
-        # Filter out exceptions and sum only successful results
+
         total_extractions = sum(
             c for c in extraction_counts if isinstance(c, int)
         )
-        # Log any failures
+
         for i, result in enumerate(extraction_counts):
             if isinstance(result, Exception):
                 logger.error(
@@ -484,5 +533,6 @@ class SchemaExtractionPipeline:
             "project_id": str(project_id),
             "sources_processed": len(sources),
             "extractions_created": total_extractions,
-            "field_groups": len(ALL_FIELD_GROUPS),
+            "field_groups": len(field_groups),
+            "schema_name": schema.get("name", "unknown"),
         }

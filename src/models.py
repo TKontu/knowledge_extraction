@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ScrapeRequest(BaseModel):
@@ -294,12 +294,24 @@ class ProjectCreate(BaseModel):
         default={"type": "web", "group_by": "company"},
         description="Source configuration",
     )
-    extraction_schema: dict = Field(..., description="JSONB extraction schema")
+    extraction_schema: dict | None = Field(
+        default=None,
+        description="JSONB extraction schema. If omitted, uses default template.",
+    )
     entity_types: list = Field(
         default=[], description="List of entity type definitions"
     )
     prompt_templates: dict = Field(default={}, description="Custom prompt templates")
     is_template: bool = Field(default=False, description="Whether this is a template")
+
+    @model_validator(mode="after")
+    def apply_default_schema(self):
+        """Apply default extraction schema if not provided or empty."""
+        if self.extraction_schema is None or self.extraction_schema == {}:
+            from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
+
+            self.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+        return self
 
 
 class ProjectUpdate(BaseModel):

@@ -278,6 +278,19 @@ async def extract_schema(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Log which schema will be used
+    schema_name = (
+        project.extraction_schema.get("name", "unknown")
+        if project.extraction_schema
+        else "default"
+    )
+    logger.info(
+        "extract_schema_endpoint_called",
+        project_id=project_id,
+        schema_name=schema_name,
+        source_groups=source_groups,
+    )
+
     # Create LLM queue if enabled (requires async Redis client)
     llm_queue = None
     if settings.llm_queue_enabled:

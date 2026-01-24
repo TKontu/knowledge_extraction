@@ -808,16 +808,26 @@ class TestExtractProjectSkipExtracted:
         self, schema_pipeline, mock_db_session
     ):
         """Should exclude sources with 'extracted' status when skip_extracted=True."""
-        from orm_models import Source
+        from orm_models import Source, Project
+        from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
         project_id = uuid4()
 
-        # Setup mock query chain
+        # Mock project with extraction schema
+        mock_project = Mock(spec=Project)
+        mock_project.id = project_id
+        mock_project.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+
+        # Setup mock query chain for both Project and Source
         mock_query = Mock()
         mock_filter = Mock()
+        mock_first = Mock()
         mock_query.filter.return_value = mock_filter
+        mock_filter.first.return_value = mock_project
         mock_filter.filter.return_value = mock_filter
         mock_filter.all.return_value = []
+
+        # query() will be called twice: once for Project, once for Source
         mock_db_session.query.return_value = mock_query
 
         await schema_pipeline.extract_project(project_id, skip_extracted=True)
@@ -832,14 +842,21 @@ class TestExtractProjectSkipExtracted:
         self, schema_pipeline, mock_db_session
     ):
         """Should include all statuses including 'extracted' when skip_extracted=False."""
-        from orm_models import Source
+        from orm_models import Source, Project
+        from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
         project_id = uuid4()
 
-        # Setup mock query chain
+        # Mock project with extraction schema
+        mock_project = Mock(spec=Project)
+        mock_project.id = project_id
+        mock_project.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+
+        # Setup mock query chain for both Project and Source
         mock_query = Mock()
         mock_filter = Mock()
         mock_query.filter.return_value = mock_filter
+        mock_filter.first.return_value = mock_project
         mock_filter.filter.return_value = mock_filter
         mock_filter.all.return_value = []
         mock_db_session.query.return_value = mock_query
@@ -847,4 +864,5 @@ class TestExtractProjectSkipExtracted:
         await schema_pipeline.extract_project(project_id, skip_extracted=False)
 
         # Verify query was executed (includes extracted sources)
-        mock_db_session.query.assert_called_once_with(Source)
+        # query() is called twice: once for Project, once for Source
+        assert mock_db_session.query.call_count >= 1

@@ -598,6 +598,108 @@ DRIVETRAIN_COMPANY_TEMPLATE_SIMPLE = {
     "is_template": True,
 }
 
+# Default template for projects without custom schema
+DEFAULT_EXTRACTION_TEMPLATE = {
+    "name": "default",
+    "description": "Generic extraction template for any content type",
+    "source_config": {"type": "web", "group_by": "source"},
+    "extraction_schema": {
+        "name": "generic_facts",
+        "version": "1.0",
+        "description": "Generic fact extraction schema",
+        "field_groups": [
+            {
+                "name": "entity_info",
+                "description": "Basic entity identification",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "entity_name",
+                        "field_type": "text",
+                        "description": "Name of the primary entity or subject",
+                        "required": True,
+                        "default": "",
+                    },
+                    {
+                        "name": "entity_type",
+                        "field_type": "enum",
+                        "description": "Type of entity",
+                        "required": True,
+                        "default": "unknown",
+                        "enum_values": ["company", "product", "person", "organization", "location", "unknown"],
+                    },
+                    {
+                        "name": "description",
+                        "field_type": "text",
+                        "description": "Brief description of the entity",
+                        "required": False,
+                    },
+                ],
+            },
+            {
+                "name": "key_facts",
+                "description": "Important factual information",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "fact_category",
+                        "field_type": "enum",
+                        "description": "Category of fact",
+                        "required": True,
+                        "default": "general",
+                        "enum_values": ["general", "technical", "financial", "operational", "historical"],
+                    },
+                    {
+                        "name": "fact_text",
+                        "field_type": "text",
+                        "description": "The factual statement",
+                        "required": True,
+                        "default": "",
+                    },
+                    {
+                        "name": "confidence",
+                        "field_type": "float",
+                        "description": "Confidence score 0.0-1.0",
+                        "required": True,
+                        "default": 0.8,
+                    },
+                ],
+            },
+            {
+                "name": "contact_info",
+                "description": "Contact and location information",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "locations",
+                        "field_type": "list",
+                        "description": "List of locations (city, country)",
+                        "required": False,
+                    },
+                    {
+                        "name": "website",
+                        "field_type": "text",
+                        "description": "Website URL",
+                        "required": False,
+                    },
+                    {
+                        "name": "contact_email",
+                        "field_type": "text",
+                        "description": "Contact email address",
+                        "required": False,
+                    },
+                ],
+            },
+        ],
+    },
+    "entity_types": [
+        {"name": "entity", "description": "Generic named entity"},
+        {"name": "fact", "description": "Factual statement"},
+    ],
+    "prompt_templates": {},
+    "is_template": True,
+}
+
 __all__ = [
     "COMPANY_ANALYSIS_TEMPLATE",
     "RESEARCH_SURVEY_TEMPLATE",
@@ -605,4 +707,5 @@ __all__ = [
     "BOOK_CATALOG_TEMPLATE",
     "DRIVETRAIN_COMPANY_TEMPLATE",
     "DRIVETRAIN_COMPANY_TEMPLATE_SIMPLE",
+    "DEFAULT_EXTRACTION_TEMPLATE",
 ]
