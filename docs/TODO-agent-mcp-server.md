@@ -705,7 +705,7 @@ def register_project_tools(mcp: FastMCP) -> None:
         name: Annotated[str, "Unique project name (lowercase, hyphens allowed)"],
         template: Annotated[
             str | None,
-            "Template name: company_analysis, research_survey, contract_review, book_catalog, or default"
+            "Template name: company_analysis, research_survey, contract_review, book_catalog, drivetrain_company_analysis, drivetrain_company_simple, or default"
         ] = None,
         description: Annotated[str | None, "Project description"] = None,
         ctx: Context = None,
@@ -720,6 +720,8 @@ def register_project_tools(mcp: FastMCP) -> None:
         - research_survey: Extract findings from academic papers
         - contract_review: Extract legal terms from contracts
         - book_catalog: Extract metadata from books
+        - drivetrain_company_analysis: Detailed extraction for industrial drivetrain companies
+        - drivetrain_company_simple: Simplified extraction for drivetrain companies
         - default: Generic fact extraction for any content
         """
         client = ctx.request_context.lifespan_context["client"]
@@ -817,6 +819,8 @@ def register_project_tools(mcp: FastMCP) -> None:
                 "research_survey": "Extract findings from academic papers",
                 "contract_review": "Extract legal terms from contracts",
                 "book_catalog": "Extract metadata from books",
+                "drivetrain_company_analysis": "Detailed extraction for industrial drivetrain companies (manufacturing, services, products)",
+                "drivetrain_company_simple": "Simplified extraction for drivetrain companies (key facts only)",
                 "default": "Generic fact extraction for any content",
             }
 
@@ -1529,6 +1533,18 @@ Extract metadata and summaries from books.
 - **Categories**: author, title, genre, plot, character
 - **Entity types**: author, character, setting, publication_date
 - **Best for**: Book catalogs, library content
+
+### drivetrain_company_analysis
+Detailed extraction for industrial drivetrain component companies.
+- **Field groups**: manufacturing, services, company_info, products_gearbox, products_motor, products_accessory, company_meta
+- **Entity types**: company, site_location, product, service, certification
+- **Best for**: Industrial manufacturer analysis with detailed product specs
+
+### drivetrain_company_simple
+Simplified extraction for drivetrain companies (key facts only).
+- **Field groups**: company_summary, products_list
+- **Entity types**: product, location
+- **Best for**: Quick company overview without detailed product breakdowns
 
 ### default
 Generic fact extraction for any content type.
