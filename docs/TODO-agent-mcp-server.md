@@ -27,6 +27,8 @@ We need an **MCP (Model Context Protocol) server** that wraps this API, enabling
 
 **Transport:** STDIO (for Claude Desktop/Claude Code integration)
 
+**Dependency:** This task depends on `agent-template-api` completing first (adds `GET /api/v1/projects/templates/{name}` endpoint).
+
 ## Objective
 
 Implement a production-ready MCP server that exposes the Knowledge Extraction API as MCP tools, resources, and prompts, following official MCP patterns and best practices.
@@ -310,9 +312,28 @@ class KnowledgeExtractionClient:
         """Get project by ID."""
         return await self._request("GET", f"/api/v1/projects/{project_id}")
 
-    async def list_templates(self) -> list[str]:
-        """List available project templates."""
-        return await self._request("GET", "/api/v1/projects/templates")
+    async def list_templates(self, details: bool = False) -> list[str] | dict[str, Any]:
+        """List available project templates.
+
+        Args:
+            details: If True, return full template details including field groups.
+
+        Returns:
+            List of template names (if details=False) or dict with full details.
+        """
+        params = {"details": details} if details else None
+        return await self._request("GET", "/api/v1/projects/templates", params=params)
+
+    async def get_template(self, template_name: str) -> dict[str, Any]:
+        """Get detailed information about a specific template.
+
+        Args:
+            template_name: Template name (e.g., 'company_analysis', 'default')
+
+        Returns:
+            Full template details including field groups and entity types.
+        """
+        return await self._request("GET", f"/api/v1/projects/templates/{template_name}")
 
     # =========================================================================
     # Crawl/Scrape Operations
@@ -803,35 +824,80 @@ def register_project_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def list_templates(ctx: Context = None) -> dict:
-        """List available project templates.
+        """List available project templates with descriptions.
 
         Templates provide pre-configured extraction schemas for common use cases.
-        Use these template names with create_project().
+        Use these template names with create_project() or get_template_details()
+        for more information about what each template extracts.
         """
         client = ctx.request_context.lifespan_context["client"]
 
         try:
-            templates = await client.list_templates()
-
-            # Add descriptions for known templates
-            template_info = {
-                "company_analysis": "Extract technical facts from company documentation",
-                "research_survey": "Extract findings from academic papers",
-                "contract_review": "Extract legal terms from contracts",
-                "book_catalog": "Extract metadata from books",
-                "drivetrain_company_analysis": "Detailed extraction for industrial drivetrain companies (manufacturing, services, products)",
-                "drivetrain_company_simple": "Simplified extraction for drivetrain companies (key facts only)",
-                "default": "Generic fact extraction for any content",
-            }
+            # Use the details=true endpoint to get full template info
+            result = await client.list_templates(details=True)
 
             return {
                 "success": True,
+                "count": result["count"],
                 "templates": [
                     {
-                        "name": t,
-                        "description": template_info.get(t, "Custom template"),
+                        "name": t["name"],
+                        "description": t["description"],
+                        "field_group_count": len(t.get("field_groups", [])),
+                        "entity_type_count": len(t.get("entity_types", [])),
                     }
-                    for t in templates
+                    for t in result["templates"]
+                ],
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def get_template_details(
+        template_name: Annotated[str, "Template name (e.g., 'company_analysis', 'default')"],
+        ctx: Context = None,
+    ) -> dict:
+        """Get detailed information about a specific template.
+
+        Returns the template's field groups (what gets extracted) and entity types
+        (what entities are created). Use this to understand what a template does
+        before creating a project with it.
+
+        Example:
+            get_template_details("company_analysis")
+            get_template_details("drivetrain_company_analysis")
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            template = await client.get_template(template_name)
+
+            # Format field groups for readability
+            field_groups = []
+            for fg in template.get("field_groups", []):
+                field_groups.append({
+                    "name": fg["name"],
+                    "description": fg.get("description"),
+                    "is_entity_list": fg.get("is_entity_list", False),
+                    "fields": [
+                        {
+                            "name": f["name"],
+                            "type": f["field_type"],
+                            "required": f.get("required", False),
+                            "description": f.get("description"),
+                        }
+                        for f in fg.get("fields", [])
+                    ],
+                })
+
+            return {
+                "success": True,
+                "name": template["name"],
+                "description": template["description"],
+                "field_groups": field_groups,
+                "entity_types": [
+                    {"name": et["name"], "description": et.get("description")}
+                    for et in template.get("entity_types", [])
                 ],
             }
         except APIError as e:
@@ -845,6 +911,9 @@ def register_project_tools(mcp: FastMCP) -> None:
 - `test_list_projects_with_data` - returns project info
 - `test_get_project_success` - returns full details
 - `test_get_project_not_found` - handles 404
+- `test_list_templates_returns_details` - returns template descriptions
+- `test_get_template_details_success` - returns field groups and entity types
+- `test_get_template_details_not_found` - handles unknown template
 
 ---
 
@@ -1504,66 +1573,42 @@ def register_template_resources(mcp: FastMCP) -> None:
     """Register template resources."""
 
     @mcp.resource("templates://overview")
-    async def templates_overview() -> str:
-        """Overview of available project templates."""
-        return """# Knowledge Extraction Templates
+    async def templates_overview(ctx) -> str:
+        """Overview of available project templates (dynamically loaded from API)."""
+        client = ctx.request_context.lifespan_context["client"]
 
-## Available Templates
+        try:
+            result = await client.list_templates(details=True)
+            templates = result.get("templates", [])
+        except Exception:
+            # Fallback to static content if API unavailable
+            return "# Templates\n\nUse `list_templates()` tool to see available templates."
 
-### company_analysis (Recommended for documentation)
-Extract technical facts from company documentation.
-- **Categories**: specs, api, security, pricing, features, integration
-- **Entity types**: plan, feature, limit, certification, pricing
-- **Best for**: Product docs, API references, pricing pages
+        lines = ["# Knowledge Extraction Templates\n"]
+        lines.append("## Available Templates\n")
 
-### research_survey
-Extract findings from academic papers and research.
-- **Categories**: methodology, result, conclusion, limitation, future_work
-- **Entity types**: author, institution, method, metric, dataset
-- **Best for**: Academic papers, research reports, white papers
+        for t in templates:
+            lines.append(f"### {t['name']}")
+            lines.append(f"{t['description']}\n")
 
-### contract_review
-Extract legal terms from contracts and agreements.
-- **Categories**: obligation, right, condition, definition, termination
-- **Entity types**: party, date, amount, jurisdiction
-- **Best for**: Legal documents, terms of service, agreements
+            # Field groups
+            if t.get("field_groups"):
+                fg_names = [fg["name"] for fg in t["field_groups"]]
+                lines.append(f"- **Field groups**: {', '.join(fg_names)}")
 
-### book_catalog
-Extract metadata and summaries from books.
-- **Categories**: author, title, genre, plot, character
-- **Entity types**: author, character, setting, publication_date
-- **Best for**: Book catalogs, library content
+            # Entity types
+            if t.get("entity_types"):
+                et_names = [et["name"] for et in t["entity_types"]]
+                lines.append(f"- **Entity types**: {', '.join(et_names)}")
 
-### drivetrain_company_analysis
-Detailed extraction for industrial drivetrain component companies.
-- **Field groups**: manufacturing, services, company_info, products_gearbox, products_motor, products_accessory, company_meta
-- **Entity types**: company, site_location, product, service, certification
-- **Best for**: Industrial manufacturer analysis with detailed product specs
+            lines.append("")
 
-### drivetrain_company_simple
-Simplified extraction for drivetrain companies (key facts only).
-- **Field groups**: company_summary, products_list
-- **Entity types**: product, location
-- **Best for**: Quick company overview without detailed product breakdowns
+        lines.append("## Usage\n")
+        lines.append("Use `list_templates()` to see all templates.")
+        lines.append("Use `get_template_details(name)` for field-level details.")
+        lines.append("Use `create_project(name, template=...)` to create a project.\n")
 
-### default
-Generic fact extraction for any content type.
-- **Categories**: general, technical, financial, operational, historical
-- **Entity types**: entity, fact
-- **Best for**: General content when no specific template fits
-
-## Usage
-
-Use the `create_project` tool with the `template` parameter:
-
-```
-create_project(
-    name="my-analysis",
-    template="company_analysis",
-    description="Analyzing competitor documentation"
-)
-```
-"""
+        return "\n".join(lines)
 ```
 
 ---
@@ -1937,7 +1982,7 @@ For testing with Claude Desktop, add to `claude_desktop_config.json`:
 - [ ] Configuration module with pydantic-settings
 - [ ] Async HTTP client with retry logic
 - [ ] FastMCP server with lifespan management
-- [ ] Project tools: create_project, list_projects, get_project, list_templates
+- [ ] Project tools: create_project, list_projects, get_project, list_templates, get_template_details
 - [ ] Acquisition tools: crawl_website, scrape_urls, get_job_status
 - [ ] Extraction tools: extract_knowledge, list_extractions
 - [ ] Search tools: search_knowledge, list_entities, get_entity_summary
@@ -1955,7 +2000,7 @@ For testing with Claude Desktop, add to `claude_desktop_config.json`:
 ## Summary
 
 - Add MCP (Model Context Protocol) server to expose Knowledge Extraction API to AI assistants
-- Implement 14 MCP tools across 5 categories (projects, acquisition, extraction, search, reports)
+- Implement 15 MCP tools across 5 categories (projects, acquisition, extraction, search, reports)
 - Add template resources and workflow prompts for guided usage
 - Support STDIO transport for Claude Desktop/Claude Code integration
 
@@ -1963,7 +2008,7 @@ For testing with Claude Desktop, add to `claude_desktop_config.json`:
 
 | Category | Tools |
 |----------|-------|
-| Projects | create_project, list_projects, get_project, list_templates |
+| Projects | create_project, list_projects, get_project, list_templates, get_template_details |
 | Acquisition | crawl_website, scrape_urls, get_job_status |
 | Extraction | extract_knowledge, list_extractions |
 | Search | search_knowledge, list_entities, get_entity_summary |
