@@ -366,22 +366,29 @@ class SchemaExtractionPipeline:
     async def extract_source(
         self,
         source,  # Source ORM object
-        company_name: str,
+        source_context: str | None = None,
+        company_name: str | None = None,  # Deprecated, backward compat
         field_groups: list | None = None,
+        extraction_context: "ExtractionContext | None" = None,
         schema_name: str = "unknown",
     ) -> list:  # list[Extraction]
         """Extract all field groups from a source.
 
         Args:
             source: Source ORM object with markdown content.
-            company_name: Company name (source_group).
+            source_context: Source context (e.g., company name, website name).
+            company_name: DEPRECATED. Use source_context instead.
             field_groups: Pre-converted FieldGroup objects (required).
+            extraction_context: Optional extraction context for prompt customization.
             schema_name: Name of the schema used for extraction (for tracking).
 
         Returns:
             List of created Extraction objects.
         """
         from orm_models import Extraction
+
+        # Backward compatibility: use company_name if source_context not provided
+        context_value = source_context if source_context is not None else company_name
 
         if not source.content:
             logger.warning("source_has_no_content", source_id=str(source.id))
@@ -400,7 +407,7 @@ class SchemaExtractionPipeline:
         results = await self._orchestrator.extract_all_groups(
             source_id=source.id,
             markdown=source.content,
-            company_name=company_name,
+            source_context=context_value,
             field_groups=field_groups,
         )
 
@@ -412,7 +419,7 @@ class SchemaExtractionPipeline:
                 source_id=source.id,
                 data=result["data"],
                 extraction_type=result["extraction_type"],
-                source_group=company_name,
+                source_group=context_value,
                 confidence=result.get("confidence"),
                 profile_used=schema_name,
             )
@@ -510,7 +517,7 @@ class SchemaExtractionPipeline:
             async with semaphore:
                 extractions = await self.extract_source(
                     source=source,
-                    company_name=source.source_group,
+                    source_context=source.source_group,
                     field_groups=field_groups,
                     schema_name=schema_name,
                 )

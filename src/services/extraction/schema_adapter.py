@@ -1,6 +1,6 @@
 """Schema adapter for converting JSONB extraction schemas to FieldGroup objects."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -11,6 +11,30 @@ class ValidationResult:
     is_valid: bool
     errors: list[str]
     warnings: list[str]
+
+
+@dataclass
+class ExtractionContext:
+    """Context configuration for extraction prompts."""
+
+    source_type: str = "content"
+    source_label: str = "Source"
+    entity_id_fields: list[str] = field(
+        default_factory=lambda: ["product_name", "entity_id", "name", "id"]
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "ExtractionContext":
+        """Create from template's extraction_context dict."""
+        if not data:
+            return cls()
+        return cls(
+            source_type=data.get("source_type", "content"),
+            source_label=data.get("source_label", "Source"),
+            entity_id_fields=data.get(
+                "entity_id_fields", ["product_name", "entity_id", "name", "id"]
+            ),
+        )
 
 
 class SchemaAdapter:
@@ -87,13 +111,17 @@ class SchemaAdapter:
                     f"maximum is {self.MAX_FIELDS_PER_GROUP}"
                 )
 
-            # Rule 7: is_entity_list groups must have product_name or entity_id field
+            # Rule 7: is_entity_list groups should have at least one identifiable field
+            # (warning, not error - some lists may not need dedup)
             if fg.get("is_entity_list", False):
                 field_names = [f.get("name") for f in fg["fields"] if isinstance(f, dict)]
-                if "product_name" not in field_names and "entity_id" not in field_names:
-                    errors.append(
-                        f"field_groups[{i}] has is_entity_list=true but no "
-                        "'product_name' or 'entity_id' field"
+                # Check against common ID patterns - validation doesn't know template context
+                common_id_fields = ["entity_id", "name", "id", "product_name"]
+                has_id_field = any(name in field_names for name in common_id_fields)
+                if not has_id_field:
+                    warnings.append(
+                        f"field_groups[{i}] is_entity_list=true but has no common ID field "
+                        f"for deduplication. Consider adding one of: {common_id_fields}"
                     )
 
             # Rule 9: No duplicate field names within group
@@ -152,6 +180,20 @@ class SchemaAdapter:
             errors=errors,
             warnings=warnings,
         )
+
+    def parse_template(self, template: dict) -> tuple[list, ExtractionContext]:
+        """Parse template into FieldGroups and ExtractionContext.
+
+        Args:
+            template: Full template dict with extraction_context and extraction_schema.
+
+        Returns:
+            Tuple of (field_groups, context).
+        """
+        schema = template.get("extraction_schema", template)  # Backward compat
+        field_groups = self.convert_to_field_groups(schema)
+        context = ExtractionContext.from_dict(template.get("extraction_context"))
+        return field_groups, context
 
     def convert_to_field_groups(self, schema: dict) -> list:
         """Convert JSONB schema to list of FieldGroup objects.

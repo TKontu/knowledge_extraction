@@ -11,6 +11,11 @@ COMPANY_ANALYSIS_TEMPLATE = {
     "name": "company_analysis",
     "description": "Extract technical facts from company documentation",
     "source_config": {"type": "web", "group_by": "company"},
+    "extraction_context": {
+        "source_type": "company website",
+        "source_label": "Company",
+        "entity_id_fields": ["entity_id", "name", "id", "product_name"],
+    },
     "extraction_schema": {
         "name": "technical_fact",
         "version": "1.0",
@@ -85,6 +90,11 @@ RESEARCH_SURVEY_TEMPLATE = {
     "name": "research_survey",
     "description": "Extract key information from academic papers and research documents",
     "source_config": {"type": "web", "group_by": "paper"},
+    "extraction_context": {
+        "source_type": "research paper",
+        "source_label": "Paper",
+        "entity_id_fields": ["entity_id", "name", "id"],
+    },
     "extraction_schema": {
         "name": "research_finding",
         "version": "1.0",
@@ -159,6 +169,11 @@ CONTRACT_REVIEW_TEMPLATE = {
     "name": "contract_review",
     "description": "Extract key terms and obligations from legal contracts",
     "source_config": {"type": "document", "group_by": "contract"},
+    "extraction_context": {
+        "source_type": "legal contract",
+        "source_label": "Contract",
+        "entity_id_fields": ["entity_id", "name", "id"],
+    },
     "extraction_schema": {
         "name": "contract_term",
         "version": "1.0",
@@ -234,6 +249,11 @@ BOOK_CATALOG_TEMPLATE = {
     "name": "book_catalog",
     "description": "Extract book information from online bookstores and catalogs",
     "source_config": {"type": "web", "group_by": "category"},
+    "extraction_context": {
+        "source_type": "book catalog",
+        "source_label": "Catalog",
+        "entity_id_fields": ["entity_id", "name", "id"],
+    },
     "extraction_schema": {
         "name": "book_info",
         "version": "1.0",
@@ -317,6 +337,11 @@ DRIVETRAIN_COMPANY_TEMPLATE = {
     "name": "drivetrain_company_analysis",
     "description": "Extract manufacturing capabilities, services, company info, and product specs from drivetrain component companies",
     "source_config": {"type": "web", "group_by": "company"},
+    "extraction_context": {
+        "source_type": "company documentation",
+        "source_label": "Company",
+        "entity_id_fields": ["product_name", "entity_id", "name", "id"],
+    },
     "extraction_schema": {
         "name": "company_profile",
         "version": "1.0",
@@ -709,6 +734,11 @@ DRIVETRAIN_COMPANY_TEMPLATE_SIMPLE = {
     "name": "drivetrain_company_simple",
     "description": "Simplified extraction for drivetrain component companies - key facts only",
     "source_config": {"type": "web", "group_by": "company"},
+    "extraction_context": {
+        "source_type": "company documentation",
+        "source_label": "Company",
+        "entity_id_fields": ["product_name", "entity_id", "name", "id"],
+    },
     "extraction_schema": {
         "name": "company_summary",
         "version": "1.0",
@@ -849,6 +879,11 @@ DEFAULT_EXTRACTION_TEMPLATE = {
     "name": "default",
     "description": "Generic extraction template for any content type",
     "source_config": {"type": "web", "group_by": "source"},
+    "extraction_context": {
+        "source_type": "content",
+        "source_label": "Source",
+        "entity_id_fields": ["product_name", "entity_id", "name", "id"],
+    },
     "extraction_schema": {
         "name": "generic_facts",
         "version": "1.0",

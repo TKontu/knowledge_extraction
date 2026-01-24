@@ -371,7 +371,7 @@ class LLMWorker:
         to building prompts internally for backward compatibility.
 
         Args:
-            payload: Request payload with content, field_group, company_name,
+            payload: Request payload with content, field_group, source_context,
                     and optionally system_prompt, user_prompt, model.
 
         Returns:
@@ -385,13 +385,15 @@ class LLMWorker:
         if not system_prompt or not user_prompt:
             content = payload.get("content", "")
             field_group = payload.get("field_group", {})
-            company_name = payload.get("company_name", "")
+            # Support both source_context (new) and company_name (backward compat)
+            source_context = payload.get("source_context") or payload.get("company_name", "")
 
             group_name = field_group.get("name", "unknown")
             group_desc = field_group.get("description", "")
 
             system_prompt = f"Extract {group_name} information: {group_desc}"
-            user_prompt = f"Company: {company_name}\n\nContent:\n{content[:8000]}"
+            # Use generic "Source:" label in fallback mode
+            user_prompt = f"Source: {source_context}\n\nContent:\n{content[:8000]}" if source_context else f"Content:\n{content[:8000]}"
 
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
