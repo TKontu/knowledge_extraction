@@ -1,4 +1,10 @@
-"""Project templates for common extraction use cases."""
+"""Project templates for common extraction use cases.
+
+All templates use the new schema format with:
+- field_groups[] wrapper
+- field_type (not type)
+- enum_values (not values)
+"""
 
 # Template for company technical analysis (default project)
 COMPANY_ANALYSIS_TEMPLATE = {
@@ -7,40 +13,49 @@ COMPANY_ANALYSIS_TEMPLATE = {
     "source_config": {"type": "web", "group_by": "company"},
     "extraction_schema": {
         "name": "technical_fact",
-        "fields": [
+        "version": "1.0",
+        "field_groups": [
             {
-                "name": "fact_text",
-                "type": "text",
-                "required": True,
-                "description": "The extracted factual statement",
-            },
-            {
-                "name": "category",
-                "type": "enum",
-                "required": True,
-                "values": [
-                    "specs",
-                    "api",
-                    "security",
-                    "pricing",
-                    "features",
-                    "integration",
+                "name": "technical_facts",
+                "description": "Technical facts extracted from company documentation",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "fact_text",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "The extracted factual statement",
+                    },
+                    {
+                        "name": "category",
+                        "field_type": "enum",
+                        "required": True,
+                        "default": "features",
+                        "enum_values": [
+                            "specs",
+                            "api",
+                            "security",
+                            "pricing",
+                            "features",
+                            "integration",
+                        ],
+                        "description": "Category of the technical fact",
+                    },
+                    {
+                        "name": "confidence",
+                        "field_type": "float",
+                        "required": True,
+                        "default": 0.8,
+                        "description": "Confidence score of the extraction",
+                    },
+                    {
+                        "name": "source_quote",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Brief quote from the source document",
+                    },
                 ],
-                "description": "Category of the technical fact",
-            },
-            {
-                "name": "confidence",
-                "type": "float",
-                "min": 0.0,
-                "max": 1.0,
-                "default": 0.8,
-                "description": "Confidence score of the extraction",
-            },
-            {
-                "name": "source_quote",
-                "type": "text",
-                "required": False,
-                "description": "Brief quote from the source document",
             },
         ],
     },
@@ -72,34 +87,49 @@ RESEARCH_SURVEY_TEMPLATE = {
     "source_config": {"type": "web", "group_by": "paper"},
     "extraction_schema": {
         "name": "research_finding",
-        "fields": [
+        "version": "1.0",
+        "field_groups": [
             {
-                "name": "finding_text",
-                "type": "text",
-                "required": True,
-                "description": "Key finding or claim",
-            },
-            {
-                "name": "category",
-                "type": "enum",
-                "required": True,
-                "values": [
-                    "methodology",
-                    "result",
-                    "conclusion",
-                    "limitation",
-                    "future_work",
+                "name": "research_findings",
+                "description": "Key findings from academic papers",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "finding_text",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Key finding or claim",
+                    },
+                    {
+                        "name": "category",
+                        "field_type": "enum",
+                        "required": True,
+                        "default": "result",
+                        "enum_values": [
+                            "methodology",
+                            "result",
+                            "conclusion",
+                            "limitation",
+                            "future_work",
+                        ],
+                        "description": "Category of the finding",
+                    },
+                    {
+                        "name": "confidence",
+                        "field_type": "float",
+                        "required": True,
+                        "default": 0.8,
+                        "description": "Confidence score",
+                    },
+                    {
+                        "name": "source_quote",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Source quote",
+                    },
                 ],
-                "description": "Category of the finding",
             },
-            {
-                "name": "confidence",
-                "type": "float",
-                "min": 0.0,
-                "max": 1.0,
-                "default": 0.8,
-            },
-            {"name": "source_quote", "type": "text", "required": False},
         ],
     },
     "entity_types": [
@@ -131,39 +161,49 @@ CONTRACT_REVIEW_TEMPLATE = {
     "source_config": {"type": "document", "group_by": "contract"},
     "extraction_schema": {
         "name": "contract_term",
-        "fields": [
+        "version": "1.0",
+        "field_groups": [
             {
-                "name": "term_text",
-                "type": "text",
-                "required": True,
-                "description": "Contract term or clause",
-            },
-            {
-                "name": "category",
-                "type": "enum",
-                "required": True,
-                "values": [
-                    "obligation",
-                    "right",
-                    "condition",
-                    "definition",
-                    "termination",
-                    "liability",
+                "name": "contract_terms",
+                "description": "Key terms and clauses from contracts",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "term_text",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Contract term or clause",
+                    },
+                    {
+                        "name": "category",
+                        "field_type": "enum",
+                        "required": True,
+                        "default": "obligation",
+                        "enum_values": [
+                            "obligation",
+                            "right",
+                            "condition",
+                            "definition",
+                            "termination",
+                            "liability",
+                        ],
+                        "description": "Type of contract term",
+                    },
+                    {
+                        "name": "confidence",
+                        "field_type": "float",
+                        "required": True,
+                        "default": 0.8,
+                        "description": "Confidence score",
+                    },
+                    {
+                        "name": "section_ref",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Section or clause number",
+                    },
                 ],
-                "description": "Type of contract term",
-            },
-            {
-                "name": "confidence",
-                "type": "float",
-                "min": 0.0,
-                "max": 1.0,
-                "default": 0.8,
-            },
-            {
-                "name": "section_ref",
-                "type": "text",
-                "required": False,
-                "description": "Section or clause number",
             },
         ],
     },
@@ -196,53 +236,61 @@ BOOK_CATALOG_TEMPLATE = {
     "source_config": {"type": "web", "group_by": "category"},
     "extraction_schema": {
         "name": "book_info",
-        "fields": [
+        "version": "1.0",
+        "field_groups": [
             {
-                "name": "title",
-                "type": "text",
-                "required": True,
-                "description": "Book title",
-            },
-            {
-                "name": "price",
-                "type": "text",
-                "required": True,
-                "description": "Book price with currency",
-            },
-            {
-                "name": "availability",
-                "type": "enum",
-                "required": False,
-                "values": ["in_stock", "out_of_stock", "limited", "unknown"],
-                "default": "unknown",
-                "description": "Stock availability status",
-            },
-            {
-                "name": "rating",
-                "type": "integer",
-                "required": False,
-                "min": 1,
-                "max": 5,
-                "description": "Star rating (1-5)",
-            },
-            {
-                "name": "category",
-                "type": "text",
-                "required": False,
-                "description": "Book genre or category",
-            },
-            {
-                "name": "description",
-                "type": "text",
-                "required": False,
-                "description": "Book description or synopsis",
-            },
-            {
-                "name": "confidence",
-                "type": "float",
-                "min": 0.0,
-                "max": 1.0,
-                "default": 0.8,
+                "name": "book_details",
+                "description": "Book information from catalogs",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "title",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Book title",
+                    },
+                    {
+                        "name": "price",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Book price with currency",
+                    },
+                    {
+                        "name": "availability",
+                        "field_type": "enum",
+                        "required": True,
+                        "default": "unknown",
+                        "enum_values": ["in_stock", "out_of_stock", "limited", "unknown"],
+                        "description": "Stock availability status",
+                    },
+                    {
+                        "name": "rating",
+                        "field_type": "integer",
+                        "required": False,
+                        "description": "Star rating (1-5)",
+                    },
+                    {
+                        "name": "category",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Book genre or category",
+                    },
+                    {
+                        "name": "description",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Book description or synopsis",
+                    },
+                    {
+                        "name": "confidence",
+                        "field_type": "float",
+                        "required": True,
+                        "default": 0.8,
+                        "description": "Confidence score",
+                    },
+                ],
             },
         ],
     },
@@ -271,131 +319,326 @@ DRIVETRAIN_COMPANY_TEMPLATE = {
     "source_config": {"type": "web", "group_by": "company"},
     "extraction_schema": {
         "name": "company_profile",
-        "fields": [
-            # Manufacturing capabilities
+        "version": "1.0",
+        "field_groups": [
             {
-                "name": "manufactures_gearboxes",
-                "type": "boolean",
-                "required": True,
-                "default": False,
-                "description": "Whether the company manufactures gearboxes/gearheads/gear reducers",
-            },
-            {
-                "name": "manufactures_motors",
-                "type": "boolean",
-                "required": True,
-                "default": False,
-                "description": "Whether the company manufactures motors (electric, servo, stepper, etc.)",
-            },
-            {
-                "name": "manufactures_drivetrain_accessories",
-                "type": "boolean",
-                "required": True,
-                "default": False,
-                "description": "Whether the company manufactures drivetrain accessories (couplings, shafts, bearings, brakes, clutches, etc.)",
-            },
-            {
-                "name": "manufacturing_details",
-                "type": "text",
-                "required": False,
-                "description": "Additional details about manufacturing capabilities and specializations",
-            },
-            # Service capabilities
-            {
-                "name": "provides_services",
-                "type": "boolean",
-                "required": True,
-                "default": False,
-                "description": "Whether the company provides repair/maintenance/refurbishment services",
-            },
-            {
-                "name": "services_gearboxes",
-                "type": "boolean",
-                "required": False,
-                "default": False,
-                "description": "Provides service for gearboxes",
-            },
-            {
-                "name": "services_motors",
-                "type": "boolean",
-                "required": False,
-                "default": False,
-                "description": "Provides service for motors",
-            },
-            {
-                "name": "services_drivetrain_accessories",
-                "type": "boolean",
-                "required": False,
-                "default": False,
-                "description": "Provides service for drivetrain accessories",
-            },
-            {
-                "name": "service_types",
-                "type": "list",
-                "required": False,
-                "description": "Types of services offered (repair, maintenance, refurbishment, installation, commissioning, etc.)",
-            },
-            # Company information
-            {
-                "name": "company_name",
-                "type": "text",
-                "required": True,
-                "description": "Official company name",
-            },
-            {
-                "name": "employee_count",
-                "type": "integer",
-                "required": False,
-                "description": "Number of employees (exact or estimated)",
-            },
-            {
-                "name": "employee_count_range",
-                "type": "enum",
-                "required": False,
-                "values": [
-                    "1-10",
-                    "11-50",
-                    "51-200",
-                    "201-500",
-                    "501-1000",
-                    "1001-5000",
-                    "5000+",
-                    "unknown",
+                "name": "manufacturing",
+                "description": "Manufacturing capabilities for drivetrain components",
+                "is_entity_list": False,
+                "prompt_hint": """Look for evidence of MANUFACTURING:
+- "we manufacture", "our production", "made by us", "designed and built"
+- Factory descriptions, OEM references, production capacity
+- Do NOT confuse with distribution or reselling""",
+                "fields": [
+                    {
+                        "name": "manufactures_gearboxes",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Whether the company manufactures gearboxes/gearheads/gear reducers",
+                    },
+                    {
+                        "name": "manufactures_motors",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Whether the company manufactures motors (electric, servo, stepper, etc.)",
+                    },
+                    {
+                        "name": "manufactures_drivetrain_accessories",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Whether the company manufactures drivetrain accessories (couplings, shafts, bearings, brakes, clutches, etc.)",
+                    },
+                    {
+                        "name": "manufacturing_details",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Additional details about manufacturing capabilities and specializations",
+                    },
                 ],
-                "default": "unknown",
-                "description": "Employee count range if exact number unavailable",
             },
             {
-                "name": "number_of_sites",
-                "type": "integer",
-                "required": False,
-                "description": "Number of company locations/facilities",
+                "name": "services",
+                "description": "Service and repair capabilities",
+                "is_entity_list": False,
+                "prompt_hint": """Look for SERVICE offerings:
+- Repair services, maintenance programs, overhaul
+- Service centers, field service teams (on-site service at customer locations)
+- Spare parts supply, technical support
+- Field service = technicians travel to customer site""",
+                "fields": [
+                    {
+                        "name": "provides_services",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Whether the company provides repair/maintenance/refurbishment services",
+                    },
+                    {
+                        "name": "services_gearboxes",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Provides service for gearboxes",
+                    },
+                    {
+                        "name": "services_motors",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Provides service for motors",
+                    },
+                    {
+                        "name": "services_drivetrain_accessories",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Provides service for drivetrain accessories",
+                    },
+                    {
+                        "name": "provides_field_service",
+                        "field_type": "boolean",
+                        "required": True,
+                        "default": False,
+                        "description": "Provides on-site/field service at customer locations",
+                    },
+                    {
+                        "name": "service_types",
+                        "field_type": "list",
+                        "required": False,
+                        "description": "Types: repair, maintenance, refurbishment, installation, commissioning, field service",
+                    },
+                ],
             },
             {
-                "name": "headquarters_location",
-                "type": "text",
-                "required": False,
-                "description": "Headquarters city and country",
+                "name": "company_info",
+                "description": "Company identification and size information",
+                "is_entity_list": False,
+                "prompt_hint": """Extract company information:
+- Look in "About Us", footer, contact pages
+- Employee counts may be approximate ("over 500 employees")
+- Headquarters vs manufacturing vs sales locations""",
+                "fields": [
+                    {
+                        "name": "company_name",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Official company name",
+                    },
+                    {
+                        "name": "employee_count",
+                        "field_type": "integer",
+                        "required": False,
+                        "description": "Number of employees (exact or estimated)",
+                    },
+                    {
+                        "name": "employee_count_range",
+                        "field_type": "enum",
+                        "required": True,
+                        "default": "unknown",
+                        "enum_values": [
+                            "1-10",
+                            "11-50",
+                            "51-200",
+                            "201-500",
+                            "501-1000",
+                            "1001-5000",
+                            "5000+",
+                            "unknown",
+                        ],
+                        "description": "Employee count range if exact number unavailable",
+                    },
+                    {
+                        "name": "number_of_sites",
+                        "field_type": "integer",
+                        "required": False,
+                        "description": "Number of company locations/facilities",
+                    },
+                    {
+                        "name": "headquarters_location",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Headquarters city and country",
+                    },
+                ],
             },
-            # Confidence and source
             {
-                "name": "confidence",
-                "type": "float",
-                "min": 0.0,
-                "max": 1.0,
-                "default": 0.8,
-                "description": "Confidence score of the extraction",
+                "name": "products_gearbox",
+                "description": "Gearbox product information",
+                "is_entity_list": True,
+                "prompt_hint": """Extract GEARBOX products only:
+- Product names, series, model numbers
+- Convert HP to kW (multiply by 0.746)
+- Convert lb-ft to Nm (multiply by 1.356)
+- Gear ratios like "1:50" or "50:1" """,
+                "fields": [
+                    {
+                        "name": "product_name",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Product name",
+                    },
+                    {
+                        "name": "series_name",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Product series",
+                    },
+                    {
+                        "name": "model_number",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Model number",
+                    },
+                    {
+                        "name": "subcategory",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "planetary, helical, worm, bevel, cycloidal",
+                    },
+                    {
+                        "name": "power_rating_kw",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Power rating in kW",
+                    },
+                    {
+                        "name": "torque_rating_nm",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Torque rating in Nm",
+                    },
+                    {
+                        "name": "ratio",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Gear ratio",
+                    },
+                    {
+                        "name": "efficiency_percent",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Efficiency percentage",
+                    },
+                ],
             },
             {
-                "name": "source_url",
-                "type": "text",
-                "required": False,
-                "description": "Source URL for the extracted information",
+                "name": "products_motor",
+                "description": "Motor product information",
+                "is_entity_list": True,
+                "prompt_hint": """Extract MOTOR products only:
+- Electric motors, servo motors, stepper motors
+- Power ratings, speed ratings, voltage""",
+                "fields": [
+                    {
+                        "name": "product_name",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Product name",
+                    },
+                    {
+                        "name": "series_name",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Product series",
+                    },
+                    {
+                        "name": "model_number",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Model number",
+                    },
+                    {
+                        "name": "subcategory",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "AC, DC, servo, stepper, brushless, induction",
+                    },
+                    {
+                        "name": "power_rating_kw",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Power rating in kW",
+                    },
+                    {
+                        "name": "speed_rating_rpm",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Speed rating in RPM",
+                    },
+                    {
+                        "name": "voltage",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Voltage",
+                    },
+                ],
+            },
+            {
+                "name": "products_accessory",
+                "description": "Drivetrain accessory products",
+                "is_entity_list": True,
+                "prompt_hint": """Extract ACCESSORY products:
+- Couplings, shafts, bearings, brakes, clutches
+- Pulleys, belts, chains, sprockets""",
+                "fields": [
+                    {
+                        "name": "product_name",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Product name",
+                    },
+                    {
+                        "name": "subcategory",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "coupling, shaft, bearing, brake, clutch",
+                    },
+                    {
+                        "name": "model_number",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Model number",
+                    },
+                    {
+                        "name": "torque_rating_nm",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Torque rating in Nm",
+                    },
+                ],
+            },
+            {
+                "name": "company_meta",
+                "description": "Certifications and locations",
+                "is_entity_list": False,
+                "prompt_hint": """Extract:
+- Certifications: ISO 9001, ISO 14001, ATEX, UL, CE, etc.
+- Locations: manufacturing plants, headquarters, sales offices, service centers""",
+                "fields": [
+                    {
+                        "name": "certifications",
+                        "field_type": "list",
+                        "required": False,
+                        "description": "ISO certifications, industry standards, safety certifications",
+                    },
+                    {
+                        "name": "locations",
+                        "field_type": "list",
+                        "required": False,
+                        "description": "List of {city, country, site_type} objects",
+                    },
+                ],
             },
         ],
     },
     "entity_types": [
-        # Company entities
         {
             "name": "company",
             "description": "Company name and identifier",
@@ -404,7 +647,6 @@ DRIVETRAIN_COMPANY_TEMPLATE = {
                 {"name": "trade_name", "type": "text"},
             ],
         },
-        # Location entities
         {
             "name": "site_location",
             "description": "Company facility or office location",
@@ -412,52 +654,33 @@ DRIVETRAIN_COMPANY_TEMPLATE = {
                 {"name": "city", "type": "text"},
                 {"name": "state_province", "type": "text"},
                 {"name": "country", "type": "text"},
-                {"name": "site_type", "type": "text"},  # headquarters, manufacturing, sales, service center
+                {"name": "site_type", "type": "text"},
             ],
         },
-        # Product entities
         {
             "name": "product",
             "description": "Product offered by the company",
             "attributes": [
                 {"name": "product_name", "type": "text"},
-                {"name": "product_category", "type": "text"},  # gearbox, motor, accessory
-                {"name": "product_subcategory", "type": "text"},  # e.g., planetary gearbox, servo motor
+                {"name": "product_category", "type": "text"},
+                {"name": "product_subcategory", "type": "text"},
                 {"name": "power_rating_kw", "type": "number"},
-                {"name": "power_rating_hp", "type": "number"},
                 {"name": "torque_rating_nm", "type": "number"},
-                {"name": "torque_rating_lb_ft", "type": "number"},
                 {"name": "speed_rating_rpm", "type": "number"},
-                {"name": "speed_range_min_rpm", "type": "number"},
-                {"name": "speed_range_max_rpm", "type": "number"},
-                {"name": "ratio", "type": "text"},  # gear ratio for gearboxes
-                {"name": "efficiency_percent", "type": "number"},
+                {"name": "ratio", "type": "text"},
                 {"name": "model_number", "type": "text"},
                 {"name": "series_name", "type": "text"},
             ],
         },
-        # Service entities
         {
             "name": "service",
             "description": "Service offered by the company",
             "attributes": [
                 {"name": "service_name", "type": "text"},
-                {"name": "service_type", "type": "text"},  # repair, maintenance, refurbishment, etc.
-                {"name": "components_serviced", "type": "text"},  # gearbox, motor, etc.
+                {"name": "service_type", "type": "text"},
+                {"name": "components_serviced", "type": "text"},
             ],
         },
-        # Specification entities
-        {
-            "name": "specification",
-            "description": "Technical specification",
-            "attributes": [
-                {"name": "spec_name", "type": "text"},
-                {"name": "value", "type": "number"},
-                {"name": "unit", "type": "text"},
-                {"name": "product_ref", "type": "text"},
-            ],
-        },
-        # Certification entities
         {
             "name": "certification",
             "description": "Industry certification or standard compliance",
@@ -477,25 +700,6 @@ Focus on identifying:
 
 Be precise with technical specifications and convert units where possible to standard metric (kW, Nm, RPM).
 If information is not explicitly stated, mark confidence as lower.""",
-        "manufacturing_detection": """Analyze the content to determine if this company MANUFACTURES any of:
-- Gearboxes (including gear reducers, gearheads, planetary gears, helical gears, worm gears, bevel gears)
-- Motors (including electric motors, servo motors, stepper motors, AC/DC motors, brushless motors)
-- Drivetrain accessories (including couplings, shafts, bearings, brakes, clutches, pulleys, belts, chains, sprockets)
-
-Look for terms like: "we manufacture", "our production", "made by us", "designed and built", factory descriptions, OEM references.""",
-        "service_detection": """Analyze the content to determine if this company SERVICES/REPAIRS any of:
-- Gearboxes
-- Motors
-- Drivetrain accessories
-
-Look for: repair services, maintenance programs, refurbishment, overhaul, service centers, field service, spare parts.""",
-        "product_extraction": """Extract product information including:
-- Product name and model/series
-- Category (gearbox/motor/accessory)
-- Power rating (convert to kW if given in HP: multiply by 0.746)
-- Torque rating (convert to Nm if given in lb-ft: multiply by 1.356)
-- Speed rating in RPM
-- Gear ratios for gearboxes""",
     },
     "is_template": True,
 }
@@ -507,68 +711,110 @@ DRIVETRAIN_COMPANY_TEMPLATE_SIMPLE = {
     "source_config": {"type": "web", "group_by": "company"},
     "extraction_schema": {
         "name": "company_summary",
-        "fields": [
+        "version": "1.0",
+        "field_groups": [
             {
-                "name": "company_name",
-                "type": "text",
-                "required": True,
-                "description": "Company name",
-            },
-            {
-                "name": "business_type",
-                "type": "enum",
-                "required": True,
-                "values": [
-                    "manufacturer",
-                    "service_provider",
-                    "distributor",
-                    "both_mfg_and_service",
-                    "unknown",
+                "name": "company_summary",
+                "description": "Simplified company summary for drivetrain companies",
+                "is_entity_list": False,
+                "fields": [
+                    {
+                        "name": "company_name",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Company name",
+                    },
+                    {
+                        "name": "business_type",
+                        "field_type": "enum",
+                        "required": True,
+                        "default": "unknown",
+                        "enum_values": [
+                            "manufacturer",
+                            "service_provider",
+                            "distributor",
+                            "both_mfg_and_service",
+                            "unknown",
+                        ],
+                        "description": "Primary business type",
+                    },
+                    {
+                        "name": "product_categories",
+                        "field_type": "list",
+                        "required": False,
+                        "description": "List of product categories: gearboxes, motors, drivetrain_accessories",
+                    },
+                    {
+                        "name": "service_categories",
+                        "field_type": "list",
+                        "required": False,
+                        "description": "List of serviced categories: gearboxes, motors, drivetrain_accessories",
+                    },
+                    {
+                        "name": "employee_count",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Number of employees or range",
+                    },
+                    {
+                        "name": "site_count",
+                        "field_type": "integer",
+                        "required": False,
+                        "description": "Number of locations",
+                    },
+                    {
+                        "name": "site_locations",
+                        "field_type": "list",
+                        "required": False,
+                        "description": "List of site locations (city, country)",
+                    },
+                    {
+                        "name": "confidence",
+                        "field_type": "float",
+                        "required": True,
+                        "default": 0.8,
+                        "description": "Confidence score",
+                    },
                 ],
-                "description": "Primary business type",
             },
             {
-                "name": "product_categories",
-                "type": "list",
-                "required": True,
-                "description": "List of product categories: gearboxes, motors, drivetrain_accessories",
-            },
-            {
-                "name": "service_categories",
-                "type": "list",
-                "required": False,
-                "description": "List of serviced categories: gearboxes, motors, drivetrain_accessories",
-            },
-            {
-                "name": "employee_count",
-                "type": "text",
-                "required": False,
-                "description": "Number of employees or range",
-            },
-            {
-                "name": "site_count",
-                "type": "integer",
-                "required": False,
-                "description": "Number of locations",
-            },
-            {
-                "name": "site_locations",
-                "type": "list",
-                "required": False,
-                "description": "List of site locations (city, country)",
-            },
-            {
-                "name": "products",
-                "type": "list",
-                "required": False,
-                "description": "List of products with specs",
-            },
-            {
-                "name": "confidence",
-                "type": "float",
-                "min": 0.0,
-                "max": 1.0,
-                "default": 0.8,
+                "name": "products_list",
+                "description": "List of products with specifications",
+                "is_entity_list": True,
+                "fields": [
+                    {
+                        "name": "product_name",
+                        "field_type": "text",
+                        "required": True,
+                        "default": "",
+                        "description": "Product name",
+                    },
+                    {
+                        "name": "category",
+                        "field_type": "text",
+                        "required": False,
+                        "description": "Product category",
+                    },
+                    {
+                        "name": "power_kw",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Power in kW",
+                    },
+                    {
+                        "name": "torque_nm",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Torque in Nm",
+                    },
+                    {
+                        "name": "speed_rpm",
+                        "field_type": "float",
+                        "required": False,
+                        "description": "Speed in RPM",
+                    },
+                ],
             },
         ],
     },

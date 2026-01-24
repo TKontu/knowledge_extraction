@@ -368,13 +368,15 @@ class SchemaExtractionPipeline:
         source,  # Source ORM object
         company_name: str,
         field_groups: list | None = None,
+        schema_name: str = "unknown",
     ) -> list:  # list[Extraction]
         """Extract all field groups from a source.
 
         Args:
             source: Source ORM object with markdown content.
             company_name: Company name (source_group).
-            field_groups: Pre-converted FieldGroup objects (optional, loaded from project if not provided).
+            field_groups: Pre-converted FieldGroup objects (required).
+            schema_name: Name of the schema used for extraction (for tracking).
 
         Returns:
             List of created Extraction objects.
@@ -412,7 +414,7 @@ class SchemaExtractionPipeline:
                 extraction_type=result["extraction_type"],
                 source_group=company_name,
                 confidence=result.get("confidence"),
-                profile_used="drivetrain_schema",
+                profile_used=schema_name,
             )
             self._db.add(extraction)
             extractions.append(extraction)
@@ -498,6 +500,9 @@ class SchemaExtractionPipeline:
             field_groups_count=len(field_groups),
         )
 
+        # Get schema name for tracking
+        schema_name = schema.get("name", "unknown")
+
         # Process sources in parallel
         semaphore = asyncio.Semaphore(10)
 
@@ -507,6 +512,7 @@ class SchemaExtractionPipeline:
                     source=source,
                     company_name=source.source_group,
                     field_groups=field_groups,
+                    schema_name=schema_name,
                 )
                 return len(extractions)
 
