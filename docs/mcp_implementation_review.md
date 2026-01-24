@@ -14,13 +14,9 @@ prompts/workflows.py (workflow templates)
 
 ## Critical (must fix)
 
-- [ ] **src/ke_mcp/client.py:37** - **Wrong authentication header**
-  ```python
-  headers["Authorization"] = f"Bearer {self.settings.api_key}"
-  ```
-  API expects `X-API-Key` header, not `Authorization: Bearer` (see `src/middleware/auth.py:33`).
-  **Impact**: All authenticated API calls will fail with 401 Unauthorized.
-  **Fix**: Change to `headers["X-API-Key"] = self.settings.api_key`
+- [x] **src/ke_mcp/client.py:37** - **Wrong authentication header** ✅ FIXED
+  Was using `Authorization: Bearer` but API expects `X-API-Key` header.
+  **Fixed in commit 43754b9** - Changed to `headers["X-API-Key"] = self.settings.api_key`
 
 ## Important (should fix)
 
