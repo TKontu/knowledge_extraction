@@ -246,22 +246,50 @@ class SchemaExtractionOrchestrator:
         return merged
 
     def _merge_entity_lists(self, chunk_results: list[dict]) -> dict:
-        """Merge entity lists (products) from multiple chunks."""
-        all_products = []
-        seen_names = set()
+        """Merge entity lists from multiple chunks.
+
+        Supports multiple entity key names (products, entities, items) and
+        deduplicates by product_name or entity_id fields.
+        """
+        # Try to find which key contains the entity list
+        entity_keys = ["products", "entities", "items"]
+        entity_key = None
+        for key in entity_keys:
+            for result in chunk_results:
+                if key in result and isinstance(result[key], list):
+                    entity_key = key
+                    break
+            if entity_key:
+                break
+
+        # Default to "products" if no entity list found
+        if not entity_key:
+            entity_key = "products"
+
+        all_entities = []
+        seen_ids = set()
 
         for result in chunk_results:
-            products = result.get("products", [])
-            for product in products:
-                name = product.get("product_name", "")
-                if name and name not in seen_names:
-                    seen_names.add(name)
-                    all_products.append(product)
+            entities = result.get(entity_key, [])
+            for entity in entities:
+                # Support both product_name and entity_id for deduplication
+                entity_id = (
+                    entity.get("product_name")
+                    or entity.get("entity_id")
+                    or entity.get("name")
+                    or entity.get("id")
+                )
+                if entity_id and entity_id not in seen_ids:
+                    seen_ids.add(entity_id)
+                    all_entities.append(entity)
+                elif not entity_id:
+                    # No ID field - include but can't dedupe
+                    all_entities.append(entity)
 
         confidences = [r.get("confidence", 0.8) for r in chunk_results]
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.8
 
         return {
-            "products": all_products,
+            entity_key: all_entities,
             "confidence": avg_confidence,
         }
