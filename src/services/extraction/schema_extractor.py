@@ -37,16 +37,21 @@ class SchemaExtractor:
         self,
         settings: Settings,
         llm_queue: "LLMRequestQueue | None" = None,
+        context: "ExtractionContext | None" = None,
     ):
         """Initialize SchemaExtractor.
 
         Args:
             settings: Application settings.
             llm_queue: Optional LLM request queue. If provided, uses queue mode.
+            context: Optional extraction context for prompt customization.
         """
+        from services.extraction.schema_adapter import ExtractionContext
+
         self.settings = settings
         self.llm_queue = llm_queue
         self.model = settings.llm_model
+        self.context = context or ExtractionContext()
 
         # Only create direct client if not using queue
         if llm_queue is None:
@@ -62,14 +67,16 @@ class SchemaExtractor:
         self,
         content: str,
         field_group: FieldGroup,
-        company_name: str | None = None,
+        source_context: str | None = None,
+        company_name: str | None = None,  # Deprecated, backward compat
     ) -> dict[str, Any]:
         """Extract fields for a specific field group.
 
         Args:
             content: Markdown content to extract from.
             field_group: Field group definition.
-            company_name: Optional company name for context.
+            source_context: Optional source context (e.g., company name, website name).
+            company_name: DEPRECATED. Use source_context instead.
 
         Returns:
             Dictionary of extracted field values.
@@ -77,23 +84,26 @@ class SchemaExtractor:
         Raises:
             LLMExtractionError: If extraction fails.
         """
+        # Backward compatibility: use company_name if source_context not provided
+        context_value = source_context or company_name
+
         if self.llm_queue is not None:
-            return await self._extract_via_queue(content, field_group, company_name)
+            return await self._extract_via_queue(content, field_group, context_value)
         else:
-            return await self._extract_direct(content, field_group, company_name)
+            return await self._extract_direct(content, field_group, context_value)
 
     async def _extract_via_queue(
         self,
         content: str,
         field_group: FieldGroup,
-        company_name: str | None,
+        source_context: str | None,
     ) -> dict[str, Any]:
         """Extract via LLM request queue.
 
         Args:
             content: Markdown content.
             field_group: Field group definition.
-            company_name: Optional company name.
+            source_context: Optional source context.
 
         Returns:
             Extracted field values.
@@ -105,7 +115,7 @@ class SchemaExtractor:
 
         # Build prompts first (for consistency with direct extraction)
         system_prompt = self._build_system_prompt(field_group)
-        user_prompt = self._build_user_prompt(content, field_group, company_name)
+        user_prompt = self._build_user_prompt(content, field_group, source_context)
 
         # Build request
         request_timeout = getattr(self.settings, "llm_request_timeout", 300)
@@ -131,7 +141,7 @@ class SchemaExtractor:
                     "prompt_hint": field_group.prompt_hint,
                     "is_entity_list": field_group.is_entity_list,
                 },
-                "company_name": company_name,
+                "source_context": source_context,
                 "model": self.model,
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
@@ -181,20 +191,20 @@ class SchemaExtractor:
         self,
         content: str,
         field_group: FieldGroup,
-        company_name: str | None,
+        source_context: str | None,
     ) -> dict[str, Any]:
         """Extract via direct LLM call.
 
         Args:
             content: Markdown content.
             field_group: Field group definition.
-            company_name: Optional company name.
+            source_context: Optional source context.
 
         Returns:
             Extracted field values.
         """
         system_prompt = self._build_system_prompt(field_group)
-        user_prompt = self._build_user_prompt(content, field_group, company_name)
+        user_prompt = self._build_user_prompt(content, field_group, source_context)
 
         logger.info(
             "schema_extraction_started",
@@ -244,7 +254,7 @@ class SchemaExtractor:
 
         fields_str = "\n".join(field_specs)
 
-        return f"""You are extracting {field_group.description} from company documentation.
+        return f"""You are extracting {field_group.description} from {self.context.source_type}.
 
 Fields to extract:
 {fields_str}
@@ -285,7 +295,7 @@ For boolean fields, only return true if there is clear evidence.
         # Singular form for "each X" phrasing
         entity_singular = field_group.name.rstrip("s")
 
-        return f"""You are extracting {field_group.description} from documentation.
+        return f"""You are extracting {field_group.description} from {self.context.source_type}.
 
 For each {entity_singular} found, extract:
 {fields_str}
@@ -308,12 +318,14 @@ Only include items you find clear evidence for. Return empty list if none found.
         self,
         content: str,
         field_group: FieldGroup,
-        company_name: str | None,
+        source_context: str | None,
     ) -> str:
         """Build user prompt with content."""
-        company_context = f"Company: {company_name}\n\n" if company_name else ""
+        context_line = (
+            f"{self.context.source_label}: {source_context}\n\n" if source_context else ""
+        )
 
-        return f"""{company_context}Extract {field_group.name} information from this content:
+        return f"""{context_line}Extract {field_group.name} information from this content:
 
 ---
 {content[:8000]}

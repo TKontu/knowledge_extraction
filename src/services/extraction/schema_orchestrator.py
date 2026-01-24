@@ -16,27 +16,39 @@ logger = structlog.get_logger(__name__)
 class SchemaExtractionOrchestrator:
     """Orchestrates extraction across all field groups for a source."""
 
-    def __init__(self, schema_extractor: SchemaExtractor):
+    def __init__(
+        self,
+        schema_extractor: SchemaExtractor,
+        context: "ExtractionContext | None" = None,
+    ):
+        from services.extraction.schema_adapter import ExtractionContext
+
         self._extractor = schema_extractor
+        self._context = context or ExtractionContext()
 
     async def extract_all_groups(
         self,
         source_id: UUID,
         markdown: str,
-        company_name: str,
+        source_context: str,
         field_groups: list[FieldGroup],
+        company_name: str | None = None,  # Deprecated, backward compat
     ) -> list[dict]:
         """Extract all field groups from source content.
 
         Args:
             source_id: Source UUID for tracking.
             markdown: Markdown content.
-            company_name: Company name for context.
+            source_context: Source context (e.g., company name, website name).
             field_groups: Field groups to extract (REQUIRED).
+            company_name: DEPRECATED. Use source_context instead.
 
         Returns:
             List of extraction results, one per field group.
         """
+        # Backward compatibility
+        context_value = source_context if source_context is not None else company_name
+
         if not field_groups:
             logger.error(
                 "extract_all_groups_no_field_groups",
@@ -54,7 +66,7 @@ class SchemaExtractionOrchestrator:
         logger.info(
             "schema_extraction_started",
             source_id=str(source_id),
-            company=company_name,
+            source=context_value,
             groups=len(groups),
             chunks=len(chunks),
         )
@@ -65,7 +77,7 @@ class SchemaExtractionOrchestrator:
             group_result = {
                 "extraction_type": group.name,
                 "source_id": source_id,
-                "source_group": company_name,
+                "source_group": context_value,
                 "data": {},
                 "confidence": 0.0,
             }
@@ -74,7 +86,7 @@ class SchemaExtractionOrchestrator:
             chunk_results = await self._extract_chunks_batched(
                 chunks=chunks,
                 group=group,
-                company_name=company_name,
+                source_context=context_value,
             )
 
             # Merge chunk results
@@ -100,7 +112,7 @@ class SchemaExtractionOrchestrator:
         self,
         chunks: list,
         group: FieldGroup,
-        company_name: str,
+        source_context: str,
     ) -> list[dict]:
         """Extract from chunks with continuous concurrency control.
 
@@ -111,7 +123,7 @@ class SchemaExtractionOrchestrator:
         Args:
             chunks: List of document chunks to process.
             group: Field group to extract.
-            company_name: Company name for context.
+            source_context: Source context for extraction.
 
         Returns:
             List of extraction results from successful chunks.
@@ -129,7 +141,7 @@ class SchemaExtractionOrchestrator:
                         result = await self._extractor.extract_field_group(
                             content=chunk.content,
                             field_group=group,
-                            company_name=company_name,
+                            source_context=source_context,
                         )
                         return result
                     except Exception as e:
@@ -280,15 +292,13 @@ class SchemaExtractionOrchestrator:
                 if not isinstance(entity, dict):
                     continue
 
-                # Support multiple ID field patterns for deduplication
-                entity_id = (
-                    entity.get("product_name")
-                    or entity.get("entity_id")
-                    or entity.get("employee_id")
-                    or entity.get("location_id")
-                    or entity.get("name")
-                    or entity.get("id")
-                )
+                # Use context-defined ID fields for deduplication
+                entity_id = None
+                for id_field in self._context.entity_id_fields:
+                    if entity.get(id_field):
+                        entity_id = entity.get(id_field)
+                        break
+
                 if entity_id and entity_id not in seen_ids:
                     seen_ids.add(entity_id)
                     all_entities.append(entity)
