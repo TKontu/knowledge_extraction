@@ -20,10 +20,8 @@ prompts/workflows.py (workflow templates)
 
 ## Important (should fix)
 
-- [ ] **src/ke_mcp/client.py:86-89** - **500 errors not retried** (design choice)
-  Server errors (500+) raise immediately instead of retrying like timeouts.
-  This is arguably intentional - some consider 500s permanent errors that shouldn't retry.
-  **Low priority** - current behavior is reasonable.
+- [x] **src/ke_mcp/client.py:86-89** - **500 errors not retried** ✅ FIXED
+  Server errors (500+) now retry with exponential backoff, same as timeouts.
 
 ## Verified as Non-Issues (false positives)
 

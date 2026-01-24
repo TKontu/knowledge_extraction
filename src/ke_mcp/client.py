@@ -84,9 +84,15 @@ class KnowledgeExtractionClient:
                     detail = error_data.get("detail", "Validation error")
                     raise APIError(f"Validation error: {detail}", 422)
                 elif response.status_code >= 500:
-                    raise APIError(
+                    # Server errors are transient - retry with backoff
+                    last_error = APIError(
                         f"Server error: {response.status_code}", response.status_code
                     )
+                    logger.warning(
+                        f"Server error {response.status_code} (attempt {attempt + 1})"
+                    )
+                    await asyncio.sleep(2**attempt)
+                    continue
 
                 response.raise_for_status()
                 return response.json()
@@ -94,7 +100,7 @@ class KnowledgeExtractionClient:
             except httpx.TimeoutException as e:
                 last_error = e
                 logger.warning(f"Request timeout (attempt {attempt + 1})")
-                await asyncio.sleep(2**attempt)  # Exponential backoff
+                await asyncio.sleep(2**attempt)
             except httpx.HTTPStatusError as e:
                 raise APIError(str(e), e.response.status_code) from e
             except APIError:
