@@ -1,0 +1,91 @@
+name: default
+description: Generic extraction template for any content type
+source_config:
+  type: web
+  group_by: source
+extraction_context:
+  source_type: content
+  source_label: Source
+  entity_id_fields:
+    - product_name
+    - entity_id
+    - name
+    - id
+extraction_schema:
+  name: generic_facts
+  version: "1.0"
+  description: Generic fact extraction schema
+  field_groups:
+    - name: entity_info
+      description: Basic entity identification
+      is_entity_list: false
+      fields:
+        - name: entity_name
+          field_type: text
+          description: Name of the primary entity or subject
+          required: true
+          default: ""
+        - name: entity_type
+          field_type: enum
+          description: Type of entity
+          required: true
+          default: unknown
+          enum_values:
+            - company
+            - product
+            - person
+            - organization
+            - location
+            - unknown
+        - name: description
+          field_type: text
+          description: Brief description of the entity
+          required: false
+    - name: key_facts
+      description: Important factual information
+      is_entity_list: false
+      fields:
+        - name: fact_category
+          field_type: enum
+          description: Category of fact
+          required: true
+          default: general
+          enum_values:
+            - general
+            - technical
+            - financial
+            - operational
+            - historical
+        - name: fact_text
+          field_type: text
+          description: The factual statement
+          required: true
+          default: ""
+        - name: confidence
+          field_type: float
+          description: Confidence score 0.0-1.0
+          required: true
+          default: 0.8
+    - name: contact_info
+      description: Contact and location information
+      is_entity_list: false
+      fields:
+        - name: locations
+          field_type: list
+          description: List of locations (city, country)
+          required: false
+        - name: website
+          field_type: text
+          description: Website URL
+          required: false
+        - name: contact_email
+          field_type: text
+          description: Contact email address
+          required: false
+entity_types:
+  - name: entity
+    description: Generic named entity
+  - name: fact
+    description: Factual statement
+prompt_templates: {}
+is_template: true

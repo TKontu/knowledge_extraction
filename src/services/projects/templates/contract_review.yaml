@@ -1,0 +1,67 @@
+name: contract_review
+description: Extract key terms and obligations from legal contracts
+source_config:
+  type: document
+  group_by: contract
+extraction_context:
+  source_type: legal contract
+  source_label: Contract
+  entity_id_fields:
+    - entity_id
+    - name
+    - id
+extraction_schema:
+  name: contract_term
+  version: "1.0"
+  field_groups:
+    - name: contract_terms
+      description: Key terms and clauses from contracts
+      is_entity_list: false
+      fields:
+        - name: term_text
+          field_type: text
+          required: true
+          default: ""
+          description: Contract term or clause
+        - name: category
+          field_type: enum
+          required: true
+          default: obligation
+          enum_values:
+            - obligation
+            - right
+            - condition
+            - definition
+            - termination
+            - liability
+          description: Type of contract term
+        - name: confidence
+          field_type: float
+          required: true
+          default: 0.8
+          description: Confidence score
+        - name: section_ref
+          field_type: text
+          required: false
+          description: Section or clause number
+entity_types:
+  - name: party
+    description: Contract party (person or organization)
+  - name: date
+    description: Significant date (effective, expiration, deadline)
+    attributes:
+      - name: date_type
+        type: text
+  - name: amount
+    description: Monetary amount or payment term
+    attributes:
+      - name: value
+        type: number
+      - name: currency
+        type: text
+  - name: duration
+    description: Time period or term length
+  - name: jurisdiction
+    description: Governing law or venue
+prompt_templates: {}
+is_template: true

@@ -1,0 +1,75 @@
+name: book_catalog
+description: Extract book information from online bookstores and catalogs
+source_config:
+  type: web
+  group_by: category
+extraction_context:
+  source_type: book catalog
+  source_label: Catalog
+  entity_id_fields:
+    - entity_id
+    - name
+    - id
+extraction_schema:
+  name: book_info
+  version: "1.0"
+  field_groups:
+    - name: book_details
+      description: Book information from catalogs
+      is_entity_list: false
+      fields:
+        - name: title
+          field_type: text
+          required: true
+          default: ""
+          description: Book title
+        - name: price
+          field_type: text
+          required: true
+          default: ""
+          description: Book price with currency
+        - name: availability
+          field_type: enum
+          required: true
+          default: unknown
+          enum_values:
+            - in_stock
+            - out_of_stock
+            - limited
+            - unknown
+          description: Stock availability status
+        - name: rating
+          field_type: integer
+          required: false
+          description: Star rating (1-5)
+        - name: category
+          field_type: text
+          required: false
+          description: Book genre or category
+        - name: description
+          field_type: text
+          required: false
+          description: Book description or synopsis
+        - name: confidence
+          field_type: float
+          required: true
+          default: 0.8
+          description: Confidence score
+entity_types:
+  - name: book
+    description: Book title
+  - name: author
+    description: Book author
+  - name: price
+    description: Book price
+    attributes:
+      - name: amount
+        type: number
+      - name: currency
+        type: text
+  - name: category
+    description: Book genre or category
+  - name: publisher
+    description: Book publisher
+prompt_templates: {}
+is_template: true

@@ -1,0 +1,65 @@
+name: company_analysis
+description: Extract technical facts from company documentation
+source_config:
+  type: web
+  group_by: company
+extraction_context:
+  source_type: company website
+  source_label: Company
+  entity_id_fields:
+    - entity_id
+    - name
+    - id
+    - product_name
+extraction_schema:
+  name: technical_fact
+  version: "1.0"
+  field_groups:
+    - name: technical_facts
+      description: Technical facts extracted from company documentation
+      is_entity_list: false
+      fields:
+        - name: fact_text
+          field_type: text
+          required: true
+          default: ""
+          description: The extracted factual statement
+        - name: category
+          field_type: enum
+          required: true
+          default: features
+          enum_values:
+            - specs
+            - api
+            - security
+            - pricing
+            - features
+            - integration
+          description: Category of the technical fact
+        - name: confidence
+          field_type: float
+          required: true
+          default: 0.8
+          description: Confidence score of the extraction
+        - name: source_quote
+          field_type: text
+          required: false
+          description: Brief quote from the source document
+entity_types:
+  - name: plan
+    description: Pricing tier or plan
+  - name: feature
+    description: Product capability
+  - name: limit
+    description: Quota or threshold
+    attributes:
+      - name: numeric_value
+        type: number
+      - name: unit
+        type: text
+  - name: certification
+    description: Security or compliance certification
+  - name: pricing
+    description: Cost or price point
+prompt_templates: {}
+is_template: true
