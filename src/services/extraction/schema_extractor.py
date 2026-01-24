@@ -1,19 +1,19 @@
 """Schema-based LLM extraction with field groups."""
 
+import asyncio
 import json
-from dataclasses import asdict
-from datetime import datetime, timedelta, UTC
-from typing import Any, TYPE_CHECKING
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import structlog
 from openai import AsyncOpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import Settings
 from services.extraction.field_groups import FieldGroup
 
 if TYPE_CHECKING:
+    from services.extraction.schema_adapter import ExtractionContext
     from src.services.llm.queue import LLMRequestQueue
 
 logger = structlog.get_logger(__name__)
@@ -183,17 +183,16 @@ class SchemaExtractor:
 
         return result
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=4, max=60),
-    )
     async def _extract_direct(
         self,
         content: str,
         field_group: FieldGroup,
         source_context: str | None,
     ) -> dict[str, Any]:
-        """Extract via direct LLM call.
+        """Extract via direct LLM call with retry and variation.
+
+        Uses exponential backoff with temperature variation on retries to avoid
+        getting stuck in the same failure mode (e.g., hallucination loops).
 
         Args:
             content: Markdown content.
@@ -202,40 +201,93 @@ class SchemaExtractor:
 
         Returns:
             Extracted field values.
+
+        Raises:
+            LLMExtractionError: If all retry attempts fail.
         """
-        system_prompt = self._build_system_prompt(field_group)
-        user_prompt = self._build_user_prompt(content, field_group, source_context)
+        max_retries = self.settings.llm_max_retries
+        base_temp = self.settings.llm_base_temperature
+        temp_increment = self.settings.llm_retry_temperature_increment
+        backoff_min = self.settings.llm_retry_backoff_min
+        backoff_max = self.settings.llm_retry_backoff_max
+        max_tokens = self.settings.llm_max_tokens
 
-        logger.info(
-            "schema_extraction_started",
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_retries + 1):
+            # Vary temperature on retries to get different outputs
+            temperature = base_temp + (attempt - 1) * temp_increment
+
+            # Build prompts (add conciseness hint on retries)
+            system_prompt = self._build_system_prompt(field_group)
+            if attempt > 1:
+                system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+
+            user_prompt = self._build_user_prompt(content, field_group, source_context)
+
+            logger.info(
+                "schema_extraction_started",
+                field_group=field_group.name,
+                content_length=len(content),
+                is_entity_list=field_group.is_entity_list,
+                attempt=attempt,
+                temperature=temperature,
+            )
+
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+                result_text = response.choices[0].message.content
+                result_data = json.loads(result_text)
+
+                # Apply defaults for missing fields
+                result = self._apply_defaults(result_data, field_group)
+
+                logger.info(
+                    "schema_extraction_completed",
+                    field_group=field_group.name,
+                    fields_extracted=len(
+                        [k for k, v in result.items() if v is not None]
+                    ),
+                    attempt=attempt,
+                )
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "schema_extraction_attempt_failed",
+                    field_group=field_group.name,
+                    error=str(e),
+                    attempt=attempt,
+                    max_retries=max_retries,
+                )
+
+                if attempt < max_retries:
+                    wait_time = min(backoff_min * (2 ** (attempt - 1)), backoff_max)
+                    logger.info("llm_retry_backoff", wait_seconds=wait_time)
+                    await asyncio.sleep(wait_time)
+
+        # All retries exhausted
+        logger.error(
+            "schema_extraction_failed_all_retries",
             field_group=field_group.name,
-            content_length=len(content),
-            is_entity_list=field_group.is_entity_list,
+            error=str(last_error),
+            attempts=max_retries,
         )
-
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-        )
-
-        result_text = response.choices[0].message.content
-        result_data = json.loads(result_text)
-
-        # Apply defaults for missing fields
-        result = self._apply_defaults(result_data, field_group)
-
-        logger.info(
-            "schema_extraction_completed",
-            field_group=field_group.name,
-            fields_extracted=len([k for k, v in result.items() if v is not None]),
-        )
-
-        return result
+        raise LLMExtractionError(
+            f"Schema extraction failed after {max_retries} attempts: {last_error}"
+        ) from last_error
 
     def _build_system_prompt(self, field_group: FieldGroup) -> str:
         """Build system prompt for field group extraction."""
@@ -277,7 +329,10 @@ For boolean fields, only return true if there is clear evidence.
             spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'
             field_specs.append(spec)
             # Find the ID field for the example
-            if f.name in ("product_name", "entity_id", "name", "id") and id_field is None:
+            if (
+                f.name in ("product_name", "entity_id", "name", "id")
+                and id_field is None
+            ):
                 id_field = f.name
 
         fields_str = "\n".join(field_specs)
@@ -322,7 +377,9 @@ Only include items you find clear evidence for. Return empty list if none found.
     ) -> str:
         """Build user prompt with content."""
         context_line = (
-            f"{self.context.source_label}: {source_context}\n\n" if source_context else ""
+            f"{self.context.source_label}: {source_context}\n\n"
+            if source_context
+            else ""
         )
 
         return f"""{context_line}Extract {field_group.name} information from this content:

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -51,6 +51,9 @@ class LLMWorker:
         min_concurrency: int = 5,
         model: str = "Qwen3-30B-A3B-Instruct-4bit",
         max_retries: int = 3,
+        max_tokens: int = 4096,
+        base_temperature: float = 0.1,
+        temperature_increment: float = 0.05,
     ):
         """Initialize LLM worker.
 
@@ -65,6 +68,9 @@ class LLMWorker:
             min_concurrency: Minimum concurrent requests.
             model: LLM model name.
             max_retries: Maximum retry attempts before moving to DLQ.
+            max_tokens: Maximum tokens for LLM response (prevents endless generation).
+            base_temperature: Base temperature for LLM requests.
+            temperature_increment: Temperature increase per retry attempt.
         """
         self.redis = redis
         self.llm_client = llm_client
@@ -73,6 +79,9 @@ class LLMWorker:
         self.consumer_group = consumer_group
         self.model = model
         self.max_retries = max_retries
+        self.max_tokens = max_tokens
+        self.base_temperature = base_temperature
+        self.temperature_increment = temperature_increment
 
         # Adaptive concurrency
         self.concurrency = initial_concurrency
@@ -163,11 +172,9 @@ class LLMWorker:
 
         # Process all messages concurrently
         tasks = []
-        for stream_name, entries in messages:
+        for _stream_name, entries in messages:
             for entry_id, data in entries:
-                task = asyncio.create_task(
-                    self._process_request(entry_id, data)
-                )
+                task = asyncio.create_task(self._process_request(entry_id, data))
                 tasks.append(task)
 
         if tasks:
@@ -261,7 +268,10 @@ class LLMWorker:
                 # Decrement active count and apply pending concurrency if idle
                 async with self._active_lock:
                     self._active_count -= 1
-                    if self._active_count == 0 and self._pending_concurrency is not None:
+                    if (
+                        self._active_count == 0
+                        and self._pending_concurrency is not None
+                    ):
                         new_concurrency = self._pending_concurrency
                         self._pending_concurrency = None
                         self.concurrency = new_concurrency
@@ -314,16 +324,29 @@ class LLMWorker:
         Raises:
             ValueError: If request type is unknown.
         """
+        # Calculate temperature based on retry count (higher on retries to vary output)
+        temperature = self.base_temperature + (
+            request.retry_count * self.temperature_increment
+        )
+
         if request.request_type == "extract_facts":
-            return await self._extract_facts(request.payload)
+            return await self._extract_facts(
+                request.payload, temperature, request.retry_count
+            )
         elif request.request_type == "extract_field_group":
-            return await self._extract_field_group(request.payload)
+            return await self._extract_field_group(
+                request.payload, temperature, request.retry_count
+            )
         elif request.request_type == "extract_entities":
-            return await self._extract_entities(request.payload)
+            return await self._extract_entities(
+                request.payload, temperature, request.retry_count
+            )
         else:
             raise ValueError(f"Unknown request type: {request.request_type}")
 
-    async def _extract_facts(self, payload: dict) -> dict:
+    async def _extract_facts(
+        self, payload: dict, temperature: float, retry_count: int
+    ) -> dict:
         """Execute fact extraction.
 
         Uses prompts from payload if available (preferred), otherwise falls back
@@ -332,6 +355,8 @@ class LLMWorker:
         Args:
             payload: Request payload with content, categories, profile_name,
                     and optionally system_prompt, user_prompt, model.
+            temperature: Temperature for this request (varies with retries).
+            retry_count: Current retry attempt number.
 
         Returns:
             Extracted facts.
@@ -348,6 +373,10 @@ class LLMWorker:
             system_prompt = f"Extract facts from the content. Categories: {categories}. Profile: {profile_name}"
             user_prompt = content[:8000]
 
+        # Add conciseness hint on retries
+        if retry_count > 0:
+            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
 
@@ -358,13 +387,16 @@ class LLMWorker:
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.1,
+            temperature=temperature,
+            max_tokens=self.max_tokens,
         )
 
         result_text = response.choices[0].message.content
         return json.loads(result_text)
 
-    async def _extract_field_group(self, payload: dict) -> dict:
+    async def _extract_field_group(
+        self, payload: dict, temperature: float, retry_count: int
+    ) -> dict:
         """Execute field group extraction.
 
         Uses prompts from payload if available (preferred), otherwise falls back
@@ -373,6 +405,8 @@ class LLMWorker:
         Args:
             payload: Request payload with content, field_group, source_context,
                     and optionally system_prompt, user_prompt, model.
+            temperature: Temperature for this request (varies with retries).
+            retry_count: Current retry attempt number.
 
         Returns:
             Extracted field values.
@@ -386,14 +420,24 @@ class LLMWorker:
             content = payload.get("content", "")
             field_group = payload.get("field_group", {})
             # Support both source_context (new) and company_name (backward compat)
-            source_context = payload.get("source_context") or payload.get("company_name", "")
+            source_context = payload.get("source_context") or payload.get(
+                "company_name", ""
+            )
 
             group_name = field_group.get("name", "unknown")
             group_desc = field_group.get("description", "")
 
             system_prompt = f"Extract {group_name} information: {group_desc}"
             # Use generic "Source:" label in fallback mode
-            user_prompt = f"Source: {source_context}\n\nContent:\n{content[:8000]}" if source_context else f"Content:\n{content[:8000]}"
+            user_prompt = (
+                f"Source: {source_context}\n\nContent:\n{content[:8000]}"
+                if source_context
+                else f"Content:\n{content[:8000]}"
+            )
+
+        # Add conciseness hint on retries
+        if retry_count > 0:
+            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
 
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
@@ -405,13 +449,16 @@ class LLMWorker:
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.1,
+            temperature=temperature,
+            max_tokens=self.max_tokens,
         )
 
         result_text = response.choices[0].message.content
         return json.loads(result_text)
 
-    async def _extract_entities(self, payload: dict) -> dict:
+    async def _extract_entities(
+        self, payload: dict, temperature: float, retry_count: int
+    ) -> dict:
         """Execute entity extraction.
 
         Uses prompts from payload if available (preferred), otherwise falls back
@@ -420,6 +467,8 @@ class LLMWorker:
         Args:
             payload: Request payload with extraction_data, entity_types,
                     and optionally system_prompt, user_prompt, model.
+            temperature: Temperature for this request (varies with retries).
+            retry_count: Current retry attempt number.
 
         Returns:
             Extracted entities.
@@ -436,6 +485,10 @@ class LLMWorker:
             system_prompt = f"Extract entities of types: {entity_types}"
             user_prompt = json.dumps(extraction_data)
 
+        # Add conciseness hint on retries
+        if retry_count > 0:
+            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
 
@@ -446,7 +499,8 @@ class LLMWorker:
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.1,
+            temperature=temperature,
+            max_tokens=self.max_tokens,
         )
 
         result_text = response.choices[0].message.content
@@ -472,10 +526,7 @@ class LLMWorker:
         new_concurrency = None
 
         if timeout_rate > 0.1:  # >10% timeouts, back off
-            new_concurrency = max(
-                self.min_concurrency,
-                int(self.concurrency * 0.7)
-            )
+            new_concurrency = max(self.min_concurrency, int(self.concurrency * 0.7))
             if new_concurrency != self.concurrency:
                 logger.warning(
                     "llm_worker_backing_off",
@@ -486,10 +537,7 @@ class LLMWorker:
                 )
 
         elif timeout_rate < 0.02 and self.success_count > 50:  # <2% timeouts, scale up
-            new_concurrency = min(
-                self.max_concurrency,
-                int(self.concurrency * 1.2)
-            )
+            new_concurrency = min(self.max_concurrency, int(self.concurrency * 1.2))
             if new_concurrency != self.concurrency:
                 logger.info(
                     "llm_worker_scaling_up",

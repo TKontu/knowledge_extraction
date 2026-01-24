@@ -16,6 +16,13 @@ class TestSchemaExtractor:
         settings.openai_api_key = "test"
         settings.llm_http_timeout = 60
         settings.llm_model = "test-model"
+        # Retry settings
+        settings.llm_max_retries = 3
+        settings.llm_base_temperature = 0.1
+        settings.llm_retry_temperature_increment = 0.05
+        settings.llm_retry_backoff_min = 2
+        settings.llm_retry_backoff_max = 30
+        settings.llm_max_tokens = 4096
         return settings
 
     async def test_extract_manufacturing_booleans(self, mock_settings):

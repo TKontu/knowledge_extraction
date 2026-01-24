@@ -1,13 +1,13 @@
 """LLM client for fact and entity extraction."""
 
+import asyncio
 import json
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import structlog
 from openai import AsyncOpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import Settings
 from models import ExtractedFact
@@ -97,7 +97,9 @@ class LLMClient:
             LLMExtractionError: If LLM call fails or returns invalid JSON.
         """
         if self.llm_queue is not None:
-            return await self._extract_facts_via_queue(content, categories, profile_name)
+            return await self._extract_facts_via_queue(
+                content, categories, profile_name
+            )
         else:
             return await self._extract_facts_direct(content, categories, profile_name)
 
@@ -165,7 +167,9 @@ class LLMClient:
             logger.error("llm_queue_full", request_id=request.request_id, error=str(e))
             raise LLMExtractionError(f"LLM queue full: {e}") from e
         except RequestTimeoutError as e:
-            logger.error("llm_request_timeout", request_id=request.request_id, error=str(e))
+            logger.error(
+                "llm_request_timeout", request_id=request.request_id, error=str(e)
+            )
             raise LLMExtractionError(f"LLM request timeout: {e}") from e
 
         # Handle response status
@@ -187,17 +191,16 @@ class LLMClient:
 
         return facts
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=4, max=60),
-    )
     async def _extract_facts_direct(
         self,
         content: str,
         categories: list[str],
         profile_name: str,
     ) -> list[ExtractedFact]:
-        """Extract facts via direct LLM call.
+        """Extract facts via direct LLM call with retry and variation.
+
+        Uses exponential backoff with temperature variation on retries to avoid
+        getting stuck in the same failure mode (e.g., hallucination loops).
 
         Args:
             content: Markdown content.
@@ -206,42 +209,91 @@ class LLMClient:
 
         Returns:
             List of extracted facts.
+
+        Raises:
+            LLMExtractionError: If all retry attempts fail.
         """
-        system_prompt = self._build_system_prompt(categories)
-        user_prompt = self._build_user_prompt(content)
+        max_retries = self.settings.llm_max_retries
+        base_temp = self.settings.llm_base_temperature
+        temp_increment = self.settings.llm_retry_temperature_increment
+        backoff_min = self.settings.llm_retry_backoff_min
+        backoff_max = self.settings.llm_retry_backoff_max
+        max_tokens = self.settings.llm_max_tokens
 
-        logger.info(
-            "llm_extraction_started",
-            model=self.model,
-            content_length=len(content),
-            categories=categories,
-            profile=profile_name,
-        )
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,  # Low temperature for consistent extraction
-            )
+        last_error: Exception | None = None
 
-            result_text = response.choices[0].message.content
-            result_data = json.loads(result_text)
+        for attempt in range(1, max_retries + 1):
+            # Vary temperature on retries to get different outputs
+            temperature = base_temp + (attempt - 1) * temp_increment
 
-            facts = self._parse_facts_from_result(result_data)
+            # Build prompts (add conciseness hint on retries)
+            system_prompt = self._build_system_prompt(categories)
+            if attempt > 1:
+                system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+
+            user_prompt = self._build_user_prompt(content)
 
             logger.info(
-                "llm_extraction_completed", model=self.model, facts_extracted=len(facts)
+                "llm_extraction_started",
+                model=self.model,
+                content_length=len(content),
+                categories=categories,
+                profile=profile_name,
+                attempt=attempt,
+                temperature=temperature,
             )
-            return facts
-        except Exception as e:
-            logger.error(
-                "llm_extraction_failed", model=self.model, error=str(e), exc_info=True
-            )
-            raise
+
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+                result_text = response.choices[0].message.content
+                result_data = json.loads(result_text)
+
+                facts = self._parse_facts_from_result(result_data)
+
+                logger.info(
+                    "llm_extraction_completed",
+                    model=self.model,
+                    facts_extracted=len(facts),
+                    attempt=attempt,
+                )
+                return facts
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "llm_extraction_attempt_failed",
+                    model=self.model,
+                    error=str(e),
+                    attempt=attempt,
+                    max_retries=max_retries,
+                )
+
+                if attempt < max_retries:
+                    # Exponential backoff: 2^attempt * backoff_min, capped at backoff_max
+                    wait_time = min(backoff_min * (2 ** (attempt - 1)), backoff_max)
+                    logger.info("llm_retry_backoff", wait_seconds=wait_time)
+                    await asyncio.sleep(wait_time)
+
+        # All retries exhausted
+        logger.error(
+            "llm_extraction_failed_all_retries",
+            model=self.model,
+            error=str(last_error),
+            attempts=max_retries,
+        )
+        raise LLMExtractionError(
+            f"LLM extraction failed after {max_retries} attempts: {last_error}"
+        ) from last_error
 
     def _parse_facts_from_result(self, result_data: dict) -> list[ExtractedFact]:
         """Parse facts from LLM result data.
@@ -365,7 +417,9 @@ Rules:
         from services.llm.models import LLMRequest
 
         # Build prompts
-        prompts = self._build_entity_prompts(extraction_data, entity_types, source_group)
+        prompts = self._build_entity_prompts(
+            extraction_data, entity_types, source_group
+        )
 
         # Build request with prompts in payload
         request_timeout = getattr(self.settings, "llm_request_timeout", 300)
@@ -405,7 +459,9 @@ Rules:
             logger.error("llm_queue_full", request_id=request.request_id, error=str(e))
             raise LLMExtractionError(f"LLM queue full: {e}") from e
         except RequestTimeoutError as e:
-            logger.error("llm_request_timeout", request_id=request.request_id, error=str(e))
+            logger.error(
+                "llm_request_timeout", request_id=request.request_id, error=str(e)
+            )
             raise LLMExtractionError(f"LLM request timeout: {e}") from e
 
         # Handle response status
@@ -433,7 +489,10 @@ Rules:
         entity_types: list[dict],
         source_group: str,
     ) -> list[dict]:
-        """Extract entities via direct LLM call.
+        """Extract entities via direct LLM call with retry and variation.
+
+        Uses exponential backoff with temperature variation on retries to avoid
+        getting stuck in the same failure mode.
 
         Args:
             extraction_data: Extraction data dictionary.
@@ -442,45 +501,99 @@ Rules:
 
         Returns:
             List of entity dictionaries.
+
+        Raises:
+            LLMExtractionError: If all retry attempts fail.
         """
-        prompts = self._build_entity_prompts(extraction_data, entity_types, source_group)
+        max_retries = self.settings.llm_max_retries
+        base_temp = self.settings.llm_base_temperature
+        temp_increment = self.settings.llm_retry_temperature_increment
+        backoff_min = self.settings.llm_retry_backoff_min
+        backoff_max = self.settings.llm_retry_backoff_max
+        max_tokens = self.settings.llm_max_tokens
 
-        logger.info(
-            "entity_extraction_started",
-            model=self.model,
-            source_group=source_group,
-            entity_types=[et["name"] for et in entity_types],
-        )
+        last_error: Exception | None = None
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": prompts["system"]},
-                    {"role": "user", "content": prompts["user"]},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
+        for attempt in range(1, max_retries + 1):
+            # Vary temperature on retries
+            temperature = base_temp + (attempt - 1) * temp_increment
+
+            # Build prompts (add conciseness hint on retries)
+            prompts = self._build_entity_prompts(
+                extraction_data, entity_types, source_group
             )
-
-            content = response.choices[0].message.content
-            parsed = json.loads(content)
-            entities = parsed.get("entities", [])
+            system_prompt = prompts["system"]
+            if attempt > 1:
+                system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
 
             logger.info(
-                "entity_extraction_completed",
+                "entity_extraction_started",
                 model=self.model,
-                entities_extracted=len(entities),
+                source_group=source_group,
+                entity_types=[et["name"] for et in entity_types],
+                attempt=attempt,
+                temperature=temperature,
             )
 
-            return entities
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompts["user"]},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
 
-        except json.JSONDecodeError as e:
-            logger.warning("failed_to_parse_llm_response", error=str(e))
-            return []
-        except Exception as e:
-            logger.error("llm_call_failed", error=str(e))
-            raise LLMExtractionError(f"Entity extraction failed: {e}") from e
+                content = response.choices[0].message.content
+                parsed = json.loads(content)
+                entities = parsed.get("entities", [])
+
+                logger.info(
+                    "entity_extraction_completed",
+                    model=self.model,
+                    entities_extracted=len(entities),
+                    attempt=attempt,
+                )
+
+                return entities
+
+            except json.JSONDecodeError as e:
+                # JSON parse errors are recoverable - retry with different temperature
+                last_error = e
+                logger.warning(
+                    "entity_extraction_json_parse_failed",
+                    error=str(e),
+                    attempt=attempt,
+                    max_retries=max_retries,
+                )
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "entity_extraction_attempt_failed",
+                    model=self.model,
+                    error=str(e),
+                    attempt=attempt,
+                    max_retries=max_retries,
+                )
+
+            if attempt < max_retries:
+                wait_time = min(backoff_min * (2 ** (attempt - 1)), backoff_max)
+                logger.info("llm_retry_backoff", wait_seconds=wait_time)
+                await asyncio.sleep(wait_time)
+
+        # All retries exhausted
+        logger.error(
+            "entity_extraction_failed_all_retries",
+            model=self.model,
+            error=str(last_error),
+            attempts=max_retries,
+        )
+        raise LLMExtractionError(
+            f"Entity extraction failed after {max_retries} attempts: {last_error}"
+        ) from last_error
 
     def _build_entity_prompts(
         self,

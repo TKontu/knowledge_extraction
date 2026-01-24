@@ -79,11 +79,15 @@ class Settings(BaseSettings):
 
     # LLM Timeouts
     llm_http_timeout: int = Field(
-        default=900,
-        description="HTTP timeout for LLM requests in seconds",
+        default=120,
+        description="HTTP timeout for LLM requests in seconds (reduced to detect stuck models)",
+    )
+    llm_max_tokens: int = Field(
+        default=4096,
+        description="Maximum tokens for LLM response (prevents endless generation)",
     )
     llm_max_retries: int = Field(
-        default=5,
+        default=3,
         description="Maximum retries for LLM requests",
     )
     llm_retry_backoff_min: int = Field(
@@ -91,8 +95,16 @@ class Settings(BaseSettings):
         description="Minimum backoff time in seconds",
     )
     llm_retry_backoff_max: int = Field(
-        default=60,
+        default=30,
         description="Maximum backoff time in seconds",
+    )
+    llm_base_temperature: float = Field(
+        default=0.1,
+        description="Base temperature for LLM requests",
+    )
+    llm_retry_temperature_increment: float = Field(
+        default=0.05,
+        description="Temperature increase per retry attempt to vary outputs",
     )
 
     # Extraction Concurrency
@@ -332,7 +344,9 @@ class Settings(BaseSettings):
         """Get blocked domains as list."""
         if isinstance(self.flaresolverr_blocked_domains, list):
             return self.flaresolverr_blocked_domains
-        return [d.strip() for d in self.flaresolverr_blocked_domains.split(",") if d.strip()]
+        return [
+            d.strip() for d in self.flaresolverr_blocked_domains.split(",") if d.strip()
+        ]
 
 
 # Global settings instance

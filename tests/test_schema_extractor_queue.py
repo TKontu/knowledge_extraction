@@ -25,6 +25,13 @@ class TestSchemaExtractorQueueMode:
         settings.llm_http_timeout = 60
         settings.llm_model = "test-model"
         settings.llm_request_timeout = 300
+        # Retry settings
+        settings.llm_max_retries = 3
+        settings.llm_base_temperature = 0.1
+        settings.llm_retry_temperature_increment = 0.05
+        settings.llm_retry_backoff_min = 2
+        settings.llm_retry_backoff_max = 30
+        settings.llm_max_tokens = 4096
         return settings
 
     @pytest.fixture
@@ -98,7 +105,7 @@ class TestSchemaExtractorQueueMode:
         assert submitted_request.request_type == "extract_field_group"
         assert "content" in submitted_request.payload
         assert "field_group" in submitted_request.payload
-        assert "company_name" in submitted_request.payload
+        assert "source_context" in submitted_request.payload
 
     @pytest.mark.asyncio
     async def test_queue_payload_includes_prompts(self, mock_settings, mock_queue):
@@ -262,6 +269,13 @@ class TestSchemaExtractorQueueIntegration:
         settings.llm_http_timeout = 60
         settings.llm_model = "test-model"
         settings.llm_request_timeout = 300
+        # Retry settings
+        settings.llm_max_retries = 3
+        settings.llm_base_temperature = 0.1
+        settings.llm_retry_temperature_increment = 0.05
+        settings.llm_retry_backoff_min = 2
+        settings.llm_retry_backoff_max = 30
+        settings.llm_max_tokens = 4096
         return settings
 
     @pytest.mark.asyncio
