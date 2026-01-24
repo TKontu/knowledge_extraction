@@ -248,34 +248,44 @@ class SchemaExtractionOrchestrator:
     def _merge_entity_lists(self, chunk_results: list[dict]) -> dict:
         """Merge entity lists from multiple chunks.
 
-        Supports multiple entity key names (products, entities, items) and
-        deduplicates by product_name or entity_id fields.
+        Dynamically detects the entity list key (e.g., "products", "employees",
+        "locations") and deduplicates by common ID fields.
         """
-        # Try to find which key contains the entity list
-        entity_keys = ["products", "entities", "items"]
+        # Find which key contains the entity list by looking for any list value
+        # (excluding 'confidence' and other known non-list keys)
+        reserved_keys = {"confidence", "error", "status"}
         entity_key = None
-        for key in entity_keys:
-            for result in chunk_results:
-                if key in result and isinstance(result[key], list):
+
+        for result in chunk_results:
+            for key, value in result.items():
+                if key not in reserved_keys and isinstance(value, list):
                     entity_key = key
                     break
             if entity_key:
                 break
 
-        # Default to "products" if no entity list found
+        # Default to "entities" if no entity list found
         if not entity_key:
-            entity_key = "products"
+            entity_key = "entities"
 
         all_entities = []
         seen_ids = set()
 
         for result in chunk_results:
             entities = result.get(entity_key, [])
+            if not isinstance(entities, list):
+                continue
+
             for entity in entities:
-                # Support both product_name and entity_id for deduplication
+                if not isinstance(entity, dict):
+                    continue
+
+                # Support multiple ID field patterns for deduplication
                 entity_id = (
                     entity.get("product_name")
                     or entity.get("entity_id")
+                    or entity.get("employee_id")
+                    or entity.get("location_id")
                     or entity.get("name")
                     or entity.get("id")
                 )

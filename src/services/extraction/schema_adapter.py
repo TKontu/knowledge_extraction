@@ -195,6 +195,9 @@ class SchemaAdapter:
     def generate_prompt_hint(self, field_group_def: dict) -> str:
         """Generate LLM prompt hint from field group definition.
 
+        Builds a useful prompt hint by analyzing the field definitions,
+        including field names and types to guide the LLM.
+
         Args:
             field_group_def: The field group definition dict.
 
@@ -203,6 +206,36 @@ class SchemaAdapter:
         """
         description = field_group_def.get("description", "")
         name = field_group_def.get("name", "")
+        is_entity_list = field_group_def.get("is_entity_list", False)
+        fields = field_group_def.get("fields", [])
 
-        # Generate a basic prompt hint based on description and name
-        return f"Extract {description.lower()} ({name})"
+        # Build field summary
+        field_names = [f.get("name", "") for f in fields if f.get("name")]
+        boolean_fields = [f.get("name") for f in fields if f.get("field_type") == "boolean"]
+        enum_fields = [f.get("name") for f in fields if f.get("field_type") == "enum"]
+
+        hints = []
+
+        if is_entity_list:
+            hints.append(f"Extract each {name.rstrip('s')} item found in the content.")
+            hints.append(f"Return a list of {name} with the following fields.")
+        else:
+            hints.append(f"Extract {description.lower()}.")
+
+        # Add field-specific guidance
+        if boolean_fields:
+            hints.append(
+                f"For boolean fields ({', '.join(boolean_fields)}), "
+                "only return true if there is explicit evidence."
+            )
+
+        if enum_fields:
+            hints.append(
+                f"For enum fields ({', '.join(enum_fields)}), "
+                "select the most appropriate value from the allowed options."
+            )
+
+        if field_names:
+            hints.append(f"Key fields to extract: {', '.join(field_names[:5])}.")
+
+        return " ".join(hints)
