@@ -1,9 +1,9 @@
-"""Tests for report-related Pydantic models."""
+"""Tests for Pydantic models."""
 
 import pytest
 from pydantic import ValidationError
 
-from models import ReportRequest, ReportResponse, ReportJobResponse, ReportType
+from models import ReportRequest, ReportResponse, ReportJobResponse, ReportType, ProjectCreate
 
 
 class TestReportRequest:
@@ -168,3 +168,58 @@ class TestReportType:
         """Test ReportType enum has correct values."""
         assert ReportType.SINGLE.value == "single"
         assert ReportType.COMPARISON.value == "comparison"
+
+
+class TestProjectCreate:
+    """Test ProjectCreate model with default schema."""
+
+    def test_project_create_without_schema_gets_default(self):
+        """None → default schema."""
+        project = ProjectCreate(name="test_project")
+
+        assert project.extraction_schema is not None
+        assert project.extraction_schema.get("name") == "generic_facts"
+
+    def test_project_create_with_empty_dict_gets_default(self):
+        """{} → default schema."""
+        project = ProjectCreate(name="test_project", extraction_schema={})
+
+        assert project.extraction_schema is not None
+        assert project.extraction_schema.get("name") == "generic_facts"
+
+    def test_project_create_with_schema_keeps_it(self):
+        """Custom schema preserved."""
+        custom_schema = {
+            "name": "custom",
+            "field_groups": [
+                {
+                    "name": "test_group",
+                    "description": "Test",
+                    "fields": [
+                        {
+                            "name": "test_field",
+                            "field_type": "text",
+                            "description": "Test field",
+                        }
+                    ],
+                }
+            ],
+        }
+        project = ProjectCreate(name="test_project", extraction_schema=custom_schema)
+
+        assert project.extraction_schema is not None
+        assert project.extraction_schema.get("name") == "custom"
+        assert project.extraction_schema != {}
+
+    def test_default_schema_has_expected_name(self):
+        """Schema name is 'generic_facts'."""
+        project = ProjectCreate(name="test_project")
+
+        assert project.extraction_schema.get("name") == "generic_facts"
+
+    def test_default_schema_has_field_groups(self):
+        """Default schema has field_groups."""
+        project = ProjectCreate(name="test_project")
+
+        assert "field_groups" in project.extraction_schema
+        assert len(project.extraction_schema["field_groups"]) == 3

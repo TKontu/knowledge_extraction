@@ -6,7 +6,7 @@ from uuid import UUID
 import structlog
 
 from config import settings
-from services.extraction.field_groups import ALL_FIELD_GROUPS, FieldGroup
+from services.extraction.field_groups import FieldGroup
 from services.extraction.schema_extractor import SchemaExtractor
 from services.llm.chunking import chunk_document
 
@@ -24,7 +24,7 @@ class SchemaExtractionOrchestrator:
         source_id: UUID,
         markdown: str,
         company_name: str,
-        field_groups: list[FieldGroup] | None = None,
+        field_groups: list[FieldGroup],
     ) -> list[dict]:
         """Extract all field groups from source content.
 
@@ -32,12 +32,20 @@ class SchemaExtractionOrchestrator:
             source_id: Source UUID for tracking.
             markdown: Markdown content.
             company_name: Company name for context.
-            field_groups: Optional specific groups (default: all).
+            field_groups: Field groups to extract (REQUIRED).
 
         Returns:
             List of extraction results, one per field group.
         """
-        groups = field_groups or ALL_FIELD_GROUPS
+        if not field_groups:
+            logger.error(
+                "extract_all_groups_no_field_groups",
+                source_id=str(source_id),
+                message="field_groups parameter is required but was empty",
+            )
+            return []
+
+        groups = field_groups
         results = []
 
         # Chunk document for large content
