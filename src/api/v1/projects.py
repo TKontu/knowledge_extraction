@@ -3,30 +3,15 @@
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 
 from database import get_db
-from models import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectFromTemplate
+from models import ProjectCreate, ProjectFromTemplate, ProjectResponse, ProjectUpdate
 from orm_models import Extraction
 from services.projects.repository import ProjectRepository
-from services.projects.templates import (
-    COMPANY_ANALYSIS_TEMPLATE,
-    RESEARCH_SURVEY_TEMPLATE,
-    CONTRACT_REVIEW_TEMPLATE,
-    BOOK_CATALOG_TEMPLATE,
-    DEFAULT_EXTRACTION_TEMPLATE,
-)
-
-# Template registry for lookup
-TEMPLATES = {
-    "company_analysis": COMPANY_ANALYSIS_TEMPLATE,
-    "research_survey": RESEARCH_SURVEY_TEMPLATE,
-    "contract_review": CONTRACT_REVIEW_TEMPLATE,
-    "book_catalog": BOOK_CATALOG_TEMPLATE,
-    "default": DEFAULT_EXTRACTION_TEMPLATE,
-}
+from services.projects.template_loader import get_template, list_template_names
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -85,7 +70,7 @@ async def list_projects(
 @router.get("/templates", response_model=list[str])
 async def list_templates() -> list[str]:
     """List available project templates."""
-    return list(TEMPLATES.keys())
+    return list_template_names()
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -172,11 +157,12 @@ async def create_from_template(
     db: Session = Depends(get_db),
 ) -> ProjectResponse:
     """Create a new project from a template."""
-    # Check if template exists
-    if request.template not in TEMPLATES:
+    # Get template from registry
+    template = get_template(request.template)
+    if template is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Template '{request.template}' not found. Available: {list(TEMPLATES.keys())}",
+            detail=f"Template '{request.template}' not found. Available: {list_template_names()}",
         )
 
     repo = ProjectRepository(db)
@@ -188,9 +174,6 @@ async def create_from_template(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Project with name '{request.name}' already exists",
         )
-
-    # Clone from template
-    template = TEMPLATES[request.template].copy()
 
     # Create project from template
     db_project = await repo.create(
