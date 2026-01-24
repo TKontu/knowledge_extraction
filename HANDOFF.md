@@ -1,154 +1,77 @@
-# Handoff: Documentation Rewrite - Architecture & README
+# Handoff: YAML Template System
 
 ## Completed
 
-### Full Documentation Rewrite (V1.1)
-Created two new comprehensive documentation files from scratch by analyzing actual codebase:
+### YAML Template Refactor (PR #59 + follow-up fix)
 
-1. **`docs/readmeV1_1.md`** - User-facing documentation
-   - Complete system overview with all features
-   - Full API endpoint reference (11 endpoint groups)
-   - Infrastructure components (9 services documented)
-   - Project templates table (4 templates)
-   - Configuration reference
-   - Usage examples with code snippets
-   - Quick start guide
+Refactored extraction templates from Python dictionaries to YAML files:
 
-2. **`docs/architectureV1_1.md`** - Technical deep-dive
-   - Complete pipeline flow diagrams
-   - Stage-by-stage breakdown (scraping, extraction, storage)
-   - Service architecture details
-   - Data models with schema examples
-   - Concurrency patterns
-   - Storage patterns (deduplication, entity normalization)
-   - Document chunking algorithm
-   - LLM integration (queue + worker)
-   - Deployment guide
+1. **Template Loader Module** (`src/services/projects/template_loader.py`)
+   - `TemplateRegistry` class with validation via `SchemaAdapter`
+   - Global functions: `get_template()`, `list_template_names()`, `get_all_templates()`
+   - Startup loading with fail-fast on invalid templates
 
-### Critical Components Documented (Previously Missing)
+2. **YAML Templates** (`src/services/projects/templates/`)
+   - 7 templates converted to YAML format
+   - `company_analysis.yaml`, `research_survey.yaml`, `contract_review.yaml`
+   - `book_catalog.yaml`, `drivetrain_company.yaml`, `drivetrain_company_simple.yaml`
+   - `default.yaml`
 
-**Infrastructure:**
-- Camoufox browser service (anti-bot, 0% detection rate)
-- Proxy Adapter + FlareSolverr integration
-- RabbitMQ message broker
-- Firecrawl database (separate PostgreSQL)
-- Shutdown Manager (graceful termination)
+3. **Backward Compatibility** (`src/services/projects/templates.py`)
+   - `__getattr__` lazy loading for old constant imports
+   - `COMPANY_ANALYSIS_TEMPLATE`, `DEFAULT_EXTRACTION_TEMPLATE`, etc. still work
 
-**Services:**
-- LLM Worker (adaptive concurrency, DLQ)
-- LLM Request Queue (Redis Streams)
-- Report generation (4 types, 3 formats)
-- Metrics collection (Prometheus)
-- Entity by-value search
+4. **API Integration** (`src/api/v1/projects.py`)
+   - Fixed: Now uses `template_loader` instead of hardcoded dict
+   - `GET /api/v1/projects/templates` returns all 7 templates
+   - `POST /api/v1/projects/from-template` works with any template
 
-**Features:**
-- Extraction profiles (general/detailed)
-- Header-based chunking (8000 tokens)
-- Soft delete for projects
-- Template system (4 templates)
-- AJAX discovery in Camoufox
-
-### Accuracy Fixes
-
-Fixed critical inaccuracies from old docs:
-- ✅ Middleware order (was completely reversed)
-- ✅ Deduplication threshold (0.90, not 0.95)
-- ✅ Template availability (all 4 available, not "coming soon")
-- ✅ API endpoint paths (project-scoped)
-- ✅ Export endpoints added
-- ✅ Missing configuration variables documented
-
-### Verification Methodology
-
-All claims verified against actual code:
-- Read 50+ source files across all modules
-- Cross-referenced API routes with actual endpoints
-- Verified configuration against config.py
-- Checked Docker Compose for infrastructure
-- Traced data flow through actual service implementations
-- **Zero unverified claims carried over from old docs**
+### Tests
+- `tests/test_template_loader.py` - 10 tests for loader
+- `tests/test_project_templates.py` - 5 tests for backward compat
+- `tests/test_template_compatibility.py` - 18 tests for schema validation
+- All 33 template-related tests passing
 
 ## In Progress
 
-N/A - Documentation rewrite completed.
+- MCP Server implementation (`docs/TODO-agent-mcp-server.md` assigned)
 
 ## Next Steps
 
-- [ ] **Replace old documentation**: Rename `readmeV1_1.md` → `readme.md` and `architectureV1_1.md` → `architecture.md`
-- [ ] **Review and commit**: Commit new documentation to repository
-- [ ] **Archive old docs**: Move old `readme.md` and `architecture.md` to `docs/archive/` for reference
-- [ ] **Update references**: Check if any other files reference old documentation paths
-- [ ] **Validate links**: Ensure all internal documentation links work correctly
+- [ ] Review and merge MCP server PR when ready
+- [ ] Consider removing deprecated Python template constants after migration period
+- [ ] Add more domain-specific templates as needed
 
 ## Key Files
 
-### New Documentation (Untracked)
-- `docs/readmeV1_1.md` - **New user documentation** (376 lines, comprehensive)
-- `docs/architectureV1_1.md` - **New technical architecture** (700+ lines, detailed)
-
-### Original Files (For Comparison)
-- `docs/readme.md` - Old user documentation (342 lines, outdated/unreliable)
-- `docs/architecture.md` - Old architecture doc (551 lines, outdated/unreliable)
-
-### Key Source Files Referenced
-- `src/main.py` - FastAPI app, middleware stack verification
-- `src/config.py` - All configuration variables
-- `src/models.py` - Pydantic models for API
-- `src/orm_models.py` - Database schema
-- `src/services/camoufox/` - Anti-bot browser service
-- `src/services/proxy/` - FlareSolverr integration
-- `src/services/llm/worker.py` - LLM worker implementation
-- `src/services/extraction/` - Extraction pipeline
-- `src/services/scraper/` - Scraping workers
-- `src/services/reports/` - Report generation
-- `src/api/v1/*.py` - All API endpoints (11 files)
-- `docker-compose.yml` - Infrastructure stack definition
+| File | Purpose |
+|------|---------|
+| `src/services/projects/template_loader.py` | YAML loading + validation |
+| `src/services/projects/templates.py` | Backward-compat lazy exports |
+| `src/services/projects/templates/*.yaml` | 7 template definitions |
+| `src/api/v1/projects.py` | API endpoints using loader |
+| `tests/test_template_loader.py` | Loader tests |
 
 ## Context
 
-### Documentation Approach
+### Default Template for New Projects
 
-**Problem:** Old documentation was unreliable, contained outdated information, and had significant gaps.
+Projects created without a template get `default` schema applied via:
+1. `ProjectCreate` model validator in `src/models.py:307-314`
+2. Pipeline fallback in `src/services/extraction/pipeline.py`
 
-**Solution:** Complete rewrite by systematically analyzing actual codebase module-by-module.
+### Template Names
 
-**Process:**
-1. Explored project structure and identified all modules
-2. Read service implementations to understand actual functionality
-3. Cross-referenced claims from old docs against code
-4. Documented only verified components
-5. Added missing critical infrastructure (Camoufox, Proxy Adapter, LLM Worker)
-6. Fixed inaccuracies (middleware order, thresholds, endpoints)
-
-### Key Decisions
-
-1. **Created V1_1 files instead of overwriting**: Allows side-by-side comparison and safe rollback
-2. **Excluded Playwright**: Legacy service being phased out, not documented per user request
-3. **Omitted hardware specs**: Environment-specific details not suitable for generic docs
-4. **Added all 4 templates**: research_survey, contract_review, book_catalog all fully implemented despite old docs claiming "coming soon"
-5. **Documented actual API structure**: All endpoints are project-scoped (`/api/v1/projects/{id}/...`)
-
-### Architecture Highlights
-
-The system is more sophisticated than old docs indicated:
-
-**Multi-Layer Anti-Bot Protection:**
-- Firecrawl (orchestrator) → Camoufox (browser pool) → Proxy Adapter → FlareSolverr
-- Domain-based routing, AJAX discovery, content stability detection
-
-**Distributed LLM Processing:**
-- Client enqueues → Redis Streams → Worker pool → Adaptive concurrency
-- Timeout-based scaling, DLQ for failures, consumer groups
-
-**Smart Chunking:**
-- Header-aware (preserves breadcrumbs)
-- 8000 token limit with semantic splitting
-- Falls back gracefully for oversized content
-
-### No Blockers
-
-Documentation is complete and ready for use. All information verified against actual code.
+| YAML File | Template Name | Old Constant |
+|-----------|---------------|--------------|
+| company_analysis.yaml | company_analysis | COMPANY_ANALYSIS_TEMPLATE |
+| research_survey.yaml | research_survey | RESEARCH_SURVEY_TEMPLATE |
+| contract_review.yaml | contract_review | CONTRACT_REVIEW_TEMPLATE |
+| book_catalog.yaml | book_catalog | BOOK_CATALOG_TEMPLATE |
+| drivetrain_company.yaml | drivetrain_company_analysis | DRIVETRAIN_COMPANY_TEMPLATE |
+| drivetrain_company_simple.yaml | drivetrain_company_simple | DRIVETRAIN_COMPANY_TEMPLATE_SIMPLE |
+| default.yaml | default | DEFAULT_EXTRACTION_TEMPLATE |
 
 ---
 
-**Recommendation:** Run `/clear` to start fresh session for implementation work or other tasks.
+**Recommendation:** Run `/clear` to start fresh session.
