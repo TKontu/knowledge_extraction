@@ -34,7 +34,7 @@ class KnowledgeExtractionClient:
         """Initialize the HTTP client."""
         headers = {"Content-Type": "application/json"}
         if self.settings.api_key:
-            headers["Authorization"] = f"Bearer {self.settings.api_key}"
+            headers["X-API-Key"] = self.settings.api_key
 
         self._client = httpx.AsyncClient(
             base_url=self.settings.api_base_url,
