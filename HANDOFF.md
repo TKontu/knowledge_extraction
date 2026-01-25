@@ -1,8 +1,23 @@
-# Handoff: Template-Agnostic Table Reports
+# Handoff: Review Documents Updated
 
 ## Completed This Session
 
-### Pipeline Review Fixes (Commit `0f4a3c6`)
+### Backlog Review (2026-01-25)
+
+Reviewed all 4 critical items from the backlog - **all are resolved**:
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Queue worker `complete` handler | ✅ Fixed | `worker.py:344-347` now handles `request_type="complete"` |
+| LLMClient connection leak | ✅ Fixed | `reports.py:59-69` uses context manager |
+| `sources_referenced` in API | ✅ Design choice | Field intentionally not in API; sources in markdown content |
+| LLM client unused | ✅ Fixed | Used via `ReportSynthesizer` at `service.py:56-59` |
+
+Updated review documents:
+- `docs/pipeline_review_llm_synthesis.md` - 5 of 10 fixed, 5 remaining (all minor)
+- `docs/endpoint_reports_review.md` - All critical fixed, 2 important remaining
+
+### Previous: Pipeline Review Fixes (Commit `0f4a3c6`)
 
 Fixed 4 issues identified during pipeline review of SchemaTableGenerator:
 
@@ -11,40 +26,19 @@ Fixed 4 issues identified during pipeline review of SchemaTableGenerator:
 3. **Double ProjectRepository** - Pass `project_repo` to ReportService in API
 4. **None shows as "None"** - Fixed explicit None handling in entity name formatting
 
-See `docs/pipeline_review_schema_table_generator.md` for full analysis.
-
-### Template-Agnostic Table/Excel Generation (Commit `287af76`)
+### Previous: Template-Agnostic Table/Excel Generation (Commit `287af76`)
 
 Refactored table report generation to derive columns and labels dynamically from project's `extraction_schema`, eliminating hardcoded drivetrain-specific code.
-
-**New File:** `src/services/reports/schema_table_generator.py`
-- `get_columns_from_schema()` - derives columns/labels from schema
-- `get_entity_list_groups()` - identifies entity list field groups
-- `format_entity_list()` - generic formatting for any entity list
-- `_find_id_field()` - finds identifying field (name, product_name, etc.)
-- `_infer_unit()` - infers units from field names (_kw → "kW", _nm → "Nm")
-
-**Modified:** `src/services/reports/service.py`
-- Added `ProjectRepository` dependency
-- TABLE report now loads project schema and uses SchemaTableGenerator
-- SCHEMA_TABLE deprecated (forwards to TABLE with warning)
-- `_aggregate_for_table()` handles entity lists and schema-derived columns
-
-**Tests:** `tests/test_schema_table_generator.py` (25 tests)
-
-### Previous: TODO Cleanup (Commit `a5bed98`)
-
-Removed 6 completed agent TODO files (all features implemented).
 
 ## Current State
 
 **Main branch clean** - all changes committed and pushed.
 
 ```
+37173a6 docs: Update handoff with pipeline review fixes
 d7f5f2d chore: Update cache bust for fresh build
 0f4a3c6 fix(reports): Address pipeline review findings
 287af76 feat(reports): Template-agnostic table/Excel generation
-a5bed98 chore: Remove completed TODO files
 ```
 
 **Docker images built and pushed:**
@@ -58,32 +52,41 @@ a5bed98 chore: Remove completed TODO files
 - 25 new SchemaTableGenerator tests
 - All linting clean
 
-## Key Architecture
+## Remaining Backlog
 
-TABLE report type now works uniformly across all templates:
-
-```
-Request: POST /projects/{id}/reports
-         {"type": "table", "source_groups": [...], "output_format": "xlsx"}
-
-Flow:
-1. ReportService.generate() receives request
-2. _get_project_schema() loads extraction_schema from DB
-3. SchemaTableGenerator.get_columns_from_schema() derives columns/labels
-4. _aggregate_for_table() uses schema for entity lists + field aggregation
-5. ExcelFormatter.create_workbook() uses schema-derived labels
-```
-
-## Remaining Technical Debt
+### Reports (Minor)
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
-| `SchemaTableReport` still exists | Low | Can be removed after deprecation period |
-| `FIELD_GROUPS_BY_NAME` still exists | Low | Still used by SchemaTableReport |
-| No LLM cost tracking | Low | Add metrics later |
+| Chunking doesn't synthesize across chunks | Low | Second-pass to unify chunk results |
+| `_build_sources_section` dead code | Low | Remove unused method |
+| Hardcoded `max_detail_extractions = 10` | Low | Make configurable |
+| No test for `_complete_via_queue` | Low | Add queue mode test |
+| Variable facts in system prompt | Low | Move to user prompt for cache efficiency |
+| No source attribution in extractions | Medium | Needs eager-loading |
+| Lossy text aggregation | Low | Consider LLM synthesis |
+
+### Crawl Pipeline (Not Started)
+
+See `docs/PLAN-crawl-improvements.md` for full plan:
+
+| Phase | Issues | Status |
+|-------|--------|--------|
+| Phase 1: Error Handling | I1 (error messages), M2 (UUID types) | Not started |
+| Phase 2: Data Safety | I2 (batch commits) | Not started |
+| Phase 3: Observability | I3 (HTTP filtering), M3 (metrics), M1 (created/updated) | Not started |
+
+### Technical Debt (Low Priority)
+
+| Issue | Notes |
+|-------|-------|
+| `SchemaTableReport` still exists | Can be removed (deprecated) |
+| `FIELD_GROUPS_BY_NAME` still exists | Can be removed if SchemaTableReport removed |
+| No LLM cost tracking | Add metrics later |
 
 ## Next Steps
 
 - [ ] Test with real projects using different templates
-- [ ] Consider removing SchemaTableReport entirely (it's deprecated)
+- [ ] Consider removing SchemaTableReport entirely (deprecated)
 - [ ] Clean up FIELD_GROUPS_BY_NAME if no longer needed
+- [ ] Start Crawl Pipeline Phase 1 (error handling improvements)

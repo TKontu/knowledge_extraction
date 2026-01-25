@@ -2,7 +2,7 @@
 
 **Date:** 2025-01-25
 **Scope:** PR #62 changes - LLM synthesis for report generation
-**Status:** All 10 findings verified as REAL issues
+**Status:** 5 of 10 findings fixed, 5 remaining (all minor/optimization)
 
 ## Flow
 
@@ -20,133 +20,74 @@ reports.py:create_report
 
 ## Critical (must fix)
 
-### 🔴 1. LLMClient not closed after use in API endpoint ✓ VERIFIED
+### ✅ 1. LLMClient not closed after use in API endpoint — FIXED
 
-**File:** `src/api/v1/reports.py:58-66`
+**File:** `src/api/v1/reports.py:59-69`
 
-```python
-llm_client = LLMClient(settings)
-report_service = ReportService(...)
-report = await report_service.generate(project_id, request)
-# llm_client.close() never called - HTTP connection leaks
-```
-
-**Verification:** LLMClient has `close()` method at `client.py:61-73` and `__aexit__` at `client.py:79-81` but neither is called.
-
-**Impact:** Each report generation creates a new `AsyncOpenAI` client that is never closed. This leaks HTTP connections over time.
-
-**Fix:** Use context manager:
+Now uses context manager:
 ```python
 async with LLMClient(settings) as llm_client:
     report_service = ReportService(...)
-    report = await report_service.generate(...)
+    report = await report_service.generate(project_id, request)
 ```
 
 ---
 
-### 🔴 2. `sources_referenced` field not populated in API response ✓ VERIFIED
+### ✅ 2. `sources_referenced` field — RESOLVED (Design Choice)
 
-**File:** `src/api/v1/reports.py:72-81`
+The `ReportResponse` model intentionally does NOT include a `sources_referenced` field.
+Sources are embedded in the markdown `content` as a "Sources Referenced" section.
 
-The `ReportResponse` model has `sources_referenced: list[str] | None = None` (models.py:585) but:
-1. Report ORM model (`orm_models.py:191-211`) has no `sources_referenced` field
-2. API response never populates it - always returns `None`
-
-```python
-return ReportResponse(
-    id=str(report.id),
-    type=report.type,
-    # ... sources_referenced is never set
-)
-```
-
-**Verification:** `sources_referenced` variable exists in service.py (lines 257, 266, 279, 355, 371, 385, 398) but is only used for markdown generation, not stored or returned.
-
-**Impact:** API consumers expecting source URIs in the response will always get `None`.
-
-**Fix:** Either:
-1. Add `sources_referenced` to Report ORM and populate in response, or
-2. Remove the field from ReportResponse if not implemented
+If structured source data is needed in the API response, that's a feature request.
 
 ---
 
 ## Important (should fix)
 
-### 🟠 3. LLM called for EVERY category even with single fact ✓ VERIFIED
+### ✅ 3. LLM called for EVERY category even with single fact — FIXED
 
-**File:** `src/services/reports/service.py:258-261`
+**File:** `src/services/reports/service.py:276-302`
 
+Now checks item count and formats single facts directly:
 ```python
-for category, items in sorted(by_category.items()):
-    result = await self._synthesizer.synthesize_facts(items, synthesis_type="summarize")
-```
-
-No check for number of items - synthesis happens even for 1 fact.
-
-**Impact:** Unnecessary LLM costs and latency for single-fact categories.
-
-**Fix:**
-```python
-if len(items) <= 1:
+if len(items) == 1:
     # Format directly, no LLM needed
-    text = items[0].get("data", {}).get("fact", "") if items else ""
-    result = SynthesisResult(synthesized_text=text, sources_used=[...], ...)
+    fact_text = item.get("data", {}).get("fact", ...)
+    result = SynthesisResult(synthesized_text=text, ...)
 else:
+    # Use LLM synthesis for multiple facts
     result = await self._synthesizer.synthesize_facts(items, ...)
 ```
 
 ---
 
-### 🟠 4. `_complete_direct` retry doesn't vary temperature ✓ VERIFIED
+### ✅ 4. `_complete_direct` retry doesn't vary temperature — FIXED
 
-**File:** `src/services/llm/client.py:700-730`
+**File:** `src/services/llm/client.py:704-706`
 
+Now varies temperature on retries:
 ```python
-temp = temperature or self.settings.llm_base_temperature
 for attempt in range(1, max_retries + 1):
-    # temp never changes between attempts
+    current_temp = base_temp + (attempt - 1) * temp_increment
 ```
-
-Compare to `_extract_facts_direct` (line 227):
-```python
-temperature = base_temp + (attempt - 1) * temp_increment  # Varies!
-```
-
-**Impact:** Retries may hit the same failure mode repeatedly.
-
-**Fix:** Add temperature variation like other methods.
 
 ---
 
-### 🟠 5. Queue worker doesn't handle `request_type="complete"` ✓ VERIFIED CRITICAL
+### ✅ 5. Queue worker doesn't handle `request_type="complete"` — FIXED
 
-**File:** `src/services/llm/worker.py:315-345`
+**File:** `src/services/llm/worker.py:344-347`
 
-```python
-async def _execute_llm_call(self, request: LLMRequest) -> dict[str, Any]:
-    if request.request_type == "extract_facts":
-        return await self._extract_facts(...)
-    elif request.request_type == "extract_field_group":
-        return await self._extract_field_group(...)
-    elif request.request_type == "extract_entities":
-        return await self._extract_entities(...)
-    else:
-        raise ValueError(f"Unknown request type: {request.request_type}")
-```
-
-**There is NO handler for `request_type="complete"`!**
-
-**Impact:** Queue mode for `complete()` will fail with `ValueError: Unknown request type: complete`. All synthesis in queue mode is broken.
-
-**Fix:** Add handler in worker.py:
+Handler now exists:
 ```python
 elif request.request_type == "complete":
-    return await self._complete(request.payload, temperature, request.retry_count)
+    return await self._complete(
+        request.payload, temperature, request.retry_count
+    )
 ```
 
 ---
 
-### 🟠 6. Chunking doesn't synthesize final result across chunks ✓ VERIFIED
+### 🟠 6. Chunking doesn't synthesize final result across chunks
 
 **File:** `src/services/reports/synthesis.py:124-125`
 
@@ -165,9 +106,9 @@ For 50 facts split into 4 chunks, you get 4 separate paragraphs with no coherenc
 
 ## Minor
 
-### 🟡 7. `_build_sources_section` method defined but never used ✓ VERIFIED
+### 🟡 7. `_build_sources_section` method defined but never used
 
-**File:** `src/services/reports/service.py:284-308`
+**File:** `src/services/reports/service.py`
 
 Method is defined but never called - dead code.
 
@@ -175,7 +116,7 @@ Method is defined but never called - dead code.
 
 ---
 
-### 🟡 8. Hardcoded `max_detail_extractions = 10` ✓ VERIFIED
+### 🟡 8. Hardcoded `max_detail_extractions = 10`
 
 **File:** `src/services/reports/service.py:351`
 
@@ -187,19 +128,17 @@ max_detail_extractions = 10  # Hardcoded, not configurable
 
 ---
 
-### 🟡 9. No test coverage for queue mode `complete()` ✓ VERIFIED
+### 🟡 9. No test coverage for queue mode `complete()`
 
 **File:** `tests/test_llm_client.py`
 
 All `complete()` tests use direct mode. No test for `_complete_via_queue()`.
 
-Note: Given finding #5 (queue worker doesn't handle "complete"), these tests would fail anyway.
-
-**Fix:** Add test with mocked llm_queue once worker is fixed.
+**Fix:** Add test with mocked llm_queue.
 
 ---
 
-### 🟡 10. Variable facts embedded in system prompt ✓ VERIFIED
+### 🟡 10. Variable facts embedded in system prompt
 
 **File:** `src/services/reports/synthesis.py:70-73`
 
@@ -220,16 +159,16 @@ System prompts are typically cached by providers. Variable content reduces cache
 
 ## Summary
 
-| Severity | Count | Status |
-|----------|-------|--------|
-| 🔴 Critical | 2 | All verified |
-| 🟠 Important | 4 | All verified (one is actually critical: #5) |
-| 🟡 Minor | 4 | All verified |
+| Severity | Count | Fixed | Remaining |
+|----------|-------|-------|-----------|
+| 🔴 Critical | 2 | 2 | 0 |
+| 🟠 Important | 4 | 3 | 1 |
+| 🟡 Minor | 4 | 0 | 4 |
 
-## Recommended Priority
+## Remaining Work
 
-1. **Fix queue worker for `complete`** (#5) - Queue mode completely broken
-2. **Fix LLMClient leak** (#1) - Production stability issue
-3. **Either populate or remove `sources_referenced`** (#2) - API contract violation
-4. **Skip synthesis for single facts** (#3) - Cost optimization
-5. **Add temperature variation to `_complete_direct`** (#4) - Retry effectiveness
+1. **Chunking synthesis** (#6) - Second-pass to unify chunk results
+2. **Dead code cleanup** (#7) - Remove `_build_sources_section`
+3. **Configurable limit** (#8) - Make `max_detail_extractions` configurable
+4. **Queue tests** (#9) - Add test for `_complete_via_queue`
+5. **Prompt optimization** (#10) - Move facts to user prompt

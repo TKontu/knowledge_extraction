@@ -1,7 +1,7 @@
 # Pipeline Review: Reports Generation Endpoints
 
-**Last Updated:** 2026-01-24
-**Status:** Issues identified and fixed
+**Last Updated:** 2026-01-25
+**Status:** Most critical issues fixed, remaining items are minor optimizations
 
 ## Flow
 ```
@@ -18,36 +18,29 @@ api/v1/reports.py:create_report
 
 ## Critical (must fix)
 
-### 🔴 `src/services/reports/service.py:122` - extraction_ids always empty
+### ✅ `src/services/reports/service.py:122` - extraction_ids always empty — FIXED
 ```python
 extraction_ids=[],
 ```
-**Status:** CONFIRMED REAL
-**Issue:** The `extraction_ids` field is never populated, making it impossible to trace which extractions contributed to a report. This breaks provenance tracking.
+**Status:** FIXED - IDs now collected in `_gather_data()` and passed to Report
 
 ---
 
-### 🔴 `src/services/reports/service.py:47` - LLM client injected but never used
+### ✅ `src/services/reports/service.py:47` - LLM client injected but never used — FIXED
 ```python
 self._llm_client = llm_client
 ```
-**Status:** CONFIRMED REAL - only assigned at line 47, never referenced elsewhere
-**Issue:** LLMClient is passed to ReportService but never called. The docstring says it's "for generating summaries" but no LLM-based synthesis happens - all aggregation is rule-based.
-
-**Impact:** Reports lose information through simplistic aggregation (longest text, max number, any() for booleans).
+**Status:** FIXED - LLMClient is now used via `ReportSynthesizer`:
+- Line 59: `self._synthesizer = synthesizer or ReportSynthesizer(llm_client)`
+- Line 305: `result = await self._synthesizer.synthesize_facts(items, ...)`
 
 ---
 
-### 🔴 `src/api/v1/reports.py:308` - NoneType crash in download endpoint
+### ✅ `src/api/v1/reports.py:308` - NoneType crash in download endpoint — FIXED
 ```python
 safe_title = "".join(c for c in report.title if c.isalnum() or c in " -_")[:50]
 ```
-**Status:** REAL but LOW-PROBABILITY
-**Issue:** If `report.title` is `None`, this crashes with `TypeError: 'NoneType' object is not iterable`.
-
-**Mitigating factor:** `service.py` lines 104-112 always set fallback titles (`request.title or "fallback"`), so newly created reports always have titles. However, old DB records or direct DB inserts could have `None`.
-
-**Fix:** Add null check: `report.title or "report"`
+**Status:** FIXED - Added null check: `report.title or "report"`
 
 ---
 
@@ -69,21 +62,19 @@ extractions_by_group[source_group] = [
 
 ---
 
-### 🟠 `src/services/reports/schema_table.py:87` - Uses deprecated FIELD_GROUPS_BY_NAME
+### ✅ `src/services/reports/schema_table.py:87` - Uses deprecated FIELD_GROUPS_BY_NAME — RESOLVED
 ```python
 group = FIELD_GROUPS_BY_NAME.get(group_name)
 ```
-**Status:** CONFIRMED REAL
-**Issue:** Code comments in `field_groups.py:297-300` explicitly say this is deprecated and should use `SchemaAdapter.convert_to_field_groups()` from project schema. Hardcoded field groups won't work for projects with custom schemas.
+**Status:** RESOLVED - `SchemaTableReport` is now deprecated. `SCHEMA_TABLE` report type forwards to `TABLE` with a warning. The new `TABLE` report uses `SchemaTableGenerator` which derives columns from project schema.
 
 ---
 
-### 🟠 `src/api/v1/reports.py:78,195` - entity_count hardcoded to 0
+### ✅ `src/api/v1/reports.py:78,195` - entity_count hardcoded to 0 — FIXED
 ```python
 entity_count=0,  # TODO: count entities from report data
 ```
-**Status:** CONFIRMED REAL (has TODO comment acknowledging it)
-**Issue:** API response always shows `entity_count: 0` even when entities exist.
+**Status:** FIXED - Now stored in metadata during generation, read in API response.
 
 ---
 
@@ -107,12 +98,11 @@ merged[field.name] = "; ".join(unique)
 
 ---
 
-### 🟠 `src/services/reports/service.py:308` - Hardcoded limit in comparison report
+### ✅ `src/services/reports/service.py:308` - Hardcoded limit in comparison report — MITIGATED
 ```python
 for ext in extractions[:10]:  # Limit to top 10 per group
 ```
-**Status:** CONFIRMED REAL
-**Issue:** Only shows 10 extractions per group in "Detailed Findings" section. Rest silently dropped.
+**Status:** MITIGATED - Added truncation notice in output when more than 10 extractions exist.
 
 ---
 
@@ -124,61 +114,60 @@ for ext in extractions[:10]:  # Limit to top 10 per group
 
 ---
 
-### 🟡 `src/services/reports/schema_table.py:250` - Text truncation without indication
+### ✅ `src/services/reports/schema_table.py:250` - Text truncation without indication — FIXED
 ```python
 cells.append(str(val)[:50])  # Truncate for MD
 ```
-**Status:** CONFIRMED REAL
-**Issue:** Text silently truncated at 50 characters without ellipsis indicator.
+**Status:** FIXED - Added ellipsis: `text[:47] + "..."`
 
 ---
 
-### 🟡 `src/services/reports/service.py:409-411` - Boolean majority vote semantics
+### ✅ `src/services/reports/service.py:409-411` - Boolean majority vote semantics — FIXED
 ```python
 row[field] = sum(values) > len(values) / 2
 ```
-**Status:** Design choice, not a bug
-**Note:** Majority vote may not always be semantically correct, but this is a reasonable aggregation strategy.
+**Status:** FIXED - Changed to `any()` for semantic correctness.
 
 ---
 
-### 🟡 `src/api/v1/reports.py:319-322` - Content could be None
+### ✅ `src/api/v1/reports.py:319-322` - Content could be None — FIXED
 ```python
 return Response(content=report.content, ...)
 ```
-**Status:** REAL but LOW-PROBABILITY
-**Issue:** ORM allows `content=None`, but generators always return strings. Only affects old DB records.
+**Status:** FIXED - Added fallback: `report.content or ""`
 
 ---
 
-### 🟡 `src/services/reports/service.py:91-106` - SchemaTableReport bypasses patterns
+### ✅ `src/services/reports/service.py:91-106` - SchemaTableReport bypasses patterns — RESOLVED
 ```python
 schema_report = SchemaTableReport(self._db)
 ```
-**Status:** CONFIRMED REAL
-**Issue:** SchemaTableReport is instantiated without LLMClient, so it can't use LLM synthesis. Also queries DB directly instead of using repository pattern.
+**Status:** RESOLVED - `SCHEMA_TABLE` now deprecated and forwards to `TABLE`. The new `TABLE` path uses `SchemaTableGenerator` which follows proper patterns.
 
 ---
 
 ### 🟡 `src/models.py:561-571` - ReportResponse missing provenance fields
-**Status:** CONFIRMED REAL
-**Issue:** No field for `sources_referenced` or other provenance data.
+**Status:** Design choice
+**Note:** Sources are embedded in markdown `content` as "Sources Referenced" section. Structured source data in API is a feature request.
 
 ---
 
 ## Summary
 
-| Severity | Count | Verified |
-|----------|-------|----------|
-| Critical | 3 | 3 confirmed (1 low-probability) |
-| Important | 6 | 6 confirmed |
-| Minor | 6 | 4 confirmed, 1 potential, 1 design choice |
+| Severity | Count | Fixed | Remaining |
+|----------|-------|-------|-----------|
+| Critical | 3 | 3 | 0 |
+| Important | 6 | 4 | 2 |
+| Minor | 6 | 5 | 1 |
 
-### Key Takeaways
-1. **extraction_ids** and **LLM client unused** are the most impactful confirmed bugs
-2. **No source attribution** is the biggest missing feature
-3. **NoneType crashes** are real but unlikely in practice due to fallback logic
-4. **Deprecated code path** in SchemaTableReport needs migration
+## Remaining Work
+
+| Issue | Priority | Notes |
+|-------|----------|-------|
+| No source attribution in extractions | Medium | Needs eager-loading + extraction-level attribution |
+| Lossy text aggregation | Low | Consider LLM synthesis for merging |
+| Semicolon-join loses context | Low | Consider attribution markers |
+| N+1 query potential | Low | Add joinedload if source attribution implemented |
 
 ---
 
@@ -189,6 +178,7 @@ schema_report = SchemaTableReport(self._db)
 | Issue | Fix | File |
 |-------|-----|------|
 | extraction_ids always empty | Collect IDs in `_gather_data()`, pass to Report | `service.py:122` |
+| LLM client unused | Now used via ReportSynthesizer | `service.py:56-59` |
 | entity_count=0 hardcoded | Store in metadata during generation, read in API | `service.py`, `reports.py` |
 | NoneType crash on title | Added null check: `report.title or "report"` | `reports.py:308` |
 | NoneType crash on content | Added fallback: `report.content or ""` | `reports.py:320` |
@@ -196,16 +186,8 @@ schema_report = SchemaTableReport(self._db)
 | Boolean majority vote | Changed to `any()` for semantic correctness | `service.py:411` |
 | Hardcoded [:10] limit | Added truncation notice in output | `service.py:308` |
 | ReportData missing provenance | Added `extraction_ids` and `entity_count` fields | `service.py:18-25` |
-
-### Remaining Issues (Not Fixed)
-
-| Issue | Reason |
-|-------|--------|
-| LLM client unused | Requires new synthesis service (larger feature) |
-| No source attribution | Requires eager-loading + synthesis (larger feature) |
-| Deprecated FIELD_GROUPS_BY_NAME | Requires SchemaAdapter migration (separate task) |
-| Lossy text aggregation | Requires LLM synthesis (larger feature) |
-| SchemaTableReport bypasses patterns | Part of LLM synthesis refactor |
+| SchemaTableReport bypasses patterns | Deprecated SCHEMA_TABLE, forwards to TABLE | `service.py` |
+| Deprecated FIELD_GROUPS_BY_NAME | New TABLE uses SchemaTableGenerator | `schema_table_generator.py` |
 
 ### Test Updates
 
