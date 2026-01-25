@@ -106,7 +106,9 @@ class SchemaTableGenerator:
 
         parts = []
         for item in items[:max_items]:
-            name = item.get(id_field, "Unknown") if id_field else str(item)
+            name = item.get(id_field) if id_field else None
+            if name is None:
+                name = "Unknown"
 
             specs = []
             for sf in spec_fields:

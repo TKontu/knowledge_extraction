@@ -63,6 +63,7 @@ async def create_report(
             entity_repo=entity_repo,
             llm_client=llm_client,
             db_session=db,
+            project_repo=project_repo,
         )
 
         report = await report_service.generate(project_id, request)

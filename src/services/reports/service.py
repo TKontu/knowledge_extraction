@@ -128,9 +128,6 @@ class ReportService:
             if excel_bytes:
                 binary_content = excel_bytes
                 report_format = "xlsx"
-            title = (
-                request.title or f"Schema Report: {', '.join(request.source_groups)}"
-            )
         elif request.type == ReportType.SINGLE:
             content = await self._generate_single_report(data, request.title)
             title = request.title or f"{request.source_groups[0]} - Extraction Report"
@@ -516,12 +513,25 @@ class ReportService:
 
         # Get schema-derived info if available
         if extraction_schema:
-            schema_columns, labels, _field_defs = (
-                self._schema_generator.get_columns_from_schema(extraction_schema)
-            )
-            entity_list_groups = self._schema_generator.get_entity_list_groups(
-                extraction_schema
-            )
+            try:
+                schema_columns, labels, _field_defs = (
+                    self._schema_generator.get_columns_from_schema(extraction_schema)
+                )
+                entity_list_groups = self._schema_generator.get_entity_list_groups(
+                    extraction_schema
+                )
+            except (KeyError, TypeError) as e:
+                # Malformed schema - fall back to non-schema mode
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.warning(
+                    "malformed_extraction_schema_fallback",
+                    error=str(e),
+                )
+                schema_columns = None
+                labels = {}
+                entity_list_groups = {}
         else:
             schema_columns = None
             labels = {}
