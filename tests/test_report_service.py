@@ -76,6 +76,39 @@ class TestReportServiceInit:
         assert service._llm_client == mock_llm_client
         assert service._db == mock_db_session
 
+    def test_init_creates_synthesizer_if_not_provided(
+        self, mock_extraction_repo, mock_entity_repo, mock_llm_client, mock_db_session
+    ):
+        """Test ReportService creates synthesizer automatically if not provided."""
+        service = ReportService(
+            extraction_repo=mock_extraction_repo,
+            entity_repo=mock_entity_repo,
+            llm_client=mock_llm_client,
+            db_session=mock_db_session,
+        )
+
+        assert service._synthesizer is not None
+        from services.reports.synthesis import ReportSynthesizer
+
+        assert isinstance(service._synthesizer, ReportSynthesizer)
+
+    def test_init_accepts_custom_synthesizer(
+        self, mock_extraction_repo, mock_entity_repo, mock_llm_client, mock_db_session
+    ):
+        """Test ReportService accepts custom synthesizer."""
+        from services.reports.synthesis import ReportSynthesizer
+
+        custom_synthesizer = Mock(spec=ReportSynthesizer)
+        service = ReportService(
+            extraction_repo=mock_extraction_repo,
+            entity_repo=mock_entity_repo,
+            llm_client=mock_llm_client,
+            db_session=mock_db_session,
+            synthesizer=custom_synthesizer,
+        )
+
+        assert service._synthesizer == custom_synthesizer
+
 
 class TestReportServiceGenerate:
     """Test ReportService.generate() method."""
