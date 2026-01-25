@@ -347,10 +347,12 @@ class ReportService:
                     lines.append(table)
                     lines.append("")
 
-        # Add detailed findings
+        # Add detailed findings with source attribution
         max_detail_extractions = 10
         lines.append("## Detailed Findings")
         lines.append("")
+
+        all_sources_referenced: set[str] = set()
 
         for source_group in data.source_groups:
             extractions = data.extractions_by_group.get(source_group, [])
@@ -360,7 +362,15 @@ class ReportService:
             for ext in extractions[:max_detail_extractions]:
                 data_dict = ext.get("data", {})
                 fact = data_dict.get("fact", str(data_dict))
-                lines.append(f"- {fact}")
+                source_title = ext.get("source_title", "")
+                source_uri = ext.get("source_uri", "")
+
+                if source_title:
+                    lines.append(f"- {fact} [Source: {source_title}]")
+                    if source_uri:
+                        all_sources_referenced.add(source_uri)
+                else:
+                    lines.append(f"- {fact}")
 
             # Note if extractions were truncated
             if len(extractions) > max_detail_extractions:
@@ -369,6 +379,25 @@ class ReportService:
                     f"*Showing {max_detail_extractions} of {len(extractions)} extractions*"
                 )
 
+            lines.append("")
+
+        # Add sources section for comparison report
+        if all_sources_referenced:
+            lines.append("## Sources Referenced")
+            lines.append("")
+            all_extractions = [
+                ext
+                for group_exts in data.extractions_by_group.values()
+                for ext in group_exts
+            ]
+            uri_to_title = {}
+            for ext in all_extractions:
+                if ext.get("source_uri") and ext.get("source_title"):
+                    uri_to_title[ext["source_uri"]] = ext["source_title"]
+
+            for uri in sorted(all_sources_referenced):
+                title = uri_to_title.get(uri, uri)
+                lines.append(f"- [{title}]({uri})")
             lines.append("")
 
         return "\n".join(lines)
