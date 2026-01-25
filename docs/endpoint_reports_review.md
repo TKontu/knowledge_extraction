@@ -46,19 +46,22 @@ safe_title = "".join(c for c in report.title if c.isalnum() or c in " -_")[:50]
 
 ## Important (should fix)
 
-### 🟠 `src/services/reports/service.py:165-171` - No source attribution in extractions
+### ✅ `src/services/reports/service.py:195-204` - No source attribution in extractions — FIXED
 ```python
 extractions_by_group[source_group] = [
     {
         "data": ext.data,
         "confidence": ext.confidence,
         "extraction_type": ext.extraction_type,
+        "source_id": str(ext.source_id),
+        "source_uri": ext.source.uri if ext.source else None,
+        "source_title": ext.source.title if ext.source else None,
+        "chunk_index": ext.chunk_index,
     }
     for ext in extractions
 ]
 ```
-**Status:** CONFIRMED REAL
-**Issue:** Report data doesn't include `ext.id`, `source_uri`, or `source_title`. Users can't see which page facts came from.
+**Status:** FIXED - Now includes `source_id`, `source_uri`, and `source_title` for provenance tracking.
 
 ---
 
@@ -157,17 +160,16 @@ schema_report = SchemaTableReport(self._db)
 | Severity | Count | Fixed | Remaining |
 |----------|-------|-------|-----------|
 | Critical | 3 | 3 | 0 |
-| Important | 6 | 4 | 2 |
+| Important | 6 | 5 | 1 |
 | Minor | 6 | 5 | 1 |
 
 ## Remaining Work
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
-| No source attribution in extractions | Medium | Needs eager-loading + extraction-level attribution |
-| Lossy text aggregation | Low | Consider LLM synthesis for merging |
+| Lossy text aggregation | Low | `max(values, key=len)` takes longest only |
 | Semicolon-join loses context | Low | Consider attribution markers |
-| N+1 query potential | Low | Add joinedload if source attribution implemented |
+| N+1 query potential | Low | Add joinedload if needed |
 
 ---
 
@@ -179,6 +181,7 @@ schema_report = SchemaTableReport(self._db)
 |-------|-----|------|
 | extraction_ids always empty | Collect IDs in `_gather_data()`, pass to Report | `service.py:122` |
 | LLM client unused | Now used via ReportSynthesizer | `service.py:56-59` |
+| No source attribution | Added `source_id`, `source_uri`, `source_title` | `service.py:195-204` |
 | entity_count=0 hardcoded | Store in metadata during generation, read in API | `service.py`, `reports.py` |
 | NoneType crash on title | Added null check: `report.title or "report"` | `reports.py:308` |
 | NoneType crash on content | Added fallback: `report.content or ""` | `reports.py:320` |

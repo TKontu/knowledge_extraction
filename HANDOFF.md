@@ -4,8 +4,9 @@
 
 ### Backlog Review (2026-01-25)
 
-Reviewed all 4 critical items from the backlog - **all are resolved**:
+Reviewed all critical and important items - **most are resolved**:
 
+**Critical (all fixed):**
 | Issue | Status | Notes |
 |-------|--------|-------|
 | Queue worker `complete` handler | ✅ Fixed | `worker.py:344-347` now handles `request_type="complete"` |
@@ -13,9 +14,19 @@ Reviewed all 4 critical items from the backlog - **all are resolved**:
 | `sources_referenced` in API | ✅ Design choice | Field intentionally not in API; sources in markdown content |
 | LLM client unused | ✅ Fixed | Used via `ReportSynthesizer` at `service.py:56-59` |
 
+**Important (verified):**
+| Issue | Status | Notes |
+|-------|--------|-------|
+| LLM called for single fact | ✅ Fixed | `service.py:276-302` skips LLM for single facts |
+| `_complete_direct` temperature | ✅ Fixed | `client.py:706` varies temp on retries |
+| No source attribution | ✅ Fixed | `service.py:195-204` includes source_uri/title |
+| Deprecated FIELD_GROUPS_BY_NAME | ✅ Resolved | Only in deprecated path; main uses SchemaTableGenerator |
+| Chunking no second-pass | 🟠 Still real | `synthesis.py:127` just joins chunks |
+| Lossy text aggregation | 🟠 Still real | `service.py:605` takes longest only |
+
 Updated review documents:
 - `docs/pipeline_review_llm_synthesis.md` - 5 of 10 fixed, 5 remaining (all minor)
-- `docs/endpoint_reports_review.md` - All critical fixed, 2 important remaining
+- `docs/endpoint_reports_review.md` - All critical fixed, 1 important remaining
 
 ### Previous: Pipeline Review Fixes (Commit `0f4a3c6`)
 
@@ -54,17 +65,16 @@ d7f5f2d chore: Update cache bust for fresh build
 
 ## Remaining Backlog
 
-### Reports (Minor)
+### Reports (Minor/Low Priority)
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
 | Chunking doesn't synthesize across chunks | Low | Second-pass to unify chunk results |
+| Lossy text aggregation | Low | `max(values, key=len)` takes longest only |
 | `_build_sources_section` dead code | Low | Remove unused method |
 | Hardcoded `max_detail_extractions = 10` | Low | Make configurable |
 | No test for `_complete_via_queue` | Low | Add queue mode test |
 | Variable facts in system prompt | Low | Move to user prompt for cache efficiency |
-| No source attribution in extractions | Medium | Needs eager-loading |
-| Lossy text aggregation | Low | Consider LLM synthesis |
 
 ### Crawl Pipeline (Not Started)
 
