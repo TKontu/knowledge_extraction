@@ -7,7 +7,9 @@ from uuid import UUID
 from models import ReportRequest, ReportType
 from orm_models import Report
 from services.llm.client import LLMClient
+from services.projects.repository import ProjectRepository
 from services.reports.excel_formatter import ExcelFormatter
+from services.reports.schema_table_generator import SchemaTableGenerator
 from services.reports.synthesis import ReportSynthesizer, SynthesisResult
 from services.storage.repositories.entity import EntityFilters, EntityRepository
 from services.storage.repositories.extraction import (
@@ -37,6 +39,7 @@ class ReportService:
         llm_client: LLMClient,
         db_session,
         synthesizer: ReportSynthesizer | None = None,
+        project_repo: ProjectRepository | None = None,
     ):
         """Initialize with dependencies.
 
@@ -46,6 +49,7 @@ class ReportService:
             llm_client: LLM client for generating summaries
             db_session: SQLAlchemy database session
             synthesizer: Optional ReportSynthesizer for LLM-based synthesis
+            project_repo: Optional ProjectRepository for loading project schemas
         """
         self._extraction_repo = extraction_repo
         self._entity_repo = entity_repo
@@ -53,6 +57,9 @@ class ReportService:
         self._db = db_session
         # Create synthesizer if not provided (for backward compatibility)
         self._synthesizer = synthesizer or ReportSynthesizer(llm_client)
+        # Create project repo and schema generator for table reports
+        self._project_repo = project_repo or ProjectRepository(db_session)
+        self._schema_generator = SchemaTableGenerator()
 
     async def generate(
         self,
@@ -90,19 +97,32 @@ class ReportService:
                 title=title,
                 columns=request.columns,
                 output_format=request.output_format,
+                project_id=project_id,  # Pass project_id for schema-driven columns
             )
             content = md_content
             if excel_bytes:
                 binary_content = excel_bytes
                 report_format = "xlsx"
         elif request.type == ReportType.SCHEMA_TABLE:
-            from services.reports.schema_table import SchemaTableReport
+            # DEPRECATED: Use TABLE instead - it now derives columns from schema
+            import warnings
 
-            schema_report = SchemaTableReport(self._db)
-            md_content, excel_bytes = await schema_report.generate(
-                project_id=project_id,
-                source_groups=request.source_groups,
+            warnings.warn(
+                "SCHEMA_TABLE is deprecated, use TABLE instead. "
+                "TABLE now derives columns from project schema.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Forward to TABLE implementation
+            title = (
+                request.title or f"Schema Report: {', '.join(request.source_groups)}"
+            )
+            md_content, excel_bytes = await self._generate_table_report(
+                data=data,
+                title=title,
+                columns=request.columns,
                 output_format=request.output_format,
+                project_id=project_id,
             )
             content = md_content
             if excel_bytes:
@@ -459,33 +479,93 @@ class ReportService:
         """Convert field_name to Human Readable Label."""
         return field_name.replace("_", " ").title()
 
+    async def _get_project_schema(self, project_id: UUID) -> dict | None:
+        """Load project's extraction_schema.
+
+        Args:
+            project_id: UUID of the project.
+
+        Returns:
+            The extraction_schema dict, or None if project not found.
+        """
+        project = await self._project_repo.get(project_id)
+        return project.extraction_schema if project else None
+
     async def _aggregate_for_table(
         self,
         data: ReportData,
         columns: list[str] | None,
-    ) -> tuple[list[dict], list[str]]:
+        extraction_schema: dict | None = None,
+    ) -> tuple[list[dict], list[str], dict[str, str]]:
         """Aggregate extractions into table rows.
 
         For each source_group, consolidate multiple extractions
-        into a single row.
+        into a single row. When extraction_schema is provided, derives
+        columns and labels from the schema for template-agnostic output.
 
         Args:
             data: Report data with extractions by group
             columns: Specific columns to include, or None for all
+            extraction_schema: Optional project schema for column/label derivation
 
         Returns:
-            Tuple of (rows list, columns list)
+            Tuple of (rows list, columns list, labels dict)
         """
         rows = []
         all_columns: set[str] = set()
+
+        # Get schema-derived info if available
+        if extraction_schema:
+            schema_columns, labels, _field_defs = (
+                self._schema_generator.get_columns_from_schema(extraction_schema)
+            )
+            entity_list_groups = self._schema_generator.get_entity_list_groups(
+                extraction_schema
+            )
+        else:
+            schema_columns = None
+            labels = {}
+            entity_list_groups = {}
 
         for source_group in data.source_groups:
             extractions = data.extractions_by_group.get(source_group, [])
             row: dict = {"source_group": source_group}
 
-            # Collect all field values from extractions
+            # Group extractions by type for entity list handling
+            by_type: dict[str, list[dict]] = {}
+            for ext in extractions:
+                ext_type = ext.get("extraction_type", "general")
+                by_type.setdefault(ext_type, []).append(ext.get("data", {}))
+
+            # Process entity lists (e.g., products)
+            for group_name, field_group in entity_list_groups.items():
+                col_name = f"{group_name}_list"
+                items: list[dict] = []
+                for data_dict in by_type.get(group_name, []):
+                    # Entity list data has items under various keys
+                    for key in ["products", "items", group_name, "entities", "list"]:
+                        if key in data_dict and isinstance(data_dict[key], list):
+                            items.extend(data_dict[key])
+                            break
+                    else:
+                        # If no list key found but data_dict looks like an entity
+                        if data_dict and not any(
+                            k in data_dict
+                            for k in ["products", "items", "entities", "list"]
+                        ):
+                            items.append(data_dict)
+                row[col_name] = self._schema_generator.format_entity_list(
+                    items, field_group
+                )
+                all_columns.add(col_name)
+
+            # Collect all field values from extractions (skip entity list types)
             field_values: dict[str, list] = {}
             for ext in extractions:
+                ext_type = ext.get("extraction_type", "")
+                # Skip entity_list extractions - already handled above
+                if ext_type in entity_list_groups:
+                    continue
                 ext_data = ext.get("data", {})
                 for field, value in ext_data.items():
                     if field not in field_values:
@@ -500,7 +580,6 @@ class ReportService:
                     row[field] = None
                 elif isinstance(values[0], bool):
                     # Use any() for booleans - True if ANY extraction says True
-                    # (e.g., "manufactures motors" should be True if mentioned anywhere)
                     row[field] = any(values)
                 elif isinstance(values[0], (int, float)):
                     # Use max for numbers
@@ -520,19 +599,50 @@ class ReportService:
         # Determine column order
         final_columns = ["source_group"]
         if columns:
+            # User-specified columns
             final_columns.extend(c for c in columns if c in all_columns)
+        elif schema_columns:
+            # Schema-derived columns (preserve schema order)
+            final_columns.extend(
+                c for c in schema_columns if c in all_columns or c == "source_group"
+            )
+            # Remove duplicates while preserving order
+            seen = set()
+            final_columns = [
+                c for c in final_columns if not (c in seen or seen.add(c))
+            ]
         else:
+            # Fallback: alphabetical
             final_columns.extend(sorted(all_columns))
 
-        return rows, final_columns
+        # Build final labels dict
+        final_labels = {"source_group": "Source"}
+        for col in final_columns:
+            if col in labels:
+                final_labels[col] = labels[col]
+            elif col not in final_labels:
+                final_labels[col] = self._humanize(col)
+
+        return rows, final_columns, final_labels
 
     def _build_markdown_table(
         self,
         rows: list[dict],
         columns: list[str],
         title: str | None,
+        labels: dict[str, str] | None = None,
     ) -> str:
-        """Build markdown table from rows."""
+        """Build markdown table from rows.
+
+        Args:
+            rows: List of row dicts.
+            columns: Column names in order.
+            title: Optional report title.
+            labels: Optional column name to label mapping.
+
+        Returns:
+            Markdown table string.
+        """
         lines = []
         if title:
             lines.append(f"# {title}")
@@ -542,9 +652,12 @@ class ReportService:
             )
             lines.append("")
 
-        # Column labels
-        labels = [self._humanize(c) for c in columns]
-        lines.append("| " + " | ".join(labels) + " |")
+        # Column labels - use provided labels or humanize
+        header_labels = [
+            labels.get(c, self._humanize(c)) if labels else self._humanize(c)
+            for c in columns
+        ]
+        lines.append("| " + " | ".join(header_labels) + " |")
         lines.append("|" + "|".join(["---"] * len(columns)) + "|")
 
         # Data rows
@@ -570,28 +683,41 @@ class ReportService:
         title: str | None,
         columns: list[str] | None,
         output_format: str,
+        project_id: UUID | None = None,
     ) -> tuple[str, bytes | None]:
         """Generate table report in markdown or Excel.
+
+        When project_id is provided, derives columns and labels from the
+        project's extraction_schema for template-agnostic output.
 
         Args:
             data: Aggregated report data
             title: Report title
             columns: Fields to include as columns
             output_format: Output format ("md" or "xlsx")
+            project_id: Optional project ID for schema-driven columns/labels
 
         Returns:
             Tuple of (markdown_content, excel_bytes or None)
         """
-        rows, final_columns = await self._aggregate_for_table(data, columns)
+        # Load schema if project_id provided
+        extraction_schema = None
+        if project_id:
+            extraction_schema = await self._get_project_schema(project_id)
 
-        md_content = self._build_markdown_table(rows, final_columns, title)
+        rows, final_columns, labels = await self._aggregate_for_table(
+            data, columns, extraction_schema
+        )
+
+        md_content = self._build_markdown_table(rows, final_columns, title, labels)
 
         if output_format == "xlsx":
             formatter = ExcelFormatter()
             excel_bytes = formatter.create_workbook(
                 rows=rows,
                 columns=final_columns,
-                sheet_name=title or "Company Comparison",
+                column_labels=labels,
+                sheet_name=title or "Comparison",
             )
             return md_content, excel_bytes
 
