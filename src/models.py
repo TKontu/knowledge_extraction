@@ -568,6 +568,7 @@ class ReportResponse(BaseModel):
     source_groups: list[str]
     extraction_count: int
     entity_count: int
+    sources_referenced: list[str] | None = None  # List of source URIs
     generated_at: str
 
 
