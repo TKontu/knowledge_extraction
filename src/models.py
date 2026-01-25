@@ -362,11 +362,15 @@ class FieldDefinitionResponse(BaseModel):
     """Field definition within a field group."""
 
     name: str = Field(..., description="Field name")
-    field_type: str = Field(..., description="Field type: text, integer, float, boolean, enum, list")
+    field_type: str = Field(
+        ..., description="Field type: text, integer, float, boolean, enum, list"
+    )
     description: str | None = Field(None, description="Field description")
     required: bool = Field(default=False, description="Whether field is required")
     default: Any | None = Field(None, description="Default value")
-    enum_values: list[str] | None = Field(None, description="Allowed values for enum type")
+    enum_values: list[str] | None = Field(
+        None, description="Allowed values for enum type"
+    )
 
 
 class FieldGroupResponse(BaseModel):
@@ -374,8 +378,12 @@ class FieldGroupResponse(BaseModel):
 
     name: str = Field(..., description="Field group name")
     description: str | None = Field(None, description="Field group description")
-    is_entity_list: bool = Field(default=False, description="Whether this extracts a list of entities")
-    fields: list[FieldDefinitionResponse] = Field(default_factory=list, description="Fields in this group")
+    is_entity_list: bool = Field(
+        default=False, description="Whether this extracts a list of entities"
+    )
+    fields: list[FieldDefinitionResponse] = Field(
+        default_factory=list, description="Fields in this group"
+    )
 
 
 class EntityTypeResponse(BaseModel):
@@ -390,8 +398,12 @@ class TemplateResponse(BaseModel):
 
     name: str = Field(..., description="Template name (use with create_from_template)")
     description: str = Field(..., description="Template description")
-    field_groups: list[FieldGroupResponse] = Field(default_factory=list, description="What this template extracts")
-    entity_types: list[EntityTypeResponse] = Field(default_factory=list, description="Entity types created")
+    field_groups: list[FieldGroupResponse] = Field(
+        default_factory=list, description="What this template extracts"
+    )
+    entity_types: list[EntityTypeResponse] = Field(
+        default_factory=list, description="Entity types created"
+    )
 
     @classmethod
     def from_template(cls, template: dict) -> "TemplateResponse":
@@ -411,12 +423,14 @@ class TemplateResponse(BaseModel):
                 )
                 for f in fg.get("fields", [])
             ]
-            field_groups.append(FieldGroupResponse(
-                name=fg["name"],
-                description=fg.get("description"),
-                is_entity_list=fg.get("is_entity_list", False),
-                fields=fields,
-            ))
+            field_groups.append(
+                FieldGroupResponse(
+                    name=fg["name"],
+                    description=fg.get("description"),
+                    is_entity_list=fg.get("is_entity_list", False),
+                    fields=fields,
+                )
+            )
 
         entity_types = [
             EntityTypeResponse(

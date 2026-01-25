@@ -1,12 +1,14 @@
 """Repository for Extraction CRUD operations."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any
 from uuid import UUID
+
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, cast, String
-from sqlalchemy.dialects.postgresql import JSONB
+
 from orm_models import Extraction
 
 
@@ -14,12 +16,12 @@ from orm_models import Extraction
 class ExtractionFilters:
     """Filters for querying extractions."""
 
-    project_id: Optional[UUID] = None
-    source_id: Optional[UUID] = None
-    extraction_type: Optional[str] = None
-    source_group: Optional[str] = None
-    min_confidence: Optional[float] = None
-    max_confidence: Optional[float] = None
+    project_id: UUID | None = None
+    source_id: UUID | None = None
+    extraction_type: str | None = None
+    source_group: str | None = None
+    min_confidence: float | None = None
+    max_confidence: float | None = None
 
 
 class ExtractionRepository:
@@ -40,11 +42,11 @@ class ExtractionRepository:
         data: dict,
         extraction_type: str,
         source_group: str,
-        confidence: Optional[float] = None,
-        profile_used: Optional[str] = None,
-        chunk_index: Optional[int] = None,
-        chunk_context: Optional[dict] = None,
-        embedding_id: Optional[str] = None,
+        confidence: float | None = None,
+        profile_used: str | None = None,
+        chunk_index: int | None = None,
+        chunk_context: dict | None = None,
+        embedding_id: str | None = None,
     ) -> Extraction:
         """Create a new extraction.
 
@@ -112,7 +114,7 @@ class ExtractionRepository:
         self._session.flush()
         return extraction_objs
 
-    async def get(self, extraction_id: UUID) -> Optional[Extraction]:
+    async def get(self, extraction_id: UUID) -> Extraction | None:
         """Get extraction by ID.
 
         Args:

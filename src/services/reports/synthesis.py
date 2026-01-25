@@ -1,7 +1,8 @@
 """LLM-based synthesis for report generation."""
 
-import structlog
 from dataclasses import dataclass
+
+import structlog
 
 from services.llm.client import LLMClient, LLMExtractionError
 

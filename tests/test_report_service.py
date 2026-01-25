@@ -9,6 +9,7 @@ from models import ReportRequest, ReportType
 from orm_models import Report
 from services.llm.client import LLMClient
 from services.reports.service import ReportData, ReportService
+from services.reports.synthesis import ReportSynthesizer, SynthesisResult
 from services.storage.repositories.entity import EntityRepository
 from services.storage.repositories.extraction import ExtractionRepository
 
@@ -45,8 +46,27 @@ def mock_db_session():
 
 
 @pytest.fixture
+def mock_synthesizer():
+    """Mock ReportSynthesizer."""
+    synthesizer = Mock(spec=ReportSynthesizer)
+    synthesizer.synthesize_facts = AsyncMock(
+        return_value=SynthesisResult(
+            synthesized_text="Synthesized fact text",
+            sources_used=[],
+            confidence=0.9,
+            conflicts_noted=[],
+        )
+    )
+    return synthesizer
+
+
+@pytest.fixture
 def report_service(
-    mock_extraction_repo, mock_entity_repo, mock_llm_client, mock_db_session
+    mock_extraction_repo,
+    mock_entity_repo,
+    mock_llm_client,
+    mock_db_session,
+    mock_synthesizer,
 ):
     """Create ReportService instance with mocked dependencies."""
     return ReportService(
@@ -54,6 +74,7 @@ def report_service(
         entity_repo=mock_entity_repo,
         llm_client=mock_llm_client,
         db_session=mock_db_session,
+        synthesizer=mock_synthesizer,
     )
 
 
@@ -261,8 +282,10 @@ class TestGenerateSingleReport:
         assert "## Pricing" in markdown
 
     @pytest.mark.asyncio
-    async def test_generate_single_report_includes_confidence(self, report_service):
-        """Test single report includes confidence scores."""
+    async def test_generate_single_report_includes_synthesis(
+        self, report_service, mock_synthesizer
+    ):
+        """Test single report includes synthesized content."""
         data = ReportData(
             extractions_by_group={
                 "company-a": [
@@ -282,7 +305,10 @@ class TestGenerateSingleReport:
 
         markdown = await report_service._generate_single_report(data, None)
 
-        assert "confidence: 0.95" in markdown
+        # Verify synthesizer was called
+        mock_synthesizer.synthesize_facts.assert_called()
+        # Verify synthesized text is in output
+        assert "Synthesized fact text" in markdown
 
 
 class TestGenerateComparisonReport:
