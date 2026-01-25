@@ -165,7 +165,7 @@ class ReportService:
                 source_group=source_group,
             )
             extractions = await self._extraction_repo.list(
-                filters=filters, limit=max_extractions, offset=0
+                filters=filters, limit=max_extractions, offset=0, include_source=True
             )
             extractions_by_group[source_group] = [
                 {
@@ -174,6 +174,8 @@ class ReportService:
                     "confidence": ext.confidence,
                     "extraction_type": ext.extraction_type,
                     "source_id": str(ext.source_id),
+                    "source_uri": ext.source.uri if ext.source else None,
+                    "source_title": ext.source.title if ext.source else None,
                     "chunk_index": ext.chunk_index,
                 }
                 for ext in extractions

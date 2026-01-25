@@ -147,6 +147,7 @@ class ExtractionRepository:
         filters: ExtractionFilters,
         limit: int | None = None,
         offset: int = 0,
+        include_source: bool = False,
     ) -> list[Extraction]:
         """List extractions with optional filtering.
 
@@ -154,11 +155,18 @@ class ExtractionRepository:
             filters: ExtractionFilters instance with filter criteria
             limit: Maximum number of results to return (None for no limit)
             offset: Number of results to skip
+            include_source: If True, eager-load source relationship
 
         Returns:
             List of Extraction instances matching filters, sorted by created_at desc
         """
+        from sqlalchemy.orm import joinedload
+
         query = select(Extraction)
+
+        # Eager-load source if requested
+        if include_source:
+            query = query.options(joinedload(Extraction.source))
 
         # Build filter conditions
         conditions = []
