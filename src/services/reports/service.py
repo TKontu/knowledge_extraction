@@ -8,6 +8,7 @@ from models import ReportRequest, ReportType
 from orm_models import Report
 from services.llm.client import LLMClient
 from services.reports.excel_formatter import ExcelFormatter
+from services.reports.synthesis import ReportSynthesizer
 from services.storage.repositories.entity import EntityFilters, EntityRepository
 from services.storage.repositories.extraction import (
     ExtractionFilters,
@@ -35,6 +36,7 @@ class ReportService:
         entity_repo: EntityRepository,
         llm_client: LLMClient,
         db_session,
+        synthesizer: ReportSynthesizer | None = None,
     ):
         """Initialize with dependencies.
 
@@ -43,11 +45,14 @@ class ReportService:
             entity_repo: Repository for querying entities
             llm_client: LLM client for generating summaries
             db_session: SQLAlchemy database session
+            synthesizer: Optional ReportSynthesizer for LLM-based synthesis
         """
         self._extraction_repo = extraction_repo
         self._entity_repo = entity_repo
         self._llm_client = llm_client
         self._db = db_session
+        # Create synthesizer if not provided (for backward compatibility)
+        self._synthesizer = synthesizer or ReportSynthesizer(llm_client)
 
     async def generate(
         self,
@@ -165,7 +170,7 @@ class ReportService:
                 source_group=source_group,
             )
             extractions = await self._extraction_repo.list(
-                filters=filters, limit=max_extractions, offset=0
+                filters=filters, limit=max_extractions, offset=0, include_source=True
             )
             extractions_by_group[source_group] = [
                 {
@@ -174,6 +179,8 @@ class ReportService:
                     "confidence": ext.confidence,
                     "extraction_type": ext.extraction_type,
                     "source_id": str(ext.source_id),
+                    "source_uri": ext.source.uri if ext.source else None,
+                    "source_title": ext.source.title if ext.source else None,
                     "chunk_index": ext.chunk_index,
                 }
                 for ext in extractions
@@ -217,7 +224,7 @@ class ReportService:
         data: ReportData,
         title: str | None,
     ) -> str:
-        """Generate markdown for single source_group report.
+        """Generate markdown for single source_group report with LLM synthesis.
 
         Args:
             data: Aggregated report data
@@ -229,11 +236,9 @@ class ReportService:
         source_group = data.source_groups[0]
         extractions = data.extractions_by_group.get(source_group, [])
 
-        # Build title
         if not title:
             title = f"{source_group} - Extraction Report"
 
-        # Start building markdown
         lines = [
             f"# {title}",
             "",
@@ -242,31 +247,63 @@ class ReportService:
             "",
         ]
 
-        # Group extractions by category/type
+        # Group by extraction_type
         by_category: dict[str, list[dict]] = {}
         for ext in extractions:
             category = ext.get("extraction_type", "General")
-            if category not in by_category:
-                by_category[category] = []
-            by_category[category].append(ext)
+            by_category.setdefault(category, []).append(ext)
 
-        # Add sections by category
+        # Synthesize each category
+        sources_referenced: set[str] = set()
         for category, items in sorted(by_category.items()):
+            result = await self._synthesizer.synthesize_facts(
+                items, synthesis_type="summarize"
+            )
             lines.append(f"## {category}")
             lines.append("")
-            for item in items:
-                confidence = item.get("confidence")
-                data_dict = item.get("data", {})
-                fact = data_dict.get("fact", str(data_dict))
-                if confidence is not None:
-                    lines.append(f"- {fact} (confidence: {confidence:.2f})")
-                else:
-                    lines.append(f"- {fact}")
+            lines.append(result.synthesized_text)
             lines.append("")
+            sources_referenced.update(result.sources_used)
 
-        # Add sources footer
-        lines.append("## Sources")
-        lines.append(f"Based on extractions from {source_group}.")
+            # Note conflicts if any
+            if result.conflicts_noted:
+                lines.append("*Note: " + "; ".join(result.conflicts_noted) + "*")
+                lines.append("")
+
+        # Add sources section
+        lines.append("## Sources Referenced")
+        lines.append("")
+        for ext in extractions:
+            uri = ext.get("source_uri")
+            title_text = ext.get("source_title", uri)
+            if uri and uri in sources_referenced:
+                lines.append(f"- [{title_text}]({uri})")
+
+        return "\n".join(lines)
+
+    def _build_sources_section(
+        self,
+        uris: set[str],
+        extractions: list[dict],
+    ) -> str:
+        """Build markdown sources section.
+
+        Args:
+            uris: Set of URIs that were referenced
+            extractions: List of extraction dicts with source info
+
+        Returns:
+            Markdown formatted sources section
+        """
+        uri_to_title = {}
+        for ext in extractions:
+            if ext.get("source_uri") and ext.get("source_title"):
+                uri_to_title[ext["source_uri"]] = ext["source_title"]
+
+        lines = ["### Sources Referenced", ""]
+        for uri in sorted(uris):
+            title = uri_to_title.get(uri, uri)
+            lines.append(f"- [{title}]({uri})")
 
         return "\n".join(lines)
 
@@ -310,10 +347,12 @@ class ReportService:
                     lines.append(table)
                     lines.append("")
 
-        # Add detailed findings
+        # Add detailed findings with source attribution
         max_detail_extractions = 10
         lines.append("## Detailed Findings")
         lines.append("")
+
+        all_sources_referenced: set[str] = set()
 
         for source_group in data.source_groups:
             extractions = data.extractions_by_group.get(source_group, [])
@@ -323,7 +362,15 @@ class ReportService:
             for ext in extractions[:max_detail_extractions]:
                 data_dict = ext.get("data", {})
                 fact = data_dict.get("fact", str(data_dict))
-                lines.append(f"- {fact}")
+                source_title = ext.get("source_title", "")
+                source_uri = ext.get("source_uri", "")
+
+                if source_title:
+                    lines.append(f"- {fact} [Source: {source_title}]")
+                    if source_uri:
+                        all_sources_referenced.add(source_uri)
+                else:
+                    lines.append(f"- {fact}")
 
             # Note if extractions were truncated
             if len(extractions) > max_detail_extractions:
@@ -332,6 +379,25 @@ class ReportService:
                     f"*Showing {max_detail_extractions} of {len(extractions)} extractions*"
                 )
 
+            lines.append("")
+
+        # Add sources section for comparison report
+        if all_sources_referenced:
+            lines.append("## Sources Referenced")
+            lines.append("")
+            all_extractions = [
+                ext
+                for group_exts in data.extractions_by_group.values()
+                for ext in group_exts
+            ]
+            uri_to_title = {}
+            for ext in all_extractions:
+                if ext.get("source_uri") and ext.get("source_title"):
+                    uri_to_title[ext["source_uri"]] = ext["source_title"]
+
+            for uri in sorted(all_sources_referenced):
+                title = uri_to_title.get(uri, uri)
+                lines.append(f"- [{title}]({uri})")
             lines.append("")
 
         return "\n".join(lines)

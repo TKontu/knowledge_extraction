@@ -657,3 +657,113 @@ Guidelines:
 {text_content}"""
 
         return {"system": system_prompt, "user": user_prompt}
+
+    async def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_format: dict | None = None,
+        temperature: float | None = None,
+    ) -> dict:
+        """Generic LLM completion for arbitrary prompts.
+
+        Args:
+            system_prompt: System message for the LLM.
+            user_prompt: User message/query.
+            response_format: Optional response format (e.g., {"type": "json_object"}).
+            temperature: Optional temperature override.
+
+        Returns:
+            Parsed JSON response as dict.
+
+        Raises:
+            LLMExtractionError: If LLM call fails or returns invalid JSON.
+        """
+        if self.llm_queue is not None:
+            return await self._complete_via_queue(
+                system_prompt, user_prompt, response_format, temperature
+            )
+        return await self._complete_direct(
+            system_prompt, user_prompt, response_format, temperature
+        )
+
+    async def _complete_direct(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_format: dict | None = None,
+        temperature: float | None = None,
+    ) -> dict:
+        """Direct LLM completion with retry logic."""
+        import json
+
+        max_retries = self.settings.llm_max_retries
+        temp = temperature or self.settings.llm_base_temperature
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                kwargs = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": temp,
+                    "max_tokens": self.settings.llm_max_tokens,
+                }
+                if response_format:
+                    kwargs["response_format"] = response_format
+
+                response = await self.client.chat.completions.create(**kwargs)
+                content = response.choices[0].message.content
+
+                # Parse as JSON if json_object format requested
+                if response_format and response_format.get("type") == "json_object":
+                    return json.loads(content)
+                return {"text": content}
+
+            except Exception as e:
+                if attempt == max_retries:
+                    raise LLMExtractionError(f"LLM completion failed: {e}") from e
+                await asyncio.sleep(
+                    self.settings.llm_retry_backoff_min * (2 ** (attempt - 1))
+                )
+
+    async def _complete_via_queue(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_format: dict | None = None,
+        temperature: float | None = None,
+    ) -> dict:
+        """Queue-based LLM completion."""
+        from services.llm.models import LLMRequest
+        from services.llm.queue import QueueFullError, RequestTimeoutError
+
+        request = LLMRequest(
+            request_id=str(uuid4()),
+            request_type="complete",
+            payload={
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "response_format": response_format,
+                "temperature": temperature,
+                "model": self.model,
+            },
+            priority=5,
+            created_at=datetime.now(UTC),
+            timeout_at=datetime.now(UTC) + timedelta(seconds=300),
+        )
+
+        try:
+            await self.llm_queue.submit(request)
+            response = await self.llm_queue.wait_for_result(
+                request.request_id, timeout=300
+            )
+        except (QueueFullError, RequestTimeoutError) as e:
+            raise LLMExtractionError(f"LLM queue error: {e}") from e
+
+        if response.status in ("error", "timeout"):
+            raise LLMExtractionError(f"LLM completion failed: {response.error}")
+
+        return response.result or {}

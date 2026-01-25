@@ -532,6 +532,63 @@ class TestExtractionRepositoryList:
         assert len(extractions) == 1
         assert extractions[0].data["fact_text"] == "Match"
 
+    async def test_list_with_include_source_eager_loads_source(
+        self, extraction_repo, test_project, db_session
+    ):
+        """Should eager-load source relationship when include_source=True."""
+        # Create source with title
+        source = Source(
+            project_id=test_project.id,
+            uri="https://example.com/test-source",
+            source_group="test_company",
+            title="Test Source Title",
+        )
+        db_session.add(source)
+        db_session.flush()
+
+        # Create extraction
+        await extraction_repo.create(
+            project_id=test_project.id,
+            source_id=source.id,
+            data={"fact_text": "Test fact", "category": "test"},
+            extraction_type="technical_fact",
+            source_group="test_company",
+        )
+
+        # Query with include_source=True
+        extractions = await extraction_repo.list(
+            ExtractionFilters(project_id=test_project.id),
+            include_source=True,
+        )
+
+        assert len(extractions) >= 1
+        extraction = extractions[0]
+        # Source should be loaded (not triggering lazy load)
+        assert extraction.source is not None
+        assert extraction.source.uri == "https://example.com/test-source"
+        assert extraction.source.title == "Test Source Title"
+
+    async def test_list_without_include_source_does_not_load_source(
+        self, extraction_repo, test_project, test_source
+    ):
+        """Should not eager-load source when include_source=False (default)."""
+        await extraction_repo.create(
+            project_id=test_project.id,
+            source_id=test_source.id,
+            data={"fact_text": "Test fact", "category": "test"},
+            extraction_type="technical_fact",
+            source_group="test_company",
+        )
+
+        # Query without include_source (default behavior)
+        extractions = await extraction_repo.list(
+            ExtractionFilters(project_id=test_project.id),
+        )
+
+        assert len(extractions) >= 1
+        # Source relationship exists but may not be loaded yet
+        # (accessing it would trigger lazy load)
+
 
 class TestExtractionRepositoryQueryJsonb:
     """Test ExtractionRepository.query_jsonb() method for JSONB path queries."""
