@@ -22,6 +22,8 @@ class ReportData:
     extractions_by_group: dict[str, list[dict]]
     entities_by_group: dict[str, dict[str, list[dict]]]  # group -> type -> entities
     source_groups: list[str]
+    extraction_ids: list[str]  # All extraction UUIDs for provenance tracking
+    entity_count: int  # Total entity count across all groups
 
 
 class ReportService:
@@ -111,7 +113,7 @@ class ReportService:
             content = await self._generate_comparison_report(data, request.title)
             title = request.title or f"Comparison: {' vs '.join(request.source_groups)}"
 
-        # Create and save report
+        # Create and save report with provenance tracking
         report = Report(
             project_id=project_id,
             type=request.type.value,
@@ -119,9 +121,10 @@ class ReportService:
             content=content,
             source_groups=request.source_groups,
             categories=request.categories or [],
-            extraction_ids=[],
+            extraction_ids=data.extraction_ids,
             format=report_format,
             binary_content=binary_content,
+            meta_data={"entity_count": data.entity_count},
         )
 
         self._db.add(report)
@@ -148,10 +151,12 @@ class ReportService:
             max_extractions: Max extractions per source group
 
         Returns:
-            ReportData with aggregated data
+            ReportData with aggregated data including provenance info
         """
         extractions_by_group: dict[str, list[dict]] = {}
         entities_by_group: dict[str, dict[str, list[dict]]] = {}
+        all_extraction_ids: list[str] = []
+        total_entity_count = 0
 
         # Gather extractions for each source group
         for source_group in source_groups:
@@ -164,12 +169,17 @@ class ReportService:
             )
             extractions_by_group[source_group] = [
                 {
+                    "id": str(ext.id),
                     "data": ext.data,
                     "confidence": ext.confidence,
                     "extraction_type": ext.extraction_type,
+                    "source_id": str(ext.source_id),
+                    "chunk_index": ext.chunk_index,
                 }
                 for ext in extractions
             ]
+            # Track all extraction IDs for provenance
+            all_extraction_ids.extend(str(ext.id) for ext in extractions)
 
         # Gather entities for each source group
         for source_group in source_groups:
@@ -185,17 +195,21 @@ class ReportService:
                     entities = await self._entity_repo.list(filters=filters)
                     entities_by_group[source_group][entity_type] = [
                         {
+                            "id": str(ent.id),
                             "value": ent.value,
                             "normalized_value": ent.normalized_value,
                             "attributes": ent.attributes,
                         }
                         for ent in entities
                     ]
+                    total_entity_count += len(entities)
 
         return ReportData(
             extractions_by_group=extractions_by_group,
             entities_by_group=entities_by_group,
             source_groups=source_groups,
+            extraction_ids=all_extraction_ids,
+            entity_count=total_entity_count,
         )
 
     async def _generate_single_report(
@@ -297,6 +311,7 @@ class ReportService:
                     lines.append("")
 
         # Add detailed findings
+        max_detail_extractions = 10
         lines.append("## Detailed Findings")
         lines.append("")
 
@@ -305,10 +320,17 @@ class ReportService:
             lines.append(f"### {source_group}")
             lines.append("")
 
-            for ext in extractions[:10]:  # Limit to top 10 per group
+            for ext in extractions[:max_detail_extractions]:
                 data_dict = ext.get("data", {})
                 fact = data_dict.get("fact", str(data_dict))
                 lines.append(f"- {fact}")
+
+            # Note if extractions were truncated
+            if len(extractions) > max_detail_extractions:
+                lines.append("")
+                lines.append(
+                    f"*Showing {max_detail_extractions} of {len(extractions)} extractions*"
+                )
 
             lines.append("")
 
@@ -407,8 +429,9 @@ class ReportService:
                 if not values:
                     row[field] = None
                 elif isinstance(values[0], bool):
-                    # Majority vote for booleans
-                    row[field] = sum(values) > len(values) / 2
+                    # Use any() for booleans - True if ANY extraction says True
+                    # (e.g., "manufactures motors" should be True if mentioned anywhere)
+                    row[field] = any(values)
                 elif isinstance(values[0], (int, float)):
                     # Use max for numbers
                     row[field] = max(values)

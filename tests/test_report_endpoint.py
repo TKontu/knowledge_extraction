@@ -5,10 +5,9 @@ from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from main import app
-from models import ReportType
 from orm_models import Report
 
 
@@ -42,8 +41,9 @@ def mock_report():
     report.title = "Test Report"
     report.content = "# Test Content"
     report.source_groups = ["company-a"]
-    report.extraction_ids = []
+    report.extraction_ids = ["ext-1", "ext-2"]
     report.categories = []
+    report.meta_data = {"entity_count": 5}
     report.created_at = datetime.now(UTC)
     return report
 

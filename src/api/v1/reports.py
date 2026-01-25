@@ -68,6 +68,7 @@ async def create_report(
     report = await report_service.generate(project_id, request)
 
     # Convert to response
+    metadata = report.meta_data or {}
     return ReportResponse(
         id=str(report.id),
         type=report.type,
@@ -75,7 +76,7 @@ async def create_report(
         content=report.content or "",
         source_groups=report.source_groups,
         extraction_count=len(report.extraction_ids),
-        entity_count=0,  # TODO: count entities from report data
+        entity_count=metadata.get("entity_count", 0),
         generated_at=report.created_at.isoformat(),
     )
 
@@ -185,6 +186,7 @@ async def get_report(
         )
 
     # Convert to response
+    metadata = report.meta_data or {}
     return ReportResponse(
         id=str(report.id),
         type=report.type,
@@ -192,7 +194,7 @@ async def get_report(
         content=report.content or "",
         source_groups=report.source_groups,
         extraction_count=len(report.extraction_ids),
-        entity_count=0,  # TODO: count entities from report data
+        entity_count=metadata.get("entity_count", 0),
         generated_at=report.created_at.isoformat(),
     )
 
@@ -304,8 +306,9 @@ async def download_report(
             detail=f"Report {report_id} not found",
         )
 
-    # Sanitize filename
-    safe_title = "".join(c for c in report.title if c.isalnum() or c in " -_")[:50]
+    # Sanitize filename (handle None title)
+    title = report.title or "report"
+    safe_title = "".join(c for c in title if c.isalnum() or c in " -_")[:50]
 
     if report.format == "xlsx" and report.binary_content:
         return Response(
@@ -317,7 +320,7 @@ async def download_report(
         )
 
     return Response(
-        content=report.content,
+        content=report.content or "",
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{safe_title}.md"'},
     )

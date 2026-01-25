@@ -24,26 +24,28 @@ class TestTableReportGeneration:
         return ReportData(
             extractions_by_group={
                 "CompanyA": [
-                    {"data": {"has_feature": True, "count": 100}, "confidence": 0.9},
-                    {"data": {"has_feature": True, "count": 150}, "confidence": 0.8},
+                    {"id": "ext-1", "data": {"has_feature": True, "count": 100}, "confidence": 0.9},
+                    {"id": "ext-2", "data": {"has_feature": True, "count": 150}, "confidence": 0.8},
                 ],
                 "CompanyB": [
-                    {"data": {"has_feature": False, "count": 50}, "confidence": 0.95},
+                    {"id": "ext-3", "data": {"has_feature": False, "count": 50}, "confidence": 0.95},
                 ],
             },
             entities_by_group={},
             source_groups=["CompanyA", "CompanyB"],
+            extraction_ids=["ext-1", "ext-2", "ext-3"],
+            entity_count=0,
         )
 
-    async def test_aggregate_for_table_boolean_majority(
+    async def test_aggregate_for_table_boolean_any(
         self, report_service, sample_data
     ):
-        """Test boolean aggregation uses majority vote."""
+        """Test boolean aggregation uses any() - True if any extraction is True."""
         rows, columns = await report_service._aggregate_for_table(sample_data, None)
 
         assert len(rows) == 2
         company_a = next(r for r in rows if r["source_group"] == "CompanyA")
-        assert company_a["has_feature"] is True  # Both True
+        assert company_a["has_feature"] is True  # Both True -> True
 
     async def test_aggregate_for_table_numeric_max(self, report_service, sample_data):
         """Test numeric aggregation uses max value."""

@@ -236,6 +236,7 @@ class SchemaTableReport:
         lines.append("|" + "|".join(["---"] * len(columns)) + "|")
 
         # Data rows
+        max_cell_length = 50
         for row in rows:
             cells = []
             for col in columns:
@@ -247,7 +248,11 @@ class SchemaTableReport:
                 elif isinstance(val, list):
                     cells.append("; ".join(str(v) for v in val))
                 else:
-                    cells.append(str(val)[:50])  # Truncate for MD
+                    text = str(val)
+                    if len(text) > max_cell_length:
+                        cells.append(text[: max_cell_length - 3] + "...")
+                    else:
+                        cells.append(text)
             lines.append("| " + " | ".join(cells) + " |")
 
         return "\n".join(lines)

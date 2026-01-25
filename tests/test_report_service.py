@@ -1,8 +1,7 @@
 """Tests for ReportService."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -168,11 +167,15 @@ class TestReportData:
             extractions_by_group={"company-a": []},
             entities_by_group={"company-a": {"limit": []}},
             source_groups=["company-a"],
+            extraction_ids=[],
+            entity_count=0,
         )
 
         assert data.extractions_by_group == {"company-a": []}
         assert data.entities_by_group == {"company-a": {"limit": []}}
         assert data.source_groups == ["company-a"]
+        assert data.extraction_ids == []
+        assert data.entity_count == 0
 
 
 class TestGenerateSingleReport:
@@ -185,6 +188,8 @@ class TestGenerateSingleReport:
             extractions_by_group={"company-a": []},
             entities_by_group={},
             source_groups=["company-a"],
+            extraction_ids=[],
+            entity_count=0,
         )
 
         markdown = await report_service._generate_single_report(data, None)
@@ -198,11 +203,13 @@ class TestGenerateSingleReport:
             extractions_by_group={
                 "company-a": [
                     {
+                        "id": "ext-1",
                         "data": {"fact": "Fact 1"},
                         "extraction_type": "Technical",
                         "confidence": 0.95,
                     },
                     {
+                        "id": "ext-2",
                         "data": {"fact": "Fact 2"},
                         "extraction_type": "Pricing",
                         "confidence": 0.90,
@@ -211,6 +218,8 @@ class TestGenerateSingleReport:
             },
             entities_by_group={},
             source_groups=["company-a"],
+            extraction_ids=["ext-1", "ext-2"],
+            entity_count=0,
         )
 
         markdown = await report_service._generate_single_report(data, None)
@@ -225,6 +234,7 @@ class TestGenerateSingleReport:
             extractions_by_group={
                 "company-a": [
                     {
+                        "id": "ext-1",
                         "data": {"fact": "Important fact"},
                         "extraction_type": "General",
                         "confidence": 0.95,
@@ -233,6 +243,8 @@ class TestGenerateSingleReport:
             },
             entities_by_group={},
             source_groups=["company-a"],
+            extraction_ids=["ext-1"],
+            entity_count=0,
         )
 
         markdown = await report_service._generate_single_report(data, None)
@@ -250,13 +262,15 @@ class TestGenerateComparisonReport:
             extractions_by_group={"company-a": [], "company-b": []},
             entities_by_group={
                 "company-a": {
-                    "limit": [{"value": "API calls", "normalized_value": "api_calls", "attributes": {}}]
+                    "limit": [{"id": "ent-1", "value": "API calls", "normalized_value": "api_calls", "attributes": {}}]
                 },
                 "company-b": {
-                    "limit": [{"value": "Storage", "normalized_value": "storage", "attributes": {}}]
+                    "limit": [{"id": "ent-2", "value": "Storage", "normalized_value": "storage", "attributes": {}}]
                 },
             },
             source_groups=["company-a", "company-b"],
+            extraction_ids=[],
+            entity_count=2,
         )
 
         markdown = await report_service._generate_comparison_report(data, None)
@@ -269,11 +283,13 @@ class TestGenerateComparisonReport:
         """Test comparison report includes detailed findings section."""
         data = ReportData(
             extractions_by_group={
-                "company-a": [{"data": {"fact": "Fact A"}, "extraction_type": "General"}],
-                "company-b": [{"data": {"fact": "Fact B"}, "extraction_type": "General"}],
+                "company-a": [{"id": "ext-1", "data": {"fact": "Fact A"}, "extraction_type": "General"}],
+                "company-b": [{"id": "ext-2", "data": {"fact": "Fact B"}, "extraction_type": "General"}],
             },
             entities_by_group={},
             source_groups=["company-a", "company-b"],
+            extraction_ids=["ext-1", "ext-2"],
+            entity_count=0,
         )
 
         markdown = await report_service._generate_comparison_report(data, None)
