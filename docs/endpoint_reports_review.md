@@ -9,7 +9,7 @@ api/v1/reports.py:create_report
   → ReportService.__init__ (injection)
   → ReportService.generate()
     → _gather_data() → ExtractionRepository.list() / EntityRepository.list()
-    → _generate_{single|comparison|table}_report() OR SchemaTableReport.generate()
+    → _generate_{single|comparison|table}_report() using SchemaTableGenerator
     → Report ORM → db.commit()
   → ReportResponse
 ```
@@ -65,11 +65,11 @@ extractions_by_group[source_group] = [
 
 ---
 
-### ✅ `src/services/reports/schema_table.py:87` - Uses deprecated FIELD_GROUPS_BY_NAME — RESOLVED
+### ✅ `src/services/reports/schema_table.py:87` - Uses deprecated FIELD_GROUPS_BY_NAME — REMOVED
 ```python
 group = FIELD_GROUPS_BY_NAME.get(group_name)
 ```
-**Status:** RESOLVED - `SchemaTableReport` is now deprecated. `SCHEMA_TABLE` report type forwards to `TABLE` with a warning. The new `TABLE` report uses `SchemaTableGenerator` which derives columns from project schema.
+**Status:** REMOVED - `SchemaTableReport` class and `FIELD_GROUPS_BY_NAME` constant have been deleted. `SCHEMA_TABLE` report type forwards to `TABLE`. The `TABLE` report uses `SchemaTableGenerator` which derives columns dynamically from project schema.
 
 ---
 
@@ -91,13 +91,12 @@ row[field] = max(values, key=len) if values else None
 
 ---
 
-### 🟠 `src/services/reports/schema_table.py:142-148` - Semicolon-join loses context
+### ✅ `src/services/reports/schema_table.py:142-148` - Semicolon-join loses context — REMOVED
 ```python
 unique = list(dict.fromkeys([str(v) for v in values if v]))
 merged[field.name] = "; ".join(unique)
 ```
-**Status:** CONFIRMED REAL
-**Issue:** Multiple text values are joined with semicolons but no source attribution.
+**Status:** REMOVED - `SchemaTableReport` class has been deleted. New `SchemaTableGenerator` handles text aggregation differently via `ReportService._aggregate_row()`.
 
 ---
 
@@ -117,11 +116,11 @@ for ext in extractions[:10]:  # Limit to top 10 per group
 
 ---
 
-### ✅ `src/services/reports/schema_table.py:250` - Text truncation without indication — FIXED
+### ✅ `src/services/reports/schema_table.py:250` - Text truncation without indication — REMOVED
 ```python
 cells.append(str(val)[:50])  # Truncate for MD
 ```
-**Status:** FIXED - Added ellipsis: `text[:47] + "..."`
+**Status:** REMOVED - `SchemaTableReport` class has been deleted. Truncation handling now in `ReportService`.
 
 ---
 
@@ -141,11 +140,11 @@ return Response(content=report.content, ...)
 
 ---
 
-### ✅ `src/services/reports/service.py:91-106` - SchemaTableReport bypasses patterns — RESOLVED
+### ✅ `src/services/reports/service.py:91-106` - SchemaTableReport bypasses patterns — REMOVED
 ```python
 schema_report = SchemaTableReport(self._db)
 ```
-**Status:** RESOLVED - `SCHEMA_TABLE` now deprecated and forwards to `TABLE`. The new `TABLE` path uses `SchemaTableGenerator` which follows proper patterns.
+**Status:** REMOVED - `SchemaTableReport` class has been deleted. `SCHEMA_TABLE` forwards to `TABLE` which uses `SchemaTableGenerator`.
 
 ---
 
@@ -157,10 +156,10 @@ schema_report = SchemaTableReport(self._db)
 
 ## Summary
 
-| Severity | Count | Fixed | Remaining |
-|----------|-------|-------|-----------|
+| Severity | Count | Fixed/Removed | Remaining |
+|----------|-------|---------------|-----------|
 | Critical | 3 | 3 | 0 |
-| Important | 6 | 5 | 1 |
+| Important | 6 | 6 | 0 |
 | Minor | 6 | 5 | 1 |
 
 ## Remaining Work
@@ -168,7 +167,6 @@ schema_report = SchemaTableReport(self._db)
 | Issue | Priority | Notes |
 |-------|----------|-------|
 | Lossy text aggregation | Low | `max(values, key=len)` takes longest only |
-| Semicolon-join loses context | Low | Consider attribution markers |
 | N+1 query potential | Low | Add joinedload if needed |
 
 ---
@@ -185,12 +183,10 @@ schema_report = SchemaTableReport(self._db)
 | entity_count=0 hardcoded | Store in metadata during generation, read in API | `service.py`, `reports.py` |
 | NoneType crash on title | Added null check: `report.title or "report"` | `reports.py:308` |
 | NoneType crash on content | Added fallback: `report.content or ""` | `reports.py:320` |
-| Silent truncation at 50 chars | Added ellipsis: `text[:47] + "..."` | `schema_table.py:250` |
 | Boolean majority vote | Changed to `any()` for semantic correctness | `service.py:411` |
 | Hardcoded [:10] limit | Added truncation notice in output | `service.py:308` |
 | ReportData missing provenance | Added `extraction_ids` and `entity_count` fields | `service.py:18-25` |
-| SchemaTableReport bypasses patterns | Deprecated SCHEMA_TABLE, forwards to TABLE | `service.py` |
-| Deprecated FIELD_GROUPS_BY_NAME | New TABLE uses SchemaTableGenerator | `schema_table_generator.py` |
+| SchemaTableReport + FIELD_GROUPS_BY_NAME | Deleted - TABLE uses SchemaTableGenerator | Removed `schema_table.py` |
 
 ### Test Updates
 
