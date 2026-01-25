@@ -68,5 +68,6 @@ input/
 
 /deployment_logs
 /debug.mcp.json
+/debug/*
 
 .mcp.json

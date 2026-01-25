@@ -1,104 +1,80 @@
-# Handoff: MCP Server Implementation & Deployment
+# Handoff: Report Pipeline Bug Fixes
 
-## Completed
+## Completed This Session
 
-### MCP Server Implementation (PR #60 merged)
-- ✅ Implemented 15 MCP tools across 5 categories (projects, acquisition, extraction, search, reports)
-- ✅ Added template detail API endpoints (`GET /templates?details=true`, `GET /templates/{name}`)
-- ✅ Renamed `src/mcp/` → `src/ke_mcp/` to avoid namespace collision with installed `mcp` library
-- ✅ Added comprehensive test coverage (17 tests passing)
+### Pipeline Review
+- Created comprehensive review of reports generation pipeline (`docs/endpoint_reports_review.md`)
+- Verified all 15 findings against actual code - 13 confirmed real, 1 design choice, 1 potential
 
-### Bug Fixes
-- ✅ Fixed authentication header: Changed from `Authorization: Bearer` to `X-API-Key` (commit 43754b9)
-- ✅ Added retry logic for 500+ server errors with exponential backoff (commit c1624d4)
-- ✅ Pipeline review completed - 4 of 5 findings were false positives (docs/mcp_implementation_review.md)
+### Bug Fixes Applied (Not Yet Committed)
+| Fix | File | Line |
+|-----|------|------|
+| `extraction_ids` now populated | `service.py` | 122 |
+| `entity_count` calculated from data | `service.py`, `reports.py` | - |
+| NoneType crash on title fixed | `reports.py` | 308 |
+| NoneType crash on content fixed | `reports.py` | 320 |
+| Boolean aggregation: majority → `any()` | `service.py` | 411 |
+| Truncation shows `...` indicator | `schema_table.py` | 250 |
+| Extraction limit shows notice | `service.py` | 308 |
 
-### LLM Retry & Timeout Improvements
-- ✅ Reduced HTTP timeout from 900s to 120s to detect stuck models faster
-- ✅ Added `max_tokens` parameter (4096) to prevent endless generation
-- ✅ Implemented retry with variation: temperature increases on each retry (0.1 → 0.15 → 0.2)
-- ✅ Added "Be concise" prompt hint on retries to break hallucination loops
-- ✅ New config settings: `llm_max_tokens`, `llm_base_temperature`, `llm_retry_temperature_increment`
-- ✅ Applied to: LLMClient, SchemaExtractor, LLMWorker (all extraction paths)
+### Tests Updated
+- All 20 report tests pass
+- `ReportData` now has required fields: `extraction_ids`, `entity_count`
+- Mock fixtures updated with `meta_data` attribute
 
-### Deployment
-- ✅ Built and pushed Docker images to `ghcr.io/tkontu`:
-  - `camoufox:latest`
-  - `firecrawl-api:latest`
-  - `proxy-adapter:latest`
-- ✅ Updated Dockerfile cache bust (2026-01-24-185906)
-- ✅ Deployed to production
+### Documentation Created
+- `docs/endpoint_reports_review.md` - Full review with verified findings
+- `docs/TODO-agent-report-synthesis.md` - Detailed spec for LLM synthesis feature
 
-### MCP Configuration
-- ✅ Created `.mcp.json` for Claude Code integration
-- ✅ Added `.mcp.json` to `.gitignore` (contains API key)
-- ✅ MCP server tested and verified working
+## Uncommitted Changes
 
-## In Progress
+```
+Modified:
+  src/api/v1/reports.py
+  src/services/reports/schema_table.py
+  src/services/reports/service.py
+  tests/test_report_endpoint.py
+  tests/test_report_service.py
+  tests/test_report_table.py
 
-### Active Test
-- Created test project: `scrape-this-site-test` (ID: `fb624483-6f79-449f-89ac-8cdefc2d1bcd`)
-- Crawled https://www.scrapethissite.com/pages/ (48 sources created)
-- Next step: Run knowledge extraction or explore other MCP tools
+Untracked:
+  docs/TODO-agent-report-synthesis.md
+  docs/endpoint_reports_review.md
+```
 
 ## Next Steps
 
-- [ ] Run `extract_knowledge()` on test project to verify LLM extraction pipeline
-- [ ] Test search, entities, and reporting tools
-- [ ] Optional: Create documentation for MCP tool usage patterns
-- [ ] Optional: Add integration tests that run against live API
+- [ ] Commit bug fixes with message like `fix(reports): Fix extraction_ids, entity_count, null checks`
+- [ ] Decide on LLM synthesis feature: assign to agent or implement directly
+- [ ] Address remaining issues (require larger refactors):
+  - LLM client injected but never used
+  - No source attribution in extractions
+  - Deprecated `FIELD_GROUPS_BY_NAME` in SchemaTableReport
 
 ## Key Files
 
-**MCP Implementation:**
-- `src/ke_mcp/` - MCP server package (15 tools, resources, prompts)
-- `src/ke_mcp/client.py` - HTTP client with auth (`X-API-Key`) and retry logic
-- `src/ke_mcp/server.py` - FastMCP server entry point
-- `tests/ke_mcp/` - MCP tests (8 passing, 2 skipped integration tests)
-
-**API Enhancements:**
-- `src/api/v1/projects.py` - Added template detail endpoints
-- `src/models.py` - Template response Pydantic models
-- `tests/test_template_api.py` - Template API tests (9 passing)
-
-**Configuration:**
-- `.mcp.json` - Claude Code MCP server config (NOT in git - contains API key)
-- `build-and-push.sh` - Docker build script for camoufox, firecrawl, proxy-adapter
-- `docs/mcp_implementation_review.md` - Pipeline review findings
+| File | Purpose |
+|------|---------|
+| `src/services/reports/service.py` | Core fixes: extraction_ids, entity_count, boolean logic |
+| `src/api/v1/reports.py` | NoneType fixes, metadata reading |
+| `docs/endpoint_reports_review.md` | Full review with all findings |
+| `docs/TODO-agent-report-synthesis.md` | Spec for LLM synthesis feature |
 
 ## Context
 
-**MCP Server Usage:**
-The MCP server is now available in Claude Code via `.mcp.json`. All 15 tools are working:
+- **Boolean fix rationale**: Changed from majority vote to `any()` because "manufactures motors" should be True if mentioned on ANY page, not majority
+- **LLM synthesis** is a larger feature that would fix lossy aggregation and add source attribution
+- **SchemaTableReport** still uses deprecated hardcoded field groups (works but won't support custom schemas)
+- Tests requiring PostgreSQL (list/get endpoints) fail without DB connection
 
-- **Projects**: `create_project`, `list_projects`, `get_project`, `list_templates`, `get_template_details`
-- **Acquisition**: `crawl_website`, `scrape_urls`, `get_job_status`
-- **Extraction**: `extract_knowledge`, `list_extractions`
-- **Search**: `search_knowledge`, `list_entities`, `get_entity_summary`
-- **Reports**: `create_report`, `list_reports`, `get_report`
+---
 
-**API Deployment:**
-- Base URL: `http://192.168.0.136:8742`
-- Auth: `X-API-Key: thisismyapikey3215215632`
-- All services deployed with latest images
+## Previous Session (MCP Implementation)
 
-**Important Notes:**
-- Empty string `""` is falsy in Python - the api_key check works correctly
-- Generic `/jobs/{id}` endpoint works for both crawl and scrape jobs
-- 500 errors now retry automatically (design improvement)
-- All critical issues resolved and deployed
-
-**LLM Retry Configuration:**
-```python
-# New settings in config.py
-llm_http_timeout = 120        # Reduced from 900s
-llm_max_tokens = 4096         # Prevents endless generation
-llm_max_retries = 3           # Max retry attempts
-llm_base_temperature = 0.1    # Starting temperature
-llm_retry_temperature_increment = 0.05  # Increase per retry
-llm_retry_backoff_min = 2     # Min backoff seconds
-llm_retry_backoff_max = 30    # Max backoff seconds
-```
+See commit history for details on:
+- MCP server implementation (15 tools)
+- LLM retry improvements
+- Docker deployment
 
 ---
 
