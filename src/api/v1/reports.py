@@ -55,17 +55,17 @@ async def create_report(
     # Create service dependencies
     extraction_repo = ExtractionRepository(db)
     entity_repo = EntityRepository(db)
-    llm_client = LLMClient(settings)
 
-    # Generate report
-    report_service = ReportService(
-        extraction_repo=extraction_repo,
-        entity_repo=entity_repo,
-        llm_client=llm_client,
-        db_session=db,
-    )
+    # Use context manager to ensure LLMClient is properly closed
+    async with LLMClient(settings) as llm_client:
+        report_service = ReportService(
+            extraction_repo=extraction_repo,
+            entity_repo=entity_repo,
+            llm_client=llm_client,
+            db_session=db,
+        )
 
-    report = await report_service.generate(project_id, request)
+        report = await report_service.generate(project_id, request)
 
     # Convert to response
     metadata = report.meta_data or {}

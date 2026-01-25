@@ -698,9 +698,13 @@ Guidelines:
         import json
 
         max_retries = self.settings.llm_max_retries
-        temp = temperature or self.settings.llm_base_temperature
+        base_temp = temperature or self.settings.llm_base_temperature
+        temp_increment = self.settings.llm_retry_temperature_increment
 
         for attempt in range(1, max_retries + 1):
+            # Vary temperature on retries to get different outputs
+            current_temp = base_temp + (attempt - 1) * temp_increment
+
             try:
                 kwargs = {
                     "model": self.model,
@@ -708,7 +712,7 @@ Guidelines:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
-                    "temperature": temp,
+                    "temperature": current_temp,
                     "max_tokens": self.settings.llm_max_tokens,
                 }
                 if response_format:

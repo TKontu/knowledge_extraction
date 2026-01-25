@@ -67,10 +67,8 @@ class ReportSynthesizer:
         # Build facts text for prompt
         facts_text = self._format_facts_for_prompt(facts)
 
-        system_prompt = f"""You are synthesizing extracted facts from multiple source documents.
-
-Facts to synthesize:
-{facts_text}
+        # System prompt is static (cacheable by LLM providers)
+        system_prompt = """You are synthesizing extracted facts from multiple source documents.
 
 Instructions:
 1. Combine related facts into coherent statements
@@ -79,14 +77,18 @@ Instructions:
 4. Include source attribution in brackets [Source: page_title]
 
 Output as JSON:
-{{
+{
   "synthesized_text": "Combined fact with [Source: title] attribution...",
   "sources_used": ["uri1", "uri2"],
   "confidence": 0.85,
   "conflicts_noted": ["description of any conflicts found"]
-}}"""
+}"""
 
-        user_prompt = f"Synthesize these facts using '{synthesis_type}' approach."
+        # User prompt contains the variable content (facts)
+        user_prompt = f"""Synthesize these facts using '{synthesis_type}' approach.
+
+Facts to synthesize:
+{facts_text}"""
 
         try:
             result = await self._llm.complete(

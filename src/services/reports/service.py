@@ -8,7 +8,7 @@ from models import ReportRequest, ReportType
 from orm_models import Report
 from services.llm.client import LLMClient
 from services.reports.excel_formatter import ExcelFormatter
-from services.reports.synthesis import ReportSynthesizer
+from services.reports.synthesis import ReportSynthesizer, SynthesisResult
 from services.storage.repositories.entity import EntityFilters, EntityRepository
 from services.storage.repositories.extraction import (
     ExtractionFilters,
@@ -253,12 +253,42 @@ class ReportService:
             category = ext.get("extraction_type", "General")
             by_category.setdefault(category, []).append(ext)
 
-        # Synthesize each category
+        # Synthesize each category (skip LLM for single-fact categories)
         sources_referenced: set[str] = set()
         for category, items in sorted(by_category.items()):
-            result = await self._synthesizer.synthesize_facts(
-                items, synthesis_type="summarize"
-            )
+            if len(items) <= 1:
+                # Skip LLM synthesis for single facts - just format directly
+                if items:
+                    item = items[0]
+                    fact_text = item.get("data", {}).get(
+                        "fact", str(item.get("data", ""))
+                    )
+                    source_title = item.get("source_title", "")
+                    source_uri = item.get("source_uri")
+                    text = (
+                        f"{fact_text} [Source: {source_title}]"
+                        if source_title
+                        else fact_text
+                    )
+                    result = SynthesisResult(
+                        synthesized_text=text,
+                        sources_used=[source_uri] if source_uri else [],
+                        confidence=item.get("confidence", 0.9),
+                        conflicts_noted=[],
+                    )
+                else:
+                    result = SynthesisResult(
+                        synthesized_text="No facts available.",
+                        sources_used=[],
+                        confidence=0.0,
+                        conflicts_noted=[],
+                    )
+            else:
+                # Use LLM synthesis for multiple facts
+                result = await self._synthesizer.synthesize_facts(
+                    items, synthesis_type="summarize"
+                )
+
             lines.append(f"## {category}")
             lines.append("")
             lines.append(result.synthesized_text)
@@ -278,32 +308,6 @@ class ReportService:
             title_text = ext.get("source_title", uri)
             if uri and uri in sources_referenced:
                 lines.append(f"- [{title_text}]({uri})")
-
-        return "\n".join(lines)
-
-    def _build_sources_section(
-        self,
-        uris: set[str],
-        extractions: list[dict],
-    ) -> str:
-        """Build markdown sources section.
-
-        Args:
-            uris: Set of URIs that were referenced
-            extractions: List of extraction dicts with source info
-
-        Returns:
-            Markdown formatted sources section
-        """
-        uri_to_title = {}
-        for ext in extractions:
-            if ext.get("source_uri") and ext.get("source_title"):
-                uri_to_title[ext["source_uri"]] = ext["source_title"]
-
-        lines = ["### Sources Referenced", ""]
-        for uri in sorted(uris):
-            title = uri_to_title.get(uri, uri)
-            lines.append(f"- [{title}]({uri})")
 
         return "\n".join(lines)
 

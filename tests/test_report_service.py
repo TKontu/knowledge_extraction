@@ -291,21 +291,27 @@ class TestGenerateSingleReport:
                 "company-a": [
                     {
                         "id": "ext-1",
-                        "data": {"fact": "Important fact"},
+                        "data": {"fact": "Important fact 1"},
                         "extraction_type": "General",
                         "confidence": 0.95,
-                    }
+                    },
+                    {
+                        "id": "ext-2",
+                        "data": {"fact": "Important fact 2"},
+                        "extraction_type": "General",
+                        "confidence": 0.90,
+                    },
                 ]
             },
             entities_by_group={},
             source_groups=["company-a"],
-            extraction_ids=["ext-1"],
+            extraction_ids=["ext-1", "ext-2"],
             entity_count=0,
         )
 
         markdown = await report_service._generate_single_report(data, None)
 
-        # Verify synthesizer was called
+        # Verify synthesizer was called (needs 2+ facts in same category)
         mock_synthesizer.synthesize_facts.assert_called()
         # Verify synthesized text is in output
         assert "Synthesized fact text" in markdown
@@ -321,10 +327,24 @@ class TestGenerateComparisonReport:
             extractions_by_group={"company-a": [], "company-b": []},
             entities_by_group={
                 "company-a": {
-                    "limit": [{"id": "ent-1", "value": "API calls", "normalized_value": "api_calls", "attributes": {}}]
+                    "limit": [
+                        {
+                            "id": "ent-1",
+                            "value": "API calls",
+                            "normalized_value": "api_calls",
+                            "attributes": {},
+                        }
+                    ]
                 },
                 "company-b": {
-                    "limit": [{"id": "ent-2", "value": "Storage", "normalized_value": "storage", "attributes": {}}]
+                    "limit": [
+                        {
+                            "id": "ent-2",
+                            "value": "Storage",
+                            "normalized_value": "storage",
+                            "attributes": {},
+                        }
+                    ]
                 },
             },
             source_groups=["company-a", "company-b"],
@@ -342,8 +362,20 @@ class TestGenerateComparisonReport:
         """Test comparison report includes detailed findings section."""
         data = ReportData(
             extractions_by_group={
-                "company-a": [{"id": "ext-1", "data": {"fact": "Fact A"}, "extraction_type": "General"}],
-                "company-b": [{"id": "ext-2", "data": {"fact": "Fact B"}, "extraction_type": "General"}],
+                "company-a": [
+                    {
+                        "id": "ext-1",
+                        "data": {"fact": "Fact A"},
+                        "extraction_type": "General",
+                    }
+                ],
+                "company-b": [
+                    {
+                        "id": "ext-2",
+                        "data": {"fact": "Fact B"},
+                        "extraction_type": "General",
+                    }
+                ],
             },
             entities_by_group={},
             source_groups=["company-a", "company-b"],
@@ -366,12 +398,20 @@ class TestBuildEntityTable:
         entities_by_group = {
             "company-a": {
                 "limit": [
-                    {"value": "API calls", "normalized_value": "api_calls", "attributes": {}}
+                    {
+                        "value": "API calls",
+                        "normalized_value": "api_calls",
+                        "attributes": {},
+                    }
                 ]
             },
             "company-b": {
                 "limit": [
-                    {"value": "Storage", "normalized_value": "storage", "attributes": {}}
+                    {
+                        "value": "Storage",
+                        "normalized_value": "storage",
+                        "attributes": {},
+                    }
                 ]
             },
         }
@@ -387,12 +427,14 @@ class TestBuildEntityTable:
         entities_by_group = {
             "company-a": {
                 "limit": [
-                    {"value": "API calls", "normalized_value": "api_calls", "attributes": {}}
+                    {
+                        "value": "API calls",
+                        "normalized_value": "api_calls",
+                        "attributes": {},
+                    }
                 ]
             },
-            "company-b": {
-                "limit": []
-            },
+            "company-b": {"limit": []},
         }
 
         table = report_service._build_entity_table("limit", entities_by_group)
@@ -414,7 +456,11 @@ class TestBuildEntityTable:
         lines = table.split("\n")
 
         # Find the data rows (skip header and separator)
-        data_rows = [line for line in lines if line.startswith("| ") and "Entity" not in line and "---" not in line]
+        data_rows = [
+            line
+            for line in lines
+            if line.startswith("| ") and "Entity" not in line and "---" not in line
+        ]
 
         # Apple should come before Zebra
         assert "Apple" in data_rows[0]

@@ -341,6 +341,10 @@ class LLMWorker:
             return await self._extract_entities(
                 request.payload, temperature, request.retry_count
             )
+        elif request.request_type == "complete":
+            return await self._complete(
+                request.payload, temperature, request.retry_count
+            )
         else:
             raise ValueError(f"Unknown request type: {request.request_type}")
 
@@ -505,6 +509,57 @@ class LLMWorker:
 
         result_text = response.choices[0].message.content
         return json.loads(result_text)
+
+    async def _complete(
+        self, payload: dict, temperature: float, retry_count: int
+    ) -> dict:
+        """Execute generic LLM completion.
+
+        Used for report synthesis and other arbitrary LLM calls.
+
+        Args:
+            payload: Request payload with system_prompt, user_prompt,
+                    and optionally response_format, temperature, model.
+            temperature: Temperature for this request (varies with retries).
+            retry_count: Current retry attempt number.
+
+        Returns:
+            LLM response as dictionary.
+        """
+        system_prompt = payload.get("system_prompt", "")
+        user_prompt = payload.get("user_prompt", "")
+        response_format = payload.get("response_format")
+
+        # Use payload temperature if provided, otherwise use calculated temperature
+        temp = payload.get("temperature") or temperature
+
+        # Add conciseness hint on retries
+        if retry_count > 0:
+            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+
+        # Use model from payload if provided, otherwise use worker's default
+        model = payload.get("model", self.model)
+
+        kwargs = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temp,
+            "max_tokens": self.max_tokens,
+        }
+
+        if response_format:
+            kwargs["response_format"] = response_format
+
+        response = await self.llm_client.chat.completions.create(**kwargs)
+        result_text = response.choices[0].message.content
+
+        # Parse as JSON if json_object format requested
+        if response_format and response_format.get("type") == "json_object":
+            return json.loads(result_text)
+        return {"text": result_text}
 
     async def maybe_adjust_concurrency(self) -> None:
         """Adjust concurrency based on success/timeout ratio.
