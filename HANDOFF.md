@@ -2,6 +2,17 @@
 
 ## Completed This Session
 
+### Pipeline Review Fixes (Commit `0f4a3c6`)
+
+Fixed 4 issues identified during pipeline review of SchemaTableGenerator:
+
+1. **Duplicate title assignment** - Removed dead code (lines 131-133 in service.py)
+2. **KeyError on malformed schema** - Added try/except with logging fallback
+3. **Double ProjectRepository** - Pass `project_repo` to ReportService in API
+4. **None shows as "None"** - Fixed explicit None handling in entity name formatting
+
+See `docs/pipeline_review_schema_table_generator.md` for full analysis.
+
 ### Template-Agnostic Table/Excel Generation (Commit `287af76`)
 
 Refactored table report generation to derive columns and labels dynamically from project's `extraction_schema`, eliminating hardcoded drivetrain-specific code.
@@ -27,14 +38,19 @@ Removed 6 completed agent TODO files (all features implemented).
 
 ## Current State
 
-**Main branch clean** - all changes committed.
+**Main branch clean** - all changes committed and pushed.
 
 ```
+d7f5f2d chore: Update cache bust for fresh build
+0f4a3c6 fix(reports): Address pipeline review findings
 287af76 feat(reports): Template-agnostic table/Excel generation
 a5bed98 chore: Remove completed TODO files
-a82b2ed chore: Update cache bust for fresh build
-bf2f864 fix(reports): Address pipeline review issues for LLM synthesis
 ```
+
+**Docker images built and pushed:**
+- ghcr.io/tkontu/camoufox:latest
+- ghcr.io/tkontu/firecrawl-api:latest
+- ghcr.io/tkontu/proxy-adapter:latest
 
 ## Test Status
 
