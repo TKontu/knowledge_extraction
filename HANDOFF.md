@@ -1,81 +1,87 @@
-# Handoff: Report Pipeline Bug Fixes
+# Handoff: LLM Synthesis Feature Completed
 
 ## Completed This Session
 
-### Pipeline Review
-- Created comprehensive review of reports generation pipeline (`docs/endpoint_reports_review.md`)
-- Verified all 15 findings against actual code - 13 confirmed real, 1 design choice, 1 potential
+### 1. Report Pipeline Bug Fixes (Merged)
+**Commit:** `8f64705`
 
-### Bug Fixes Applied (Not Yet Committed)
-| Fix | File | Line |
-|-----|------|------|
-| `extraction_ids` now populated | `service.py` | 122 |
-| `entity_count` calculated from data | `service.py`, `reports.py` | - |
-| NoneType crash on title fixed | `reports.py` | 308 |
-| NoneType crash on content fixed | `reports.py` | 320 |
-| Boolean aggregation: majority → `any()` | `service.py` | 411 |
-| Truncation shows `...` indicator | `schema_table.py` | 250 |
-| Extraction limit shows notice | `service.py` | 308 |
+| Fix | File |
+|-----|------|
+| `extraction_ids` now populated | `service.py` |
+| `entity_count` calculated from data | `service.py`, `reports.py` |
+| NoneType crash on title fixed | `reports.py` |
+| NoneType crash on content fixed | `reports.py` |
+| Boolean aggregation: majority → `any()` | `service.py` |
+| Truncation shows `...` indicator | `schema_table.py` |
 
-### Tests Updated
-- All 20 report tests pass
-- `ReportData` now has required fields: `extraction_ids`, `entity_count`
-- Mock fixtures updated with `meta_data` attribute
+### 2. LLM Synthesis Feature (PR #62 Merged)
+**Commits:** 7 commits via `feat/report-llm-synthesis` branch
 
-### Documentation Created
-- `docs/endpoint_reports_review.md` - Full review with verified findings
-- `docs/TODO-agent-report-synthesis.md` - Detailed spec for LLM synthesis feature
+| Feature | File | Lines |
+|---------|------|-------|
+| Generic `LLMClient.complete()` | `src/services/llm/client.py` | +110 |
+| `ReportSynthesizer` service | `src/services/reports/synthesis.py` | +294 |
+| Source attribution in data gathering | `src/services/storage/repositories/extraction.py` | Modified |
+| Synthesizer integration | `src/services/reports/service.py` | +110 |
+| API response extension | `src/models.py` | +39 |
+| 50 tests passing | `tests/test_*.py` | +560 |
 
-## Uncommitted Changes
+**Key Capabilities Added:**
+- LLM-based fact synthesis with source attribution
+- Chunking for large fact sets (>15 facts)
+- Graceful fallback when LLM fails
+- `sources_referenced` in API response
+- Injectable synthesizer for testing
+
+### 3. Documentation Created
+- `docs/endpoint_reports_review.md` - Full review with 15 verified findings
+- `docs/TODO-agent-report-synthesis.md` - Completed spec (agent executed)
+
+## Current State
+
+**Main branch is clean** - all work committed and merged.
 
 ```
-Modified:
-  src/api/v1/reports.py
-  src/services/reports/schema_table.py
-  src/services/reports/service.py
-  tests/test_report_endpoint.py
-  tests/test_report_service.py
-  tests/test_report_table.py
-
-Untracked:
-  docs/TODO-agent-report-synthesis.md
-  docs/endpoint_reports_review.md
+766e0ef docs: Add report synthesis spec and pipeline review
+8f64705 fix(reports): Fix extraction_ids, entity_count, null checks, boolean aggregation
+8dafb75 feat: Smart report merging with LLM synthesis (PR #62)
 ```
 
-## Next Steps
+## Remaining Technical Debt
 
-- [ ] Commit bug fixes with message like `fix(reports): Fix extraction_ids, entity_count, null checks`
-- [ ] Decide on LLM synthesis feature: assign to agent or implement directly
-- [ ] Address remaining issues (require larger refactors):
-  - LLM client injected but never used
-  - No source attribution in extractions
-  - Deprecated `FIELD_GROUPS_BY_NAME` in SchemaTableReport
+| Issue | Priority | Notes |
+|-------|----------|-------|
+| `SchemaTableReport` uses deprecated `FIELD_GROUPS_BY_NAME` | Medium | Requires async refactor |
+| No caching of synthesized results | Low | Future optimization |
+| No LLM cost tracking | Low | Add metrics later |
 
-## Key Files
+## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `src/services/reports/service.py` | Core fixes: extraction_ids, entity_count, boolean logic |
-| `src/api/v1/reports.py` | NoneType fixes, metadata reading |
-| `docs/endpoint_reports_review.md` | Full review with all findings |
-| `docs/TODO-agent-report-synthesis.md` | Spec for LLM synthesis feature |
+| `src/services/reports/synthesis.py` | NEW - LLM synthesis service |
+| `src/services/llm/client.py` | Extended with `complete()` method |
+| `src/services/reports/service.py` | Synthesizer integration |
+| `tests/test_report_synthesis.py` | NEW - 13 synthesis tests |
 
-## Context
+## Test Status
 
-- **Boolean fix rationale**: Changed from majority vote to `any()` because "manufactures motors" should be True if mentioned on ANY page, not majority
-- **LLM synthesis** is a larger feature that would fix lossy aggregation and add source attribution
-- **SchemaTableReport** still uses deprecated hardcoded field groups (works but won't support custom schemas)
-- Tests requiring PostgreSQL (list/get endpoints) fail without DB connection
-
----
-
-## Previous Session (MCP Implementation)
-
-See commit history for details on:
-- MCP server implementation (15 tools)
-- LLM retry improvements
-- Docker deployment
+- **50 tests passing** across report modules
+- 3 tests require PostgreSQL (skip locally)
+- All linting clean
 
 ---
 
-**Recommendation:** Run `/clear` to start fresh session.
+## Previous Sessions
+
+### MCP Implementation (PR #61)
+- 15 MCP tools for knowledge extraction
+- LLM retry with timeout and temperature variation
+
+### Report Pipeline Review
+- 15 findings verified against actual code
+- 7 bug fixes applied
+
+---
+
+**Next Session:** Consider addressing SchemaTableReport async refactor or other TODO files.
