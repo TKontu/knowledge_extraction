@@ -4,13 +4,55 @@ TDD: Tests for queue-based extraction mode.
 """
 
 import asyncio
-from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from services.extraction.field_groups import MANUFACTURING_GROUP, PRODUCTS_GEARBOX_GROUP
+from services.extraction.field_groups import FieldDefinition, FieldGroup
+
+# Test fixtures for field groups (mimics schema-driven groups)
+MANUFACTURING_GROUP = FieldGroup(
+    name="manufacturing",
+    description="Manufacturing capabilities",
+    fields=[
+        FieldDefinition(
+            name="manufactures_gearboxes",
+            field_type="boolean",
+            description="Company manufactures gearboxes",
+            required=True,
+            default=False,
+        ),
+        FieldDefinition(
+            name="manufactures_motors",
+            field_type="boolean",
+            description="Company manufactures motors",
+            required=True,
+            default=False,
+        ),
+    ],
+    prompt_hint="Look for manufacturing evidence.",
+)
+
+PRODUCTS_GEARBOX_GROUP = FieldGroup(
+    name="products_gearbox",
+    description="Gearbox products",
+    fields=[
+        FieldDefinition(
+            name="product_name",
+            field_type="text",
+            description="Product name",
+            required=True,
+        ),
+        FieldDefinition(
+            name="power_rating_kw",
+            field_type="float",
+            description="Power rating in kW",
+        ),
+    ],
+    prompt_hint="Extract gearbox products.",
+    is_entity_list=True,
+)
 
 
 class TestSchemaExtractorQueueMode:
@@ -45,8 +87,8 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_uses_queue_when_provided(self, mock_settings, mock_queue):
         """Test that extractor uses queue when provided."""
-        from services.llm.models import LLMResponse
         from services.extraction.schema_extractor import SchemaExtractor
+        from services.llm.models import LLMResponse
 
         # Mock successful response from queue
         mock_queue.wait_for_result.return_value = LLMResponse(
@@ -110,7 +152,7 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_queue_payload_includes_prompts(self, mock_settings, mock_queue):
         """Test that queue payload includes system_prompt and user_prompt."""
-        from services.llm.models import LLMRequest, LLMResponse
+        from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -145,8 +187,11 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_handles_queue_error_response(self, mock_settings, mock_queue):
         """Test that error responses from queue are handled."""
+        from services.extraction.schema_extractor import (
+            LLMExtractionError,
+            SchemaExtractor,
+        )
         from services.llm.models import LLMResponse
-        from services.extraction.schema_extractor import SchemaExtractor, LLMExtractionError
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -171,8 +216,11 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_handles_queue_timeout_response(self, mock_settings, mock_queue):
         """Test that timeout responses from queue are handled."""
+        from services.extraction.schema_extractor import (
+            LLMExtractionError,
+            SchemaExtractor,
+        )
         from services.llm.models import LLMResponse
-        from services.extraction.schema_extractor import SchemaExtractor, LLMExtractionError
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -229,8 +277,8 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_product_extraction_via_queue(self, mock_settings, mock_queue):
         """Test product list extraction through queue."""
-        from services.llm.models import LLMResponse
         from services.extraction.schema_extractor import SchemaExtractor
+        from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -281,8 +329,8 @@ class TestSchemaExtractorQueueIntegration:
     @pytest.mark.asyncio
     async def test_concurrent_extractions_via_queue(self, mock_settings):
         """Test that multiple extractions can run concurrently via queue."""
-        from services.llm.models import LLMRequest, LLMResponse
         from services.extraction.schema_extractor import SchemaExtractor
+        from services.llm.models import LLMRequest, LLMResponse
 
         # Track concurrent submissions
         max_concurrent = 0
@@ -298,7 +346,7 @@ class TestSchemaExtractorQueueIntegration:
                 submitted_requests.append(request.request_id)
             return request.request_id
 
-        async def mock_wait(request_id, timeout=300):
+        async def mock_wait(request_id, timeout=300):  # noqa: ASYNC109
             nonlocal current_concurrent
             await asyncio.sleep(0.05)  # Simulate processing
             async with lock:

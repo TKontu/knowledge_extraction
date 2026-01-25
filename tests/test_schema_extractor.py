@@ -4,8 +4,51 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from services.extraction.field_groups import MANUFACTURING_GROUP, PRODUCTS_GEARBOX_GROUP
+from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_extractor import SchemaExtractor
+
+# Test fixtures for field groups (mimics schema-driven groups)
+MANUFACTURING_GROUP = FieldGroup(
+    name="manufacturing",
+    description="Manufacturing capabilities",
+    fields=[
+        FieldDefinition(
+            name="manufactures_gearboxes",
+            field_type="boolean",
+            description="Company manufactures gearboxes",
+            required=True,
+            default=False,
+        ),
+        FieldDefinition(
+            name="manufactures_motors",
+            field_type="boolean",
+            description="Company manufactures motors",
+            required=True,
+            default=False,
+        ),
+    ],
+    prompt_hint="Look for manufacturing evidence.",
+)
+
+PRODUCTS_GEARBOX_GROUP = FieldGroup(
+    name="products_gearbox",
+    description="Gearbox products",
+    fields=[
+        FieldDefinition(
+            name="product_name",
+            field_type="text",
+            description="Product name",
+            required=True,
+        ),
+        FieldDefinition(
+            name="power_rating_kw",
+            field_type="float",
+            description="Power rating in kW",
+        ),
+    ],
+    prompt_hint="Extract gearbox products.",
+    is_entity_list=True,
+)
 
 
 class TestSchemaExtractor:

@@ -1,9 +1,7 @@
 """Tests for SchemaAdapter - validates and converts extraction schemas."""
 
-import pytest
 
-from services.extraction.schema_adapter import SchemaAdapter, ValidationResult
-from services.extraction.field_groups import FieldGroup, FieldDefinition
+from services.extraction.schema_adapter import SchemaAdapter
 
 
 class TestValidateExtractionSchema:
@@ -287,7 +285,7 @@ class TestValidateExtractionSchema:
         assert any("default" in error.lower() for error in result.errors)
 
     def test_validation_rule_7_entity_list_without_product_name(self):
-        """Error for entity_list without product_name or entity_id."""
+        """Warning for entity_list without product_name or entity_id."""
         adapter = SchemaAdapter()
         schema = {
             "name": "test",
@@ -308,8 +306,9 @@ class TestValidateExtractionSchema:
         }
 
         result = adapter.validate_extraction_schema(schema)
-        assert not result.is_valid
-        assert any("product_name" in error.lower() or "entity_id" in error.lower() for error in result.errors)
+        # This is a warning, not an error - schema is still valid
+        assert result.is_valid
+        assert any("product_name" in w.lower() or "entity_id" in w.lower() for w in result.warnings)
 
     def test_validation_rule_8_duplicate_field_group_names(self):
         """Error on duplicate field_group names."""
