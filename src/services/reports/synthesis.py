@@ -111,32 +111,132 @@ Facts to synthesize:
         facts: list[dict],
         synthesis_type: str,
     ) -> SynthesisResult:
-        """Synthesize large fact sets by chunking."""
+        """Synthesize large fact sets with two-pass approach.
+
+        Pass 1: Synthesize each chunk independently
+        Pass 2: Unify chunk results into coherent whole
+        """
         chunks = [
             facts[i : i + self.MAX_FACTS_PER_SYNTHESIS]
             for i in range(0, len(facts), self.MAX_FACTS_PER_SYNTHESIS)
         ]
 
-        # Synthesize each chunk
+        # Pass 1: Synthesize each chunk
         chunk_results = []
         for chunk in chunks:
             result = await self.synthesize_facts(chunk, synthesis_type)
             chunk_results.append(result)
 
-        # Combine chunk results
-        all_text = "\n\n".join(r.synthesized_text for r in chunk_results)
+        # Pass 2: Unify chunk results if multiple chunks
+        if len(chunk_results) > 1:
+            return await self._unify_chunk_results(chunk_results, synthesis_type)
+
+        # Single chunk - return directly
+        return chunk_results[0] if chunk_results else SynthesisResult(
+            synthesized_text="No facts available.",
+            sources_used=[],
+            confidence=0.0,
+            conflicts_noted=[],
+        )
+
+    async def _unify_chunk_results(
+        self,
+        chunk_results: list[SynthesisResult],
+        synthesis_type: str,
+    ) -> SynthesisResult:
+        """Unify multiple chunk synthesis results into a coherent whole.
+
+        Uses LLM to merge chunk outputs, deduplicate information, resolve
+        conflicts, and create a flowing narrative.
+
+        Args:
+            chunk_results: List of SynthesisResult from individual chunks
+            synthesis_type: Original synthesis type for context
+
+        Returns:
+            Unified SynthesisResult
+        """
+        # Collect all sources and conflicts from chunks
         all_sources = list(set(s for r in chunk_results for s in r.sources_used))
         all_conflicts = [c for r in chunk_results for c in r.conflicts_noted]
+
+        # Format chunk texts for unification prompt
+        chunk_texts = "\n\n---\n\n".join(
+            f"Section {i+1}:\n{r.synthesized_text}"
+            for i, r in enumerate(chunk_results)
+        )
+
+        system_prompt = """You are merging multiple synthesized text sections into a coherent whole.
+
+Instructions:
+1. Combine the sections into a unified, flowing narrative
+2. Remove duplicate information that appears in multiple sections
+3. Preserve all unique facts and details
+4. Maintain source attributions in [Source: title] format
+5. If sections conflict, note the discrepancy
+6. Create logical groupings and transitions between topics
+
+Output as JSON:
+{
+  "unified_text": "Merged coherent text with [Source: title] attributions...",
+  "conflicts_noted": ["any new conflicts discovered during merge"]
+}"""
+
+        user_prompt = f"""Merge these {len(chunk_results)} synthesized sections (approach: {synthesis_type}):
+
+{chunk_texts}"""
+
+        try:
+            result = await self._llm.complete(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                response_format={"type": "json_object"},
+            )
+
+            # Merge conflicts from chunks with any new ones found during unification
+            merge_conflicts = result.get("conflicts_noted", [])
+            if merge_conflicts:
+                all_conflicts.extend(merge_conflicts)
+
+            avg_confidence = (
+                sum(r.confidence for r in chunk_results) / len(chunk_results)
+            )
+
+            return SynthesisResult(
+                synthesized_text=result.get("unified_text", ""),
+                sources_used=all_sources,
+                confidence=avg_confidence,
+                conflicts_noted=all_conflicts,
+            )
+        except LLMExtractionError as e:
+            logger.warning("llm_chunk_unification_failed", error=str(e))
+            # Fallback: concatenate with section headers
+            return self._fallback_unify(chunk_results, all_sources, all_conflicts)
+
+    def _fallback_unify(
+        self,
+        chunk_results: list[SynthesisResult],
+        all_sources: list[str],
+        all_conflicts: list[str],
+    ) -> SynthesisResult:
+        """Rule-based fallback for chunk unification when LLM fails."""
+        # Join with section dividers
+        sections = []
+        for i, r in enumerate(chunk_results):
+            sections.append(f"### Section {i+1}\n\n{r.synthesized_text}")
+
         avg_confidence = (
             sum(r.confidence for r in chunk_results) / len(chunk_results)
             if chunk_results
             else 0.0
         )
 
+        all_conflicts.append("Fallback: LLM unification unavailable")
+
         return SynthesisResult(
-            synthesized_text=all_text,
+            synthesized_text="\n\n".join(sections),
             sources_used=all_sources,
-            confidence=avg_confidence,
+            confidence=avg_confidence * 0.9,  # Slightly reduce confidence for fallback
             conflicts_noted=all_conflicts,
         )
 

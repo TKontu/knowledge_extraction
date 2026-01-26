@@ -323,6 +323,41 @@ class KnowledgeExtractionClient:
         )
 
     # =========================================================================
+    # Source Operations
+    # =========================================================================
+
+    async def list_sources(
+        self,
+        project_id: str,
+        source_group: str | None = None,
+        status: str | None = None,
+        source_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List sources with filters."""
+        params = {"limit": limit, "offset": offset}
+        if source_group:
+            params["source_group"] = source_group
+        if status:
+            params["status"] = status
+        if source_type:
+            params["source_type"] = source_type
+
+        return await self._request(
+            "GET",
+            f"/api/v1/projects/{project_id}/sources",
+            params=params,
+        )
+
+    async def get_source_summary(self, project_id: str) -> dict[str, Any]:
+        """Get source summary (counts by status and source group)."""
+        return await self._request(
+            "GET",
+            f"/api/v1/projects/{project_id}/sources/summary",
+        )
+
+    # =========================================================================
     # Report Operations
     # =========================================================================
 

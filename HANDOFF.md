@@ -1,61 +1,62 @@
-# Handoff: Deprecated Code Cleanup Complete
+# Handoff: Reports Module Improvements Complete
 
 ## Completed This Session
 
-### Deprecated Code Removal (2026-01-25)
+### Reports Module Improvements (2026-01-25)
 
-Removed deprecated `SchemaTableReport` class and hardcoded field group constants:
+Implemented 3 improvements to the reports system:
 
-| Removed | Notes |
-|---------|-------|
-| `src/services/reports/schema_table.py` | Entire file deleted - replaced by `SchemaTableGenerator` |
-| `tests/test_schema_table_report.py` | Tests for deprecated class |
-| `FIELD_GROUPS_BY_NAME` constant | Hardcoded drivetrain-specific groups |
-| `ALL_FIELD_GROUPS` constant | List of hardcoded groups |
-| `MANUFACTURING_GROUP`, etc. | 7 hardcoded `*_GROUP` constants |
+| Issue | Solution | Files Changed |
+|-------|----------|---------------|
+| Chunking doesn't synthesize across chunks | Added two-pass synthesis with `_unify_chunk_results` method | `synthesis.py` |
+| Lossy text aggregation | Changed `max(values, key=len)` to dedupe and concatenate unique values | `schema_orchestrator.py`, `service.py` |
+| Hardcoded `max_detail_extractions = 10` | Made configurable via `ReportRequest.max_detail_extractions` | `models.py`, `service.py` |
 
-**Kept:** `FieldDefinition` and `FieldGroup` dataclasses in `field_groups.py` - used by `SchemaAdapter`.
+**Note:** `_build_sources_section` dead code was a false positive - method doesn't exist. Sources are built inline.
 
-Also fixed:
-- Test in `test_schema_adapter.py` expecting error for entity_list without ID field (implementation returns warning)
-- Updated `test_schema_extractor*.py` to use inline test fixtures instead of importing deprecated constants
+#### Details
 
-### Previous: Backlog Review (2026-01-25)
+1. **Cross-chunk synthesis unification** (`synthesis.py:109-195`)
+   - `_synthesize_chunked` now uses two-pass approach
+   - Pass 1: Synthesize each chunk independently
+   - Pass 2: `_unify_chunk_results` merges chunk outputs via LLM
+   - Fallback `_fallback_unify` if LLM fails (preserves sections with headers)
 
-**Critical (all fixed):**
-| Issue | Status | Notes |
-|-------|--------|-------|
-| Queue worker `complete` handler | Fixed | `worker.py:344-347` handles `request_type="complete"` |
-| LLMClient connection leak | Fixed | `reports.py:59-69` uses context manager |
-| `sources_referenced` in API | Design choice | Field intentionally not in API |
-| LLM client unused | Fixed | Used via `ReportSynthesizer` |
+2. **Smart text aggregation** (`schema_orchestrator.py:251-257`, `service.py:607-616`)
+   - Deduplicates unique values: `dict.fromkeys(str(v) for v in values)`
+   - Concatenates with semicolon if multiple unique values
+   - Preserves single value without modification
 
-**Important (verified):**
-| Issue | Status | Notes |
-|-------|--------|-------|
-| LLM called for single fact | Fixed | `service.py:276-302` skips LLM |
-| `_complete_direct` temperature | Fixed | `client.py:706` varies temp |
-| No source attribution | Fixed | `service.py:195-204` includes source |
-| Deprecated FIELD_GROUPS_BY_NAME | **Removed** | Deleted this session |
+3. **Configurable max_detail_extractions** (`models.py:565-570`)
+   - New field: `max_detail_extractions: int = Field(default=10, ge=1, le=100)`
+   - Passed through `generate()` to `_generate_comparison_report()`
+
+### Tests Added
+
+- `test_chunked_synthesis_uses_two_pass_unification` - verifies unification pass
+- `test_unification_fallback_on_llm_failure` - verifies fallback behavior
+- `test_fallback_unify_preserves_chunk_content` - verifies section preservation
+- Fixed `test_report_table.py` to expect 3 return values from `_aggregate_for_table`
+
+### Previous: Deprecated Code Removal (2026-01-25)
+
+Removed deprecated `SchemaTableReport` class and hardcoded field group constants.
 
 ## Current State
 
-**Main branch clean** - all changes committed.
+**Main branch clean** - pending commit.
 
 ```
+c93b080 docs: Update endpoint review after removing SchemaTableReport
+386882a docs: Update handoff after deprecated code cleanup
 ccd689d refactor: Remove deprecated SchemaTableReport and hardcoded field groups
-fad2ad4 docs: Correct important issue status after verification
-4de5ebd docs: Update review documents - mark critical items as fixed
-37173a6 docs: Update handoff with pipeline review fixes
-0f4a3c6 fix(reports): Address pipeline review findings
 ```
 
 ## Test Status
 
-- 58 schema-related tests passing
-- 25 SchemaTableGenerator tests
-- All linting clean
-- Removed 605 lines of deprecated code
+- 50 report-related tests passing (15 service + 16 synthesis + 4 table + 15 models)
+- All linting clean on modified files
+- Pre-existing lint error in `schema_orchestrator.py` (ExtractionContext forward reference)
 
 ## Remaining Backlog
 
@@ -63,10 +64,6 @@ fad2ad4 docs: Correct important issue status after verification
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
-| Chunking doesn't synthesize across chunks | Low | Second-pass to unify chunk results |
-| Lossy text aggregation | Low | `max(values, key=len)` takes longest only |
-| `_build_sources_section` dead code | Low | Remove unused method |
-| Hardcoded `max_detail_extractions = 10` | Low | Make configurable |
 | No test for `_complete_via_queue` | Low | Add queue mode test |
 
 ### Crawl Pipeline (Not Started)

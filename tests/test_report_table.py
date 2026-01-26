@@ -41,7 +41,7 @@ class TestTableReportGeneration:
         self, report_service, sample_data
     ):
         """Test boolean aggregation uses any() - True if any extraction is True."""
-        rows, columns = await report_service._aggregate_for_table(sample_data, None)
+        rows, columns, labels = await report_service._aggregate_for_table(sample_data, None)
 
         assert len(rows) == 2
         company_a = next(r for r in rows if r["source_group"] == "CompanyA")
@@ -49,7 +49,7 @@ class TestTableReportGeneration:
 
     async def test_aggregate_for_table_numeric_max(self, report_service, sample_data):
         """Test numeric aggregation uses max value."""
-        rows, columns = await report_service._aggregate_for_table(sample_data, None)
+        rows, columns, labels = await report_service._aggregate_for_table(sample_data, None)
 
         company_a = next(r for r in rows if r["source_group"] == "CompanyA")
         assert company_a["count"] == 150  # Max of 100, 150

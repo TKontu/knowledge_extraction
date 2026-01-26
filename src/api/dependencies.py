@@ -1,0 +1,36 @@
+"""Reusable FastAPI dependencies for API endpoints."""
+
+from uuid import UUID
+
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from database import get_db
+from orm_models import Project
+from services.projects.repository import ProjectRepository
+
+
+async def get_project_or_404(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+) -> Project:
+    """Validate that a project exists and return it.
+
+    Args:
+        project_id: UUID of the project to validate.
+        db: Database session.
+
+    Returns:
+        The Project instance if it exists.
+
+    Raises:
+        HTTPException: 404 if the project does not exist.
+    """
+    project_repo = ProjectRepository(db)
+    project = await project_repo.get(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    return project

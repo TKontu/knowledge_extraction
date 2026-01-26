@@ -18,6 +18,7 @@ from api.v1.projects import router as projects_router
 from api.v1.reports import router as reports_router
 from api.v1.scrape import router as scrape_router
 from api.v1.search import router as search_router
+from api.v1.sources import router as sources_router
 from config import settings
 from database import check_database_connection
 from logging_config import configure_logging
@@ -74,8 +75,7 @@ async def lifespan(app: FastAPI):
     try:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(
-                sig,
-                lambda s=sig: asyncio.create_task(handle_signal(s))
+                sig, lambda s=sig: asyncio.create_task(handle_signal(s))
             )
     except NotImplementedError:
         # Signal handlers not supported (e.g., Windows or test environment)
@@ -83,6 +83,7 @@ async def lifespan(app: FastAPI):
 
     # Startup: Start the background job scheduler
     import os
+
     app_version = os.getenv("APP_VERSION", "v1.3.1")
     git_commit = os.getenv("GIT_COMMIT", "unknown")
     logger.info(
@@ -90,7 +91,7 @@ async def lifespan(app: FastAPI):
         service="pipeline",
         version=app_version,
         commit=git_commit,
-        environment=os.getenv("ENVIRONMENT", "production")
+        environment=os.getenv("ENVIRONMENT", "production"),
     )
 
     # Load templates from YAML files
@@ -114,12 +115,16 @@ async def lifespan(app: FastAPI):
     for attempt in range(max_retries):
         try:
             await qdrant_repo.init_collection()
-            logger.info("qdrant_collection_initialized", collection="extractions", attempt=attempt + 1)
+            logger.info(
+                "qdrant_collection_initialized",
+                collection="extractions",
+                attempt=attempt + 1,
+            )
             break
         except Exception as e:
             if attempt < max_retries - 1:
                 # Exponential backoff: 1s, 2s, 4s, 8s
-                wait_time = 2 ** attempt
+                wait_time = 2**attempt
                 logger.warning(
                     "qdrant_init_retry",
                     attempt=attempt + 1,
@@ -195,6 +200,7 @@ app.include_router(reports_router)
 app.include_router(jobs_router)
 app.include_router(metrics_router)
 app.include_router(export_router)
+app.include_router(sources_router)
 
 
 @app.get("/health")
@@ -209,7 +215,7 @@ async def health_check() -> JSONResponse:
                 "status": "shutting_down",
                 "service": "scristill-pipeline",
                 "timestamp": datetime.now(UTC).isoformat(),
-            }
+            },
         )
 
     # Check database connectivity
@@ -243,6 +249,7 @@ async def health_check() -> JSONResponse:
         logger.warning("health_check_failed", component="qdrant")
 
     import os
+
     return JSONResponse(
         content={
             "status": "ok",
@@ -268,6 +275,7 @@ async def health_check() -> JSONResponse:
 async def root() -> dict[str, str]:
     """Root endpoint - provides API information."""
     import os
+
     return {
         "service": "Scristill Pipeline API",
         "version": os.getenv("APP_VERSION", "v1.3.1"),

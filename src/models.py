@@ -562,6 +562,12 @@ class ReportRequest(BaseModel):
     output_format: Literal["md", "xlsx"] = Field(
         default="md", description="Output format for TABLE reports"
     )
+    max_detail_extractions: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Max extractions to show in detailed findings section (comparison reports)",
+    )
 
     @field_validator("source_groups")
     @classmethod
@@ -629,3 +635,54 @@ class JobDetailResponse(BaseModel):
     created_at: str
     started_at: str | None = None
     completed_at: str | None = None
+
+
+# Source API models
+
+
+class SourceResponse(BaseModel):
+    """Single source in response."""
+
+    id: str = Field(..., description="Source UUID")
+    uri: str = Field(..., description="Source URI")
+    source_group: str = Field(..., description="Source group (e.g., company name)")
+    source_type: str = Field(..., description="Source type (web, pdf, etc.)")
+    title: str | None = Field(None, description="Source title")
+    status: str = Field(..., description="Source status (pending, completed, failed)")
+    created_at: str = Field(..., description="Creation timestamp")
+    fetched_at: str | None = Field(None, description="Fetch timestamp")
+
+
+class SourceListResponse(BaseModel):
+    """Response for source list endpoint."""
+
+    sources: list[SourceResponse] = Field(..., description="List of sources")
+    total: int = Field(..., description="Total count of sources")
+    limit: int = Field(..., description="Page size")
+    offset: int = Field(..., description="Pagination offset")
+
+
+class SourceStatusCount(BaseModel):
+    """Count of sources per status."""
+
+    status: str = Field(..., description="Source status")
+    count: int = Field(..., description="Number of sources with this status")
+
+
+class SourceGroupCount(BaseModel):
+    """Count of sources per source group."""
+
+    source_group: str = Field(..., description="Source group name")
+    count: int = Field(..., description="Number of sources in this group")
+
+
+class SourceSummaryResponse(BaseModel):
+    """Response for source summary endpoint."""
+
+    total_sources: int = Field(..., description="Total number of sources")
+    by_status: list[SourceStatusCount] = Field(
+        ..., description="Source counts by status"
+    )
+    by_source_group: list[SourceGroupCount] = Field(
+        ..., description="Source counts by source group"
+    )

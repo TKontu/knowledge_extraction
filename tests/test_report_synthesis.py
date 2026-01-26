@@ -1,12 +1,11 @@
 """Tests for report synthesis service."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from config import settings
 from services.llm.client import LLMClient, LLMExtractionError
-from services.reports.synthesis import ReportSynthesizer, SynthesisResult, MergeResult
+from services.reports.synthesis import ReportSynthesizer, SynthesisResult
 
 
 @pytest.fixture
@@ -334,3 +333,120 @@ class TestReportSynthesizer:
         # Check that the call was made with 'compare' in the prompt
         call_args = mock_llm_client.complete.call_args
         assert "compare" in call_args.kwargs["user_prompt"].lower()
+
+    @pytest.mark.asyncio
+    async def test_chunked_synthesis_uses_two_pass_unification(
+        self, synthesizer, mock_llm_client
+    ):
+        """Verify large fact sets use two-pass synthesis with unification."""
+        # Create 20 facts (exceeds MAX_FACTS_PER_SYNTHESIS = 15)
+        large_fact_set = [
+            {
+                "data": {"fact": f"Fact number {i}"},
+                "confidence": 0.9,
+                "source_uri": f"https://example.com/page{i}",
+                "source_title": f"Page {i}",
+            }
+            for i in range(20)
+        ]
+
+        # Track call order to verify two-pass approach
+        call_count = [0]
+
+        def mock_complete(**kwargs):
+            call_count[0] += 1
+            system_prompt = kwargs.get("system_prompt", "")
+            # Unification pass uses "merging multiple synthesized text sections"
+            if "merging multiple synthesized text sections" in system_prompt:
+                return {
+                    "unified_text": "Unified synthesis of all facts with deduplication",
+                    "conflicts_noted": [],
+                }
+            else:
+                # Chunk pass
+                return {
+                    "synthesized_text": f"Chunk {call_count[0]} synthesis",
+                    "sources_used": ["https://example.com/page0"],
+                    "confidence": 0.9,
+                    "conflicts_noted": [],
+                }
+
+        mock_llm_client.complete.side_effect = mock_complete
+
+        result = await synthesizer.synthesize_facts(large_fact_set)
+
+        # Should have: 2 chunk calls + 1 unification call = 3 total
+        assert mock_llm_client.complete.call_count >= 3
+        assert "Unified synthesis" in result.synthesized_text
+
+    @pytest.mark.asyncio
+    async def test_unification_fallback_on_llm_failure(
+        self, synthesizer, mock_llm_client
+    ):
+        """Verify fallback when unification LLM call fails."""
+        # Create 20 facts to trigger chunking
+        large_fact_set = [
+            {
+                "data": {"fact": f"Fact number {i}"},
+                "confidence": 0.9,
+                "source_uri": f"https://example.com/page{i}",
+                "source_title": f"Page {i}",
+            }
+            for i in range(20)
+        ]
+
+        call_count = [0]
+
+        def mock_complete(**kwargs):
+            call_count[0] += 1
+            system_prompt = kwargs.get("system_prompt", "")
+            # Unification pass uses "merging multiple synthesized text sections"
+            if "merging multiple synthesized text sections" in system_prompt:
+                raise LLMExtractionError("Unification failed")
+            else:
+                # Chunk passes succeed
+                return {
+                    "synthesized_text": f"Chunk {call_count[0]} result",
+                    "sources_used": ["https://example.com/page0"],
+                    "confidence": 0.9,
+                    "conflicts_noted": [],
+                }
+
+        mock_llm_client.complete.side_effect = mock_complete
+
+        result = await synthesizer.synthesize_facts(large_fact_set)
+
+        # Should fallback to section-based output
+        assert "Section" in result.synthesized_text
+        assert "Fallback: LLM unification unavailable" in result.conflicts_noted
+
+    @pytest.mark.asyncio
+    async def test_fallback_unify_preserves_chunk_content(self, synthesizer):
+        """Verify fallback unification preserves all chunk content."""
+        chunk_results = [
+            SynthesisResult(
+                synthesized_text="First chunk content",
+                sources_used=["https://example.com/1"],
+                confidence=0.9,
+                conflicts_noted=[],
+            ),
+            SynthesisResult(
+                synthesized_text="Second chunk content",
+                sources_used=["https://example.com/2"],
+                confidence=0.85,
+                conflicts_noted=["Minor conflict"],
+            ),
+        ]
+
+        result = synthesizer._fallback_unify(
+            chunk_results,
+            all_sources=["https://example.com/1", "https://example.com/2"],
+            all_conflicts=["Minor conflict"],
+        )
+
+        assert "First chunk content" in result.synthesized_text
+        assert "Second chunk content" in result.synthesized_text
+        assert "Section 1" in result.synthesized_text
+        assert "Section 2" in result.synthesized_text
+        assert len(result.sources_used) == 2
+        assert "Fallback: LLM unification unavailable" in result.conflicts_noted

@@ -132,7 +132,9 @@ class ReportService:
             content = await self._generate_single_report(data, request.title)
             title = request.title or f"{request.source_groups[0]} - Extraction Report"
         else:
-            content = await self._generate_comparison_report(data, request.title)
+            content = await self._generate_comparison_report(
+                data, request.title, request.max_detail_extractions
+            )
             title = request.title or f"Comparison: {' vs '.join(request.source_groups)}"
 
         # Create and save report with provenance tracking
@@ -332,12 +334,14 @@ class ReportService:
         self,
         data: ReportData,
         title: str | None,
+        max_detail_extractions: int = 10,
     ) -> str:
         """Generate markdown for comparison report with entity tables.
 
         Args:
             data: Aggregated report data
             title: Optional custom title
+            max_detail_extractions: Max extractions per source group in findings
 
         Returns:
             Markdown content
@@ -369,7 +373,6 @@ class ReportService:
                     lines.append("")
 
         # Add detailed findings with source attribution
-        max_detail_extractions = 10
         lines.append("## Detailed Findings")
         lines.append("")
 
@@ -601,8 +604,16 @@ class ReportService:
                         flat.extend(v)
                     row[field] = list(dict.fromkeys(flat))
                 else:
-                    # For text, take longest non-empty
-                    row[field] = max(values, key=len) if values else None
+                    # For text, dedupe and concatenate unique values
+                    unique_texts = list(
+                        dict.fromkeys(str(v) for v in values if v)
+                    )
+                    if len(unique_texts) > 1:
+                        row[field] = "; ".join(unique_texts)
+                    elif unique_texts:
+                        row[field] = unique_texts[0]
+                    else:
+                        row[field] = None
 
             rows.append(row)
 

@@ -134,3 +134,91 @@ def register_search_tools(mcp: FastMCP) -> None:
 
         except APIError as e:
             return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def list_sources(
+        project_id: Annotated[str, "Project UUID"],
+        source_group: Annotated[str | None, "Filter by company/source group"] = None,
+        status: Annotated[
+            str | None, "Filter by status (pending/completed/failed)"
+        ] = None,
+        source_type: Annotated[str | None, "Filter by source type (web/pdf)"] = None,
+        limit: Annotated[int, "Maximum results to return"] = 50,
+        ctx: Context = None,
+    ) -> dict:
+        """List sources (documents/pages) in a project.
+
+        Sources are the raw documents/pages that have been crawled or scraped.
+        Use this to see what content has been collected and its processing status.
+
+        Example:
+            list_sources(
+                project_id="...",
+                status="pending",
+                limit=20
+            )
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            result = await client.list_sources(
+                project_id=project_id,
+                source_group=source_group,
+                status=status,
+                source_type=source_type,
+                limit=limit,
+            )
+
+            return {
+                "success": True,
+                "total": result["total"],
+                "showing": len(result["sources"]),
+                "sources": [
+                    {
+                        "id": s["id"],
+                        "uri": s["uri"],
+                        "source_group": s["source_group"],
+                        "source_type": s["source_type"],
+                        "title": s.get("title"),
+                        "status": s["status"],
+                    }
+                    for s in result["sources"]
+                ],
+            }
+
+        except APIError as e:
+            return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def get_source_summary(
+        project_id: Annotated[str, "Project UUID"],
+        ctx: Context = None,
+    ) -> dict:
+        """Get a summary of sources by status and source group in a project.
+
+        Useful for understanding the crawl/scrape progress and what companies
+        have been processed.
+
+        Example:
+            get_source_summary(project_id="...")
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            result = await client.get_source_summary(project_id)
+
+            return {
+                "success": True,
+                "total_sources": result["total_sources"],
+                "by_status": [
+                    {"status": s["status"], "count": s["count"]}
+                    for s in result["by_status"]
+                ],
+                "by_source_group": [
+                    {"source_group": g["source_group"], "count": g["count"]}
+                    for g in result["by_source_group"]
+                ],
+            }
+
+        except APIError as e:
+            return {"success": False, "error": e.message}

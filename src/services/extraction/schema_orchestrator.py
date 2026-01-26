@@ -201,10 +201,10 @@ class SchemaExtractionOrchestrator:
 
         Aggregation rules:
         - boolean: True if ANY chunk says True
-        - integer: Take maximum
-        - text: Take longest non-empty
+        - integer/float: Take maximum
+        - text/enum: Dedupe and concatenate unique values with "; "
         - list: Merge and dedupe
-        - products: Merge all, dedupe by product_name
+        - entity_list: Merge all, dedupe by ID fields
         """
         if not chunk_results:
             return {}
@@ -249,7 +249,14 @@ class SchemaExtractionOrchestrator:
                 else:
                     merged[field.name] = list(dict.fromkeys(flat))
             else:  # text, enum
-                merged[field.name] = max(values, key=lambda x: len(str(x)) if x else 0)
+                # Dedupe and concatenate unique values to preserve information
+                unique_texts = list(
+                    dict.fromkeys(str(v) for v in values if v is not None)
+                )
+                if len(unique_texts) > 1:
+                    merged[field.name] = "; ".join(unique_texts)
+                elif unique_texts:
+                    merged[field.name] = unique_texts[0]
 
         # Average confidence
         confidences = [r.get("confidence", 0.8) for r in chunk_results]
