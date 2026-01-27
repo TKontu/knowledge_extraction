@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from orm_models import Project
+from redis_client import get_async_redis
+from services.dlq.service import DLQService
 from services.projects.repository import ProjectRepository
 
 
@@ -34,3 +36,13 @@ async def get_project_or_404(
             detail=f"Project {project_id} not found",
         )
     return project
+
+
+async def get_dlq_service() -> DLQService:
+    """Get DLQ service instance.
+
+    Returns:
+        DLQService instance with async Redis connection.
+    """
+    redis = await get_async_redis()
+    return DLQService(redis)
