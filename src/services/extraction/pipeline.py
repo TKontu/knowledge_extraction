@@ -193,7 +193,18 @@ class ExtractionPipelineService:
 
             except Exception as e:
                 errors.append(f"Error processing fact: {str(e)}")
-                logger.error("fact_processing_failed", error=str(e), fact=fact.fact)
+                logger.error(
+                    "fact_processing_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    source_id=str(source_id),
+                    source_url=source.uri if hasattr(source, "uri") else None,
+                    source_group=source.source_group,
+                    fact_preview=fact.fact[:500] if fact.fact else None,
+                    fact_category=fact.category,
+                    fact_confidence=fact.confidence,
+                    exc_info=True,
+                )
 
         # Update source status
         await self._source_repo.update_status(source_id, "extracted")
@@ -224,7 +235,7 @@ class ExtractionPipelineService:
             if not status.get("should_wait", False):
                 return
 
-            wait_time = BACKPRESSURE_WAIT_BASE * (1.5 ** attempt)
+            wait_time = BACKPRESSURE_WAIT_BASE * (1.5**attempt)
             logger.info(
                 "pipeline_backpressure_wait",
                 attempt=attempt + 1,
@@ -528,9 +539,7 @@ class SchemaExtractionPipeline:
             return_exceptions=True,
         )
 
-        total_extractions = sum(
-            c for c in extraction_counts if isinstance(c, int)
-        )
+        total_extractions = sum(c for c in extraction_counts if isinstance(c, int))
 
         for i, result in enumerate(extraction_counts):
             if isinstance(result, Exception):

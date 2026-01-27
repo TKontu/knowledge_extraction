@@ -1,7 +1,6 @@
 """Schema-based LLM extraction with field groups."""
 
 import asyncio
-import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -266,12 +265,18 @@ class SchemaExtractor:
 
             except Exception as e:
                 last_error = e
+                response_preview = None
+                if "result_text" in locals() and result_text:
+                    response_preview = result_text[:500]
                 logger.warning(
                     "schema_extraction_attempt_failed",
                     field_group=field_group.name,
                     error=str(e),
+                    error_type=type(e).__name__,
                     attempt=attempt,
                     max_retries=max_retries,
+                    content_preview=content[:300] if content else None,
+                    response_preview=response_preview,
                 )
 
                 if attempt < max_retries:
@@ -284,7 +289,10 @@ class SchemaExtractor:
             "schema_extraction_failed_all_retries",
             field_group=field_group.name,
             error=str(last_error),
+            error_type=type(last_error).__name__ if last_error else None,
             attempts=max_retries,
+            content_preview=content[:300] if content else None,
+            exc_info=True,
         )
         raise LLMExtractionError(
             f"Schema extraction failed after {max_retries} attempts: {last_error}"

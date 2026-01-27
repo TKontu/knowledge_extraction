@@ -87,30 +87,32 @@ def sample_data(db: Session) -> None:
 
     db.commit()
 
-    # Create extractions
-    for source in sources[:2]:
+    # Create extractions with different types and confidence
+    for i, source in enumerate(sources[:2]):
         db.refresh(source)
         extraction = Extraction(
             id=uuid4(),
             project_id=project.id,
             source_id=source.id,
             data={"test": "data"},
-            extraction_type="test",
+            extraction_type="company" if i == 0 else "person",
             source_group="test-group",
+            confidence=0.9 if i == 0 else 0.7,
         )
         db.add(extraction)
 
     db.commit()
 
-    # Create entities
-    for i in range(3):
+    # Create entities with different types
+    entity_types = ["PERSON", "PERSON", "ORGANIZATION"]
+    for i, ent_type in enumerate(entity_types):
         entity = Entity(
             id=uuid4(),
             project_id=project.id,
             source_group="test-group",
-            entity_type="PERSON",
-            value=f"Person {i}",
-            normalized_value=f"person{i}",
+            entity_type=ent_type,
+            value=f"{ent_type} {i}",
+            normalized_value=f"{ent_type.lower()}{i}",
         )
         db.add(entity)
 
@@ -155,3 +157,27 @@ class TestMetricsCollector:
 
         assert metrics.sources_by_status["completed"] == 1
         assert metrics.sources_by_status["pending"] == 2
+
+    def test_count_extractions_by_type(self, db: Session, sample_data: None) -> None:
+        """Test counting extractions grouped by type."""
+        collector = MetricsCollector(db)
+        metrics = collector.collect()
+
+        assert metrics.extractions_by_type["company"] == 1
+        assert metrics.extractions_by_type["person"] == 1
+
+    def test_avg_confidence_by_type(self, db: Session, sample_data: None) -> None:
+        """Test calculating average confidence by extraction type."""
+        collector = MetricsCollector(db)
+        metrics = collector.collect()
+
+        assert metrics.avg_confidence_by_type["company"] == 0.9
+        assert metrics.avg_confidence_by_type["person"] == 0.7
+
+    def test_count_entities_by_type(self, db: Session, sample_data: None) -> None:
+        """Test counting entities grouped by type."""
+        collector = MetricsCollector(db)
+        metrics = collector.collect()
+
+        assert metrics.entities_by_type["PERSON"] == 2
+        assert metrics.entities_by_type["ORGANIZATION"] == 1
