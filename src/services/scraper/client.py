@@ -405,21 +405,66 @@ class FirecrawlClient:
                 error=f"Invalid JSON response from Firecrawl: {e}",
             )
 
+        status = data.get("status", "unknown")
+        total = data.get("total", 0)
+        completed = data.get("completed", 0)
+        pages = data.get("data", [])
+        next_url = data.get("next")  # Pagination cursor if more pages available
+        error = data.get("error")
+
         logger.debug(
             "firecrawl_get_crawl_status_response",
             crawl_id=crawl_id,
-            status=data.get("status", "unknown"),
-            total=data.get("total", 0),
-            completed=data.get("completed", 0),
+            status=status,
+            total=total,
+            completed=completed,
+            pages_in_response=len(pages),
+            has_next=next_url is not None,
             duration_ms=duration_ms,
         )
 
+        # Verbose logging for investigation (Issue #12)
+        # Log warning if crawl completed but returned 0 pages
+        if status == "completed" and total == 0:
+            logger.warning(
+                "firecrawl_completed_zero_pages",
+                crawl_id=crawl_id,
+                total=total,
+                completed=completed,
+                pages_in_response=len(pages),
+                response_keys=list(data.keys()),
+                has_next=next_url is not None,
+                next_url=next_url[:100] if next_url else None,  # Truncate for logging
+                error=error,
+            )
+
+        # Log if pagination is present (we may be missing pages)
+        if next_url:
+            logger.info(
+                "firecrawl_pagination_detected",
+                crawl_id=crawl_id,
+                status=status,
+                total=total,
+                pages_in_response=len(pages),
+                next_url=next_url[:100] if next_url else None,
+            )
+
+        # Log mismatch between total and actual pages received
+        if status == "completed" and len(pages) != total and total > 0:
+            logger.warning(
+                "firecrawl_page_count_mismatch",
+                crawl_id=crawl_id,
+                expected_pages=total,
+                actual_pages=len(pages),
+                has_next=next_url is not None,
+            )
+
         return CrawlStatus(
-            status=data.get("status", "unknown"),
-            total=data.get("total", 0),
-            completed=data.get("completed", 0),
-            pages=data.get("data", []),
-            error=data.get("error"),
+            status=status,
+            total=total,
+            completed=completed,
+            pages=pages,
+            error=error,
         )
 
     def _extract_domain(self, url: str) -> str:

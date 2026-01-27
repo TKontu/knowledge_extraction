@@ -140,11 +140,25 @@ class CrawlWorker:
                 }
                 self.db.commit()
 
-                logger.info(
-                    "crawl_completed",
-                    job_id=str(job.id),
-                    sources_created=sources_created,
-                )
+                # Issue #12 investigation: Log warning if crawl returned 0 pages
+                if sources_created == 0:
+                    logger.warning(
+                        "crawl_completed_zero_sources",
+                        job_id=str(job.id),
+                        firecrawl_job_id=firecrawl_job_id,
+                        pages_total=status.total,
+                        pages_completed=status.completed,
+                        pages_in_response=len(status.pages),
+                        url=payload.get("url"),
+                        company=payload.get("company"),
+                    )
+                else:
+                    logger.info(
+                        "crawl_completed",
+                        job_id=str(job.id),
+                        sources_created=sources_created,
+                        pages_total=status.total,
+                    )
 
                 # Step 4: Auto-extract if enabled
                 if payload.get("auto_extract", True):
