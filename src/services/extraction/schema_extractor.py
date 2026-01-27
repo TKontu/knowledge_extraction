@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 
 from config import Settings
 from services.extraction.field_groups import FieldGroup
+from services.llm.json_repair import try_repair_json
 
 if TYPE_CHECKING:
     from services.extraction.schema_adapter import ExtractionContext
@@ -247,7 +248,7 @@ class SchemaExtractor:
                 )
 
                 result_text = response.choices[0].message.content
-                result_data = json.loads(result_text)
+                result_data = try_repair_json(result_text, context="schema_extract")
 
                 # Apply defaults for missing fields
                 result = self._apply_defaults(result_data, field_group)

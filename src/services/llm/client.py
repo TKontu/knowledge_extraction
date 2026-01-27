@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 
 from config import Settings
 from models import ExtractedFact
+from services.llm.json_repair import try_repair_json
 
 if TYPE_CHECKING:
     from src.services.llm.queue import LLMRequestQueue
@@ -256,7 +257,7 @@ class LLMClient:
                 )
 
                 result_text = response.choices[0].message.content
-                result_data = json.loads(result_text)
+                result_data = try_repair_json(result_text, context="extract_facts_direct")
 
                 facts = self._parse_facts_from_result(result_data)
 
@@ -548,7 +549,7 @@ Rules:
                 )
 
                 content = response.choices[0].message.content
-                parsed = json.loads(content)
+                parsed = try_repair_json(content, context="extract_entities_direct")
                 entities = parsed.get("entities", [])
 
                 logger.info(
@@ -723,7 +724,7 @@ Guidelines:
 
                 # Parse as JSON if json_object format requested
                 if response_format and response_format.get("type") == "json_object":
-                    return json.loads(content)
+                    return try_repair_json(content, context="complete_direct")
                 return {"text": content}
 
             except Exception as e:

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from services.llm.json_repair import try_repair_json
 from services.llm.models import LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
@@ -396,7 +397,7 @@ class LLMWorker:
         )
 
         result_text = response.choices[0].message.content
-        return json.loads(result_text)
+        return try_repair_json(result_text, context="extract_facts")
 
     async def _extract_field_group(
         self, payload: dict, temperature: float, retry_count: int
@@ -458,7 +459,7 @@ class LLMWorker:
         )
 
         result_text = response.choices[0].message.content
-        return json.loads(result_text)
+        return try_repair_json(result_text, context="extract_field_group")
 
     async def _extract_entities(
         self, payload: dict, temperature: float, retry_count: int
@@ -508,7 +509,7 @@ class LLMWorker:
         )
 
         result_text = response.choices[0].message.content
-        return json.loads(result_text)
+        return try_repair_json(result_text, context="extract_entities")
 
     async def _complete(
         self, payload: dict, temperature: float, retry_count: int
@@ -558,7 +559,7 @@ class LLMWorker:
 
         # Parse as JSON if json_object format requested
         if response_format and response_format.get("type") == "json_object":
-            return json.loads(result_text)
+            return try_repair_json(result_text, context="complete")
         return {"text": result_text}
 
     async def maybe_adjust_concurrency(self) -> None:
