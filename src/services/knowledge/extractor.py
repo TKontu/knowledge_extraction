@@ -169,10 +169,16 @@ class EntityExtractor:
         # Step 3: Link entities to extraction
         entities = []
         for entity, _created in stored_entities:
-            await self._entity_repo.link_to_extraction(
+            link, link_created = await self._entity_repo.link_to_extraction(
                 entity_id=entity.id,
                 extraction_id=extraction_id,
             )
+            if link_created:
+                logger.debug(
+                    "entity_linked",
+                    entity_id=str(entity.id),
+                    extraction_id=str(extraction_id),
+                )
             entities.append(entity)
 
         return entities

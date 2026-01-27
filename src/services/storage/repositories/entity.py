@@ -196,8 +196,12 @@ class EntityRepository:
         extraction_id: UUID,
         entity_id: UUID,
         role: str = "mention",
-    ) -> ExtractionEntity:
-        """Create a link between an entity and an extraction.
+    ) -> tuple[ExtractionEntity, bool]:
+        """Create or get existing link between an entity and an extraction.
+
+        This method is idempotent - calling it multiple times with the same
+        parameters will return the existing link without causing duplicate
+        key violations.
 
         Args:
             extraction_id: Extraction UUID
@@ -205,8 +209,25 @@ class EntityRepository:
             role: Role of the entity in the extraction (e.g., "mention", "subject", "pricing_detail")
 
         Returns:
-            Created ExtractionEntity link
+            Tuple of (ExtractionEntity link, created flag)
+            - created=True if new link was created
+            - created=False if existing link was returned
         """
+        # Check for existing link to avoid UniqueViolation on retry
+        existing = self._session.execute(
+            select(ExtractionEntity).where(
+                and_(
+                    ExtractionEntity.extraction_id == extraction_id,
+                    ExtractionEntity.entity_id == entity_id,
+                    ExtractionEntity.role == role,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if existing:
+            return existing, False
+
+        # Create new link
         link = ExtractionEntity(
             extraction_id=extraction_id,
             entity_id=entity_id,
@@ -215,7 +236,7 @@ class EntityRepository:
 
         self._session.add(link)
         self._session.flush()
-        return link
+        return link, True
 
     async def get_entities_for_extraction(self, extraction_id: UUID) -> list[Entity]:
         """Get all entities linked to an extraction.

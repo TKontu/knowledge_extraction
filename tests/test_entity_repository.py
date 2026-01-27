@@ -577,11 +577,12 @@ class TestEntityRepositoryLinkToExtraction:
             normalized_value="test_feature",
         )
 
-        link = await entity_repo.link_to_extraction(
+        link, created = await entity_repo.link_to_extraction(
             extraction_id=test_extraction.id,
             entity_id=entity.id,
         )
 
+        assert created is True
         assert link.id is not None
         assert link.extraction_id == test_extraction.id
         assert link.entity_id == entity.id
@@ -599,12 +600,13 @@ class TestEntityRepositoryLinkToExtraction:
             normalized_value="99_usd_month",
         )
 
-        link = await entity_repo.link_to_extraction(
+        link, created = await entity_repo.link_to_extraction(
             extraction_id=test_extraction.id,
             entity_id=entity.id,
             role="pricing_detail",
         )
 
+        assert created is True
         assert link.role == "pricing_detail"
 
     async def test_link_to_extraction_sets_created_at(
@@ -619,13 +621,70 @@ class TestEntityRepositoryLinkToExtraction:
             normalized_value="test_corp",
         )
 
-        link = await entity_repo.link_to_extraction(
+        link, created = await entity_repo.link_to_extraction(
             extraction_id=test_extraction.id,
             entity_id=entity.id,
         )
 
+        assert created is True
         assert link.created_at is not None
         assert isinstance(link.created_at, datetime)
+
+    async def test_link_to_extraction_idempotent(
+        self, entity_repo, test_project, test_extraction
+    ):
+        """Should return existing link without error when called twice."""
+        entity = await entity_repo.create(
+            project_id=test_project.id,
+            source_group="test_company",
+            entity_type="feature",
+            value="Idempotent Feature",
+            normalized_value="idempotent_feature",
+        )
+
+        # First call creates the link
+        link1, created1 = await entity_repo.link_to_extraction(
+            extraction_id=test_extraction.id,
+            entity_id=entity.id,
+        )
+        assert created1 is True
+
+        # Second call returns existing link
+        link2, created2 = await entity_repo.link_to_extraction(
+            extraction_id=test_extraction.id,
+            entity_id=entity.id,
+        )
+        assert created2 is False
+        assert link2.id == link1.id
+
+    async def test_link_to_extraction_different_roles_creates_separate_links(
+        self, entity_repo, test_project, test_extraction
+    ):
+        """Should create separate links for same entity with different roles."""
+        entity = await entity_repo.create(
+            project_id=test_project.id,
+            source_group="test_company",
+            entity_type="company",
+            value="Multi-Role Corp",
+            normalized_value="multi_role_corp",
+        )
+
+        # First link with default role
+        link1, created1 = await entity_repo.link_to_extraction(
+            extraction_id=test_extraction.id,
+            entity_id=entity.id,
+            role="mention",
+        )
+        assert created1 is True
+
+        # Second link with different role
+        link2, created2 = await entity_repo.link_to_extraction(
+            extraction_id=test_extraction.id,
+            entity_id=entity.id,
+            role="subject",
+        )
+        assert created2 is True
+        assert link2.id != link1.id
 
 
 class TestEntityRepositoryGetEntitiesForExtraction:
@@ -653,11 +712,11 @@ class TestEntityRepositoryGetEntitiesForExtraction:
         await entity_repo.link_to_extraction(
             extraction_id=test_extraction.id,
             entity_id=entity1.id,
-        )
+        )  # Returns (link, created) tuple - we don't need the result
         await entity_repo.link_to_extraction(
             extraction_id=test_extraction.id,
             entity_id=entity2.id,
-        )
+        )  # Returns (link, created) tuple - we don't need the result
 
         entities = await entity_repo.get_entities_for_extraction(
             test_extraction.id

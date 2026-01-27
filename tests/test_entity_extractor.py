@@ -4,7 +4,7 @@ Note: EntityExtractor now delegates LLM calls to LLMClient.extract_entities().
 The prompt building and LLM communication are handled by LLMClient.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from orm_models import Entity
@@ -288,7 +288,9 @@ class TestExtract:
             attributes={},
         )
         entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
-        entity_repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
@@ -335,7 +337,9 @@ class TestExtract:
             attributes={},
         )
         entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
-        entity_repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
 
         await extractor.extract(
             extraction_id=extraction_id,
@@ -377,7 +381,9 @@ class TestExtract:
             attributes={},
         )
         entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
-        entity_repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
@@ -406,7 +412,9 @@ class TestExtract:
         # Mock LLMClient.extract_entities() response with no entities
         llm_client.extract_entities = AsyncMock(return_value=[])
 
-        entity_repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
@@ -478,7 +486,9 @@ class TestExtract:
         entity_repo.get_or_create = AsyncMock(
             side_effect=[(e, True) for e in mock_entities]
         )
-        entity_repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,

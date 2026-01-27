@@ -38,7 +38,9 @@ class TestEntityExtractorUsesLLMClient:
             entity.attributes = kwargs["attributes"]
             return entity, True
         repo.get_or_create = mock_get_or_create
-        repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
         return repo
 
     @pytest.mark.asyncio
@@ -312,7 +314,9 @@ class TestEntityExtractorWithQueueMode:
             entity.normalized_value = kwargs["normalized_value"]
             return entity, True
         repo.get_or_create = mock_get_or_create
-        repo.link_to_extraction = AsyncMock()
+        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        mock_link = MagicMock()
+        repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
         return repo
 
     @pytest.mark.asyncio
