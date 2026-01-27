@@ -32,7 +32,7 @@ from services.projects.repository import ProjectRepository
 from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 from services.storage.deduplication import ExtractionDeduplicator
 from services.storage.embedding import EmbeddingService
-from services.storage.qdrant.repository import QdrantRepository
+from services.storage.qdrant.repository import EmbeddingItem, QdrantRepository
 from services.storage.repositories.extraction import ExtractionRepository
 from services.storage.repositories.source import SourceRepository
 
@@ -143,7 +143,10 @@ class ExtractionPipelineService:
             profile=profile,
         )
 
-        # Process each fact
+        # Phase 1: Deduplicate and collect facts to embed
+        facts_to_embed = []
+        fact_extractions = []  # Track (fact, extraction) pairs
+
         for fact in result.facts:
             try:
                 # Check for duplicate
@@ -169,19 +172,44 @@ class ExtractionPipelineService:
                 )
                 extractions_created += 1
 
-                # Generate and store embedding
-                embedding = await self._embedding_service.embed(fact.fact)
-                await self._qdrant_repo.upsert(
-                    extraction_id=extraction.id,
-                    embedding=embedding,
-                    payload={
-                        "project_id": str(project_id),
-                        "source_group": source.source_group,
-                        "extraction_type": fact.category,
-                    },
-                )
+                # Collect for batch embedding
+                facts_to_embed.append(fact.fact)
+                fact_extractions.append((fact, extraction))
 
-                # Extract entities
+            except Exception as e:
+                errors.append(f"Error processing fact: {str(e)}")
+                logger.error("fact_processing_failed", error=str(e), fact=fact.fact)
+
+        # Phase 2: Batch embed and upsert
+        if facts_to_embed:
+            try:
+                # Batch embed all facts at once
+                embeddings = await self._embedding_service.embed_batch(facts_to_embed)
+
+                # Phase 3: Batch upsert to Qdrant
+                items = [
+                    EmbeddingItem(
+                        extraction_id=extraction.id,
+                        embedding=embedding,
+                        payload={
+                            "project_id": str(project_id),
+                            "source_group": source.source_group,
+                            "extraction_type": fact.category,
+                        },
+                    )
+                    for (fact, extraction), embedding in zip(
+                        fact_extractions, embeddings, strict=True
+                    )
+                ]
+                await self._qdrant_repo.upsert_batch(items)
+
+            except Exception as e:
+                errors.append(f"Error batch embedding: {str(e)}")
+                logger.error("batch_embedding_failed", error=str(e))
+
+        # Phase 4: Entity extraction (per-extraction, unchanged)
+        for fact, extraction in fact_extractions:
+            try:
                 entities = await self._entity_extractor.extract(
                     extraction_id=extraction.id,
                     extraction_data={"fact_text": fact.fact, "category": fact.category},
@@ -192,9 +220,9 @@ class ExtractionPipelineService:
                 entities_extracted += len(entities)
 
             except Exception as e:
-                errors.append(f"Error processing fact: {str(e)}")
+                errors.append(f"Error extracting entities: {str(e)}")
                 logger.error(
-                    "fact_processing_failed",
+                    "entity_extraction_failed",
                     error=str(e),
                     error_type=type(e).__name__,
                     source_id=str(source_id),
