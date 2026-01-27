@@ -1,10 +1,10 @@
 """DLQ API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from src.api.dependencies import get_dlq_service
-from src.services.dlq.service import DLQService
+from api.dependencies import get_dlq_service
+from services.dlq.service import DLQService
 
 router = APIRouter(prefix="/api/v1", tags=["dlq"])
 
@@ -43,13 +43,13 @@ async def get_dlq_stats(
 
 @router.get("/dlq/scrape", response_model=list[DLQItemResponse])
 async def list_scrape_dlq(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum items to return"),
     dlq_service: DLQService = Depends(get_dlq_service),
 ) -> list[DLQItemResponse]:
     """List failed scrape items.
 
     Args:
-        limit: Maximum number of items to return.
+        limit: Maximum number of items to return (1-1000).
 
     Returns:
         List of failed scrape items.
@@ -60,13 +60,13 @@ async def list_scrape_dlq(
 
 @router.get("/dlq/extraction", response_model=list[DLQItemResponse])
 async def list_extraction_dlq(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum items to return"),
     dlq_service: DLQService = Depends(get_dlq_service),
 ) -> list[DLQItemResponse]:
     """List failed extraction items.
 
     Args:
-        limit: Maximum number of items to return.
+        limit: Maximum number of items to return (1-1000).
 
     Returns:
         List of failed extraction items.

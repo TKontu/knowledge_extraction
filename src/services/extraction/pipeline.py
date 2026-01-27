@@ -181,6 +181,7 @@ class ExtractionPipelineService:
                 logger.error("fact_processing_failed", error=str(e), fact=fact.fact)
 
         # Phase 2: Batch embed and upsert
+        embeddings_succeeded = False
         if facts_to_embed:
             try:
                 # Batch embed all facts at once
@@ -202,13 +203,29 @@ class ExtractionPipelineService:
                     )
                 ]
                 await self._qdrant_repo.upsert_batch(items)
+                embeddings_succeeded = True
 
             except Exception as e:
                 errors.append(f"Error batch embedding: {str(e)}")
-                logger.error("batch_embedding_failed", error=str(e))
+                logger.error(
+                    "batch_embedding_failed",
+                    error=str(e),
+                    extractions_affected=len(fact_extractions),
+                    source_id=str(source_id),
+                )
+                # Skip entity extraction - extractions exist but aren't searchable
+                # entities_extracted will remain False, signaling incomplete processing
 
-        # Phase 4: Entity extraction (per-extraction, unchanged)
-        for fact, extraction in fact_extractions:
+        # Phase 4: Entity extraction (only if embeddings succeeded)
+        if not embeddings_succeeded and fact_extractions:
+            logger.warning(
+                "skipping_entity_extraction",
+                reason="embeddings_failed",
+                source_id=str(source_id),
+                extractions_count=len(fact_extractions),
+            )
+
+        for fact, extraction in fact_extractions if embeddings_succeeded else []:
             try:
                 entities = await self._entity_extractor.extract(
                     extraction_id=extraction.id,

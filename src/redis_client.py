@@ -16,18 +16,27 @@ redis_client = redis.from_url(
 )
 
 
+# Singleton async Redis client (lazily initialized)
+_async_redis_client: aioredis.Redis | None = None
+
+
 async def get_async_redis() -> aioredis.Redis:
     """Get async Redis client for queue operations.
+
+    Uses a singleton pattern to reuse the connection pool across requests.
 
     Returns:
         Async Redis client instance.
     """
-    return aioredis.from_url(
-        settings.redis_url,
-        decode_responses=True,
-        socket_connect_timeout=5,
-        socket_timeout=5,
-    )
+    global _async_redis_client
+    if _async_redis_client is None:
+        _async_redis_client = aioredis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+        )
+    return _async_redis_client
 
 
 def get_redis() -> Generator[redis.Redis, None, None]:
