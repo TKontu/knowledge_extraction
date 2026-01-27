@@ -313,3 +313,17 @@ class ExtractionRepository:
         query = query.order_by(Extraction.created_at.desc())
         result = self._session.execute(query)
         return list(result.scalars().all())
+
+    async def update_entities_extracted(
+        self, extraction_id: UUID, entities_extracted: bool = True
+    ) -> None:
+        """Update the entities_extracted flag for an extraction.
+
+        Args:
+            extraction_id: Extraction UUID
+            entities_extracted: Flag indicating if entities were successfully extracted
+        """
+        extraction = await self.get(extraction_id)
+        if extraction:
+            extraction.entities_extracted = entities_extracted
+            self._session.flush()

@@ -228,6 +228,7 @@ class SourceRepository:
         meta_data: dict | None = None,
         outbound_links: list | None = None,
         status: str = "pending",
+        created_by_job_id: UUID | None = None,
     ) -> tuple[Source, bool]:
         """Insert or update source based on (project_id, uri) unique constraint.
 
@@ -245,6 +246,7 @@ class SourceRepository:
             meta_data: Optional metadata dictionary
             outbound_links: Optional list of outbound links
             status: Source status (pending, processing, completed, failed)
+            created_by_job_id: Optional ID of the job that created this source
 
         Returns:
             Tuple of (Source instance, created) where created is True if new,
@@ -261,6 +263,7 @@ class SourceRepository:
             "meta_data": meta_data or {},
             "outbound_links": outbound_links or [],
             "status": status,
+            "created_by_job_id": created_by_job_id,
         }
 
         # PostgreSQL INSERT ... ON CONFLICT DO UPDATE
