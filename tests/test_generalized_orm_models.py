@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from database import engine
-from orm_models import Base, Project, Source, Extraction, Entity, ExtractionEntity
+from orm_models import Base, Project, Source, Extraction, Entity, ExtractionEntity, Job
 
 
 @pytest.fixture
@@ -221,6 +221,57 @@ class TestSourceModel:
         assert source.project == project
         assert source in project.sources
 
+    def test_source_created_by_job_id_defaults_to_none(self, db_session):
+        """Should have created_by_job_id default to None."""
+        project = Project(
+            name="job_id_test",
+            extraction_schema={"name": "test", "fields": []},
+        )
+        db_session.add(project)
+        db_session.flush()
+
+        source = Source(
+            project_id=project.id,
+            uri="https://example.com",
+            source_group="Test",
+        )
+        db_session.add(source)
+        db_session.commit()
+
+        assert source.created_by_job_id is None
+
+    def test_source_can_set_created_by_job_id(self, db_session):
+        """Should be able to set created_by_job_id with foreign key."""
+        # Create a job first
+        job = Job(
+            type="crawl",
+            payload={"test": "data"},
+        )
+        db_session.add(job)
+        db_session.flush()
+
+        project = Project(
+            name="job_fk_test",
+            extraction_schema={"name": "test", "fields": []},
+        )
+        db_session.add(project)
+        db_session.flush()
+
+        source = Source(
+            project_id=project.id,
+            uri="https://example.com",
+            source_group="Test",
+            created_by_job_id=job.id,
+        )
+        db_session.add(source)
+        db_session.commit()
+
+        assert source.created_by_job_id == job.id
+        # Test relationship if it exists
+        if hasattr(source, "created_by_job"):
+            db_session.refresh(source)
+            assert source.created_by_job == job
+
 
 class TestExtractionModel:
     """Test Extraction ORM model."""
@@ -338,6 +389,65 @@ class TestExtractionModel:
         assert extraction.source == source
         assert extraction in project.extractions
         assert extraction in source.extractions
+
+    def test_extraction_entities_extracted_defaults_to_false(self, db_session):
+        """Should have entities_extracted default to False."""
+        project = Project(
+            name="entities_flag_test",
+            extraction_schema={"name": "fact", "fields": []},
+        )
+        db_session.add(project)
+        db_session.flush()
+
+        source = Source(
+            project_id=project.id,
+            uri="https://example.com",
+            source_group="Test Corp",
+        )
+        db_session.add(source)
+        db_session.flush()
+
+        extraction = Extraction(
+            project_id=project.id,
+            source_id=source.id,
+            data={"fact_text": "Test fact"},
+            extraction_type="fact",
+            source_group="Test Corp",
+        )
+        db_session.add(extraction)
+        db_session.commit()
+
+        assert extraction.entities_extracted is False
+
+    def test_extraction_entities_extracted_can_be_set_true(self, db_session):
+        """Should be able to set entities_extracted to True."""
+        project = Project(
+            name="entities_set_test",
+            extraction_schema={"name": "fact", "fields": []},
+        )
+        db_session.add(project)
+        db_session.flush()
+
+        source = Source(
+            project_id=project.id,
+            uri="https://example.com",
+            source_group="Test Corp",
+        )
+        db_session.add(source)
+        db_session.flush()
+
+        extraction = Extraction(
+            project_id=project.id,
+            source_id=source.id,
+            data={"fact_text": "Test fact"},
+            extraction_type="fact",
+            source_group="Test Corp",
+            entities_extracted=True,
+        )
+        db_session.add(extraction)
+        db_session.commit()
+
+        assert extraction.entities_extracted is True
 
 
 class TestEntityModel:

@@ -191,6 +191,12 @@ class ExtractionPipelineService:
                 )
                 entities_extracted += len(entities)
 
+                # Mark extraction as having entities extracted
+                await self._extraction_repo.update_entities_extracted(
+                    extraction_id=extraction.id,
+                    entities_extracted=True,
+                )
+
             except Exception as e:
                 errors.append(f"Error processing fact: {str(e)}")
                 logger.error("fact_processing_failed", error=str(e), fact=fact.fact)

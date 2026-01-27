@@ -1,12 +1,14 @@
 """Repository for Source CRUD operations."""
 
+import builtins
 from dataclasses import dataclass
-from datetime import datetime, UTC
-from typing import List, Optional
+from datetime import UTC, datetime
 from uuid import UUID
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
 from orm_models import Source
 
 
@@ -14,10 +16,10 @@ from orm_models import Source
 class SourceFilters:
     """Filters for querying sources."""
 
-    project_id: Optional[UUID] = None
-    source_group: Optional[str] = None
-    source_type: Optional[str] = None
-    status: Optional[str] = None
+    project_id: UUID | None = None
+    source_group: str | None = None
+    source_type: str | None = None
+    status: str | None = None
 
 
 class SourceRepository:
@@ -37,11 +39,11 @@ class SourceRepository:
         uri: str,
         source_group: str,
         source_type: str = "web",
-        title: Optional[str] = None,
-        content: Optional[str] = None,
-        raw_content: Optional[str] = None,
-        meta_data: Optional[dict] = None,
-        outbound_links: Optional[list] = None,
+        title: str | None = None,
+        content: str | None = None,
+        raw_content: str | None = None,
+        meta_data: dict | None = None,
+        outbound_links: list | None = None,
         status: str = "pending",
     ) -> Source:
         """Create a new source.
@@ -78,7 +80,7 @@ class SourceRepository:
         self._session.flush()
         return source
 
-    async def get(self, source_id: UUID) -> Optional[Source]:
+    async def get(self, source_id: UUID) -> Source | None:
         """Get source by ID.
 
         Args:
@@ -90,7 +92,7 @@ class SourceRepository:
         result = self._session.execute(select(Source).where(Source.id == source_id))
         return result.scalar_one_or_none()
 
-    async def get_by_uri(self, project_id: UUID, uri: str) -> Optional[Source]:
+    async def get_by_uri(self, project_id: UUID, uri: str) -> Source | None:
         """Get source by URI within a project.
 
         Args:
@@ -135,7 +137,7 @@ class SourceRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def update_status(self, source_id: UUID, status: str) -> Optional[Source]:
+    async def update_status(self, source_id: UUID, status: str) -> Source | None:
         """Update source status.
 
         Args:
@@ -160,7 +162,7 @@ class SourceRepository:
 
     async def get_by_project_and_status(
         self, project_id: UUID, status: str
-    ) -> List[Source]:
+    ) -> builtins.list[Source]:
         """Get sources by project ID and status.
 
         Args:
@@ -182,9 +184,9 @@ class SourceRepository:
         source_id: UUID,
         content: str,
         title: str,
-        raw_content: Optional[str] = None,
-        outbound_links: Optional[list] = None,
-    ) -> Optional[Source]:
+        raw_content: str | None = None,
+        outbound_links: list | None = None,
+    ) -> Source | None:
         """Update source content fields.
 
         Args:
@@ -218,12 +220,13 @@ class SourceRepository:
         uri: str,
         source_group: str,
         source_type: str = "web",
-        title: Optional[str] = None,
-        content: Optional[str] = None,
-        raw_content: Optional[str] = None,
-        meta_data: Optional[dict] = None,
-        outbound_links: Optional[list] = None,
+        title: str | None = None,
+        content: str | None = None,
+        raw_content: str | None = None,
+        meta_data: dict | None = None,
+        outbound_links: list | None = None,
         status: str = "pending",
+        created_by_job_id: UUID | None = None,
     ) -> tuple[Source, bool]:
         """Insert or update source based on (project_id, uri) unique constraint.
 
@@ -241,6 +244,7 @@ class SourceRepository:
             meta_data: Optional metadata dictionary
             outbound_links: Optional list of outbound links
             status: Source status (pending, processing, completed, failed)
+            created_by_job_id: Optional ID of the job that created this source
 
         Returns:
             Tuple of (Source instance, created) where created is True if new,
@@ -257,6 +261,7 @@ class SourceRepository:
             "meta_data": meta_data or {},
             "outbound_links": outbound_links or [],
             "status": status,
+            "created_by_job_id": created_by_job_id,
         }
 
         # PostgreSQL INSERT ... ON CONFLICT DO UPDATE
