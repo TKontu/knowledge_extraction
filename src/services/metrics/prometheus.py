@@ -52,4 +52,26 @@ def format_prometheus(metrics: SystemMetrics) -> str:
     lines.append("# TYPE scristill_entities_total gauge")
     lines.append(f"scristill_entities_total {metrics.entities_total}")
 
+    # Extractions by type
+    lines.append("# HELP scristill_extractions_by_type Number of extractions by type")
+    lines.append("# TYPE scristill_extractions_by_type gauge")
+    for ext_type, count in metrics.extractions_by_type.items():
+        lines.append(f'scristill_extractions_by_type{{type="{ext_type}"}} {count}')
+
+    # Average confidence by type
+    lines.append(
+        "# HELP scristill_extraction_confidence_avg Average extraction confidence by type"
+    )
+    lines.append("# TYPE scristill_extraction_confidence_avg gauge")
+    for ext_type, conf in metrics.avg_confidence_by_type.items():
+        lines.append(
+            f'scristill_extraction_confidence_avg{{type="{ext_type}"}} {conf:.4f}'
+        )
+
+    # Entities by type
+    lines.append("# HELP scristill_entities_by_type Number of entities by type")
+    lines.append("# TYPE scristill_entities_by_type gauge")
+    for ent_type, count in metrics.entities_by_type.items():
+        lines.append(f'scristill_entities_by_type{{type="{ent_type}"}} {count}')
+
     return "\n".join(lines) + "\n"

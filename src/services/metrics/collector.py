@@ -1,6 +1,6 @@
 """Metrics collector for system monitoring."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -20,6 +20,11 @@ class SystemMetrics:
     extractions_total: int
     entities_total: int
 
+    # Quality metrics
+    extractions_by_type: dict[str, int] = field(default_factory=dict)
+    avg_confidence_by_type: dict[str, float] = field(default_factory=dict)
+    entities_by_type: dict[str, int] = field(default_factory=dict)
+
 
 class MetricsCollector:
     """Collects system metrics from database."""
@@ -37,6 +42,9 @@ class MetricsCollector:
             sources_by_status=self._count_sources_by_status(),
             extractions_total=self._count_total(Extraction),
             entities_total=self._count_total(Entity),
+            extractions_by_type=self._count_extractions_by_type(),
+            avg_confidence_by_type=self._avg_confidence_by_type(),
+            entities_by_type=self._count_entities_by_type(),
         )
 
     def _count_total(self, model) -> int:
@@ -62,5 +70,32 @@ class MetricsCollector:
         """Count sources grouped by status."""
         result = self._db.execute(
             select(Source.status, func.count(Source.id)).group_by(Source.status)
+        )
+        return {row[0]: row[1] for row in result.all()}
+
+    def _count_extractions_by_type(self) -> dict[str, int]:
+        """Count extractions grouped by type."""
+        result = self._db.execute(
+            select(Extraction.extraction_type, func.count(Extraction.id)).group_by(
+                Extraction.extraction_type
+            )
+        )
+        return {row[0]: row[1] for row in result.all()}
+
+    def _avg_confidence_by_type(self) -> dict[str, float]:
+        """Calculate average confidence grouped by extraction type."""
+        result = self._db.execute(
+            select(
+                Extraction.extraction_type, func.avg(Extraction.confidence)
+            ).group_by(Extraction.extraction_type)
+        )
+        return {row[0]: float(row[1]) if row[1] else 0.0 for row in result.all()}
+
+    def _count_entities_by_type(self) -> dict[str, int]:
+        """Count entities grouped by type."""
+        result = self._db.execute(
+            select(Entity.entity_type, func.count(Entity.id)).group_by(
+                Entity.entity_type
+            )
         )
         return {row[0]: row[1] for row in result.all()}
