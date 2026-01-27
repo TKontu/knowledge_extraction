@@ -1,6 +1,6 @@
 """Qdrant connection and client management."""
 
-from typing import Generator
+from collections.abc import Generator
 
 from qdrant_client import QdrantClient
 

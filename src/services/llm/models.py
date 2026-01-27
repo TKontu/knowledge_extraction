@@ -1,24 +1,27 @@
 """Data models for LLM request queue."""
 
 import json
-from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
-
 # Valid request types
-VALID_REQUEST_TYPES = frozenset({
-    "extract_facts",
-    "extract_field_group",
-    "extract_entities",
-})
+VALID_REQUEST_TYPES = frozenset(
+    {
+        "extract_facts",
+        "extract_field_group",
+        "extract_entities",
+    }
+)
 
 # Valid response statuses
-VALID_STATUSES = frozenset({
-    "success",
-    "error",
-    "timeout",
-})
+VALID_STATUSES = frozenset(
+    {
+        "success",
+        "error",
+        "timeout",
+    }
+)
 
 
 class InvalidRequestTypeError(ValueError):
@@ -77,15 +80,17 @@ class LLMRequest:
         Returns:
             JSON string representation.
         """
-        return json.dumps({
-            "request_id": self.request_id,
-            "request_type": self.request_type,
-            "payload": self.payload,
-            "priority": self.priority,
-            "created_at": self.created_at.isoformat(),
-            "timeout_at": self.timeout_at.isoformat(),
-            "retry_count": self.retry_count,
-        })
+        return json.dumps(
+            {
+                "request_id": self.request_id,
+                "request_type": self.request_type,
+                "payload": self.payload,
+                "priority": self.priority,
+                "created_at": self.created_at.isoformat(),
+                "timeout_at": self.timeout_at.isoformat(),
+                "retry_count": self.retry_count,
+            }
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> "LLMRequest":
@@ -143,14 +148,16 @@ class LLMResponse:
         Returns:
             JSON string representation.
         """
-        return json.dumps({
-            "request_id": self.request_id,
-            "status": self.status,
-            "result": self.result,
-            "error": self.error,
-            "processing_time_ms": self.processing_time_ms,
-            "completed_at": self.completed_at.isoformat(),
-        })
+        return json.dumps(
+            {
+                "request_id": self.request_id,
+                "status": self.status,
+                "result": self.result,
+                "error": self.error,
+                "processing_time_ms": self.processing_time_ms,
+                "completed_at": self.completed_at.isoformat(),
+            }
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> "LLMResponse":

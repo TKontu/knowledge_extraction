@@ -1,9 +1,9 @@
 """Tests for ProjectRepository."""
 
 import pytest
-from datetime import datetime
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from database import engine
 from orm_models import Project
 from services.projects.repository import ProjectRepository
@@ -76,9 +76,7 @@ class TestProjectRepositoryCreate:
         )
 
         # Verify it's in the database
-        result = db_session.execute(
-            select(Project).where(Project.id == project.id)
-        )
+        result = db_session.execute(select(Project).where(Project.id == project.id))
         db_project = result.scalar_one()
         assert db_project.name == "persisted"
 

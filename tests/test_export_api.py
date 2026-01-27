@@ -53,6 +53,7 @@ def mock_db_session(mock_entities, mock_extractions):
 @pytest.fixture
 def export_client(mock_db_session, valid_api_key):
     """Create test client with mocked database."""
+
     def override_get_db():
         yield mock_db_session
 
@@ -98,7 +99,9 @@ class TestExportEntities:
         assert "entities" in data
         assert data["entities"][0]["entity_type"] == "feature"
 
-    def test_export_entities_filter_by_type(self, export_client, mock_entities, valid_api_key):
+    def test_export_entities_filter_by_type(
+        self, export_client, mock_entities, valid_api_key
+    ):
         """Filter entities by type."""
         project_id = uuid4()
 

@@ -1,14 +1,14 @@
 """Tests for Project CRUD API endpoints."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from database import engine, get_db
 from main import app
-from orm_models import Project, Extraction
+from orm_models import Extraction, Project
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ def db_session():
 @pytest.fixture
 def client(db_session):
     """Create test client with database session."""
+
     def override_get_db():
         try:
             yield db_session
@@ -49,6 +50,7 @@ def auth_headers(valid_api_key):
 def valid_api_key():
     """Return valid API key from config."""
     from config import settings
+
     return settings.api_key
 
 
@@ -76,9 +78,7 @@ def sample_project_data():
                 },
             ],
         },
-        "entity_types": [
-            {"name": "feature", "description": "Product feature"}
-        ],
+        "entity_types": [{"name": "feature", "description": "Product feature"}],
         "is_template": False,
     }
 
@@ -107,9 +107,13 @@ def created_project(db_session):
 class TestCreateProject:
     """Test POST /api/v1/projects endpoint."""
 
-    def test_create_with_valid_data(self, client, sample_project_data, db_session, auth_headers):
+    def test_create_with_valid_data(
+        self, client, sample_project_data, db_session, auth_headers
+    ):
         """Should create project and return 201 with project data."""
-        response = client.post("/api/v1/projects", json=sample_project_data, headers=auth_headers)
+        response = client.post(
+            "/api/v1/projects", json=sample_project_data, headers=auth_headers
+        )
 
         assert response.status_code == 201
         data = response.json()
@@ -118,7 +122,9 @@ class TestCreateProject:
         assert "id" in data
         assert data["is_active"] is True
 
-    def test_create_duplicate_name_returns_409(self, client, created_project, auth_headers):
+    def test_create_duplicate_name_returns_409(
+        self, client, created_project, auth_headers
+    ):
         """Should return 409 when creating project with duplicate name."""
         duplicate_data = {
             "name": created_project.name,  # Use existing project name
@@ -127,7 +133,9 @@ class TestCreateProject:
                 "fields": [{"name": "text", "type": "text", "required": True}],
             },
         }
-        response = client.post("/api/v1/projects", json=duplicate_data, headers=auth_headers)
+        response = client.post(
+            "/api/v1/projects", json=duplicate_data, headers=auth_headers
+        )
 
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"].lower()
@@ -141,7 +149,9 @@ class TestCreateProject:
                 "fields": [{"name": "text", "type": "text", "required": True}],
             },
         }
-        response = client.post("/api/v1/projects", json=minimal_data, headers=auth_headers)
+        response = client.post(
+            "/api/v1/projects", json=minimal_data, headers=auth_headers
+        )
 
         assert response.status_code == 201
         data = response.json()
@@ -154,7 +164,9 @@ class TestCreateProject:
 class TestListProjects:
     """Test GET /api/v1/projects endpoint."""
 
-    def test_list_returns_all_active_projects(self, client, created_project, auth_headers):
+    def test_list_returns_all_active_projects(
+        self, client, created_project, auth_headers
+    ):
         """Should return list of all active projects."""
         response = client.get("/api/v1/projects", headers=auth_headers)
 
@@ -191,7 +203,9 @@ class TestListProjects:
         db_session.add(inactive)
         db_session.commit()
 
-        response = client.get("/api/v1/projects?include_inactive=true", headers=auth_headers)
+        response = client.get(
+            "/api/v1/projects?include_inactive=true", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -201,9 +215,13 @@ class TestListProjects:
 class TestGetProject:
     """Test GET /api/v1/projects/{project_id} endpoint."""
 
-    def test_get_existing_project_returns_200(self, client, created_project, auth_headers):
+    def test_get_existing_project_returns_200(
+        self, client, created_project, auth_headers
+    ):
         """Should return project data for existing project."""
-        response = client.get(f"/api/v1/projects/{created_project.id}", headers=auth_headers)
+        response = client.get(
+            f"/api/v1/projects/{created_project.id}", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -235,10 +253,13 @@ class TestUpdateProject:
         assert data["description"] == "Updated description"
         assert data["name"] == created_project.name  # Unchanged
 
-    def test_update_with_extractions_adds_warning(self, client, created_project, db_session, auth_headers):
+    def test_update_with_extractions_adds_warning(
+        self, client, created_project, db_session, auth_headers
+    ):
         """Should add warning header when project has extractions."""
         # Create an extraction for the project
-        from orm_models import Source, Extraction
+        from orm_models import Source
+
         source = Source(
             project_id=created_project.id,
             source_type="web",
@@ -290,9 +311,13 @@ class TestUpdateProject:
 class TestDeleteProject:
     """Test DELETE /api/v1/projects/{project_id} endpoint."""
 
-    def test_delete_sets_is_active_false(self, client, created_project, db_session, auth_headers):
+    def test_delete_sets_is_active_false(
+        self, client, created_project, db_session, auth_headers
+    ):
         """Should soft delete by setting is_active to False."""
-        response = client.delete(f"/api/v1/projects/{created_project.id}", headers=auth_headers)
+        response = client.delete(
+            f"/api/v1/projects/{created_project.id}", headers=auth_headers
+        )
 
         assert response.status_code == 204
 
@@ -324,14 +349,18 @@ class TestListTemplates:
 class TestCreateFromTemplate:
     """Test POST /api/v1/projects/from-template endpoint."""
 
-    def test_create_from_company_analysis_template(self, client, db_session, auth_headers):
+    def test_create_from_company_analysis_template(
+        self, client, db_session, auth_headers
+    ):
         """Should create project from company_analysis template."""
         request_data = {
             "template": "company_analysis",
             "name": "my_company_project",
             "description": "My custom project",
         }
-        response = client.post("/api/v1/projects/from-template", json=request_data, headers=auth_headers)
+        response = client.post(
+            "/api/v1/projects/from-template", json=request_data, headers=auth_headers
+        )
 
         assert response.status_code == 201
         data = response.json()
@@ -346,7 +375,9 @@ class TestCreateFromTemplate:
             "template": "nonexistent_template",
             "name": "test_proj",
         }
-        response = client.post("/api/v1/projects/from-template", json=request_data, headers=auth_headers)
+        response = client.post(
+            "/api/v1/projects/from-template", json=request_data, headers=auth_headers
+        )
 
         assert response.status_code == 404
         assert "template" in response.json()["detail"].lower()

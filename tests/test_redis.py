@@ -1,8 +1,8 @@
 """Tests for Redis connection and health check integration."""
 
-import pytest
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
 
 class TestRedisConnection:
@@ -10,7 +10,7 @@ class TestRedisConnection:
 
     def test_redis_module_exists(self):
         """Redis module should be importable."""
-        from redis_client import redis_client, get_redis
+        from redis_client import get_redis, redis_client
 
         assert redis_client is not None
         assert get_redis is not None

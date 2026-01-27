@@ -204,7 +204,7 @@ class ScraperWorker:
                 job_id=str(job.id),
                 error=str(e),
                 error_type=type(e).__name__,
-                exc_info=True
+                exc_info=True,
             )
 
     async def _scrape_url_with_retry(self, url: str, domain: str):
@@ -220,6 +220,7 @@ class ScraperWorker:
         Raises:
             RateLimitExceeded: If rate limit is exceeded (not retried).
         """
+
         async def do_scrape():
             if self.rate_limiter:
                 await self.rate_limiter.acquire(domain)

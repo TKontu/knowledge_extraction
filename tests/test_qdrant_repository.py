@@ -1,12 +1,14 @@
 """Tests for QdrantRepository."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance
+
 from services.storage.qdrant.repository import (
-    QdrantRepository,
     EmbeddingItem,
+    QdrantRepository,
     SearchResult,
 )
 
@@ -15,6 +17,7 @@ from services.storage.qdrant.repository import (
 def qdrant_client():
     """Create a Qdrant client connected to the test instance."""
     from config import settings
+
     client = QdrantClient(url=settings.qdrant_url, timeout=5.0)
     return client
 

@@ -224,7 +224,7 @@ class ExtractionPipelineService:
             if not status.get("should_wait", False):
                 return
 
-            wait_time = BACKPRESSURE_WAIT_BASE * (1.5 ** attempt)
+            wait_time = BACKPRESSURE_WAIT_BASE * (1.5**attempt)
             logger.info(
                 "pipeline_backpressure_wait",
                 attempt=attempt + 1,
@@ -528,9 +528,7 @@ class SchemaExtractionPipeline:
             return_exceptions=True,
         )
 
-        total_extractions = sum(
-            c for c in extraction_counts if isinstance(c, int)
-        )
+        total_extractions = sum(c for c in extraction_counts if isinstance(c, int))
 
         for i, result in enumerate(extraction_counts):
             if isinstance(result, Exception):

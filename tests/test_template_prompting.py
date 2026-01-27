@@ -9,6 +9,7 @@ class TestSchemaAdapterPromptHints:
     @pytest.fixture
     def adapter(self):
         from services.extraction.schema_adapter import SchemaAdapter
+
         return SchemaAdapter()
 
     def test_generate_prompt_hint_includes_field_info(self, adapter):
@@ -17,9 +18,21 @@ class TestSchemaAdapterPromptHints:
             "name": "company_facts",
             "description": "Key facts about the company",
             "fields": [
-                {"name": "revenue", "field_type": "text", "description": "Annual revenue"},
-                {"name": "founded", "field_type": "integer", "description": "Year founded"},
-                {"name": "public", "field_type": "boolean", "description": "Is publicly traded"},
+                {
+                    "name": "revenue",
+                    "field_type": "text",
+                    "description": "Annual revenue",
+                },
+                {
+                    "name": "founded",
+                    "field_type": "integer",
+                    "description": "Year founded",
+                },
+                {
+                    "name": "public",
+                    "field_type": "boolean",
+                    "description": "Is publicly traded",
+                },
             ],
         }
 
@@ -37,7 +50,11 @@ class TestSchemaAdapterPromptHints:
             "description": "Product catalog items",
             "is_entity_list": True,
             "fields": [
-                {"name": "product_name", "field_type": "text", "description": "Product name"},
+                {
+                    "name": "product_name",
+                    "field_type": "text",
+                    "description": "Product name",
+                },
                 {"name": "price", "field_type": "float", "description": "Price in USD"},
             ],
         }
@@ -45,7 +62,11 @@ class TestSchemaAdapterPromptHints:
         hint = adapter.generate_prompt_hint(field_group_def)
 
         # Should mention it's a list/multiple items
-        assert "each" in hint.lower() or "list" in hint.lower() or "multiple" in hint.lower()
+        assert (
+            "each" in hint.lower()
+            or "list" in hint.lower()
+            or "multiple" in hint.lower()
+        )
 
     def test_explicit_prompt_hint_preserved(self, adapter):
         """Explicit prompt_hint in schema should be used as-is."""
@@ -65,7 +86,9 @@ class TestSchemaAdapterPromptHints:
 
         field_groups = adapter.convert_to_field_groups(schema)
 
-        assert field_groups[0].prompt_hint == "CUSTOM HINT: Look for specific patterns XYZ"
+        assert (
+            field_groups[0].prompt_hint == "CUSTOM HINT: Look for specific patterns XYZ"
+        )
 
 
 class TestEntityListOutputKey:
@@ -75,8 +98,8 @@ class TestEntityListOutputKey:
     def extractor_prompt_builder(self):
         """Get the prompt builder without full extractor deps."""
         try:
+            from services.extraction.field_groups import FieldDefinition, FieldGroup
             from services.extraction.schema_extractor import SchemaExtractor
-            from services.extraction.field_groups import FieldGroup, FieldDefinition
 
             # Create minimal mock settings
             class MockSettings:
@@ -157,8 +180,10 @@ class TestLegacyFieldGroupsRemoval:
     def test_all_field_groups_not_imported_in_orchestrator(self):
         """SchemaOrchestrator should not import ALL_FIELD_GROUPS."""
         import inspect
+
         try:
             from services.extraction import schema_orchestrator
+
             source = inspect.getsource(schema_orchestrator)
 
             # Should not have ALL_FIELD_GROUPS import
@@ -169,8 +194,10 @@ class TestLegacyFieldGroupsRemoval:
     def test_all_field_groups_not_imported_in_pipeline(self):
         """Pipeline should not import ALL_FIELD_GROUPS."""
         import inspect
+
         try:
             from services.extraction import pipeline
+
             source = inspect.getsource(pipeline)
 
             # Should not have ALL_FIELD_GROUPS import

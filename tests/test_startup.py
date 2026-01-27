@@ -1,9 +1,8 @@
 """Tests for application startup and initialization."""
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from qdrant_client import QdrantClient
-from uuid import uuid4
 
 
 class TestQdrantInitializationWithRetry:
@@ -12,8 +11,7 @@ class TestQdrantInitializationWithRetry:
     @pytest.mark.asyncio
     async def test_init_succeeds_on_first_try(self):
         """Should initialize collection successfully on first attempt."""
-        from main import lifespan, app
-        from qdrant_connection import qdrant_client
+        from main import app, lifespan
 
         # Mock init_collection to succeed immediately
         with patch("main.QdrantRepository") as mock_repo_class:
@@ -34,7 +32,7 @@ class TestQdrantInitializationWithRetry:
         This tests the scenario where Qdrant container starts but isn't ready
         to accept connections yet.
         """
-        from main import lifespan, app
+        from main import app, lifespan
 
         # Mock init_collection to fail first, then succeed
         with patch("main.QdrantRepository") as mock_repo_class:
@@ -62,8 +60,8 @@ class TestQdrantInitializationWithRetry:
         Application should start even if Qdrant is unavailable - collection
         will be created on first use.
         """
-        from main import lifespan, app
-        import structlog
+
+        from main import app, lifespan
 
         # Mock init_collection to always fail
         with patch("main.QdrantRepository") as mock_repo_class:
@@ -82,16 +80,19 @@ class TestQdrantInitializationWithRetry:
                 # Should have logged a warning about the failure
                 # This will FAIL until we add error handling
                 warning_calls = [
-                    call for call in mock_logger.warning.call_args_list
+                    call
+                    for call in mock_logger.warning.call_args_list
                     if "qdrant" in str(call).lower()
                 ]
-                assert len(warning_calls) > 0, "Should log warning about Qdrant init failure"
+                assert len(warning_calls) > 0, (
+                    "Should log warning about Qdrant init failure"
+                )
 
     @pytest.mark.asyncio
     async def test_init_uses_exponential_backoff(self):
         """Should use exponential backoff between retries (2^attempt seconds)."""
-        from main import lifespan, app
-        import asyncio
+
+        from main import app, lifespan
 
         # Mock init_collection to fail multiple times
         with patch("main.QdrantRepository") as mock_repo_class:
@@ -133,8 +134,8 @@ class TestQdrantInitialization:
         After fix: The lifespan function should call qdrant_repo.init_collection()
         to ensure the collection exists.
         """
+        from main import app, lifespan
         from qdrant_connection import qdrant_client
-        from main import lifespan, app
 
         # Clean up any existing collection first
         try:
@@ -154,8 +155,9 @@ class TestQdrantInitialization:
             collection_names_during = [c.name for c in collections_during]
 
             # The 'extractions' collection should now exist
-            assert "extractions" in collection_names_during, \
+            assert "extractions" in collection_names_during, (
                 "The 'extractions' collection should be created during app startup"
+            )
 
 
 class TestSearchEndpointQdrantUsage:
@@ -172,7 +174,6 @@ class TestSearchEndpointQdrantUsage:
 
         This test verifies the source code directly.
         """
-        import inspect
         from pathlib import Path
 
         # Read the search.py source file
@@ -183,17 +184,20 @@ class TestSearchEndpointQdrantUsage:
         buggy_line = "QdrantRepository(settings)"
 
         # This will FAIL as long as the bug exists
-        assert buggy_line not in source_code, \
-            f"Found 'QdrantRepository(settings)' in search.py. " \
-            f"Should use 'QdrantRepository(qdrant_client)' instead. " \
-            f"QdrantRepository expects a QdrantClient instance, not Settings."
+        assert buggy_line not in source_code, (
+            "Found 'QdrantRepository(settings)' in search.py. "
+            "Should use 'QdrantRepository(qdrant_client)' instead. "
+            "QdrantRepository expects a QdrantClient instance, not Settings."
+        )
 
         # Also verify the correct pattern exists
         correct_import = "from qdrant_connection import qdrant_client"
         correct_usage = "QdrantRepository(qdrant_client)"
 
-        assert correct_import in source_code, \
+        assert correct_import in source_code, (
             f"Missing import: '{correct_import}' in search.py"
+        )
 
-        assert correct_usage in source_code, \
+        assert correct_usage in source_code, (
             f"Missing correct usage: '{correct_usage}' in search.py"
+        )

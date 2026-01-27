@@ -1,14 +1,16 @@
 """Tests for ExtractionRepository."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from database import engine
 from orm_models import Extraction, Project, Source
 from services.storage.repositories.extraction import (
-    ExtractionRepository,
     ExtractionFilters,
+    ExtractionRepository,
 )
 
 
@@ -487,9 +489,7 @@ class TestExtractionRepositoryList:
             confidence=0.95,
         )
 
-        extractions = await extraction_repo.list(
-            ExtractionFilters(min_confidence=0.9)
-        )
+        extractions = await extraction_repo.list(ExtractionFilters(min_confidence=0.9))
         assert len(extractions) >= 1
         assert all(e.confidence >= 0.9 for e in extractions if e.confidence)
 
@@ -667,11 +667,7 @@ class TestExtractionRepositoryQueryJsonb:
             project_id=test_project.id, path="category", value="nonexistent"
         )
         # Should only include extractions from this test
-        matching = [
-            e
-            for e in extractions
-            if e.data.get("category") == "nonexistent"
-        ]
+        matching = [e for e in extractions if e.data.get("category") == "nonexistent"]
         assert len(matching) == 0
 
 

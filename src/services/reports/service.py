@@ -605,9 +605,7 @@ class ReportService:
                     row[field] = list(dict.fromkeys(flat))
                 else:
                     # For text, dedupe and concatenate unique values
-                    unique_texts = list(
-                        dict.fromkeys(str(v) for v in values if v)
-                    )
+                    unique_texts = list(dict.fromkeys(str(v) for v in values if v))
                     if len(unique_texts) > 1:
                         row[field] = "; ".join(unique_texts)
                     elif unique_texts:
@@ -629,9 +627,7 @@ class ReportService:
             )
             # Remove duplicates while preserving order
             seen = set()
-            final_columns = [
-                c for c in final_columns if not (c in seen or seen.add(c))
-            ]
+            final_columns = [c for c in final_columns if not (c in seen or seen.add(c))]
         else:
             # Fallback: alphabetical
             final_columns.extend(sorted(all_columns))

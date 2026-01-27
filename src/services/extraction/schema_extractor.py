@@ -1,7 +1,6 @@
 """Schema-based LLM extraction with field groups."""
 
 import asyncio
-import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4

@@ -1,27 +1,25 @@
 """SQLAlchemy ORM models for database tables."""
 
-from datetime import datetime, UTC, date
+import uuid
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
-    String,
-    Text,
-    Integer,
-    Float,
-    Boolean,
-    DateTime,
-    Date,
     ARRAY,
     JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
     ForeignKey,
+    Integer,
     LargeBinary,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.types import TypeDecorator, CHAR
-from typing import Optional
-import uuid
+from sqlalchemy.types import CHAR, TypeDecorator
 
 
 class UUID(TypeDecorator):
@@ -40,9 +38,7 @@ class UUID(TypeDecorator):
             return dialect.type_descriptor(CHAR(36))
 
     def process_bind_param(self, value, dialect):
-        if value is None:
-            return value
-        elif dialect.name == "postgresql":
+        if value is None or dialect.name == "postgresql":
             return value
         else:
             if isinstance(value, uuid.UUID):
@@ -50,9 +46,7 @@ class UUID(TypeDecorator):
             return str(value)
 
     def process_result_value(self, value, dialect):
-        if value is None:
-            return value
-        elif dialect.name == "postgresql":
+        if value is None or dialect.name == "postgresql":
             return value
         else:
             if isinstance(value, uuid.UUID):
@@ -72,15 +66,15 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
-    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     type: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, default="queued")
     priority: Mapped[int] = mapped_column(Integer, default=0)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
-    result: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -89,10 +83,10 @@ class Job(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -109,8 +103,8 @@ class Page(Base):
     url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     domain: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     company: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    markdown_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    markdown_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -147,7 +141,7 @@ class Fact(Base):
     category: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     profile_used: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    embedding_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    embedding_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -173,7 +167,7 @@ class Profile(Base):
     categories: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
     prompt_focus: Mapped[str] = mapped_column(Text, nullable=False)
     depth: Mapped[str] = mapped_column(Text, nullable=False)
-    custom_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    custom_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
@@ -194,17 +188,17 @@ class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
-    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_groups: Mapped[list] = mapped_column(JSON, default=list)
     categories: Mapped[list] = mapped_column(JSON, default=list)
     extraction_ids: Mapped[list] = mapped_column(JSON, default=list)
     format: Mapped[str] = mapped_column(Text, default="md")
-    binary_content: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    binary_content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
@@ -221,7 +215,7 @@ class RateLimit(Base):
 
     domain: Mapped[str] = mapped_column(Text, primary_key=True)
     request_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_request: Mapped[Optional[datetime]] = mapped_column(
+    last_request: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     daily_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -243,7 +237,7 @@ class Project(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Configuration stored as JSONB (uses JSON for cross-DB compatibility)
     source_config: Mapped[dict] = mapped_column(
@@ -298,15 +292,15 @@ class Source(Base):
     uri: Mapped[str] = mapped_column(Text, nullable=False)
     source_group: Mapped[str] = mapped_column(Text, nullable=False)
 
-    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    raw_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     outbound_links: Mapped[list] = mapped_column(JSON, default=list)
 
     status: Mapped[str] = mapped_column(Text, default="pending")
-    fetched_at: Mapped[Optional[datetime]] = mapped_column(
+    fetched_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -344,15 +338,15 @@ class Extraction(Base):
     # Denormalized for indexing/queries
     extraction_type: Mapped[str] = mapped_column(Text, nullable=False)
     source_group: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Provenance
-    profile_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    chunk_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    chunk_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    profile_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunk_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Vector reference
-    embedding_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    embedding_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

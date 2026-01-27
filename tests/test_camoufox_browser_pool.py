@@ -9,11 +9,12 @@ SOLUTION: Browser pool with N instances, round-robin distribution.
 """
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.services.camoufox.models import ScrapeRequest
+import pytest
+
 from src.services.camoufox.config import CamoufoxSettings
+from src.services.camoufox.models import ScrapeRequest
 
 
 def make_test_config(browser_count: int = 3, max_concurrent_pages: int = 6):
@@ -30,18 +31,19 @@ class TestBrowserPoolConfig:
     def test_browser_count_config_exists(self):
         """Test that browser_count config option exists."""
         settings = CamoufoxSettings()
-        assert hasattr(settings, "browser_count"), \
+        assert hasattr(settings, "browser_count"), (
             "CamoufoxSettings should have browser_count attribute"
+        )
 
     def test_browser_count_default_value(self):
         """Test that browser_count defaults to a reasonable value."""
         settings = CamoufoxSettings()
         # Default should be > 1 to enable parallelism
-        assert settings.browser_count >= 1, \
-            "browser_count should default to at least 1"
+        assert settings.browser_count >= 1, "browser_count should default to at least 1"
         # But not too high (resource constraints)
-        assert settings.browser_count <= 10, \
+        assert settings.browser_count <= 10, (
             "browser_count default should be reasonable (<=10)"
+        )
 
     def test_browser_count_from_env(self):
         """Test that browser_count can be set via environment."""
@@ -72,8 +74,9 @@ class TestBrowserPoolCreation:
             await scraper.start()
 
             # Should have created 3 browser instances
-            assert mock_camoufox.call_count == 3, \
+            assert mock_camoufox.call_count == 3, (
                 f"Expected 3 browsers, got {mock_camoufox.call_count}"
+            )
 
             await scraper.stop()
 
@@ -101,8 +104,9 @@ class TestBrowserPoolCreation:
             await scraper.start()
 
             # Should track all browsers
-            assert len(scraper._browsers) == 3, \
+            assert len(scraper._browsers) == 3, (
                 f"Expected 3 tracked browsers, got {len(scraper._browsers)}"
+            )
 
             await scraper.stop()
 
@@ -160,8 +164,7 @@ class TestBrowserPoolDistribution:
         # Each browser should have been used twice
         for i, browser in enumerate(browsers):
             call_count = browser.new_context.call_count
-            assert call_count == 2, \
-                f"Browser {i} should have 2 calls, got {call_count}"
+            assert call_count == 2, f"Browser {i} should have 2 calls, got {call_count}"
 
     @pytest.mark.asyncio
     async def test_concurrent_requests_use_different_browsers(self, mock_browser_pool):
@@ -174,6 +177,7 @@ class TestBrowserPoolDistribution:
         original_new_context = [b.new_context for b in browsers]
 
         for i, browser in enumerate(browsers):
+
             async def make_context(browser_id=i):
                 browser_usage.append(browser_id)
                 return await original_new_context[browser_id]()
@@ -189,8 +193,9 @@ class TestBrowserPoolDistribution:
         await asyncio.gather(*[scraper.scrape(r) for r in requests])
 
         # All 3 browsers should have been used
-        assert len(set(browser_usage)) == 3, \
+        assert len(set(browser_usage)) == 3, (
             f"Expected 3 different browsers, got {set(browser_usage)}"
+        )
 
 
 class TestBrowserPoolConcurrency:
@@ -207,8 +212,9 @@ class TestBrowserPoolConcurrency:
         # With 2 browsers and 4 total pages, each browser handles ~2 pages max
         # This ensures no single browser is overwhelmed
         pages_per_browser = config.max_concurrent_pages // config.browser_count
-        assert pages_per_browser == 2, \
+        assert pages_per_browser == 2, (
             f"Expected 2 pages per browser, got {pages_per_browser}"
+        )
 
     @pytest.mark.asyncio
     async def test_semaphore_limits_total_concurrency(self):
@@ -219,8 +225,9 @@ class TestBrowserPoolConcurrency:
         scraper = CamoufoxScraper(config=config)
 
         # Semaphore should limit to max_concurrent_pages
-        assert scraper._semaphore._value == 6, \
+        assert scraper._semaphore._value == 6, (
             f"Semaphore should be 6, got {scraper._semaphore._value}"
+        )
 
 
 class TestBrowserPoolShutdown:
@@ -244,8 +251,7 @@ class TestBrowserPoolShutdown:
 
         # All browsers should be closed
         for i, browser in enumerate(mock_browsers):
-            browser.close.assert_called_once(), \
-                f"Browser {i} should have been closed"
+            browser.close.assert_called_once(), f"Browser {i} should have been closed"
 
     @pytest.mark.asyncio
     async def test_stop_waits_for_active_pages(self):
@@ -293,7 +299,9 @@ class TestBrowserPoolResilience:
             response = AsyncMock()
 
             if i == 1:  # Second browser fails
-                browser.new_context = AsyncMock(side_effect=Exception("Browser crashed"))
+                browser.new_context = AsyncMock(
+                    side_effect=Exception("Browser crashed")
+                )
             else:
                 browser.new_context = AsyncMock(return_value=context)
                 context.new_page = AsyncMock(return_value=page)
@@ -306,7 +314,9 @@ class TestBrowserPoolResilience:
                 page.close = AsyncMock()
                 page.set_extra_http_headers = AsyncMock()
                 response.status = 200
-                response.all_headers = AsyncMock(return_value={"content-type": "text/html"})
+                response.all_headers = AsyncMock(
+                    return_value={"content-type": "text/html"}
+                )
 
             browsers.append(browser)
 

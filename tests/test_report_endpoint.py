@@ -52,11 +52,14 @@ class TestCreateReport:
     """Test POST /api/v1/projects/{project_id}/reports endpoint."""
 
     @pytest.mark.asyncio
-    async def test_create_report_single_type(self, client, mock_project, mock_report, auth_headers):
+    async def test_create_report_single_type(
+        self, client, mock_project, mock_report, auth_headers
+    ):
         """Test creating a single-source report."""
-        with patch("api.v1.reports.ProjectRepository") as MockProjectRepo, patch(
-            "api.v1.reports.ReportService"
-        ) as MockReportService:
+        with (
+            patch("api.v1.reports.ProjectRepository") as MockProjectRepo,
+            patch("api.v1.reports.ReportService") as MockReportService,
+        ):
             # Setup mocks
             mock_proj_repo = Mock()
             mock_proj_repo.get = AsyncMock(return_value=mock_project)
@@ -83,14 +86,17 @@ class TestCreateReport:
             assert data["source_groups"] == ["company-a"]
 
     @pytest.mark.asyncio
-    async def test_create_report_comparison_type(self, client, mock_project, mock_report, auth_headers):
+    async def test_create_report_comparison_type(
+        self, client, mock_project, mock_report, auth_headers
+    ):
         """Test creating a comparison report."""
         mock_report.type = "comparison"
         mock_report.source_groups = ["company-a", "company-b"]
 
-        with patch("api.v1.reports.ProjectRepository") as MockProjectRepo, patch(
-            "api.v1.reports.ReportService"
-        ) as MockReportService:
+        with (
+            patch("api.v1.reports.ProjectRepository") as MockProjectRepo,
+            patch("api.v1.reports.ReportService") as MockReportService,
+        ):
             # Setup mocks
             mock_proj_repo = Mock()
             mock_proj_repo.get = AsyncMock(return_value=mock_project)
@@ -144,11 +150,14 @@ class TestListReports:
     """Test GET /api/v1/projects/{project_id}/reports endpoint."""
 
     @pytest.mark.asyncio
-    async def test_list_reports_returns_list(self, client, mock_project, mock_report, auth_headers):
+    async def test_list_reports_returns_list(
+        self, client, mock_project, mock_report, auth_headers
+    ):
         """Test listing reports returns paginated list."""
-        with patch("api.v1.reports.ProjectRepository") as MockProjectRepo, patch(
-            "api.v1.reports.get_db"
-        ) as mock_get_db:
+        with (
+            patch("api.v1.reports.ProjectRepository") as MockProjectRepo,
+            patch("api.v1.reports.get_db") as mock_get_db,
+        ):
             # Setup mocks
             mock_proj_repo = Mock()
             mock_proj_repo.get = AsyncMock(return_value=mock_project)
@@ -166,7 +175,9 @@ class TestListReports:
             mock_get_db.return_value = mock_db
 
             # Make request
-            response = await client.get(f"/api/v1/projects/{mock_project.id}/reports", headers=auth_headers)
+            response = await client.get(
+                f"/api/v1/projects/{mock_project.id}/reports", headers=auth_headers
+            )
 
             # Verify
             assert response.status_code == 200
@@ -179,11 +190,14 @@ class TestGetReport:
     """Test GET /api/v1/projects/{project_id}/reports/{report_id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_report_returns_report(self, client, mock_project, mock_report, auth_headers):
+    async def test_get_report_returns_report(
+        self, client, mock_project, mock_report, auth_headers
+    ):
         """Test getting specific report."""
-        with patch("api.v1.reports.ProjectRepository") as MockProjectRepo, patch(
-            "api.v1.reports.get_db"
-        ) as mock_get_db:
+        with (
+            patch("api.v1.reports.ProjectRepository") as MockProjectRepo,
+            patch("api.v1.reports.get_db") as mock_get_db,
+        ):
             # Setup mocks
             mock_proj_repo = Mock()
             mock_proj_repo.get = AsyncMock(return_value=mock_project)
@@ -211,9 +225,10 @@ class TestGetReport:
     @pytest.mark.asyncio
     async def test_get_report_not_found(self, client, mock_project, auth_headers):
         """Test getting non-existent report."""
-        with patch("api.v1.reports.ProjectRepository") as MockProjectRepo, patch(
-            "api.v1.reports.get_db"
-        ) as mock_get_db:
+        with (
+            patch("api.v1.reports.ProjectRepository") as MockProjectRepo,
+            patch("api.v1.reports.get_db") as mock_get_db,
+        ):
             # Setup mocks
             mock_proj_repo = Mock()
             mock_proj_repo.get = AsyncMock(return_value=mock_project)

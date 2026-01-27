@@ -7,9 +7,10 @@ The bug is that extraction.py:285 passes sync redis_client to LLMRequestQueue,
 but LLMRequestQueue methods use async (await self.redis.xadd, etc.).
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 import inspect
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 class TestExtractSchemaAsyncRedisRequirement:
@@ -32,12 +33,15 @@ class TestExtractSchemaAsyncRedisRequirement:
         # 3. Pass the result to LLMRequestQueue
 
         # Check that get_async_redis is imported (the fix)
-        assert "get_async_redis" in source, \
+        assert "get_async_redis" in source, (
             "extract_schema must import get_async_redis for async Redis client"
+        )
 
         # Check that await get_async_redis() is called
-        assert "await get_async_redis()" in source or "await get_async_redis()" in source.replace(" ", ""), \
-            "extract_schema must call 'await get_async_redis()' to get async client"
+        assert (
+            "await get_async_redis()" in source
+            or "await get_async_redis()" in source.replace(" ", "")
+        ), "extract_schema must call 'await get_async_redis()' to get async client"
 
     def test_llm_request_queue_requires_async_redis(self):
         """LLMRequestQueue methods use await, so redis must be async.
@@ -60,8 +64,9 @@ class TestExtractSchemaAsyncRedisRequirement:
         ]
 
         for call in async_redis_calls:
-            assert call in source, \
+            assert call in source, (
                 f"LLMRequestQueue uses '{call}' - requires async Redis client"
+            )
 
 
 class TestAsyncRedisVsSyncRedis:
@@ -92,5 +97,6 @@ class TestAsyncRedisVsSyncRedis:
 
         # Sync Redis .xadd() is not a coroutine - can't be awaited
         result = sync_redis.xadd("key", {"field": "value"})
-        assert not hasattr(result, "__await__"), \
+        assert not hasattr(result, "__await__"), (
             "Sync Redis methods are not coroutines - cannot be awaited"
+        )

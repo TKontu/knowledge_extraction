@@ -1,21 +1,23 @@
 """Repository for Entity CRUD operations and entity-extraction linking."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
+
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
-from orm_models import Entity, ExtractionEntity, Extraction
+
+from orm_models import Entity, Extraction, ExtractionEntity
 
 
 @dataclass
 class EntityFilters:
     """Filters for querying entities."""
 
-    project_id: Optional[UUID] = None
-    source_group: Optional[str] = None
-    entity_type: Optional[str] = None
+    project_id: UUID | None = None
+    source_group: str | None = None
+    entity_type: str | None = None
 
 
 class EntityRepository:
@@ -36,7 +38,7 @@ class EntityRepository:
         entity_type: str,
         value: str,
         normalized_value: str,
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
     ) -> Entity:
         """Create a new entity.
 
@@ -64,7 +66,7 @@ class EntityRepository:
         self._session.flush()
         return entity
 
-    async def get(self, entity_id: UUID) -> Optional[Entity]:
+    async def get(self, entity_id: UUID) -> Entity | None:
         """Get entity by ID.
 
         Args:
@@ -83,7 +85,7 @@ class EntityRepository:
         entity_type: str,
         value: str,
         normalized_value: str,
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
     ) -> tuple[Entity, bool]:
         """Get existing entity or create new one (deduplication logic).
 
@@ -134,7 +136,7 @@ class EntityRepository:
         self,
         project_id: UUID,
         entity_type: str,
-        source_group: Optional[str] = None,
+        source_group: str | None = None,
     ) -> list[Entity]:
         """List entities by type, optionally filtered by source_group.
 

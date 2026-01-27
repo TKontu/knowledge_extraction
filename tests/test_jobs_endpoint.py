@@ -1,12 +1,12 @@
 """Tests for jobs API endpoints."""
 
-import pytest
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from src.main import app
 from src.orm_models import Job
 
 
@@ -74,7 +74,9 @@ def sample_jobs(db: Session) -> list[Job]:
 class TestListJobs:
     """Tests for GET /api/v1/jobs endpoint."""
 
-    def test_list_jobs_returns_all(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_returns_all(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test that listing jobs returns all jobs."""
         response = client.get("/api/v1/jobs")
 
@@ -86,7 +88,9 @@ class TestListJobs:
         assert data["limit"] == 50
         assert data["offset"] == 0
 
-    def test_list_jobs_filter_by_type(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_filter_by_type(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test filtering jobs by type."""
         response = client.get("/api/v1/jobs?type=scrape")
 
@@ -96,7 +100,9 @@ class TestListJobs:
         assert data["total"] == 3  # 3 scrape jobs
         assert all(job["type"] == "scrape" for job in data["jobs"])
 
-    def test_list_jobs_filter_by_status(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_filter_by_status(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test filtering jobs by status."""
         response = client.get("/api/v1/jobs?status=completed")
 
@@ -106,7 +112,9 @@ class TestListJobs:
         assert data["total"] == 2  # 2 completed jobs
         assert all(job["status"] == "completed" for job in data["jobs"])
 
-    def test_list_jobs_filter_by_date_range(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_filter_by_date_range(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test filtering jobs by date range."""
         now = datetime.now(UTC)
         yesterday = (now - timedelta(days=1)).isoformat()
@@ -119,7 +127,9 @@ class TestListJobs:
         # Should return jobs created in last 24 hours (3 jobs)
         assert data["total"] >= 3
 
-    def test_list_jobs_pagination(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_pagination(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test pagination works correctly."""
         # First page
         response = client.get("/api/v1/jobs?limit=2&offset=0")
@@ -139,7 +149,9 @@ class TestListJobs:
         assert len(data["jobs"]) == 2
         assert data["offset"] == 2
 
-    def test_list_jobs_sorted_newest_first(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_sorted_newest_first(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test that jobs are sorted by created_at descending (newest first)."""
         response = client.get("/api/v1/jobs")
 
@@ -152,15 +164,21 @@ class TestListJobs:
         # Verify jobs are sorted newest first
         for i in range(len(jobs) - 1):
             # Parse ISO timestamps and compare
-            current_time = datetime.fromisoformat(jobs[i]["created_at"].replace("Z", "+00:00"))
-            next_time = datetime.fromisoformat(jobs[i + 1]["created_at"].replace("Z", "+00:00"))
+            current_time = datetime.fromisoformat(
+                jobs[i]["created_at"].replace("Z", "+00:00")
+            )
+            next_time = datetime.fromisoformat(
+                jobs[i + 1]["created_at"].replace("Z", "+00:00")
+            )
             assert current_time >= next_time
 
 
 class TestGetJob:
     """Tests for GET /api/v1/jobs/{job_id} endpoint."""
 
-    def test_get_job_returns_details(self, client: TestClient, sample_jobs: list[Job]) -> None:
+    def test_get_job_returns_details(
+        self, client: TestClient, sample_jobs: list[Job]
+    ) -> None:
         """Test that getting a job returns full details."""
         job = sample_jobs[0]
         response = client.get(f"/api/v1/jobs/{job.id}")

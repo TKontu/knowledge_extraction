@@ -163,9 +163,7 @@ class TestSourceRepositoryGetByUri:
         assert retrieved is not None
         assert retrieved.uri == "https://example.com/unique_uri"
 
-    async def test_get_by_uri_nonexistent_returns_none(
-        self, source_repo, test_project
-    ):
+    async def test_get_by_uri_nonexistent_returns_none(self, source_repo, test_project):
         """Should return None for nonexistent URI."""
         retrieved = await source_repo.get_by_uri(
             project_id=test_project.id, uri="https://example.com/nonexistent"
@@ -242,9 +240,7 @@ class TestSourceRepositoryList:
         )
 
         # Filter by test_project
-        sources = await source_repo.list(
-            SourceFilters(project_id=test_project.id)
-        )
+        sources = await source_repo.list(SourceFilters(project_id=test_project.id))
         assert len(sources) == 1
         assert sources[0].uri == "https://example.com/project1"
 
@@ -266,9 +262,7 @@ class TestSourceRepositoryList:
             source_group="other_corp",
         )
 
-        sources = await source_repo.list(
-            SourceFilters(source_group="acme_corp")
-        )
+        sources = await source_repo.list(SourceFilters(source_group="acme_corp"))
         assert len(sources) >= 2
         assert all(s.source_group == "acme_corp" for s in sources)
 
@@ -341,9 +335,7 @@ class TestSourceRepositoryList:
         assert len(sources) == 1
         assert sources[0].uri == "https://example.com/match"
 
-    async def test_list_returns_sorted_by_created_at(
-        self, source_repo, test_project
-    ):
+    async def test_list_returns_sorted_by_created_at(self, source_repo, test_project):
         """Should return sources sorted by created_at descending."""
         source1 = await source_repo.create(
             project_id=test_project.id,
@@ -356,9 +348,7 @@ class TestSourceRepositoryList:
             source_group="test_group",
         )
 
-        sources = await source_repo.list(
-            SourceFilters(project_id=test_project.id)
-        )
+        sources = await source_repo.list(SourceFilters(project_id=test_project.id))
         # Most recent first
         assert sources[0].id == source2.id
         assert sources[1].id == source1.id
@@ -380,9 +370,7 @@ class TestSourceRepositoryUpdateStatus:
         assert updated is not None
         assert updated.status == "completed"
 
-    async def test_update_status_sets_fetched_at(
-        self, source_repo, test_project
-    ):
+    async def test_update_status_sets_fetched_at(self, source_repo, test_project):
         """Should set fetched_at when status changes to completed."""
         source = await source_repo.create(
             project_id=test_project.id,
@@ -424,9 +412,7 @@ class TestSourceRepositoryUpdateContent:
         assert updated.content == "Updated content"
         assert updated.title == "Updated Title"
 
-    async def test_update_content_with_optional_fields(
-        self, source_repo, test_project
-    ):
+    async def test_update_content_with_optional_fields(self, source_repo, test_project):
         """Should update content with all optional fields."""
         source = await source_repo.create(
             project_id=test_project.id,
@@ -450,9 +436,7 @@ class TestSourceRepositoryUpdateContent:
         """Should return None when updating nonexistent source."""
         from uuid import uuid4
 
-        result = await source_repo.update_content(
-            uuid4(), content="test", title="test"
-        )
+        result = await source_repo.update_content(uuid4(), content="test", title="test")
         assert result is None
 
     async def test_update_content_preserves_other_fields(

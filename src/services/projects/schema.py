@@ -1,6 +1,7 @@
 """Schema validation for dynamic extraction schemas."""
 
 from typing import Any
+
 from pydantic import BaseModel, ValidationError, create_model
 
 

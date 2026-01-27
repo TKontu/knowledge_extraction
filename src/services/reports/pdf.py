@@ -73,10 +73,14 @@ class PDFConverter:
                 cmd.extend(["--metadata", f"title={title}"])
 
             # Add styling options
-            cmd.extend([
-                "--variable", "geometry:margin=1in",
-                "--variable", "fontsize=11pt",
-            ])
+            cmd.extend(
+                [
+                    "--variable",
+                    "geometry:margin=1in",
+                    "--variable",
+                    "fontsize=11pt",
+                ]
+            )
 
             logger.debug("pdf_conversion_started", command=" ".join(cmd))
 

@@ -45,7 +45,10 @@ async def create_project(
         )
 
     # Log if default template was applied (check schema name)
-    if project.extraction_schema and project.extraction_schema.get("name") == "generic_facts":
+    if (
+        project.extraction_schema
+        and project.extraction_schema.get("name") == "generic_facts"
+    ):
         logger.info(
             "default_template_assigned",
             project_name=project.name,
@@ -94,10 +97,7 @@ async def list_templates(
         return list_template_names()
 
     all_templates = get_all_templates()
-    templates = [
-        TemplateResponse.from_template(t)
-        for t in all_templates.values()
-    ]
+    templates = [TemplateResponse.from_template(t) for t in all_templates.values()]
     return TemplateListResponse(templates=templates, count=len(templates))
 
 

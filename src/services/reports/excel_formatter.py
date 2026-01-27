@@ -46,7 +46,7 @@ class ExcelFormatter:
         # Sanitize sheet name - Excel doesn't allow: \ / ? * [ ] :
         # and max length is 31 characters
         safe_name = sheet_name
-        for char in r'\/?*[]:':
+        for char in r"\/?*[]:":
             safe_name = safe_name.replace(char, "-")
         ws.title = safe_name[:31]
 

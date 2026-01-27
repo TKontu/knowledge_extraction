@@ -101,7 +101,10 @@ class ExtractionWorker:
                 )
 
             # Update job with results
-            if result.sources_failed > 0 and result.sources_processed == result.sources_failed:
+            if (
+                result.sources_failed > 0
+                and result.sources_processed == result.sources_failed
+            ):
                 # All sources failed - mark job as failed
                 job.status = "failed"
                 job.error = f"All {result.sources_failed} sources failed to process"

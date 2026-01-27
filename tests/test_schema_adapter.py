@@ -1,6 +1,5 @@
 """Tests for SchemaAdapter - validates and converts extraction schemas."""
 
-
 from services.extraction.schema_adapter import SchemaAdapter
 
 
@@ -308,7 +307,10 @@ class TestValidateExtractionSchema:
         result = adapter.validate_extraction_schema(schema)
         # This is a warning, not an error - schema is still valid
         assert result.is_valid
-        assert any("product_name" in w.lower() or "entity_id" in w.lower() for w in result.warnings)
+        assert any(
+            "product_name" in w.lower() or "entity_id" in w.lower()
+            for w in result.warnings
+        )
 
     def test_validation_rule_8_duplicate_field_group_names(self):
         """Error on duplicate field_group names."""
@@ -343,7 +345,10 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("duplicate" in error.lower() and "group" in error.lower() for error in result.errors)
+        assert any(
+            "duplicate" in error.lower() and "group" in error.lower()
+            for error in result.errors
+        )
 
     def test_validation_rule_9_duplicate_field_names(self):
         """Error on duplicate field names within group."""
@@ -372,7 +377,10 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("duplicate" in error.lower() and "field" in error.lower() for error in result.errors)
+        assert any(
+            "duplicate" in error.lower() and "field" in error.lower()
+            for error in result.errors
+        )
 
     def test_validation_rule_10_too_many_field_groups(self):
         """Error if >20 field groups."""
@@ -398,7 +406,9 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("20" in error or "too many" in error.lower() for error in result.errors)
+        assert any(
+            "20" in error or "too many" in error.lower() for error in result.errors
+        )
 
     def test_validation_rule_11_too_many_fields(self):
         """Error if >30 fields in group."""
@@ -424,7 +434,9 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("30" in error or "too many" in error.lower() for error in result.errors)
+        assert any(
+            "30" in error or "too many" in error.lower() for error in result.errors
+        )
 
 
 class TestConvertToFieldGroups:

@@ -1,15 +1,11 @@
 """Tests for logging configuration and middleware."""
 
-import json
 import logging
 import uuid
 from unittest.mock import Mock, patch
 
 import pytest
 import structlog
-from fastapi.testclient import TestClient
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from starlette.responses import Response
 
 from src.config import Settings
@@ -103,9 +99,11 @@ class TestRequestIDMiddleware:
     @pytest.fixture
     def mock_app(self):
         """Mock ASGI application."""
+
         async def app(scope, receive, send):
             response = Response(content="test", status_code=200)
             await response(scope, receive, send)
+
         return app
 
     @pytest.mark.asyncio
@@ -255,9 +253,11 @@ class TestRequestLoggingMiddleware:
     @pytest.fixture
     def mock_app(self):
         """Mock ASGI application."""
+
         async def app(scope, receive, send):
             response = Response(content="test", status_code=200)
             await response(scope, receive, send)
+
         return app
 
     @pytest.fixture
@@ -276,7 +276,9 @@ class TestRequestLoggingMiddleware:
         )
 
     @pytest.mark.asyncio
-    async def test_middleware_logs_request(self, mock_app, caplog, configure_structlog_for_tests):
+    async def test_middleware_logs_request(
+        self, mock_app, caplog, configure_structlog_for_tests
+    ):
         """Test middleware logs incoming requests."""
         from src.middleware.request_logging import RequestLoggingMiddleware
 
@@ -304,7 +306,9 @@ class TestRequestLoggingMiddleware:
         assert any("request_started" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_middleware_logs_response_with_duration(self, mock_app, caplog, configure_structlog_for_tests):
+    async def test_middleware_logs_response_with_duration(
+        self, mock_app, caplog, configure_structlog_for_tests
+    ):
         """Test middleware logs response with duration."""
         from src.middleware.request_logging import RequestLoggingMiddleware
 
@@ -358,4 +362,6 @@ class TestRequestLoggingMiddleware:
 
         # Check that health endpoint was not logged
         assert not any("request_started" in record.message for record in caplog.records)
-        assert not any("request_completed" in record.message for record in caplog.records)
+        assert not any(
+            "request_completed" in record.message for record in caplog.records
+        )

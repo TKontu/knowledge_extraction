@@ -1,7 +1,6 @@
 """Schema adapter for converting JSONB extraction schemas to FieldGroup objects."""
 
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -80,9 +79,7 @@ class SchemaAdapter:
         for fg in schema["field_groups"]:
             if isinstance(fg, dict) and "name" in fg:
                 if fg["name"] in group_names:
-                    errors.append(
-                        f"Duplicate field_group name: '{fg['name']}'"
-                    )
+                    errors.append(f"Duplicate field_group name: '{fg['name']}'")
                 group_names.append(fg["name"])
 
         # Validate each field_group
@@ -114,7 +111,9 @@ class SchemaAdapter:
             # Rule 7: is_entity_list groups should have at least one identifiable field
             # (warning, not error - some lists may not need dedup)
             if fg.get("is_entity_list", False):
-                field_names = [f.get("name") for f in fg["fields"] if isinstance(f, dict)]
+                field_names = [
+                    f.get("name") for f in fg["fields"] if isinstance(f, dict)
+                ]
                 # Check against common ID patterns - validation doesn't know template context
                 common_id_fields = ["entity_id", "name", "id", "product_name"]
                 has_id_field = any(name in field_names for name in common_id_fields)
@@ -137,11 +136,15 @@ class SchemaAdapter:
                     continue
 
                 if "field_type" not in field:
-                    errors.append(f"field_groups[{i}]['fields'][{j}] missing 'field_type'")
+                    errors.append(
+                        f"field_groups[{i}]['fields'][{j}] missing 'field_type'"
+                    )
                     continue
 
                 if "description" not in field:
-                    errors.append(f"field_groups[{i}]['fields'][{j}] missing 'description'")
+                    errors.append(
+                        f"field_groups[{i}]['fields'][{j}] missing 'description'"
+                    )
 
                 # Check duplicate field names
                 if field["name"] in field_names_in_group:
@@ -257,7 +260,9 @@ class SchemaAdapter:
             # Entity lists need guidance on finding multiple items
             entity_singular = name.rstrip("s") if name.endswith("s") else name
             hints.append(f"Look for all {name} mentioned in the content.")
-            hints.append(f"Each {entity_singular} should be a separate item in the list.")
+            hints.append(
+                f"Each {entity_singular} should be a separate item in the list."
+            )
         else:
             # Regular extraction - focus on where to find info
             hints.append(f"Look for {description.lower()} in the content.")
@@ -265,6 +270,6 @@ class SchemaAdapter:
         # Add guidance for list fields (complex to extract)
         list_fields = [f.get("name") for f in fields if f.get("field_type") == "list"]
         if list_fields:
-            hints.append(f"For list fields, collect all mentioned values.")
+            hints.append("For list fields, collect all mentioned values.")
 
         return " ".join(hints)

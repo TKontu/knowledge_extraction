@@ -1,11 +1,12 @@
 """Tests for SchemaExtractionOrchestrator."""
 
-import pytest
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
-from unittest.mock import Mock, AsyncMock
 
+import pytest
+
+from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
-from services.extraction.field_groups import FieldGroup, FieldDefinition
 
 
 @pytest.fixture

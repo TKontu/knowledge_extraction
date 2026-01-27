@@ -1,12 +1,12 @@
 """Tests for generalized ORM models (Project, Source, Extraction, Entity)."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, UTC
-from uuid import uuid4
-from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+
 from database import engine
-from orm_models import Base, Project, Source, Extraction, Entity, ExtractionEntity
+from orm_models import Entity, Extraction, ExtractionEntity, Project, Source
 
 
 @pytest.fixture

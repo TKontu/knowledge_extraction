@@ -132,11 +132,15 @@ Facts to synthesize:
             return await self._unify_chunk_results(chunk_results, synthesis_type)
 
         # Single chunk - return directly
-        return chunk_results[0] if chunk_results else SynthesisResult(
-            synthesized_text="No facts available.",
-            sources_used=[],
-            confidence=0.0,
-            conflicts_noted=[],
+        return (
+            chunk_results[0]
+            if chunk_results
+            else SynthesisResult(
+                synthesized_text="No facts available.",
+                sources_used=[],
+                confidence=0.0,
+                conflicts_noted=[],
+            )
         )
 
     async def _unify_chunk_results(
@@ -162,7 +166,7 @@ Facts to synthesize:
 
         # Format chunk texts for unification prompt
         chunk_texts = "\n\n---\n\n".join(
-            f"Section {i+1}:\n{r.synthesized_text}"
+            f"Section {i + 1}:\n{r.synthesized_text}"
             for i, r in enumerate(chunk_results)
         )
 
@@ -198,8 +202,8 @@ Output as JSON:
             if merge_conflicts:
                 all_conflicts.extend(merge_conflicts)
 
-            avg_confidence = (
-                sum(r.confidence for r in chunk_results) / len(chunk_results)
+            avg_confidence = sum(r.confidence for r in chunk_results) / len(
+                chunk_results
             )
 
             return SynthesisResult(
@@ -223,7 +227,7 @@ Output as JSON:
         # Join with section dividers
         sections = []
         for i, r in enumerate(chunk_results):
-            sections.append(f"### Section {i+1}\n\n{r.synthesized_text}")
+            sections.append(f"### Section {i + 1}\n\n{r.synthesized_text}")
 
         avg_confidence = (
             sum(r.confidence for r in chunk_results) / len(chunk_results)

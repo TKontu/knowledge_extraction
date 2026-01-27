@@ -5,9 +5,8 @@ TDD: These tests define the expected behavior for the LLM queue system.
 
 import asyncio
 import json
-from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -79,7 +78,7 @@ class TestLLMRequestModel:
 
     def test_llm_request_validates_request_type(self):
         """Test that LLMRequest validates request_type."""
-        from src.services.llm.models import LLMRequest, InvalidRequestTypeError
+        from src.services.llm.models import InvalidRequestTypeError, LLMRequest
 
         with pytest.raises(InvalidRequestTypeError):
             LLMRequest(
@@ -180,7 +179,7 @@ class TestLLMResponseModel:
 
     def test_llm_response_validates_status(self):
         """Test that LLMResponse validates status values."""
-        from src.services.llm.models import LLMResponse, InvalidStatusError
+        from src.services.llm.models import InvalidStatusError, LLMResponse
 
         with pytest.raises(InvalidStatusError):
             LLMResponse(
@@ -401,7 +400,9 @@ class TestWaitForResultCleanup:
         )
 
     @pytest.mark.asyncio
-    async def test_wait_for_result_deletes_response_key_after_read(self, queue, mock_redis):
+    async def test_wait_for_result_deletes_response_key_after_read(
+        self, queue, mock_redis
+    ):
         """Test that wait_for_result deletes the response key after reading."""
         from src.services.llm.models import LLMResponse
 
@@ -421,7 +422,9 @@ class TestWaitForResultCleanup:
         mock_redis.delete.assert_called_once_with("llm:response:test-cleanup")
 
     @pytest.mark.asyncio
-    async def test_wait_for_result_deletes_key_on_error_response(self, queue, mock_redis):
+    async def test_wait_for_result_deletes_key_on_error_response(
+        self, queue, mock_redis
+    ):
         """Test that wait_for_result deletes key even when response has error status."""
         from src.services.llm.models import LLMResponse
 
@@ -454,7 +457,9 @@ class TestWaitForResultCleanup:
         mock_redis.delete.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_wait_for_result_cleanup_failure_does_not_affect_return(self, queue, mock_redis):
+    async def test_wait_for_result_cleanup_failure_does_not_affect_return(
+        self, queue, mock_redis
+    ):
         """Test that delete failure does not affect the returned response."""
         from src.services.llm.models import LLMResponse
 
@@ -560,9 +565,7 @@ class TestLLMWorker:
 
         # Mock stream read returning one message
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -579,7 +582,9 @@ class TestLLMWorker:
         mock_redis.xack.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_worker_skips_expired_requests(self, worker, mock_redis, mock_llm_client):
+    async def test_worker_skips_expired_requests(
+        self, worker, mock_redis, mock_llm_client
+    ):
         """Test that worker skips expired requests."""
         from src.services.llm.models import LLMRequest
 
@@ -594,9 +599,7 @@ class TestLLMWorker:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -682,11 +685,11 @@ class TestLLMWorker:
             )
             requests.append(("entry-{i}", {"data": req.to_json()}))
 
-        mock_redis.xreadgroup = AsyncMock(
-            return_value=[("llm:requests", requests)]
-        )
+        mock_redis.xreadgroup = AsyncMock(return_value=[("llm:requests", requests)])
 
         await worker.process_batch()
 
         # Should have processed concurrently
-        assert max_concurrent > 1, f"Expected concurrent processing but max was {max_concurrent}"
+        assert max_concurrent > 1, (
+            f"Expected concurrent processing but max was {max_concurrent}"
+        )

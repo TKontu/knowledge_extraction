@@ -4,9 +4,10 @@
 import os
 import sys
 import time
-import requests
 from datetime import datetime
 from pathlib import Path
+
+import requests
 
 # Load .env file if it exists
 env_file = Path(__file__).parent.parent / ".env"
@@ -55,7 +56,7 @@ def create_project():
     project_data = {
         "template": "company_analysis",
         "name": project_name,
-        "description": "Test crawl of scrapethissite.com to validate deployment"
+        "description": "Test crawl of scrapethissite.com to validate deployment",
     }
 
     try:
@@ -63,7 +64,7 @@ def create_project():
             f"{API_BASE_URL}/api/v1/projects/from-template",
             json=project_data,
             headers=headers,
-            timeout=10
+            timeout=10,
         )
 
         if resp.status_code == 201:
@@ -84,7 +85,7 @@ def create_project():
 
 def create_crawl_job(project_id: str):
     """Create a crawl job."""
-    print(f"\n🕷️  Creating crawl job...")
+    print("\n🕷️  Creating crawl job...")
     headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
     crawl_data = {
@@ -94,7 +95,7 @@ def create_crawl_job(project_id: str):
         "max_depth": MAX_DEPTH,
         "limit": PAGE_LIMIT,
         "auto_extract": True,  # Auto-extract after crawling
-        "profile": None
+        "profile": None,
     }
 
     print(f"   URL: {TEST_URL}")
@@ -103,16 +104,13 @@ def create_crawl_job(project_id: str):
 
     try:
         resp = requests.post(
-            f"{API_BASE_URL}/api/v1/crawl",
-            json=crawl_data,
-            headers=headers,
-            timeout=10
+            f"{API_BASE_URL}/api/v1/crawl", json=crawl_data, headers=headers, timeout=10
         )
 
         if resp.status_code == 202:
             job = resp.json()
             job_id = job["job_id"]
-            print(f"   ✅ Crawl job created!")
+            print("   ✅ Crawl job created!")
             print(f"   📍 Job ID: {job_id}")
             print(f"   Status: {job['status']}")
             return job_id
@@ -128,16 +126,14 @@ def create_crawl_job(project_id: str):
 
 def monitor_crawl(job_id: str, max_checks: int = 20, interval: int = 30):
     """Monitor crawl progress."""
-    print(f"\n👀 Monitoring crawl progress...")
+    print("\n👀 Monitoring crawl progress...")
     print(f"   (Checking every {interval}s, max {max_checks} checks)")
     headers = {"X-API-Key": API_KEY}
 
     for i in range(max_checks):
         try:
             resp = requests.get(
-                f"{API_BASE_URL}/api/v1/crawl/{job_id}",
-                headers=headers,
-                timeout=10
+                f"{API_BASE_URL}/api/v1/crawl/{job_id}", headers=headers, timeout=10
             )
 
             if resp.status_code == 200:
@@ -148,7 +144,7 @@ def monitor_crawl(job_id: str, max_checks: int = 20, interval: int = 30):
                 pages_total = status.get("pages_total", "?")
                 job_status = status.get("status", "unknown")
 
-                print(f"\n   [{i+1}/{max_checks}] Status: {job_status}")
+                print(f"\n   [{i + 1}/{max_checks}] Status: {job_status}")
                 print(f"   Pages: {pages_completed}/{pages_total}")
 
                 if status.get("sources_created"):
@@ -157,12 +153,14 @@ def monitor_crawl(job_id: str, max_checks: int = 20, interval: int = 30):
                 # Check if completed
                 if job_status in ("completed", "failed"):
                     if job_status == "completed":
-                        print(f"\n   ✅ Crawl completed successfully!")
-                        print(f"   📊 Final stats:")
+                        print("\n   ✅ Crawl completed successfully!")
+                        print("   📊 Final stats:")
                         print(f"      - Pages crawled: {pages_completed}")
-                        print(f"      - Sources created: {status.get('sources_created', 'N/A')}")
+                        print(
+                            f"      - Sources created: {status.get('sources_created', 'N/A')}"
+                        )
                     else:
-                        print(f"\n   ❌ Crawl failed!")
+                        print("\n   ❌ Crawl failed!")
                         if status.get("error"):
                             print(f"   Error: {status['error']}")
                     return status
@@ -177,7 +175,7 @@ def monitor_crawl(job_id: str, max_checks: int = 20, interval: int = 30):
             print(f"   ⚠️  Error checking status: {e}")
 
     print(f"\n   ⏱️  Monitoring stopped after {max_checks} checks")
-    print(f"   Job is still running - check manually at:")
+    print("   Job is still running - check manually at:")
     print(f"   {API_BASE_URL}/api/v1/crawl/{job_id}")
     return None
 
@@ -222,7 +220,7 @@ def main():
     print("=" * 60)
     print(f"Project ID: {project_id}")
     print(f"Job ID: {job_id}")
-    print(f"\n🌐 View in API:")
+    print("\n🌐 View in API:")
     print(f"   Docs: {API_BASE_URL}/docs")
     print(f"   Project: {API_BASE_URL}/api/v1/projects/{project_id}")
     print(f"   Job Status: {API_BASE_URL}/api/v1/crawl/{job_id}")

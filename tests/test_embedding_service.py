@@ -1,7 +1,9 @@
 """Tests for EmbeddingService."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+
 from config import Settings
 
 
@@ -36,7 +38,9 @@ class TestEmbeddingServiceEmbed:
         # Mock the API response
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed("test text")
 
@@ -47,7 +51,9 @@ class TestEmbeddingServiceEmbed:
         # Mock the API response
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed("test text")
 
@@ -73,7 +79,9 @@ class TestEmbeddingServiceEmbedBatch:
             MagicMock(embedding=[0.2] * 1024),
             MagicMock(embedding=[0.3] * 1024),
         ]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed_batch(["text1", "text2", "text3"])
 
@@ -89,7 +97,9 @@ class TestEmbeddingServiceEmbedBatch:
             MagicMock(embedding=[0.0, 2.0, 0.0]),
             MagicMock(embedding=[0.0, 0.0, 3.0]),
         ]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed_batch(["first", "second", "third"])
 

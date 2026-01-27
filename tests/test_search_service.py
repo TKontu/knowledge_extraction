@@ -1,11 +1,13 @@
 """Tests for SearchService."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4, UUID
-from services.storage.search import SearchService, ExtractionSearchResult
-from services.storage.qdrant.repository import SearchResult
+from uuid import uuid4
+
+import pytest
+
 from orm_models import Extraction, Source
+from services.storage.qdrant.repository import SearchResult
+from services.storage.search import ExtractionSearchResult, SearchService
 
 
 @pytest.fixture
@@ -131,7 +133,11 @@ class TestSearchServiceSearch:
         assert "source_group" not in call_kwargs["filters"]
 
     async def test_search_applies_jsonb_filters_via_extraction_repo(
-        self, search_service, mock_qdrant_repo, mock_extraction_repo, mock_embedding_service
+        self,
+        search_service,
+        mock_qdrant_repo,
+        mock_extraction_repo,
+        mock_embedding_service,
     ):
         """Should use ExtractionRepository.filter_by_data for JSONB filtering."""
         project_id = uuid4()
@@ -165,7 +171,11 @@ class TestSearchServiceSearch:
         )
 
     async def test_search_filters_qdrant_results_by_jsonb_matches(
-        self, search_service, mock_qdrant_repo, mock_extraction_repo, mock_embedding_service
+        self,
+        search_service,
+        mock_qdrant_repo,
+        mock_extraction_repo,
+        mock_embedding_service,
     ):
         """Should filter Qdrant results to only include JSONB-matching extractions."""
         project_id = uuid4()
@@ -230,7 +240,11 @@ class TestSearchServiceSearch:
         assert results[1].score == 0.7
 
     async def test_search_trims_results_to_limit(
-        self, search_service, mock_qdrant_repo, mock_extraction_repo, mock_embedding_service
+        self,
+        search_service,
+        mock_qdrant_repo,
+        mock_extraction_repo,
+        mock_embedding_service,
     ):
         """Should return at most 'limit' results even if more match."""
         project_id = uuid4()

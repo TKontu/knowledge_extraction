@@ -292,9 +292,19 @@ class CamoufoxScraper:
                 )
             ):
                 # Skip common non-AJAX resources
-                if not any(url.endswith(ext) for ext in (
-                    ".css", ".js", ".png", ".jpg", ".gif", ".svg", ".woff", ".woff2"
-                )):
+                if not any(
+                    url.endswith(ext)
+                    for ext in (
+                        ".css",
+                        ".js",
+                        ".png",
+                        ".jpg",
+                        ".gif",
+                        ".svg",
+                        ".woff",
+                        ".woff2",
+                    )
+                ):
                     discovered_urls.add(url)
 
         page.on("request", capture_request)
@@ -346,12 +356,15 @@ class CamoufoxScraper:
                     )
                     elem_id = await element.evaluate("el => el.id || ''")
                     elem_class = await element.evaluate("el => el.className || ''")
-                    href = await element.evaluate(
-                        "el => el.getAttribute('href') || ''"
-                    )
+                    href = await element.evaluate("el => el.getAttribute('href') || ''")
 
                     # Skip navigation links that would leave the page
-                    if href and href not in ("#", "javascript:void(0)", "javascript:;", ""):
+                    if href and href not in (
+                        "#",
+                        "javascript:void(0)",
+                        "javascript:;",
+                        "",
+                    ):
                         # Skip absolute URLs and paths that would navigate away
                         if (
                             href.startswith("/")
@@ -401,9 +414,7 @@ class CamoufoxScraper:
 
         return list(discovered_urls)
 
-    async def _wait_for_content_ready(
-        self, page: Page, timeout_ms: int, log
-    ) -> None:
+    async def _wait_for_content_ready(self, page: Page, timeout_ms: int, log) -> None:
         """Wait for content to be ready using a tiered approach.
 
         Strategy:
@@ -593,7 +604,8 @@ class CamoufoxScraper:
                 # These would override the browser fingerprint and break anti-bot evasion
                 protected_headers = {"user-agent", "accept-language", "accept-encoding"}
                 filtered_headers = {
-                    k: v for k, v in request.headers.items()
+                    k: v
+                    for k, v in request.headers.items()
                     if k.lower() not in protected_headers
                 }
                 if filtered_headers != request.headers:

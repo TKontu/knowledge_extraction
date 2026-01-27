@@ -1,10 +1,11 @@
 """Tests for pipeline integration with ExtractionContext."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from services.extraction.schema_adapter import SchemaAdapter, ExtractionContext
+import pytest
+
+from services.extraction.schema_adapter import SchemaAdapter
 
 
 class TestPipelineExtractSource:
@@ -47,8 +48,8 @@ class TestPipelineExtractSource:
         self, mock_orchestrator_with_context, mock_db, mock_source
     ):
         """extract_source should accept source_context parameter."""
+        from services.extraction.field_groups import FieldDefinition, FieldGroup
         from services.extraction.pipeline import SchemaExtractionPipeline
-        from services.extraction.field_groups import FieldGroup, FieldDefinition
 
         pipeline = SchemaExtractionPipeline(mock_orchestrator_with_context, mock_db)
 
@@ -86,8 +87,8 @@ class TestPipelineExtractSource:
         self, mock_orchestrator_with_context, mock_db, mock_source
     ):
         """extract_source should still accept company_name for backward compatibility."""
+        from services.extraction.field_groups import FieldDefinition, FieldGroup
         from services.extraction.pipeline import SchemaExtractionPipeline
-        from services.extraction.field_groups import FieldGroup, FieldDefinition
 
         pipeline = SchemaExtractionPipeline(mock_orchestrator_with_context, mock_db)
 

@@ -58,9 +58,7 @@ class SchemaTableGenerator:
 
         return columns, labels, field_defs
 
-    def get_entity_list_groups(
-        self, extraction_schema: dict
-    ) -> dict[str, FieldGroup]:
+    def get_entity_list_groups(self, extraction_schema: dict) -> dict[str, FieldGroup]:
         """Get entity_list field groups mapped by name.
 
         Args:

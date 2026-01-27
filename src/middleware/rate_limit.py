@@ -39,7 +39,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             logger.warning(
                 "rate_limit_exceeded",
-                identifier=identifier[:8] + "..." if len(identifier) > 8 else identifier,
+                identifier=identifier[:8] + "..."
+                if len(identifier) > 8
+                else identifier,
                 path=request.url.path,
             )
             return JSONResponse(
@@ -78,7 +80,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if redis is None:
             # Redis unavailable - allow request but log warning
             logger.warning("rate_limit_redis_unavailable")
-            return True, settings.rate_limit_requests, int(time.time()) + settings.rate_limit_window_seconds
+            return (
+                True,
+                settings.rate_limit_requests,
+                int(time.time()) + settings.rate_limit_window_seconds,
+            )
 
         now = int(time.time())
         window_start = now - settings.rate_limit_window_seconds

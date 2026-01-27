@@ -1,7 +1,6 @@
 """Tests for language detection service."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -22,7 +21,9 @@ class TestLanguageDetectionService:
         return LanguageDetectionService(confidence_threshold=0.7)
 
     @pytest.mark.asyncio
-    async def test_detects_english_from_content(self, service: LanguageDetectionService) -> None:
+    async def test_detects_english_from_content(
+        self, service: LanguageDetectionService
+    ) -> None:
         """Test detecting English from content."""
         text = "This is an English text. It should be detected as English language content."
         result = await service.detect(text)
@@ -33,7 +34,9 @@ class TestLanguageDetectionService:
         assert result.detected_from in ("content", "fallback")
 
     @pytest.mark.asyncio
-    async def test_detects_german_from_content(self, service: LanguageDetectionService) -> None:
+    async def test_detects_german_from_content(
+        self, service: LanguageDetectionService
+    ) -> None:
         """Test detecting German from content."""
         text = (
             "Dies ist ein deutscher Text. Er sollte als deutsche Sprache erkannt werden. "
@@ -47,7 +50,9 @@ class TestLanguageDetectionService:
         assert result.detected_from in ("content", "fallback")
 
     @pytest.mark.asyncio
-    async def test_detects_language_from_url_path(self, service: LanguageDetectionService) -> None:
+    async def test_detects_language_from_url_path(
+        self, service: LanguageDetectionService
+    ) -> None:
         """Test detecting language from URL path."""
         text = "Some text content"
         url = "https://example.com/de/page"
@@ -101,7 +106,9 @@ class TestLanguageDetectionService:
         """Test fallback to English when content detection fails."""
         # Mock langdetect to raise exception
         with patch.object(service, "_langdetect_available", True):
-            with patch.object(service, "_langdetect_sync", side_effect=Exception("Detection failed")):
+            with patch.object(
+                service, "_langdetect_sync", side_effect=Exception("Detection failed")
+            ):
                 text = "Some text content"
                 result = await service.detect(text)
 

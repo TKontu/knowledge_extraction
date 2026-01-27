@@ -1,12 +1,14 @@
 """Tests for EntityRepository."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from database import engine
-from orm_models import Entity, ExtractionEntity, Project, Source, Extraction
-from services.storage.repositories.entity import EntityRepository, EntityFilters
+from orm_models import Entity, Extraction, Project, Source
+from services.storage.repositories.entity import EntityFilters, EntityRepository
 
 
 @pytest.fixture
@@ -97,9 +99,7 @@ class TestEntityRepositoryCreate:
         assert entity.normalized_value == "acme_corp"
         assert entity.attributes == {}
 
-    async def test_create_entity_with_attributes(
-        self, entity_repo, test_project
-    ):
+    async def test_create_entity_with_attributes(self, entity_repo, test_project):
         """Should create entity with attributes."""
         entity = await entity_repo.create(
             project_id=test_project.id,
@@ -131,15 +131,11 @@ class TestEntityRepositoryCreate:
         )
 
         # Verify it's in the database
-        result = db_session.execute(
-            select(Entity).where(Entity.id == entity.id)
-        )
+        result = db_session.execute(select(Entity).where(Entity.id == entity.id))
         db_entity = result.scalar_one()
         assert db_entity.value == "SSO Support"
 
-    async def test_create_entity_sets_created_at(
-        self, entity_repo, test_project
-    ):
+    async def test_create_entity_sets_created_at(self, entity_repo, test_project):
         """Should automatically set created_at timestamp."""
         entity = await entity_repo.create(
             project_id=test_project.id,
@@ -156,9 +152,7 @@ class TestEntityRepositoryCreate:
 class TestEntityRepositoryGet:
     """Test EntityRepository.get() method."""
 
-    async def test_get_by_id_returns_entity(
-        self, entity_repo, test_project
-    ):
+    async def test_get_by_id_returns_entity(self, entity_repo, test_project):
         """Should retrieve entity by ID."""
         entity = await entity_repo.create(
             project_id=test_project.id,
@@ -184,9 +178,7 @@ class TestEntityRepositoryGet:
 class TestEntityRepositoryGetOrCreate:
     """Test EntityRepository.get_or_create() method for deduplication."""
 
-    async def test_get_or_create_creates_new_entity(
-        self, entity_repo, test_project
-    ):
+    async def test_get_or_create_creates_new_entity(self, entity_repo, test_project):
         """Should create new entity when none exists."""
         entity, created = await entity_repo.get_or_create(
             project_id=test_project.id,
@@ -313,9 +305,7 @@ class TestEntityRepositoryGetOrCreate:
         assert created2 is True  # Should create new
         assert entity2.id != entity1.id  # Different entities
 
-    async def test_get_or_create_scoped_by_entity_type(
-        self, entity_repo, test_project
-    ):
+    async def test_get_or_create_scoped_by_entity_type(self, entity_repo, test_project):
         """Should create separate entities for different entity_types."""
         # Create entity of one type
         entity1, created1 = await entity_repo.get_or_create(
@@ -339,9 +329,7 @@ class TestEntityRepositoryGetOrCreate:
         assert created2 is True  # Should create new
         assert entity2.id != entity1.id  # Different entities
 
-    async def test_get_or_create_with_attributes(
-        self, entity_repo, test_project
-    ):
+    async def test_get_or_create_with_attributes(self, entity_repo, test_project):
         """Should store attributes when creating new entity."""
         entity, created = await entity_repo.get_or_create(
             project_id=test_project.id,
@@ -359,9 +347,7 @@ class TestEntityRepositoryGetOrCreate:
 class TestEntityRepositoryListByType:
     """Test EntityRepository.list_by_type() method."""
 
-    async def test_list_by_type_returns_entities(
-        self, entity_repo, test_project
-    ):
+    async def test_list_by_type_returns_entities(self, entity_repo, test_project):
         """Should list all entities of a specific type."""
         await entity_repo.create(
             project_id=test_project.id,
@@ -430,14 +416,10 @@ class TestEntityRepositoryListByType:
             entity_type="nonexistent_type",
         )
 
-        matching = [
-            e for e in entities if e.entity_type == "nonexistent_type"
-        ]
+        matching = [e for e in entities if e.entity_type == "nonexistent_type"]
         assert len(matching) == 0
 
-    async def test_list_by_type_sorted_by_value(
-        self, entity_repo, test_project
-    ):
+    async def test_list_by_type_sorted_by_value(self, entity_repo, test_project):
         """Should return entities sorted by value."""
         await entity_repo.create(
             project_id=test_project.id,
@@ -460,10 +442,7 @@ class TestEntityRepositoryListByType:
         )
 
         # Find our test entities
-        test_entities = [
-            e for e in entities
-            if e.value in ["Apple Corp", "Zebra Corp"]
-        ]
+        test_entities = [e for e in entities if e.value in ["Apple Corp", "Zebra Corp"]]
         if len(test_entities) == 2:
             assert test_entities[0].value == "Apple Corp"
             assert test_entities[1].value == "Zebra Corp"
@@ -519,15 +498,11 @@ class TestEntityRepositoryList:
             normalized_value="other_project_entity",
         )
 
-        entities = await entity_repo.list(
-            EntityFilters(project_id=test_project.id)
-        )
+        entities = await entity_repo.list(EntityFilters(project_id=test_project.id))
         assert len(entities) >= 1
         assert all(e.project_id == test_project.id for e in entities)
 
-    async def test_list_filters_by_entity_type(
-        self, entity_repo, test_project
-    ):
+    async def test_list_filters_by_entity_type(self, entity_repo, test_project):
         """Should filter entities by entity_type."""
         await entity_repo.create(
             project_id=test_project.id,
@@ -537,15 +512,11 @@ class TestEntityRepositoryList:
             normalized_value="pricing_entity",
         )
 
-        entities = await entity_repo.list(
-            EntityFilters(entity_type="pricing")
-        )
+        entities = await entity_repo.list(EntityFilters(entity_type="pricing"))
         assert len(entities) >= 1
         assert all(e.entity_type == "pricing" for e in entities)
 
-    async def test_list_filters_by_source_group(
-        self, entity_repo, test_project
-    ):
+    async def test_list_filters_by_source_group(self, entity_repo, test_project):
         """Should filter entities by source_group."""
         await entity_repo.create(
             project_id=test_project.id,
@@ -718,9 +689,7 @@ class TestEntityRepositoryGetEntitiesForExtraction:
             entity_id=entity2.id,
         )  # Returns (link, created) tuple - we don't need the result
 
-        entities = await entity_repo.get_entities_for_extraction(
-            test_extraction.id
-        )
+        entities = await entity_repo.get_entities_for_extraction(test_extraction.id)
 
         assert len(entities) == 2
         entity_ids = {e.id for e in entities}
@@ -731,9 +700,7 @@ class TestEntityRepositoryGetEntitiesForExtraction:
         self, entity_repo, test_extraction
     ):
         """Should return empty list when extraction has no entities."""
-        entities = await entity_repo.get_entities_for_extraction(
-            test_extraction.id
-        )
+        entities = await entity_repo.get_entities_for_extraction(test_extraction.id)
 
         assert entities == []
 

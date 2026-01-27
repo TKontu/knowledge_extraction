@@ -1,7 +1,8 @@
 """Tests for security configuration and middleware."""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
 

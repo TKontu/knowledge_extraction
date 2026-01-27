@@ -12,11 +12,12 @@ We do NOT include these in STANDARD_BROWSER_HEADERS to avoid conflicts
 with Camoufox's C++-level header injection.
 """
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.services.camoufox.models import ScrapeRequest
-from src.services.camoufox.scraper import CamoufoxScraper, STANDARD_BROWSER_HEADERS
+from src.services.camoufox.scraper import STANDARD_BROWSER_HEADERS, CamoufoxScraper
 
 
 class TestCamoufoxBrowserHeaders:
@@ -53,8 +54,9 @@ class TestCamoufoxBrowserHeaders:
     async def test_standard_headers_constant_exists(self):
         """Test that STANDARD_BROWSER_HEADERS constant is defined."""
         # This test verifies the constant exists and has expected structure
-        assert hasattr(STANDARD_BROWSER_HEADERS, "__getitem__"), \
+        assert hasattr(STANDARD_BROWSER_HEADERS, "__getitem__"), (
             "STANDARD_BROWSER_HEADERS should be a dict"
+        )
 
         # Should contain headers that SUPPLEMENT Camoufox's internal handling
         # NOTE: User-Agent, Accept-Language, Accept-Encoding are handled by Camoufox
@@ -70,19 +72,25 @@ class TestCamoufoxBrowserHeaders:
         ]
 
         for header in expected_headers:
-            assert header in STANDARD_BROWSER_HEADERS, \
+            assert header in STANDARD_BROWSER_HEADERS, (
                 f"Missing expected header: {header}"
+            )
 
         # These should NOT be in our headers (handled by Camoufox internally)
-        assert "User-Agent" not in STANDARD_BROWSER_HEADERS, \
+        assert "User-Agent" not in STANDARD_BROWSER_HEADERS, (
             "User-Agent should be handled by Camoufox, not manually set"
-        assert "Accept-Language" not in STANDARD_BROWSER_HEADERS, \
+        )
+        assert "Accept-Language" not in STANDARD_BROWSER_HEADERS, (
             "Accept-Language should be handled by Camoufox, not manually set"
-        assert "Accept-Encoding" not in STANDARD_BROWSER_HEADERS, \
+        )
+        assert "Accept-Encoding" not in STANDARD_BROWSER_HEADERS, (
             "Accept-Encoding should be handled by Camoufox, not manually set"
+        )
 
     @pytest.mark.asyncio
-    async def test_standard_headers_applied_to_all_requests(self, scraper, mock_browser):
+    async def test_standard_headers_applied_to_all_requests(
+        self, scraper, mock_browser
+    ):
         """Test that standard browser headers are applied to ALL requests."""
         browser, page = mock_browser
         scraper._browsers = [browser]  # Use browser pool
@@ -164,7 +172,9 @@ class TestCamoufoxBrowserHeaders:
         assert applied_headers["Accept"] == "application/json"
 
     @pytest.mark.asyncio
-    async def test_headers_not_conditional_on_request_headers(self, scraper, mock_browser):
+    async def test_headers_not_conditional_on_request_headers(
+        self, scraper, mock_browser
+    ):
         """Test that headers are ALWAYS applied, not conditionally."""
         browser, page = mock_browser
         scraper._browsers = [browser]  # Use browser pool

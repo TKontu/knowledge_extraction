@@ -4,8 +4,8 @@ TDD: These tests define the expected behavior after refactoring EntityExtractor
 to use the new LLMClient.extract_entities() method instead of direct LLM calls.
 """
 
-from datetime import datetime, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -18,16 +18,29 @@ class TestEntityExtractorUsesLLMClient:
     def mock_llm_client(self):
         """Create mock LLM client with extract_entities method."""
         client = MagicMock()
-        client.extract_entities = AsyncMock(return_value=[
-            {"type": "plan", "value": "Pro Plan", "normalized": "pro_plan", "attributes": {}},
-            {"type": "feature", "value": "API Access", "normalized": "api_access", "attributes": {}},
-        ])
+        client.extract_entities = AsyncMock(
+            return_value=[
+                {
+                    "type": "plan",
+                    "value": "Pro Plan",
+                    "normalized": "pro_plan",
+                    "attributes": {},
+                },
+                {
+                    "type": "feature",
+                    "value": "API Access",
+                    "normalized": "api_access",
+                    "attributes": {},
+                },
+            ]
+        )
         return client
 
     @pytest.fixture
     def mock_entity_repo(self):
         """Create mock entity repository."""
         repo = AsyncMock()
+
         # Mock get_or_create to return entity and created flag
         async def mock_get_or_create(**kwargs):
             entity = MagicMock()
@@ -37,6 +50,7 @@ class TestEntityExtractorUsesLLMClient:
             entity.normalized_value = kwargs["normalized_value"]
             entity.attributes = kwargs["attributes"]
             return entity, True
+
         repo.get_or_create = mock_get_or_create
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
@@ -161,12 +175,20 @@ class TestEntityExtractorUsesLLMClient:
         from services.knowledge.extractor import EntityExtractor
 
         # LLM returns entities without proper normalization
-        mock_llm_client.extract_entities = AsyncMock(return_value=[
-            {"type": "limit", "value": "10,000/min", "normalized": "10,000/min", "attributes": {}},
-        ])
+        mock_llm_client.extract_entities = AsyncMock(
+            return_value=[
+                {
+                    "type": "limit",
+                    "value": "10,000/min",
+                    "normalized": "10,000/min",
+                    "attributes": {},
+                },
+            ]
+        )
 
         # Track what gets passed to get_or_create
         created_values = []
+
         async def track_get_or_create(**kwargs):
             created_values.append(kwargs)
             entity = MagicMock()
@@ -175,6 +197,7 @@ class TestEntityExtractorUsesLLMClient:
             entity.value = kwargs["value"]
             entity.normalized_value = kwargs["normalized_value"]
             return entity, True
+
         mock_entity_repo.get_or_create = track_get_or_create
 
         extractor = EntityExtractor(
@@ -306,6 +329,7 @@ class TestEntityExtractorWithQueueMode:
     @pytest.fixture
     def mock_entity_repo(self):
         repo = AsyncMock()
+
         async def mock_get_or_create(**kwargs):
             entity = MagicMock()
             entity.id = uuid4()
@@ -313,6 +337,7 @@ class TestEntityExtractorWithQueueMode:
             entity.value = kwargs["value"]
             entity.normalized_value = kwargs["normalized_value"]
             return entity, True
+
         repo.get_or_create = mock_get_or_create
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
@@ -324,9 +349,9 @@ class TestEntityExtractorWithQueueMode:
         self, mock_settings, mock_queue, mock_entity_repo
     ):
         """Test EntityExtractor works when LLMClient is in queue mode."""
-        from src.services.llm.models import LLMResponse
-        from services.llm.client import LLMClient
         from services.knowledge.extractor import EntityExtractor
+        from services.llm.client import LLMClient
+        from src.services.llm.models import LLMResponse
 
         # Configure queue response
         mock_queue.wait_for_result.return_value = LLMResponse(
@@ -334,7 +359,12 @@ class TestEntityExtractorWithQueueMode:
             status="success",
             result={
                 "entities": [
-                    {"type": "plan", "value": "Enterprise", "normalized": "enterprise", "attributes": {}},
+                    {
+                        "type": "plan",
+                        "value": "Enterprise",
+                        "normalized": "enterprise",
+                        "attributes": {},
+                    },
                 ]
             },
             error=None,

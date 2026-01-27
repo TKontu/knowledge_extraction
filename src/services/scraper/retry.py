@@ -44,7 +44,7 @@ class RetryConfig:
         Returns:
             Delay in seconds.
         """
-        delay = self.base_delay * (self.exponential_base ** attempt)
+        delay = self.base_delay * (self.exponential_base**attempt)
         delay = min(delay, self.max_delay)
 
         if self.jitter:

@@ -5,8 +5,8 @@ and the new extract_entities() method.
 """
 
 import asyncio
-from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -36,14 +36,18 @@ class TestLLMClientQueueMode:
     @pytest.mark.asyncio
     async def test_uses_queue_when_provided(self, mock_settings, mock_queue):
         """Test that LLMClient uses queue when provided."""
-        from services.llm.models import LLMResponse
         from services.llm.client import LLMClient
+        from services.llm.models import LLMResponse
 
         # Mock successful response from queue
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-request-id",
             status="success",
-            result={"facts": [{"fact": "Test fact", "category": "general", "confidence": 0.9}]},
+            result={
+                "facts": [
+                    {"fact": "Test fact", "category": "general", "confidence": 0.9}
+                ]
+            },
             error=None,
             processing_time_ms=100,
             completed_at=datetime.now(UTC),
@@ -68,7 +72,9 @@ class TestLLMClientQueueMode:
         assert result[0].confidence == 0.9
 
     @pytest.mark.asyncio
-    async def test_submits_correct_request_type_for_facts(self, mock_settings, mock_queue):
+    async def test_submits_correct_request_type_for_facts(
+        self, mock_settings, mock_queue
+    ):
         """Test that correct request type is submitted for fact extraction."""
         from services.llm.models import LLMRequest, LLMResponse
 
@@ -82,6 +88,7 @@ class TestLLMClientQueueMode:
         )
 
         from services.llm.client import LLMClient
+
         client = LLMClient(mock_settings, llm_queue=mock_queue)
 
         await client.extract_facts(
@@ -118,6 +125,7 @@ class TestLLMClientQueueMode:
         )
 
         from services.llm.client import LLMClient
+
         client = LLMClient(mock_settings, llm_queue=mock_queue)
 
         await client.extract_facts(
@@ -134,13 +142,15 @@ class TestLLMClientQueueMode:
         assert "user_prompt" in submitted_request.payload
         assert "technical" in submitted_request.payload["system_prompt"]
         assert "product" in submitted_request.payload["system_prompt"]
-        assert "Test content about gearboxes" in submitted_request.payload["user_prompt"]
+        assert (
+            "Test content about gearboxes" in submitted_request.payload["user_prompt"]
+        )
 
     @pytest.mark.asyncio
     async def test_handles_queue_error_response(self, mock_settings, mock_queue):
         """Test that error responses from queue are handled."""
-        from services.llm.models import LLMResponse
         from services.llm.client import LLMClient, LLMExtractionError
+        from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -165,8 +175,8 @@ class TestLLMClientQueueMode:
     @pytest.mark.asyncio
     async def test_handles_queue_timeout_response(self, mock_settings, mock_queue):
         """Test that timeout responses from queue are handled."""
-        from services.llm.models import LLMResponse
         from services.llm.client import LLMClient, LLMExtractionError
+        from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -186,7 +196,10 @@ class TestLLMClientQueueMode:
                 profile_name="test",
             )
 
-        assert "timeout" in str(exc_info.value).lower() or "expired" in str(exc_info.value).lower()
+        assert (
+            "timeout" in str(exc_info.value).lower()
+            or "expired" in str(exc_info.value).lower()
+        )
 
     @pytest.mark.asyncio
     async def test_falls_back_to_direct_when_no_queue(self, mock_settings):
@@ -256,16 +269,26 @@ class TestLLMClientExtractEntities:
     @pytest.mark.asyncio
     async def test_extract_entities_via_queue(self, mock_settings, mock_queue):
         """Test entity extraction through queue."""
-        from services.llm.models import LLMResponse
         from services.llm.client import LLMClient
+        from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
             status="success",
             result={
                 "entities": [
-                    {"type": "plan", "value": "Professional Plan", "normalized": "professional_plan", "attributes": {}},
-                    {"type": "feature", "value": "API Access", "normalized": "api_access", "attributes": {}},
+                    {
+                        "type": "plan",
+                        "value": "Professional Plan",
+                        "normalized": "professional_plan",
+                        "attributes": {},
+                    },
+                    {
+                        "type": "feature",
+                        "value": "API Access",
+                        "normalized": "api_access",
+                        "attributes": {},
+                    },
                 ]
             },
             error=None,
@@ -311,6 +334,7 @@ class TestLLMClientExtractEntities:
         )
 
         from services.llm.client import LLMClient
+
         client = LLMClient(mock_settings, llm_queue=mock_queue)
 
         await client.extract_entities(
@@ -346,6 +370,7 @@ class TestLLMClientExtractEntities:
         )
 
         from services.llm.client import LLMClient
+
         client = LLMClient(mock_settings, llm_queue=mock_queue)
 
         await client.extract_entities(
@@ -399,8 +424,8 @@ class TestLLMClientExtractEntities:
     @pytest.mark.asyncio
     async def test_extract_entities_handles_error(self, mock_settings, mock_queue):
         """Test that entity extraction handles errors."""
-        from services.llm.models import LLMResponse
         from services.llm.client import LLMClient, LLMExtractionError
+        from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -439,8 +464,8 @@ class TestLLMClientConcurrency:
     @pytest.mark.asyncio
     async def test_concurrent_fact_extractions_via_queue(self, mock_settings):
         """Test that multiple fact extractions can run concurrently via queue."""
-        from services.llm.models import LLMRequest, LLMResponse
         from services.llm.client import LLMClient
+        from services.llm.models import LLMRequest, LLMResponse
 
         # Track concurrent submissions
         max_concurrent = 0
@@ -464,7 +489,15 @@ class TestLLMClientConcurrency:
             return LLMResponse(
                 request_id=request_id,
                 status="success",
-                result={"facts": [{"fact": f"Fact for {request_id}", "category": "general", "confidence": 0.8}]},
+                result={
+                    "facts": [
+                        {
+                            "fact": f"Fact for {request_id}",
+                            "category": "general",
+                            "confidence": 0.8,
+                        }
+                    ]
+                },
                 error=None,
                 processing_time_ms=50,
                 completed_at=datetime.now(UTC),
@@ -493,4 +526,6 @@ class TestLLMClientConcurrency:
         assert len(submitted_requests) == 5
 
         # Should have had concurrent submissions
-        assert max_concurrent > 1, f"Expected concurrent submissions, got max {max_concurrent}"
+        assert max_concurrent > 1, (
+            f"Expected concurrent submissions, got max {max_concurrent}"
+        )

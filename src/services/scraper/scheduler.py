@@ -346,11 +346,11 @@ class JobScheduler:
                     if job:
                         # Initialize pipeline service with all dependencies
                         # Pass LLM queue to LLMClient when queue mode is enabled
-                        llm_queue = self._llm_queue if settings.llm_queue_enabled else None
-                        llm_client = LLMClient(settings, llm_queue=llm_queue)
-                        orchestrator = ExtractionOrchestrator(
-                            llm_client=llm_client
+                        llm_queue = (
+                            self._llm_queue if settings.llm_queue_enabled else None
                         )
+                        llm_client = LLMClient(settings, llm_queue=llm_queue)
+                        orchestrator = ExtractionOrchestrator(llm_client=llm_client)
                         embedding_service = EmbeddingService(settings)
                         qdrant_repo = QdrantRepository(qdrant_client)
                         deduplicator = ExtractionDeduplicator(

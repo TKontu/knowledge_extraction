@@ -1,10 +1,9 @@
 """Tests for proxy adapter."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
-import httpx
 
 from src.services.proxy.flaresolverr_adapter import ProxyAdapter
 from src.services.proxy.flaresolverr_client import FlareSolverrResponse
@@ -59,7 +58,9 @@ class TestProxyAdapterUnit:
             html="<html>Test content</html>",
             user_agent="Mozilla/5.0",
         )
-        adapter.flaresolverr_client.solve_request = AsyncMock(return_value=mock_response)
+        adapter.flaresolverr_client.solve_request = AsyncMock(
+            return_value=mock_response
+        )
 
         # Create mock request
         mock_request = Mock(spec=web.Request)

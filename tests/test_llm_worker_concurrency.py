@@ -1,9 +1,9 @@
 """Tests for LLM worker semaphore/concurrency safety."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC, timedelta
 import time
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -93,13 +93,12 @@ class TestSemaphoreRaceCondition:
 
         # Max observed should never exceed initial concurrency
         # (without adjustment, it should be limited to initial_concurrency)
-        assert max_observed[0] <= worker.concurrency, \
+        assert max_observed[0] <= worker.concurrency, (
             f"Concurrent tasks {max_observed[0]} exceeded limit {worker.concurrency}"
+        )
 
     @pytest.mark.asyncio
-    async def test_adjustment_respects_active_tasks(
-        self, mock_redis, mock_llm_client
-    ):
+    async def test_adjustment_respects_active_tasks(self, mock_redis, mock_llm_client):
         """Verify semaphore adjustment only happens when safe."""
         from services.llm.worker import LLMWorker
 
@@ -129,7 +128,9 @@ class TestSemaphoreRaceCondition:
 
         # The key invariant is that concurrency matches semaphore capacity
         # This test verifies the adjustment mechanism is present
-        assert hasattr(worker, "concurrency"), "Worker should have concurrency attribute"
+        assert hasattr(worker, "concurrency"), (
+            "Worker should have concurrency attribute"
+        )
         assert hasattr(worker, "semaphore"), "Worker should have semaphore attribute"
 
 
@@ -149,9 +150,7 @@ class TestConcurrencyAdjustmentLogic:
         return AsyncMock()
 
     @pytest.mark.asyncio
-    async def test_scale_down_on_high_timeout_rate(
-        self, mock_redis, mock_llm_client
-    ):
+    async def test_scale_down_on_high_timeout_rate(self, mock_redis, mock_llm_client):
         """Verify concurrency decreases when timeout rate > 10%."""
         from services.llm.worker import LLMWorker
 
@@ -173,13 +172,12 @@ class TestConcurrencyAdjustmentLogic:
 
         # Should scale down by ~30% (20 * 0.7 = 14)
         assert worker.concurrency < 20, "Should scale down on high timeout rate"
-        assert worker.concurrency >= worker.min_concurrency, \
+        assert worker.concurrency >= worker.min_concurrency, (
             "Should not go below min_concurrency"
+        )
 
     @pytest.mark.asyncio
-    async def test_scale_up_on_low_timeout_rate(
-        self, mock_redis, mock_llm_client
-    ):
+    async def test_scale_up_on_low_timeout_rate(self, mock_redis, mock_llm_client):
         """Verify concurrency increases when timeout rate < 2%."""
         from services.llm.worker import LLMWorker
 
@@ -201,8 +199,9 @@ class TestConcurrencyAdjustmentLogic:
 
         # Should scale up by ~20% (10 * 1.2 = 12)
         assert worker.concurrency > 10, "Should scale up on low timeout rate"
-        assert worker.concurrency <= worker.max_concurrency, \
+        assert worker.concurrency <= worker.max_concurrency, (
             "Should not exceed max_concurrency"
+        )
 
     @pytest.mark.asyncio
     async def test_no_adjustment_below_sample_threshold(
@@ -229,8 +228,9 @@ class TestConcurrencyAdjustmentLogic:
 
         await worker.maybe_adjust_concurrency()
 
-        assert worker.concurrency == original, \
+        assert worker.concurrency == original, (
             "Should not adjust with insufficient samples"
+        )
 
 
 class TestSemaphoreTracking:
@@ -242,6 +242,7 @@ class TestSemaphoreTracking:
         This is a code inspection test that verifies the fix is in place.
         """
         import inspect
+
         from services.llm.worker import LLMWorker
 
         # Get the source code
@@ -252,11 +253,12 @@ class TestSemaphoreTracking:
         # 2. _adjustment_lock for safe adjustment
         # 3. _pending_concurrency for deferred adjustment
         has_tracking = (
-            "_active" in source or
-            "_adjustment" in source or
-            "_pending" in source or
-            "active_count" in source
+            "_active" in source
+            or "_adjustment" in source
+            or "_pending" in source
+            or "active_count" in source
         )
 
-        assert has_tracking, \
+        assert has_tracking, (
             "Worker should have mechanism to track active tasks for safe adjustment"
+        )

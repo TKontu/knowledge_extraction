@@ -257,7 +257,9 @@ class LLMClient:
                 )
 
                 result_text = response.choices[0].message.content
-                result_data = try_repair_json(result_text, context="extract_facts_direct")
+                result_data = try_repair_json(
+                    result_text, context="extract_facts_direct"
+                )
 
                 facts = self._parse_facts_from_result(result_data)
 

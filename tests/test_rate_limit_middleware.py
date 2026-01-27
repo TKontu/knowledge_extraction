@@ -1,8 +1,8 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.middleware.rate_limit import RateLimitMiddleware
 
@@ -69,7 +69,9 @@ class TestRateLimitMiddleware:
         mock_pipe.execute.return_value = [None, 150, None, None]  # High count
         mock_redis.pipeline.return_value = mock_pipe
 
-        with patch("src.middleware.rate_limit.get_redis_client", return_value=mock_redis):
+        with patch(
+            "src.middleware.rate_limit.get_redis_client", return_value=mock_redis
+        ):
             with patch("src.middleware.rate_limit.settings") as mock_settings:
                 mock_settings.rate_limit_enabled = True
                 mock_settings.rate_limit_requests = 100

@@ -4,8 +4,7 @@ import asyncio
 import random
 import time
 from dataclasses import dataclass
-from datetime import datetime, date, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta
 
 import redis
 

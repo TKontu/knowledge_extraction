@@ -3,7 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from models import ReportRequest, ReportResponse, ReportJobResponse, ReportType, ProjectCreate
+from models import (
+    ProjectCreate,
+    ReportJobResponse,
+    ReportRequest,
+    ReportResponse,
+    ReportType,
+)
 
 
 class TestReportRequest:

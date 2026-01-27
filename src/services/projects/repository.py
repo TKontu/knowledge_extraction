@@ -1,10 +1,12 @@
 """Repository for Project CRUD operations."""
 
-from typing import Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from orm_models import Project
+
 from .templates import COMPANY_ANALYSIS_TEMPLATE
 
 
@@ -23,10 +25,10 @@ class ProjectRepository:
         self,
         name: str,
         extraction_schema: dict,
-        description: Optional[str] = None,
-        source_config: Optional[dict] = None,
-        entity_types: Optional[list] = None,
-        prompt_templates: Optional[dict] = None,
+        description: str | None = None,
+        source_config: dict | None = None,
+        entity_types: list | None = None,
+        prompt_templates: dict | None = None,
         is_template: bool = False,
     ) -> Project:
         """Create a new project.
@@ -64,7 +66,7 @@ class ProjectRepository:
         self._session.flush()
         return project
 
-    async def get(self, project_id: UUID) -> Optional[Project]:
+    async def get(self, project_id: UUID) -> Project | None:
         """Get project by ID.
 
         Args:
@@ -76,7 +78,7 @@ class ProjectRepository:
         result = self._session.execute(select(Project).where(Project.id == project_id))
         return result.scalar_one_or_none()
 
-    async def get_by_name(self, name: str) -> Optional[Project]:
+    async def get_by_name(self, name: str) -> Project | None:
         """Get project by name.
 
         Args:
@@ -119,7 +121,7 @@ class ProjectRepository:
         )
         return list(result.scalars().all())
 
-    async def update(self, project_id: UUID, updates: dict) -> Optional[Project]:
+    async def update(self, project_id: UUID, updates: dict) -> Project | None:
         """Update project fields.
 
         Args:

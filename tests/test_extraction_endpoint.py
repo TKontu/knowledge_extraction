@@ -1,7 +1,8 @@
+from uuid import UUID, uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from uuid import UUID, uuid4
 
 from orm_models import Job, Project, Source
 

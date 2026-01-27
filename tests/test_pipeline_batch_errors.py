@@ -182,13 +182,15 @@ class TestSchemaExtractionBatchErrors:
         This is a code inspection test that verifies the fix is in place.
         """
         import inspect
+
         from services.extraction.pipeline import SchemaExtractionPipeline
 
         source = inspect.getsource(SchemaExtractionPipeline.extract_project)
 
         # Verify asyncio.gather has return_exceptions=True
-        assert "return_exceptions=True" in source or "return_exceptions" in source, \
+        assert "return_exceptions=True" in source or "return_exceptions" in source, (
             "extract_project should use asyncio.gather with return_exceptions=True"
+        )
 
 
 class TestExtractionPipelineBatchErrors:
@@ -200,10 +202,12 @@ class TestExtractionPipelineBatchErrors:
         This is a code inspection test that verifies the fix is in place.
         """
         import inspect
+
         from services.extraction.pipeline import ExtractionPipelineService
 
         source = inspect.getsource(ExtractionPipelineService.process_batch)
 
         # Verify asyncio.gather has return_exceptions=True
-        assert "return_exceptions=True" in source or "return_exceptions" in source, \
+        assert "return_exceptions=True" in source or "return_exceptions" in source, (
             "process_batch should use asyncio.gather with return_exceptions=True"
+        )

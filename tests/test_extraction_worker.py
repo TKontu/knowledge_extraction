@@ -1,12 +1,12 @@
 """Tests for ExtractionWorker."""
 
-import pytest
-from datetime import datetime, UTC
-from uuid import uuid4
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
-from src.services.extraction.worker import ExtractionWorker
+import pytest
+
 from orm_models import Job
+from src.services.extraction.worker import ExtractionWorker
 
 
 @pytest.fixture

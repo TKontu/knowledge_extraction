@@ -323,9 +323,7 @@ class FirecrawlClient:
         }
         if user_agent or not ignore_robots_txt:
             # Use custom user agent
-            scrape_options["headers"] = {
-                "User-Agent": user_agent or DEFAULT_USER_AGENT
-            }
+            scrape_options["headers"] = {"User-Agent": user_agent or DEFAULT_USER_AGENT}
 
         # Build crawl request with rate limiting options
         crawl_request = {
@@ -381,9 +379,7 @@ class FirecrawlClient:
         )
 
         start_time = time.monotonic()
-        response = await self._http_client.get(
-            f"{self.base_url}/v1/crawl/{crawl_id}"
-        )
+        response = await self._http_client.get(f"{self.base_url}/v1/crawl/{crawl_id}")
         duration_ms = int((time.monotonic() - start_time) * 1000)
 
         try:

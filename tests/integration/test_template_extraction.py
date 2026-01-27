@@ -1,9 +1,6 @@
 """Integration tests for template-driven extraction."""
 
-import pytest
-from uuid import uuid4
-
-from services.extraction.schema_adapter import SchemaAdapter, ValidationResult
+from services.extraction.schema_adapter import SchemaAdapter
 from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
 

@@ -1,6 +1,5 @@
 """Tests for SchemaValidator."""
 
-import pytest
 from services.projects.schema import SchemaValidator
 
 
@@ -356,9 +355,7 @@ class TestSchemaValidatorEdgeCases:
         validator = SchemaValidator(schema)
 
         # Extra field "unknown" should be ignored
-        is_valid, errors = validator.validate(
-            {"known": "value", "unknown": "extra"}
-        )
+        is_valid, errors = validator.validate({"known": "value", "unknown": "extra"})
         assert is_valid is True
 
     def test_schema_with_no_fields(self):

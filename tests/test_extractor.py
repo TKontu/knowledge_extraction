@@ -1,10 +1,11 @@
 """Tests for extraction orchestrator."""
 
-import pytest
-from uuid import uuid4
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
-from models import ExtractionProfile, ExtractedFact, ExtractionResult, DocumentChunk
+import pytest
+
+from models import ExtractedFact, ExtractionProfile, ExtractionResult
 
 
 @pytest.fixture
@@ -25,20 +26,29 @@ def sample_markdown():
     # Create a large enough document to force chunking
     # Default max_tokens is 8000, so each section needs to be > 8000 tokens
     # ~4 chars per token, so need > 32000 characters per section
-    return """# Product Documentation
+    return (
+        """# Product Documentation
 
 ## Hardware Requirements
 
-""" + ("Minimum 8GB RAM and 4 CPU cores required for optimal performance. " * 600) + """
+"""
+        + ("Minimum 8GB RAM and 4 CPU cores required for optimal performance. " * 600)
+        + """
 
 ## Performance
 
-""" + ("Supports up to 10,000 requests per second with high throughput and low latency. " * 600) + """
+"""
+        + (
+            "Supports up to 10,000 requests per second with high throughput and low latency. "
+            * 600
+        )
+        + """
 
 ## Compatibility
 
 Compatible with Linux, Windows, and macOS.
 """
+    )
 
 
 @pytest.fixture
@@ -284,4 +294,6 @@ class TestExtractionOrchestrator:
 
         # Extraction time should be positive
         assert result.extraction_time_ms > 0
-        assert result.extraction_time_ms < 10000  # Should be reasonable (< 10 seconds for test)
+        assert (
+            result.extraction_time_ms < 10000
+        )  # Should be reasonable (< 10 seconds for test)

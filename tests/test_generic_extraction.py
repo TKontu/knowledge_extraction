@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.extraction.schema_adapter import SchemaAdapter, ExtractionContext
+from services.extraction.schema_adapter import ExtractionContext, SchemaAdapter
 
 
 class TestExtractionContext:
@@ -270,8 +270,8 @@ class TestSchemaExtractorWithContext:
     def extractor_with_context(self):
         """Create extractor with custom context."""
         try:
+            from services.extraction.field_groups import FieldDefinition, FieldGroup
             from services.extraction.schema_extractor import SchemaExtractor
-            from services.extraction.field_groups import FieldGroup, FieldDefinition
 
             # Mock settings
             class MockSettings:
@@ -296,8 +296,8 @@ class TestSchemaExtractorWithContext:
     def extractor_default_context(self):
         """Create extractor with default context."""
         try:
+            from services.extraction.field_groups import FieldDefinition, FieldGroup
             from services.extraction.schema_extractor import SchemaExtractor
-            from services.extraction.field_groups import FieldGroup, FieldDefinition
 
             class MockSettings:
                 llm_model = "test"
@@ -334,7 +334,9 @@ class TestSchemaExtractorWithContext:
         assert "recipe blog" in prompt
         assert "company documentation" not in prompt
 
-    def test_entity_list_system_prompt_uses_context_source_type(self, extractor_with_context):
+    def test_entity_list_system_prompt_uses_context_source_type(
+        self, extractor_with_context
+    ):
         """Entity list system prompt should use context.source_type."""
         extractor, FieldGroup, FieldDefinition = extractor_with_context
 
@@ -426,7 +428,9 @@ class TestSchemaOrchestratorWithContext:
     def orchestrator_with_custom_context(self):
         """Create orchestrator with custom context."""
         try:
-            from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+            from services.extraction.schema_orchestrator import (
+                SchemaExtractionOrchestrator,
+            )
 
             context = ExtractionContext(
                 source_type="recipe blog",

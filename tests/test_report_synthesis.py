@@ -70,9 +70,7 @@ class TestReportSynthesizer:
         mock_llm_client.complete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_synthesize_facts_notes_conflicts(
-        self, synthesizer, mock_llm_client
-    ):
+    async def test_synthesize_facts_notes_conflicts(self, synthesizer, mock_llm_client):
         """Verify conflicting facts are noted."""
         conflicting_facts = [
             {
@@ -169,9 +167,7 @@ class TestReportSynthesizer:
         assert result.confidence == 0.9
 
     @pytest.mark.asyncio
-    async def test_merge_field_values_text_uses_llm(
-        self, synthesizer, mock_llm_client
-    ):
+    async def test_merge_field_values_text_uses_llm(self, synthesizer, mock_llm_client):
         """Verify text fields call LLM for synthesis."""
         values = [
             {

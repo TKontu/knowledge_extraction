@@ -3,8 +3,6 @@
 TDD: Tests for starting and stopping LLM workers from the scheduler.
 """
 
-import asyncio
-from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

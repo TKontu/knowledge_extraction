@@ -238,6 +238,7 @@ class SchemaExtractionOrchestrator:
                 if flat and isinstance(flat[0], dict):
                     # For list of dicts, dedupe by JSON string representation
                     import json
+
                     seen = set()
                     unique = []
                     for item in flat:

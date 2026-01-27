@@ -3,9 +3,10 @@
 TDD: These tests should fail first, then pass after implementation.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+import pytest
 
 from orm_models import Job
 from services.scraper.crawl_worker import CrawlWorker
@@ -207,17 +208,34 @@ class TestHttpErrorFiltering:
             # Should log a warning about skipped page
             mock_logger.warning.assert_called()
             call_args = mock_logger.warning.call_args
-            assert "page_http_error_skipped" in str(call_args) or "400" in str(call_args)
+            assert "page_http_error_skipped" in str(call_args) or "400" in str(
+                call_args
+            )
 
     @pytest.mark.asyncio
     async def test_mixed_status_codes_filtering(self, crawl_worker, test_job):
         """Test filtering with mixed status codes."""
         pages = [
-            {"markdown": "Page 1", "metadata": {"url": "https://example.com/1", "statusCode": 200}},
-            {"markdown": "Page 2", "metadata": {"url": "https://example.com/2", "statusCode": 404}},
-            {"markdown": "Page 3", "metadata": {"url": "https://example.com/3", "statusCode": 200}},
-            {"markdown": "Page 4", "metadata": {"url": "https://example.com/4", "statusCode": 500}},
-            {"markdown": "Page 5", "metadata": {"url": "https://example.com/5", "statusCode": 201}},
+            {
+                "markdown": "Page 1",
+                "metadata": {"url": "https://example.com/1", "statusCode": 200},
+            },
+            {
+                "markdown": "Page 2",
+                "metadata": {"url": "https://example.com/2", "statusCode": 404},
+            },
+            {
+                "markdown": "Page 3",
+                "metadata": {"url": "https://example.com/3", "statusCode": 200},
+            },
+            {
+                "markdown": "Page 4",
+                "metadata": {"url": "https://example.com/4", "statusCode": 500},
+            },
+            {
+                "markdown": "Page 5",
+                "metadata": {"url": "https://example.com/5", "statusCode": 201},
+            },
         ]
 
         sources_created = await crawl_worker._store_pages(test_job, pages)

@@ -1,8 +1,7 @@
 """Tests for profile repository."""
 
 import pytest
-from sqlalchemy.orm import sessionmaker, Session
-from uuid import uuid4
+from sqlalchemy.orm import Session, sessionmaker
 
 from models import ExtractionProfile
 
@@ -53,13 +52,24 @@ class TestProfileRepository:
         assert profile is not None
         assert isinstance(profile, ExtractionProfile)
         assert profile.name == "technical_specs"
-        assert profile.categories == ["specs", "hardware", "requirements", "compatibility", "performance"]
-        assert profile.prompt_focus == "Hardware specifications, system requirements, supported platforms, performance metrics, compatibility information"
+        assert profile.categories == [
+            "specs",
+            "hardware",
+            "requirements",
+            "compatibility",
+            "performance",
+        ]
+        assert (
+            profile.prompt_focus
+            == "Hardware specifications, system requirements, supported platforms, performance metrics, compatibility information"
+        )
         assert profile.depth == "detailed"
         assert profile.is_builtin is True
         assert profile.custom_instructions is None
 
-    def test_get_profile_by_name_returns_none_when_not_found(self, test_db_session: Session):
+    def test_get_profile_by_name_returns_none_when_not_found(
+        self, test_db_session: Session
+    ):
         """Test getting a profile that doesn't exist."""
         from services.extraction.profiles import ProfileRepository
 
@@ -128,7 +138,9 @@ class TestProfileRepository:
 
         assert exists is True
 
-    def test_profile_exists_returns_false_when_not_found(self, test_db_session: Session):
+    def test_profile_exists_returns_false_when_not_found(
+        self, test_db_session: Session
+    ):
         """Test checking if a nonexistent profile exists."""
         from services.extraction.profiles import ProfileRepository
 
@@ -139,7 +151,7 @@ class TestProfileRepository:
 
     def test_list_all_returns_empty_list_when_no_profiles(self, test_db_engine):
         """Test listing profiles when database has no profiles."""
-        from orm_models import Base, Profile
+        from orm_models import Profile
         from services.extraction.profiles import ProfileRepository
 
         # Create session

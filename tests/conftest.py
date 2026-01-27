@@ -7,7 +7,6 @@ os.environ.setdefault("API_KEY", "test-api-key-for-pytest-minimum-16-chars")
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 
 
 @pytest.fixture
@@ -53,7 +52,7 @@ def test_db_engine():
     """
     database_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql+psycopg://scristill:scristill@localhost:5432/scristill"
+        "postgresql+psycopg://scristill:scristill@localhost:5432/scristill",
     )
     engine = create_engine(database_url)
     return engine

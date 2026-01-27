@@ -68,7 +68,10 @@ def test_extractions(db: Session, test_project: Project, test_sources: list[Sour
         extraction = Extraction(
             project_id=test_project.id,
             source_id=source.id,
-            data={"text": f"Sample text {i}", "category": "pricing" if i == 0 else "features"},
+            data={
+                "text": f"Sample text {i}",
+                "category": "pricing" if i == 0 else "features",
+            },
             extraction_type="test_extraction",
             source_group=source.source_group,
             confidence=0.95 - (i * 0.1),
@@ -131,9 +134,7 @@ class TestSearchEndpoint:
         assert data["results"][0]["score"] == 0.95
         assert data["results"][0]["extraction_id"] == str(extraction.id)
 
-    def test_search_project_not_found(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_search_project_not_found(self, client: TestClient, valid_api_key: str):
         """Should return 404 for non-existent project."""
         fake_project_id = str(uuid4())
         response = client.post(
@@ -146,9 +147,7 @@ class TestSearchEndpoint:
         assert "detail" in data
         assert fake_project_id in data["detail"]
 
-    def test_search_invalid_project_id(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_search_invalid_project_id(self, client: TestClient, valid_api_key: str):
         """Should return 422 for invalid UUID format."""
         response = client.post(
             "/api/v1/projects/not-a-valid-uuid/search",

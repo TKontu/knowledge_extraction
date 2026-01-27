@@ -1,11 +1,9 @@
 """Tests for SQLAlchemy ORM models."""
 
-import pytest
-from datetime import datetime, UTC
-from uuid import uuid4
+from datetime import UTC, datetime
 
-from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker, Session
+import pytest
+from sqlalchemy.orm import Session, sessionmaker
 
 # Will be imported once created
 # from orm_models import Base, Job, Page, Fact, Profile, Report, RateLimit
@@ -36,6 +34,7 @@ class TestJobModel:
     def test_job_model_exists(self):
         """Test that Job model can be imported."""
         from orm_models import Job
+
         assert Job is not None
 
     def test_create_job_with_minimal_fields(self, test_db_session: Session):
@@ -44,7 +43,7 @@ class TestJobModel:
 
         job = Job(
             type="scrape",
-            payload={"urls": ["https://example.com"], "company": "Example Corp"}
+            payload={"urls": ["https://example.com"], "company": "Example Corp"},
         )
         test_db_session.add(job)
         test_db_session.commit()
@@ -53,7 +52,10 @@ class TestJobModel:
         assert job.type == "scrape"
         assert job.status == "queued"  # Default value
         assert job.priority == 0  # Default value
-        assert job.payload == {"urls": ["https://example.com"], "company": "Example Corp"}
+        assert job.payload == {
+            "urls": ["https://example.com"],
+            "company": "Example Corp",
+        }
         assert job.created_at is not None
         assert job.started_at is None
         assert job.completed_at is None
@@ -73,7 +75,7 @@ class TestJobModel:
             result={"facts": ["fact1", "fact2"]},
             error=None,
             started_at=now,
-            completed_at=now
+            completed_at=now,
         )
         test_db_session.add(job)
         test_db_session.commit()
@@ -95,7 +97,7 @@ class TestJobModel:
             type="scrape",
             status="failed",
             payload={"urls": ["https://example.com"]},
-            error="Connection timeout"
+            error="Connection timeout",
         )
         test_db_session.add(job)
         test_db_session.commit()
@@ -150,6 +152,7 @@ class TestPageModel:
     def test_page_model_exists(self):
         """Test that Page model can be imported."""
         from orm_models import Page
+
         assert Page is not None
 
     def test_create_page_with_required_fields(self, test_db_session: Session):
@@ -157,9 +160,7 @@ class TestPageModel:
         from orm_models import Page
 
         page = Page(
-            url="https://example.com/docs",
-            domain="example.com",
-            company="Example Corp"
+            url="https://example.com/docs", domain="example.com", company="Example Corp"
         )
         test_db_session.add(page)
         test_db_session.commit()
@@ -173,8 +174,9 @@ class TestPageModel:
 
     def test_page_url_must_be_unique(self, test_db_session: Session):
         """Test that page URL must be unique."""
-        from orm_models import Page
         from sqlalchemy.exc import IntegrityError
+
+        from orm_models import Page
 
         page1 = Page(url="https://example.com", domain="example.com", company="Test")
         test_db_session.add(page1)
@@ -193,11 +195,12 @@ class TestFactModel:
     def test_fact_model_exists(self):
         """Test that Fact model can be imported."""
         from orm_models import Fact
+
         assert Fact is not None
 
     def test_create_fact_with_page_relationship(self, test_db_session: Session):
         """Test creating a fact linked to a page."""
-        from orm_models import Page, Fact
+        from orm_models import Fact, Page
 
         # Create page first
         page = Page(url="https://example.com", domain="example.com", company="Test")
@@ -210,7 +213,7 @@ class TestFactModel:
             fact_text="Example supports OAuth 2.0",
             category="authentication",
             confidence=0.95,
-            profile_used="api_docs"
+            profile_used="api_docs",
         )
         test_db_session.add(fact)
         test_db_session.commit()
@@ -229,6 +232,7 @@ class TestProfileModel:
     def test_profile_model_exists(self):
         """Test that Profile model can be imported."""
         from orm_models import Profile
+
         assert Profile is not None
 
     def test_create_profile(self, test_db_session: Session):
@@ -240,7 +244,7 @@ class TestProfileModel:
             categories=["features", "pricing"],
             prompt_focus="Focus on features and pricing",
             depth="detailed",
-            is_builtin=False
+            is_builtin=False,
         )
         test_db_session.add(profile)
         test_db_session.commit()
@@ -252,14 +256,15 @@ class TestProfileModel:
 
     def test_profile_name_must_be_unique(self, test_db_session: Session):
         """Test that profile name must be unique."""
-        from orm_models import Profile
         from sqlalchemy.exc import IntegrityError
+
+        from orm_models import Profile
 
         profile1 = Profile(
             name="test_profile",
             categories=["test"],
             prompt_focus="test",
-            depth="summary"
+            depth="summary",
         )
         test_db_session.add(profile1)
         test_db_session.commit()
@@ -268,7 +273,7 @@ class TestProfileModel:
             name="test_profile",
             categories=["test2"],
             prompt_focus="test2",
-            depth="summary"
+            depth="summary",
         )
         test_db_session.add(profile2)
 
@@ -282,6 +287,7 @@ class TestReportModel:
     def test_report_model_exists(self):
         """Test that Report model can be imported."""
         from orm_models import Report
+
         assert Report is not None
 
     def test_create_report(self, test_db_session: Session):
@@ -293,7 +299,7 @@ class TestReportModel:
             title="Auth Comparison: Provider A vs Provider B",
             content="# Comparison\n\nProvider A uses OAuth...",
             categories=["authentication"],
-            format="md"
+            format="md",
         )
         test_db_session.add(report)
         test_db_session.commit()
@@ -310,19 +316,21 @@ class TestRateLimitModel:
     def test_rate_limit_model_exists(self):
         """Test that RateLimit model can be imported."""
         from orm_models import RateLimit
+
         assert RateLimit is not None
 
     def test_create_rate_limit(self, test_db_session: Session):
         """Test creating a rate limit entry."""
-        from orm_models import RateLimit
         from datetime import date
+
+        from orm_models import RateLimit
 
         rate_limit = RateLimit(
             domain="example.com",
             request_count=5,
             last_request=datetime.now(UTC),
             daily_count=50,
-            daily_reset_at=date.today()
+            daily_reset_at=date.today(),
         )
         test_db_session.add(rate_limit)
         test_db_session.commit()

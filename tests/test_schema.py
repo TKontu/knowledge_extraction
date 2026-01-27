@@ -4,8 +4,8 @@ This test suite validates that the generalized schema (projects, sources, extrac
 is properly created with all expected tables, columns, indexes, and constraints.
 """
 
-import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
+
 from database import engine
 
 

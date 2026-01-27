@@ -24,11 +24,23 @@ class TestTableReportGeneration:
         return ReportData(
             extractions_by_group={
                 "CompanyA": [
-                    {"id": "ext-1", "data": {"has_feature": True, "count": 100}, "confidence": 0.9},
-                    {"id": "ext-2", "data": {"has_feature": True, "count": 150}, "confidence": 0.8},
+                    {
+                        "id": "ext-1",
+                        "data": {"has_feature": True, "count": 100},
+                        "confidence": 0.9,
+                    },
+                    {
+                        "id": "ext-2",
+                        "data": {"has_feature": True, "count": 150},
+                        "confidence": 0.8,
+                    },
                 ],
                 "CompanyB": [
-                    {"id": "ext-3", "data": {"has_feature": False, "count": 50}, "confidence": 0.95},
+                    {
+                        "id": "ext-3",
+                        "data": {"has_feature": False, "count": 50},
+                        "confidence": 0.95,
+                    },
                 ],
             },
             entities_by_group={},
@@ -37,11 +49,11 @@ class TestTableReportGeneration:
             entity_count=0,
         )
 
-    async def test_aggregate_for_table_boolean_any(
-        self, report_service, sample_data
-    ):
+    async def test_aggregate_for_table_boolean_any(self, report_service, sample_data):
         """Test boolean aggregation uses any() - True if any extraction is True."""
-        rows, columns, labels = await report_service._aggregate_for_table(sample_data, None)
+        rows, columns, labels = await report_service._aggregate_for_table(
+            sample_data, None
+        )
 
         assert len(rows) == 2
         company_a = next(r for r in rows if r["source_group"] == "CompanyA")
@@ -49,7 +61,9 @@ class TestTableReportGeneration:
 
     async def test_aggregate_for_table_numeric_max(self, report_service, sample_data):
         """Test numeric aggregation uses max value."""
-        rows, columns, labels = await report_service._aggregate_for_table(sample_data, None)
+        rows, columns, labels = await report_service._aggregate_for_table(
+            sample_data, None
+        )
 
         company_a = next(r for r in rows if r["source_group"] == "CompanyA")
         assert company_a["count"] == 150  # Max of 100, 150

@@ -46,21 +46,29 @@ class LanguageResult:
     language: str
     confidence: float
     is_english: bool
-    detected_from: str  # "url_path", "url_query", "url_subdomain", "content", "fallback"
+    detected_from: (
+        str  # "url_path", "url_query", "url_subdomain", "content", "fallback"
+    )
 
     def __post_init__(self) -> None:
         """Validate fields."""
         if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(f"Confidence must be between 0 and 1, got {self.confidence}")
+            raise ValueError(
+                f"Confidence must be between 0 and 1, got {self.confidence}"
+            )
 
 
 class LanguageDetectionService:
     """Service for detecting language from URLs and content."""
 
     # URL patterns for language detection
-    PATH_PATTERN = re.compile(r"/(en|de|fi|fr|es|it|nl|pt|pl|ru|sv|no|da|cs|hu|ro|tr|ja|zh|ko|ar)(?:/|$|-)|-(en|de|fi|fr|es|it|nl|pt|pl|ru|sv|no|da|cs|hu|ro|tr|ja|zh|ko|ar)/")
+    PATH_PATTERN = re.compile(
+        r"/(en|de|fi|fr|es|it|nl|pt|pl|ru|sv|no|da|cs|hu|ro|tr|ja|zh|ko|ar)(?:/|$|-)|-(en|de|fi|fr|es|it|nl|pt|pl|ru|sv|no|da|cs|hu|ro|tr|ja|zh|ko|ar)/"
+    )
     QUERY_PARAM_PATTERN = re.compile(r"[?&](?:lang|language|locale)=([a-z]{2})")
-    SUBDOMAIN_PATTERN = re.compile(r"^(en|de|fi|fr|es|it|nl|pt|pl|ru|sv|no|da|cs|hu|ro|tr|ja|zh|ko|ar)\.")
+    SUBDOMAIN_PATTERN = re.compile(
+        r"^(en|de|fi|fr|es|it|nl|pt|pl|ru|sv|no|da|cs|hu|ro|tr|ja|zh|ko|ar)\."
+    )
 
     def __init__(self, confidence_threshold: float = 0.7) -> None:
         """Initialize language detection service.
@@ -79,7 +87,10 @@ class LanguageDetectionService:
 
             return True
         except ImportError:
-            logger.warning("langdetect_not_available", message="Install with: pip install langdetect")
+            logger.warning(
+                "langdetect_not_available",
+                message="Install with: pip install langdetect",
+            )
             return False
 
     async def detect(self, text: str, url: str | None = None) -> LanguageResult:
@@ -188,7 +199,9 @@ class LanguageDetectionService:
             if self._executor is None:
                 from concurrent.futures import ThreadPoolExecutor
 
-                self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="langdetect")
+                self._executor = ThreadPoolExecutor(
+                    max_workers=4, thread_name_prefix="langdetect"
+                )
 
             lang_code, confidence = await loop.run_in_executor(
                 self._executor, self._langdetect_sync, text
@@ -262,5 +275,7 @@ def get_language_service(confidence_threshold: float = 0.7) -> LanguageDetection
     """
     global _service_instance
     if _service_instance is None:
-        _service_instance = LanguageDetectionService(confidence_threshold=confidence_threshold)
+        _service_instance = LanguageDetectionService(
+            confidence_threshold=confidence_threshold
+        )
     return _service_instance

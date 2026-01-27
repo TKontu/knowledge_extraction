@@ -1,13 +1,14 @@
 """Tests for FlareSolverr client."""
 
-import pytest
-import httpx
 from unittest.mock import AsyncMock, Mock
+
+import httpx
+import pytest
 
 from src.services.proxy.flaresolverr_client import (
     FlareSolverrClient,
-    FlareSolverrResponse,
     FlareSolverrError,
+    FlareSolverrResponse,
 )
 
 
@@ -110,9 +111,10 @@ async def test_solve_request_connection_error(flaresolverr_client, mock_http_cli
     with pytest.raises(FlareSolverrError) as exc_info:
         await flaresolverr_client.solve_request("https://www.weg.net/")
 
-    assert "connection" in str(exc_info.value).lower() or "connect" in str(
-        exc_info.value
-    ).lower()
+    assert (
+        "connection" in str(exc_info.value).lower()
+        or "connect" in str(exc_info.value).lower()
+    )
 
 
 @pytest.mark.asyncio

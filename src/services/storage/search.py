@@ -1,13 +1,13 @@
 """Search service for hybrid semantic + structured search."""
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
+from orm_models import Source
 from services.storage.embedding import EmbeddingService
 from services.storage.qdrant.repository import QdrantRepository
 from services.storage.repositories.extraction import ExtractionRepository
-from orm_models import Source
 
 
 @dataclass
@@ -19,7 +19,7 @@ class ExtractionSearchResult:
     data: dict
     source_group: str
     source_uri: str
-    confidence: Optional[float]
+    confidence: float | None
 
 
 class SearchService:
@@ -47,8 +47,8 @@ class SearchService:
         project_id: UUID,
         query: str,
         limit: int = 10,
-        source_groups: Optional[list[str]] = None,
-        jsonb_filters: Optional[dict[str, Any]] = None,
+        source_groups: list[str] | None = None,
+        jsonb_filters: dict[str, Any] | None = None,
     ) -> list[ExtractionSearchResult]:
         """Semantic search with optional structured filters.
 
@@ -127,7 +127,7 @@ class SearchService:
 
         return enriched_results
 
-    async def _get_source(self, source_id: UUID) -> Optional[Source]:
+    async def _get_source(self, source_id: UUID) -> Source | None:
         """Get source by ID.
 
         Args:

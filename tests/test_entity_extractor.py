@@ -273,9 +273,9 @@ class TestExtract:
         source_group = "test_company"
 
         # Mock LLMClient.extract_entities() response
-        llm_client.extract_entities = AsyncMock(return_value=[
-            {"type": "plan", "value": "Pro plan", "attributes": {}}
-        ])
+        llm_client.extract_entities = AsyncMock(
+            return_value=[{"type": "plan", "value": "Pro plan", "attributes": {}}]
+        )
 
         # Mock entity storage
         mock_entity = Entity(
@@ -322,9 +322,9 @@ class TestExtract:
         source_group = "test_company"
 
         # Mock LLMClient.extract_entities() response
-        llm_client.extract_entities = AsyncMock(return_value=[
-            {"type": "plan", "value": "Pro", "attributes": {}}
-        ])
+        llm_client.extract_entities = AsyncMock(
+            return_value=[{"type": "plan", "value": "Pro", "attributes": {}}]
+        )
 
         # Mock entity storage
         mock_entity = Entity(
@@ -367,9 +367,9 @@ class TestExtract:
         source_group = "test_company"
 
         # Mock LLMClient.extract_entities() response
-        llm_client.extract_entities = AsyncMock(return_value=[
-            {"type": "plan", "value": "Pro", "attributes": {}}
-        ])
+        llm_client.extract_entities = AsyncMock(
+            return_value=[{"type": "plan", "value": "Pro", "attributes": {}}]
+        )
 
         mock_entity = Entity(
             id=uuid4(),
@@ -447,11 +447,13 @@ class TestExtract:
         source_group = "test_company"
 
         # Mock LLMClient.extract_entities() response with multiple entities
-        llm_client.extract_entities = AsyncMock(return_value=[
-            {"type": "plan", "value": "Pro", "attributes": {}},
-            {"type": "feature", "value": "SSO", "attributes": {}},
-            {"type": "limit", "value": "10,000 requests/min", "attributes": {}},
-        ])
+        llm_client.extract_entities = AsyncMock(
+            return_value=[
+                {"type": "plan", "value": "Pro", "attributes": {}},
+                {"type": "feature", "value": "SSO", "attributes": {}},
+                {"type": "limit", "value": "10,000 requests/min", "attributes": {}},
+            ]
+        )
 
         # Mock entity storage for each entity
         mock_entities = [

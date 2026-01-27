@@ -1,7 +1,7 @@
 """Tests for scheduler stale job recovery."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -68,7 +68,9 @@ class TestScrapeWorkerStaleRecovery:
         mock_db_session.first = mock_first
 
         # Mock SessionLocal to return our mock session
-        with patch("services.scraper.scheduler.SessionLocal", return_value=mock_db_session):
+        with patch(
+            "services.scraper.scheduler.SessionLocal", return_value=mock_db_session
+        ):
             # Track what filters were applied
             filters_applied = []
             original_filter = mock_db_session.filter
@@ -131,16 +133,19 @@ class TestSchedulerStaleJobQuery:
         This is a code inspection test that verifies the fix is in place.
         """
         import inspect
+
         from services.scraper.scheduler import JobScheduler
 
         # Get the source code of _run_scrape_worker
         source = inspect.getsource(JobScheduler._run_scrape_worker)
 
         # Verify it queries for running jobs with stale check
-        assert 'status == "running"' in source or "running" in source, \
+        assert 'status == "running"' in source or "running" in source, (
             "_run_scrape_worker should query for stale running jobs"
-        assert "updated_at" in source, \
+        )
+        assert "updated_at" in source, (
             "_run_scrape_worker should filter by updated_at for stale detection"
+        )
 
     def test_scheduler_has_stale_job_query_for_extract(self):
         """Verify scheduler code includes stale job query for extract worker.
@@ -148,13 +153,16 @@ class TestSchedulerStaleJobQuery:
         This is a code inspection test that verifies the fix is in place.
         """
         import inspect
+
         from services.scraper.scheduler import JobScheduler
 
         # Get the source code of _run_extract_worker
         source = inspect.getsource(JobScheduler._run_extract_worker)
 
         # Verify it queries for running jobs with stale check
-        assert 'status == "running"' in source or "running" in source, \
+        assert 'status == "running"' in source or "running" in source, (
             "_run_extract_worker should query for stale running jobs"
-        assert "updated_at" in source, \
+        )
+        assert "updated_at" in source, (
             "_run_extract_worker should filter by updated_at for stale detection"
+        )

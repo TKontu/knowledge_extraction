@@ -1,12 +1,13 @@
 """Tests for metrics collector."""
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
+from src.orm_models import Entity, Extraction, Job, Project, Source
 from src.services.metrics.collector import MetricsCollector, SystemMetrics
-from src.orm_models import Job, Source, Extraction, Entity, Project
 
 
 @pytest.fixture

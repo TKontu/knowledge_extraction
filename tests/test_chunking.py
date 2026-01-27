@@ -1,7 +1,5 @@
 """Tests for document chunking."""
 
-import pytest
-
 from services.llm.chunking import (
     chunk_document,
     count_tokens,
@@ -123,11 +121,16 @@ Content 2."""
 
     def test_sections_split_across_chunks(self) -> None:
         # Each section is ~20 tokens (with header), max 30 tokens per chunk
-        markdown = """## Section 1
-""" + ("word " * 15) + """
+        markdown = (
+            """## Section 1
+"""
+            + ("word " * 15)
+            + """
 
 ## Section 2
-""" + ("word " * 15)
+"""
+            + ("word " * 15)
+        )
 
         chunks = chunk_document(markdown, max_tokens=30)
         # Should create 2 chunks (one section per chunk)

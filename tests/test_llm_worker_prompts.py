@@ -4,8 +4,7 @@ TDD: These tests verify that the LLMWorker uses pre-built prompts
 from the request payload instead of building them internally.
 """
 
-import asyncio
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -58,8 +57,12 @@ class TestLLMWorkerPromptsFromPayload:
         """Test that extract_facts uses system_prompt and user_prompt from payload."""
         from src.services.llm.models import LLMRequest
 
-        custom_system_prompt = "You are a custom fact extractor. Categories: tech, science."
-        custom_user_prompt = "Extract facts from this custom content:\n---\nTest content\n---"
+        custom_system_prompt = (
+            "You are a custom fact extractor. Categories: tech, science."
+        )
+        custom_user_prompt = (
+            "Extract facts from this custom content:\n---\nTest content\n---"
+        )
 
         request = LLMRequest(
             request_id="test-prompts",
@@ -78,9 +81,7 @@ class TestLLMWorkerPromptsFromPayload:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -128,9 +129,7 @@ class TestLLMWorkerPromptsFromPayload:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -153,14 +152,19 @@ class TestLLMWorkerPromptsFromPayload:
         from src.services.llm.models import LLMRequest
 
         custom_system_prompt = "You are extracting manufacturing info."
-        custom_user_prompt = "Company: TestCo\n\nExtract manufacturing info:\n---\nContent\n---"
+        custom_user_prompt = (
+            "Company: TestCo\n\nExtract manufacturing info:\n---\nContent\n---"
+        )
 
         request = LLMRequest(
             request_id="test-field-group-prompts",
             request_type="extract_field_group",
             payload={
                 "content": "Content",
-                "field_group": {"name": "manufacturing", "description": "Manufacturing info"},
+                "field_group": {
+                    "name": "manufacturing",
+                    "description": "Manufacturing info",
+                },
                 "company_name": "TestCo",
                 "system_prompt": custom_system_prompt,
                 "user_prompt": custom_user_prompt,
@@ -172,9 +176,7 @@ class TestLLMWorkerPromptsFromPayload:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -212,9 +214,7 @@ class TestLLMWorkerPromptsFromPayload:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -228,7 +228,10 @@ class TestLLMWorkerPromptsFromPayload:
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
         # Fallback prompts should contain the content or category info
-        assert "general" in messages[0]["content"] or "Test content" in messages[1]["content"]
+        assert (
+            "general" in messages[0]["content"]
+            or "Test content" in messages[1]["content"]
+        )
 
 
 class TestLLMWorkerModelFromPayload:
@@ -291,9 +294,7 @@ class TestLLMWorkerModelFromPayload:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -323,9 +324,7 @@ class TestLLMWorkerModelFromPayload:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()

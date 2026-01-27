@@ -41,7 +41,9 @@ async def create_crawl_job(
         # Determine which languages to exclude
         allowed_languages = request.allowed_languages or ["en"]
         excluded_langs = [
-            lang for lang in settings.excluded_language_codes if lang not in allowed_languages
+            lang
+            for lang in settings.excluded_language_codes
+            if lang not in allowed_languages
         ]
 
         # Generate patterns and extend exclude_paths

@@ -188,7 +188,7 @@ class CrawlWorker:
                 job_id=str(job.id),
                 error=str(e),
                 error_type=type(e).__name__,
-                exc_info=True
+                exc_info=True,
             )
 
     async def _store_pages(self, job: Job, pages: list[dict]) -> int:
@@ -261,7 +261,7 @@ class CrawlWorker:
                     metadata["detected_language"] = result.language
                     metadata["language_confidence"] = result.confidence
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "language_detection_timeout",
                         job_id=str(job.id),
@@ -290,11 +290,7 @@ class CrawlWorker:
                 source_type="web",
                 title=metadata.get("title", ""),
                 content=markdown,
-                meta_data={
-                    "domain": domain,
-                    "http_status": status_code,
-                    **metadata
-                },
+                meta_data={"domain": domain, "http_status": status_code, **metadata},
                 status="pending",
             )
             if created:

@@ -1,11 +1,12 @@
 """Tests for PDF export functionality."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
 
-from src.services.reports.pdf import PDFConverter, PDFConversionError
+from src.services.reports.pdf import PDFConversionError, PDFConverter
 
 # Mock the scheduler to prevent startup issues in tests
 with patch("src.main.start_scheduler", new_callable=AsyncMock):
@@ -39,6 +40,7 @@ def mock_db_session(mock_report):
 @pytest.fixture
 def pdf_client(mock_db_session, valid_api_key):
     """Create test client with mocked database."""
+
     def override_get_db():
         yield mock_db_session
 
@@ -112,7 +114,9 @@ class TestPDFConverter:
 
 @pytest.mark.skip(reason="Integration test - requires running database and services")
 class TestPDFExportEndpoint:
-    def test_export_pdf_returns_pdf_response(self, pdf_client, mock_report, valid_api_key):
+    def test_export_pdf_returns_pdf_response(
+        self, pdf_client, mock_report, valid_api_key
+    ):
         """Should return PDF with correct headers."""
         with patch("src.api.v1.reports.PDFConverter") as MockConverter:
             mock_converter = MagicMock()
@@ -129,7 +133,9 @@ class TestPDFExportEndpoint:
             assert response.headers["content-type"] == "application/pdf"
             assert "attachment" in response.headers.get("content-disposition", "")
 
-    def test_export_pdf_returns_404_when_not_found(self, mock_db_session, valid_api_key):
+    def test_export_pdf_returns_404_when_not_found(
+        self, mock_db_session, valid_api_key
+    ):
         """Should return 404 when report doesn't exist."""
         # Override the fixture to return None
         mock_db_session.query.return_value.filter.return_value.first.return_value = None
@@ -152,7 +158,9 @@ class TestPDFExportEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_export_pdf_returns_503_when_pandoc_unavailable(self, pdf_client, mock_report, valid_api_key):
+    def test_export_pdf_returns_503_when_pandoc_unavailable(
+        self, pdf_client, mock_report, valid_api_key
+    ):
         """Should return 503 when Pandoc is not installed."""
         with patch("src.api.v1.reports.PDFConverter") as MockConverter:
             mock_converter = MagicMock()

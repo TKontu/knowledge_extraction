@@ -82,7 +82,6 @@ class TestHealthEndpointShutdown:
 
     def test_health_returns_503_during_shutdown(self):
         """Test that health endpoint returns 503 when shutting down."""
-        from unittest.mock import patch
         from src.main import health_check
 
         # Mock the shutdown manager to return shutting_down=True
@@ -92,7 +91,12 @@ class TestHealthEndpointShutdown:
 
             # Call the health check endpoint
             import asyncio
+
             response = asyncio.run(health_check())
 
             assert response.status_code == 503
-            assert response.body.decode() == '{"status":"shutting_down","service":"scristill-pipeline","timestamp":"' or "shutting_down" in response.body.decode()
+            assert (
+                response.body.decode()
+                == '{"status":"shutting_down","service":"scristill-pipeline","timestamp":"'
+                or "shutting_down" in response.body.decode()
+            )

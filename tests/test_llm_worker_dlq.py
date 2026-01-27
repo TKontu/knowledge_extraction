@@ -3,10 +3,9 @@
 TDD: These tests define the expected behavior for DLQ handling.
 """
 
-import asyncio
 import json
-from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -72,9 +71,7 @@ class TestDeadLetterQueue:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -106,9 +103,7 @@ class TestDeadLetterQueue:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -143,9 +138,7 @@ class TestDeadLetterQueue:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()
@@ -166,16 +159,20 @@ class TestDeadLetterQueue:
         mock_redis.llen = AsyncMock(return_value=5)
         mock_redis.lrange = AsyncMock(
             return_value=[
-                json.dumps({
-                    "request": {"request_id": "test-1"},
-                    "error": "Error 1",
-                    "failed_at": datetime.now(UTC).isoformat(),
-                }).encode(),
-                json.dumps({
-                    "request": {"request_id": "test-2"},
-                    "error": "Error 2",
-                    "failed_at": datetime.now(UTC).isoformat(),
-                }).encode(),
+                json.dumps(
+                    {
+                        "request": {"request_id": "test-1"},
+                        "error": "Error 1",
+                        "failed_at": datetime.now(UTC).isoformat(),
+                    }
+                ).encode(),
+                json.dumps(
+                    {
+                        "request": {"request_id": "test-2"},
+                        "error": "Error 2",
+                        "failed_at": datetime.now(UTC).isoformat(),
+                    }
+                ).encode(),
             ]
         )
 
@@ -188,19 +185,23 @@ class TestDeadLetterQueue:
     @pytest.mark.asyncio
     async def test_reprocess_dlq_item_with_reset(self, worker, mock_redis):
         """Test that reprocess_dlq_item moves item back to queue with reset retry count."""
-        dlq_item = json.dumps({
-            "request": {
-                "request_id": "test-reprocess",
-                "request_type": "extract_facts",
-                "payload": {"content": "test"},
-                "priority": 5,
-                "created_at": datetime.now(UTC).isoformat(),
-                "timeout_at": (datetime.now(UTC) + timedelta(seconds=300)).isoformat(),
-                "retry_count": 3,
-            },
-            "error": "Previous error",
-            "failed_at": datetime.now(UTC).isoformat(),
-        })
+        dlq_item = json.dumps(
+            {
+                "request": {
+                    "request_id": "test-reprocess",
+                    "request_type": "extract_facts",
+                    "payload": {"content": "test"},
+                    "priority": 5,
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "timeout_at": (
+                        datetime.now(UTC) + timedelta(seconds=300)
+                    ).isoformat(),
+                    "retry_count": 3,
+                },
+                "error": "Previous error",
+                "failed_at": datetime.now(UTC).isoformat(),
+            }
+        )
 
         mock_redis.lrem = AsyncMock(return_value=1)
 
@@ -235,9 +236,7 @@ class TestDeadLetterQueue:
         )
 
         mock_redis.xreadgroup = AsyncMock(
-            return_value=[
-                ("llm:requests", [("entry-1", {"data": request.to_json()})])
-            ]
+            return_value=[("llm:requests", [("entry-1", {"data": request.to_json()})])]
         )
 
         await worker.process_batch()

@@ -1,9 +1,9 @@
 """Tests for crawl API endpoints."""
 
-import pytest
+from uuid import UUID, uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from uuid import UUID, uuid4
 
 from orm_models import Job
 
@@ -281,9 +281,7 @@ class TestGetCrawlStatus:
         assert data["job_id"] == job_id
         assert data["status"] == "queued"
 
-    def test_includes_all_required_fields(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_includes_all_required_fields(self, client: TestClient, valid_api_key: str):
         """Should return job with all required fields."""
         project_id = str(uuid4())
         create_response = client.post(

@@ -154,9 +154,7 @@ class LLMRequestQueue:
             request_id=request_id,
             timeout=timeout,
         )
-        raise RequestTimeoutError(
-            f"Request {request_id} timed out after {timeout}s"
-        )
+        raise RequestTimeoutError(f"Request {request_id} timed out after {timeout}s")
 
     async def get_queue_depth(self) -> int:
         """Get current queue depth.

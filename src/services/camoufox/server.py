@@ -23,7 +23,6 @@ from src.services.camoufox.models import (
 )
 from src.services.camoufox.scraper import scraper
 
-
 ALLOWED_URL_SCHEMES = {"http", "https"}
 
 

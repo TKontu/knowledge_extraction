@@ -148,8 +148,12 @@ class TestFactValidator:
         from services.extraction.validator import FactValidator
 
         facts = [
-            ExtractedFact(fact="High confidence fact", category="specs", confidence=0.95),
-            ExtractedFact(fact="Medium confidence fact", category="specs", confidence=0.75),
+            ExtractedFact(
+                fact="High confidence fact", category="specs", confidence=0.95
+            ),
+            ExtractedFact(
+                fact="Medium confidence fact", category="specs", confidence=0.75
+            ),
             ExtractedFact(fact="Low confidence fact", category="specs", confidence=0.6),
         ]
 
@@ -198,11 +202,19 @@ class TestFactValidator:
 
         facts = [
             ExtractedFact(fact="Valid fact", category="specs", confidence=0.9),
-            ExtractedFact(fact="Too short", category="specs", confidence=0.9),  # Too short
-            ExtractedFact(fact="Invalid category fact", category="pricing", confidence=0.9),  # Wrong category
-            ExtractedFact(fact="Low confidence fact here", category="specs", confidence=0.4),  # Low confidence
+            ExtractedFact(
+                fact="Too short", category="specs", confidence=0.9
+            ),  # Too short
+            ExtractedFact(
+                fact="Invalid category fact", category="pricing", confidence=0.9
+            ),  # Wrong category
+            ExtractedFact(
+                fact="Low confidence fact here", category="specs", confidence=0.4
+            ),  # Low confidence
             ExtractedFact(fact="", category="specs", confidence=0.9),  # Empty
-            ExtractedFact(fact="Another valid fact here", category="hardware", confidence=0.95),  # Valid
+            ExtractedFact(
+                fact="Another valid fact here", category="hardware", confidence=0.95
+            ),  # Valid
         ]
 
         validator = FactValidator(min_confidence=0.5, min_fact_length=10)
@@ -218,7 +230,9 @@ class TestFactValidator:
         from services.extraction.validator import FactValidator
 
         facts = [
-            ExtractedFact(fact="Very low confidence", category="specs", confidence=0.01),
+            ExtractedFact(
+                fact="Very low confidence", category="specs", confidence=0.01
+            ),
         ]
 
         validator = FactValidator(min_confidence=0.0)

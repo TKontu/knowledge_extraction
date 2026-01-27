@@ -1,12 +1,10 @@
 """Tests for LLM client."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
 from config import settings
-from models import ExtractedFact
 from services.llm.client import LLMClient
 
 
@@ -103,9 +101,7 @@ class TestLLMClient:
             assert "pricing" in system_prompt
 
     @pytest.mark.asyncio
-    async def test_extract_facts_empty_response(
-        self, llm_client: LLMClient
-    ) -> None:
+    async def test_extract_facts_empty_response(self, llm_client: LLMClient) -> None:
         """Test handles empty facts list."""
         with patch.object(
             llm_client.client.chat.completions,
@@ -360,9 +356,7 @@ class TestLLMClientComplete:
             assert mock_create.call_count == settings.llm_max_retries
 
     @pytest.mark.asyncio
-    async def test_complete_sends_correct_messages(
-        self, llm_client: LLMClient
-    ) -> None:
+    async def test_complete_sends_correct_messages(self, llm_client: LLMClient) -> None:
         """Test complete() sends correct system and user messages."""
         with patch.object(
             llm_client.client.chat.completions,

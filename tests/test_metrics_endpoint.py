@@ -1,6 +1,5 @@
 """Tests for metrics API endpoint."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 

@@ -1,7 +1,7 @@
 """URL pattern generation for language-based filtering."""
 
 import re
-from typing import Sequence
+from collections.abc import Sequence
 
 import structlog
 

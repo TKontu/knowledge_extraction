@@ -1,14 +1,14 @@
 """Tests for ExtractionPipelineService."""
 
-import asyncio
+from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
+
 import pytest
-from uuid import UUID, uuid4
-from unittest.mock import AsyncMock, Mock, patch
 
 from src.services.extraction.pipeline import (
+    BatchPipelineResult,
     ExtractionPipelineService,
     PipelineResult,
-    BatchPipelineResult,
     QueueFullError,
 )
 
@@ -686,8 +686,18 @@ class TestPipelineBackpressure:
 
         # First call: high pressure, second call: ok
         mock_llm_queue.get_backpressure_status.side_effect = [
-            {"pressure": 0.9, "should_wait": True, "queue_depth": 900, "max_depth": 1000},
-            {"pressure": 0.2, "should_wait": False, "queue_depth": 200, "max_depth": 1000},
+            {
+                "pressure": 0.9,
+                "should_wait": True,
+                "queue_depth": 900,
+                "max_depth": 1000,
+            },
+            {
+                "pressure": 0.2,
+                "should_wait": False,
+                "queue_depth": 200,
+                "max_depth": 1000,
+            },
         ]
 
         mock_source = Mock()
@@ -731,10 +741,30 @@ class TestPipelineBackpressure:
 
         # High pressure for 3 calls, then clears
         mock_llm_queue.get_backpressure_status.side_effect = [
-            {"pressure": 0.9, "should_wait": True, "queue_depth": 900, "max_depth": 1000},
-            {"pressure": 0.85, "should_wait": True, "queue_depth": 850, "max_depth": 1000},
-            {"pressure": 0.6, "should_wait": True, "queue_depth": 600, "max_depth": 1000},
-            {"pressure": 0.3, "should_wait": False, "queue_depth": 300, "max_depth": 1000},
+            {
+                "pressure": 0.9,
+                "should_wait": True,
+                "queue_depth": 900,
+                "max_depth": 1000,
+            },
+            {
+                "pressure": 0.85,
+                "should_wait": True,
+                "queue_depth": 850,
+                "max_depth": 1000,
+            },
+            {
+                "pressure": 0.6,
+                "should_wait": True,
+                "queue_depth": 600,
+                "max_depth": 1000,
+            },
+            {
+                "pressure": 0.3,
+                "should_wait": False,
+                "queue_depth": 300,
+                "max_depth": 1000,
+            },
         ]
 
         mock_source = Mock()
@@ -768,12 +798,12 @@ class TestPipelineBackpressure:
         mock_result.facts = []
         pipeline_with_queue._orchestrator.extract.return_value = mock_result
 
-        await pipeline_with_queue.process_batch(
-            source_ids, project_id, chunk_size=5
-        )
+        await pipeline_with_queue.process_batch(source_ids, project_id, chunk_size=5)
 
         # Should have checked backpressure multiple times (at least once per chunk)
-        assert mock_llm_queue.get_backpressure_status.call_count >= 4  # 20 sources / 5 per chunk
+        assert (
+            mock_llm_queue.get_backpressure_status.call_count >= 4
+        )  # 20 sources / 5 per chunk
 
 
 class TestExtractProjectSkipExtracted:
@@ -808,7 +838,7 @@ class TestExtractProjectSkipExtracted:
         self, schema_pipeline, mock_db_session
     ):
         """Should exclude sources with 'extracted' status when skip_extracted=True."""
-        from orm_models import Source, Project
+        from orm_models import Project
         from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
         project_id = uuid4()
@@ -816,7 +846,9 @@ class TestExtractProjectSkipExtracted:
         # Mock project with extraction schema
         mock_project = Mock(spec=Project)
         mock_project.id = project_id
-        mock_project.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+        mock_project.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE[
+            "extraction_schema"
+        ]
 
         # Setup mock query chain for both Project and Source
         mock_query = Mock()
@@ -842,7 +874,7 @@ class TestExtractProjectSkipExtracted:
         self, schema_pipeline, mock_db_session
     ):
         """Should include all statuses including 'extracted' when skip_extracted=False."""
-        from orm_models import Source, Project
+        from orm_models import Project
         from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
         project_id = uuid4()
@@ -850,7 +882,9 @@ class TestExtractProjectSkipExtracted:
         # Mock project with extraction schema
         mock_project = Mock(spec=Project)
         mock_project.id = project_id
-        mock_project.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+        mock_project.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE[
+            "extraction_schema"
+        ]
 
         # Setup mock query chain for both Project and Source
         mock_query = Mock()
