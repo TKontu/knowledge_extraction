@@ -295,6 +295,20 @@ class Settings(BaseSettings):
         description="Path to Pandoc executable",
     )
 
+    # Job recovery settings
+    job_stale_threshold_scrape: int = Field(
+        default=300,
+        description="Scrape job stale threshold in seconds (default: 5 minutes)",
+    )
+    job_stale_threshold_extract: int = Field(
+        default=900,
+        description="Extract job stale threshold in seconds (default: 15 minutes)",
+    )
+    job_stale_threshold_crawl: int = Field(
+        default=1800,
+        description="Crawl job stale threshold in seconds (default: 30 minutes)",
+    )
+
     @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v: str) -> str:
