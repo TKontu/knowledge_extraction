@@ -372,3 +372,27 @@ class ExtractionRepository:
 
         self._session.flush()
         return result.rowcount
+
+    async def find_orphaned(
+        self,
+        project_id: UUID | None = None,
+        limit: int = 100,
+    ) -> list[Extraction]:
+        """Find extractions without embeddings (embedding_id IS NULL).
+
+        Args:
+            project_id: Optional project UUID to filter by
+            limit: Maximum number of results to return
+
+        Returns:
+            List of Extraction instances without embeddings, sorted by created_at asc
+        """
+        query = select(Extraction).where(Extraction.embedding_id.is_(None))
+
+        if project_id:
+            query = query.where(Extraction.project_id == project_id)
+
+        query = query.order_by(Extraction.created_at.asc()).limit(limit)
+
+        result = self._session.execute(query)
+        return list(result.scalars().all())

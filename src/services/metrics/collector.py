@@ -38,6 +38,9 @@ class SystemMetrics:
     # Job duration metrics (completed jobs only)
     job_duration_by_type: dict[str, JobDurationStats] = field(default_factory=dict)
 
+    # Embedding recovery metrics
+    orphaned_extractions_total: int = 0
+
 
 class MetricsCollector:
     """Collects system metrics from database."""
@@ -59,6 +62,7 @@ class MetricsCollector:
             avg_confidence_by_type=self._avg_confidence_by_type(),
             entities_by_type=self._count_entities_by_type(),
             job_duration_by_type=self._job_duration_by_type(),
+            orphaned_extractions_total=self._count_orphaned_extractions(),
         )
 
     def _count_total(self, model) -> int:
@@ -171,3 +175,14 @@ class MetricsCollector:
                     count=count,
                 )
         return stats
+
+    def _count_orphaned_extractions(self) -> int:
+        """Count extractions without embeddings (embedding_id IS NULL).
+
+        Returns:
+            Number of orphaned extractions.
+        """
+        result = self._db.execute(
+            select(func.count(Extraction.id)).where(Extraction.embedding_id.is_(None))
+        )
+        return result.scalar() or 0
