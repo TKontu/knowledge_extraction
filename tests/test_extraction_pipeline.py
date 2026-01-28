@@ -260,17 +260,19 @@ class TestProcessSource:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock embedding
+        # Mock batch embedding (now using batch method)
         test_embedding = [0.1] * 768
-        pipeline_service._embedding_service.embed.return_value = test_embedding
+        pipeline_service._embedding_service.embed_batch.return_value = [test_embedding]
 
         result = await pipeline_service.process_source(source_id, project_id)
 
-        # Verify embedding was generated
-        pipeline_service._embedding_service.embed.assert_called_once_with("Test fact")
+        # Verify batch embedding was generated
+        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
+            ["Test fact"]
+        )
 
-        # Verify embedding was stored in Qdrant
-        pipeline_service._qdrant_repo.upsert.assert_called_once()
+        # Verify embedding was stored in Qdrant using batch method
+        pipeline_service._qdrant_repo.upsert_batch.assert_called_once()
 
     async def test_process_source_extracts_entities(self, pipeline_service):
         """EntityExtractor called for each extraction."""
@@ -488,8 +490,11 @@ class TestProcessBatch:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock embedding
-        pipeline_service._embedding_service.embed.return_value = [0.1] * 768
+        # Mock batch embedding (2 facts per source)
+        pipeline_service._embedding_service.embed_batch.return_value = [
+            [0.1] * 768,
+            [0.2] * 768,
+        ]
 
         result = await pipeline_service.process_batch(source_ids, project_id)
 
@@ -804,6 +809,256 @@ class TestPipelineBackpressure:
         assert (
             mock_llm_queue.get_backpressure_status.call_count >= 4
         )  # 20 sources / 5 per chunk
+
+
+class TestBatchEmbedding:
+    """Tests for batch embedding functionality."""
+
+    async def test_uses_embed_batch_for_multiple_facts(self, pipeline_service):
+        """Should call embed_batch instead of embed when processing multiple facts."""
+        source_id = uuid4()
+        project_id = uuid4()
+
+        # Mock source
+        mock_source = Mock()
+        mock_source.content = "Test content"
+        mock_source.source_group = "test-group"
+        pipeline_service._source_repo.get.return_value = mock_source
+
+        # Mock orchestrator returns 3 facts
+        mock_facts = []
+        for i in range(3):
+            mock_fact = Mock()
+            mock_fact.fact = f"Fact {i}"
+            mock_fact.category = f"cat{i}"
+            mock_fact.confidence = 0.9
+            mock_facts.append(mock_fact)
+
+        mock_result = Mock()
+        mock_result.facts = mock_facts
+        pipeline_service._orchestrator.extract.return_value = mock_result
+
+        # Mock deduplicator - no duplicates
+        mock_dedup = Mock()
+        mock_dedup.is_duplicate = False
+        pipeline_service._deduplicator.check_duplicate.return_value = mock_dedup
+
+        # Mock extraction creation
+        mock_extraction = Mock()
+        mock_extraction.id = uuid4()
+        pipeline_service._extraction_repo.create.return_value = mock_extraction
+
+        # Mock batch embedding
+        pipeline_service._embedding_service.embed_batch.return_value = [
+            [0.1] * 768,
+            [0.2] * 768,
+            [0.3] * 768,
+        ]
+
+        result = await pipeline_service.process_source(source_id, project_id)
+
+        # Verify embed_batch was called once with all fact texts
+        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
+            ["Fact 0", "Fact 1", "Fact 2"]
+        )
+
+        # Verify embed was NOT called
+        pipeline_service._embedding_service.embed.assert_not_called()
+
+        assert result.extractions_created == 3
+
+    async def test_uses_upsert_batch_for_multiple_facts(self, pipeline_service):
+        """Should call upsert_batch instead of upsert when processing multiple facts."""
+        source_id = uuid4()
+        project_id = uuid4()
+
+        # Mock source
+        mock_source = Mock()
+        mock_source.content = "Test content"
+        mock_source.source_group = "test-group"
+        pipeline_service._source_repo.get.return_value = mock_source
+
+        # Mock orchestrator returns 2 facts
+        mock_fact1 = Mock()
+        mock_fact1.fact = "Fact 1"
+        mock_fact1.category = "cat1"
+        mock_fact1.confidence = 0.9
+
+        mock_fact2 = Mock()
+        mock_fact2.fact = "Fact 2"
+        mock_fact2.category = "cat2"
+        mock_fact2.confidence = 0.8
+
+        mock_result = Mock()
+        mock_result.facts = [mock_fact1, mock_fact2]
+        pipeline_service._orchestrator.extract.return_value = mock_result
+
+        # Mock deduplicator - no duplicates
+        mock_dedup = Mock()
+        mock_dedup.is_duplicate = False
+        pipeline_service._deduplicator.check_duplicate.return_value = mock_dedup
+
+        # Mock extraction creation - return different IDs
+        extraction_id_1 = uuid4()
+        extraction_id_2 = uuid4()
+
+        def create_side_effect(*args, **kwargs):
+            mock_ext = Mock()
+            # Return different ID based on call count
+            if pipeline_service._extraction_repo.create.call_count == 0:
+                mock_ext.id = extraction_id_1
+            else:
+                mock_ext.id = extraction_id_2
+            return mock_ext
+
+        pipeline_service._extraction_repo.create.side_effect = create_side_effect
+
+        # Mock batch embedding
+        pipeline_service._embedding_service.embed_batch.return_value = [
+            [0.1] * 768,
+            [0.2] * 768,
+        ]
+
+        result = await pipeline_service.process_source(source_id, project_id)
+
+        # Verify upsert_batch was called once
+        pipeline_service._qdrant_repo.upsert_batch.assert_called_once()
+
+        # Verify upsert was NOT called
+        pipeline_service._qdrant_repo.upsert.assert_not_called()
+
+        assert result.extractions_created == 2
+
+    async def test_batch_works_with_single_fact(self, pipeline_service):
+        """Should work correctly with a single fact (batch of 1)."""
+        source_id = uuid4()
+        project_id = uuid4()
+
+        # Mock source
+        mock_source = Mock()
+        mock_source.content = "Test content"
+        mock_source.source_group = "test-group"
+        pipeline_service._source_repo.get.return_value = mock_source
+
+        # Mock orchestrator returns 1 fact
+        mock_fact = Mock()
+        mock_fact.fact = "Single fact"
+        mock_fact.category = "cat1"
+        mock_fact.confidence = 0.9
+
+        mock_result = Mock()
+        mock_result.facts = [mock_fact]
+        pipeline_service._orchestrator.extract.return_value = mock_result
+
+        # Mock deduplicator
+        mock_dedup = Mock()
+        mock_dedup.is_duplicate = False
+        pipeline_service._deduplicator.check_duplicate.return_value = mock_dedup
+
+        # Mock extraction creation
+        mock_extraction = Mock()
+        mock_extraction.id = uuid4()
+        pipeline_service._extraction_repo.create.return_value = mock_extraction
+
+        # Mock batch embedding
+        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
+
+        result = await pipeline_service.process_source(source_id, project_id)
+
+        # Verify batch methods were called with single item
+        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
+            ["Single fact"]
+        )
+        pipeline_service._qdrant_repo.upsert_batch.assert_called_once()
+
+        assert result.extractions_created == 1
+
+    async def test_batch_not_called_when_no_facts(self, pipeline_service):
+        """Should not call batch methods when there are no facts to process."""
+        source_id = uuid4()
+        project_id = uuid4()
+
+        # Mock source
+        mock_source = Mock()
+        mock_source.content = "Test content"
+        mock_source.source_group = "test-group"
+        pipeline_service._source_repo.get.return_value = mock_source
+
+        # Mock orchestrator returns no facts
+        mock_result = Mock()
+        mock_result.facts = []
+        pipeline_service._orchestrator.extract.return_value = mock_result
+
+        result = await pipeline_service.process_source(source_id, project_id)
+
+        # Verify batch methods were not called
+        pipeline_service._embedding_service.embed_batch.assert_not_called()
+        pipeline_service._qdrant_repo.upsert_batch.assert_not_called()
+
+        assert result.extractions_created == 0
+
+    async def test_batch_excludes_duplicates(self, pipeline_service):
+        """Should only batch non-duplicate facts."""
+        source_id = uuid4()
+        project_id = uuid4()
+
+        # Mock source
+        mock_source = Mock()
+        mock_source.content = "Test content"
+        mock_source.source_group = "test-group"
+        pipeline_service._source_repo.get.return_value = mock_source
+
+        # Mock orchestrator returns 3 facts
+        mock_fact1 = Mock()
+        mock_fact1.fact = "Fact 1"
+        mock_fact1.category = "cat1"
+        mock_fact1.confidence = 0.9
+
+        mock_fact2 = Mock()
+        mock_fact2.fact = "Fact 2"  # This will be marked as duplicate
+        mock_fact2.category = "cat2"
+        mock_fact2.confidence = 0.8
+
+        mock_fact3 = Mock()
+        mock_fact3.fact = "Fact 3"
+        mock_fact3.category = "cat3"
+        mock_fact3.confidence = 0.85
+
+        mock_result = Mock()
+        mock_result.facts = [mock_fact1, mock_fact2, mock_fact3]
+        pipeline_service._orchestrator.extract.return_value = mock_result
+
+        # Mock deduplicator: fact2 is duplicate, others are not
+        def dedup_side_effect(*args, **kwargs):
+            m = Mock()
+            if kwargs.get("text_content") == "Fact 2":
+                m.is_duplicate = True
+            else:
+                m.is_duplicate = False
+            return m
+
+        pipeline_service._deduplicator.check_duplicate.side_effect = dedup_side_effect
+
+        # Mock extraction creation
+        mock_extraction = Mock()
+        mock_extraction.id = uuid4()
+        pipeline_service._extraction_repo.create.return_value = mock_extraction
+
+        # Mock batch embedding
+        pipeline_service._embedding_service.embed_batch.return_value = [
+            [0.1] * 768,
+            [0.3] * 768,
+        ]
+
+        result = await pipeline_service.process_source(source_id, project_id)
+
+        # Verify batch was called with only non-duplicate facts
+        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
+            ["Fact 1", "Fact 3"]
+        )
+
+        assert result.extractions_created == 2
+        assert result.extractions_deduplicated == 1
 
 
 class TestExtractProjectSkipExtracted:

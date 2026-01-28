@@ -126,6 +126,7 @@ class ScraperWorker:
                                 **result.metadata,
                             },
                             status="pending",  # Ready for extraction
+                            created_by_job_id=job.id,
                         )
                         sources_scraped += 1
                         logger.debug(

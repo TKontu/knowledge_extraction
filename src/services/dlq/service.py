@@ -128,16 +128,19 @@ class DLQService:
             item_id: ID of the item to pop.
 
         Returns:
-            The DLQ item if found, None otherwise.
+            The DLQ item if found and successfully removed, None otherwise.
         """
         # Get all items and find the matching one
         items_json = await self._redis.lrange(SCRAPE_DLQ_KEY, 0, -1)
         for item_json in items_json:
             item_data = json.loads(item_json)
             if item_data["id"] == item_id:
-                # Remove the item from the list
-                await self._redis.lrem(SCRAPE_DLQ_KEY, 1, item_json)
-                return DLQItem(**item_data)
+                # Remove the item from the list - check return value for race condition
+                removed_count = await self._redis.lrem(SCRAPE_DLQ_KEY, 1, item_json)
+                if removed_count > 0:
+                    return DLQItem(**item_data)
+                # Item was already removed by concurrent request
+                return None
         return None
 
     async def pop_extraction_item(self, item_id: str) -> DLQItem | None:
@@ -147,14 +150,17 @@ class DLQService:
             item_id: ID of the item to pop.
 
         Returns:
-            The DLQ item if found, None otherwise.
+            The DLQ item if found and successfully removed, None otherwise.
         """
         # Get all items and find the matching one
         items_json = await self._redis.lrange(EXTRACTION_DLQ_KEY, 0, -1)
         for item_json in items_json:
             item_data = json.loads(item_json)
             if item_data["id"] == item_id:
-                # Remove the item from the list
-                await self._redis.lrem(EXTRACTION_DLQ_KEY, 1, item_json)
-                return DLQItem(**item_data)
+                # Remove the item from the list - check return value for race condition
+                removed_count = await self._redis.lrem(EXTRACTION_DLQ_KEY, 1, item_json)
+                if removed_count > 0:
+                    return DLQItem(**item_data)
+                # Item was already removed by concurrent request
+                return None
         return None

@@ -248,12 +248,23 @@ class LLMWorker:
                 if "timeout" in error_msg.lower():
                     self.timeout_count += 1
 
+                # Extract prompt preview from payload
+                prompt_preview = None
+                if "prompt" in request.payload:
+                    prompt_preview = str(request.payload["prompt"])[:300]
+                elif "content" in request.payload:
+                    prompt_preview = str(request.payload["content"])[:300]
+
                 logger.error(
                     "llm_request_failed",
                     request_id=request.request_id,
                     request_type=request.request_type,
                     error=error_msg,
+                    error_type=type(e).__name__,
                     retry_count=request.retry_count,
+                    prompt_preview=prompt_preview,
+                    processing_time_ms=processing_time,
+                    exc_info=True,
                 )
 
                 # Handle failure with retry/DLQ logic

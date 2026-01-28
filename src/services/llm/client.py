@@ -332,7 +332,7 @@ class LLMClient:
             System prompt string.
         """
         categories_str = ", ".join(categories)
-        return f"""You are a technical fact extractor. Extract concrete, verifiable facts from documentation.
+        return f"""You are a technical fact extractor. Extract the TOP 10 most important, concrete, verifiable facts from documentation.
 
 Categories: {categories_str}
 
@@ -340,13 +340,19 @@ Output a JSON object with this exact structure:
 {{
   "facts": [
     {{
-      "fact": "Specific technical statement",
+      "fact": "Specific technical statement (concise, max 2 sentences)",
       "category": "one of: {categories_str}",
       "confidence": 0.0-1.0,
-      "source_quote": "brief supporting quote from source"
+      "source_quote": "brief supporting quote (max 50 words)"
     }}
   ]
 }}
+
+CRITICAL CONSTRAINTS:
+- Extract MAXIMUM 10 facts (prioritize most important/unique information)
+- Keep facts concise (1-2 sentences each)
+- Keep source_quote brief (max 50 words)
+- Must output valid, complete JSON - no truncation allowed
 
 Rules:
 - Only extract factual, specific information

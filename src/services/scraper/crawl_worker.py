@@ -292,6 +292,7 @@ class CrawlWorker:
                 content=markdown,
                 meta_data={"domain": domain, "http_status": status_code, **metadata},
                 status="pending",
+                created_by_job_id=job.id,
             )
             if created:
                 sources_created += 1

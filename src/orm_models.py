@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, date, datetime
+from typing import Optional
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -307,10 +308,18 @@ class Source(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
+    # Audit trail: which job created this source
+    created_by_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="sources")
     extractions: Mapped[list["Extraction"]] = relationship(
         "Extraction", back_populates="source", cascade="all, delete-orphan"
+    )
+    created_by_job: Mapped[Optional["Job"]] = relationship(
+        "Job", foreign_keys=[created_by_job_id]
     )
 
     def __repr__(self) -> str:
@@ -347,6 +356,11 @@ class Extraction(Base):
 
     # Vector reference
     embedding_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Flag indicating if entity extraction completed successfully
+    entities_extracted: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=True
+    )
 
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

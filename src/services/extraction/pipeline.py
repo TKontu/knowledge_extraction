@@ -1,6 +1,7 @@
 """Extraction pipeline service for orchestrating the complete extraction flow."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -32,7 +33,7 @@ from services.projects.repository import ProjectRepository
 from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 from services.storage.deduplication import ExtractionDeduplicator
 from services.storage.embedding import EmbeddingService
-from services.storage.qdrant.repository import QdrantRepository
+from services.storage.qdrant.repository import EmbeddingItem, QdrantRepository
 from services.storage.repositories.extraction import ExtractionRepository
 from services.storage.repositories.source import SourceRepository
 
@@ -143,7 +144,10 @@ class ExtractionPipelineService:
             profile=profile,
         )
 
-        # Process each fact
+        # Phase 1: Deduplicate and collect facts to embed
+        facts_to_embed = []
+        fact_extractions = []  # Track (fact, extraction) pairs
+
         for fact in result.facts:
             try:
                 # Check for duplicate
@@ -169,19 +173,67 @@ class ExtractionPipelineService:
                 )
                 extractions_created += 1
 
-                # Generate and store embedding
-                embedding = await self._embedding_service.embed(fact.fact)
-                await self._qdrant_repo.upsert(
-                    extraction_id=extraction.id,
-                    embedding=embedding,
-                    payload={
-                        "project_id": str(project_id),
-                        "source_group": source.source_group,
-                        "extraction_type": fact.category,
-                    },
-                )
+                # Collect for batch embedding
+                facts_to_embed.append(fact.fact)
+                fact_extractions.append((fact, extraction))
 
-                # Extract entities
+            except Exception as e:
+                errors.append(f"Error processing fact: {str(e)}")
+                logger.error("fact_processing_failed", error=str(e), fact=fact.fact)
+
+        # Phase 2: Batch embed and upsert
+        embeddings_succeeded = False
+        if facts_to_embed:
+            try:
+                # Batch embed all facts at once
+                embeddings = await self._embedding_service.embed_batch(facts_to_embed)
+
+                # Phase 3: Batch upsert to Qdrant
+                items = [
+                    EmbeddingItem(
+                        extraction_id=extraction.id,
+                        embedding=embedding,
+                        payload={
+                            "project_id": str(project_id),
+                            "source_group": source.source_group,
+                            "extraction_type": fact.category,
+                        },
+                    )
+                    for (fact, extraction), embedding in zip(
+                        fact_extractions, embeddings, strict=True
+                    )
+                ]
+                await self._qdrant_repo.upsert_batch(items)
+
+                # Phase 3b: Update extraction records with embedding_id
+                # This tracks which extractions have embeddings in Qdrant
+                extraction_ids = [extraction.id for _, extraction in fact_extractions]
+                await self._extraction_repo.update_embedding_ids_batch(extraction_ids)
+
+                embeddings_succeeded = True
+
+            except Exception as e:
+                errors.append(f"Error batch embedding: {str(e)}")
+                logger.error(
+                    "batch_embedding_failed",
+                    error=str(e),
+                    extractions_affected=len(fact_extractions),
+                    source_id=str(source_id),
+                )
+                # Skip entity extraction - extractions exist but aren't searchable
+                # entities_extracted will remain False, signaling incomplete processing
+
+        # Phase 4: Entity extraction (only if embeddings succeeded)
+        if not embeddings_succeeded and fact_extractions:
+            logger.warning(
+                "skipping_entity_extraction",
+                reason="embeddings_failed",
+                source_id=str(source_id),
+                extractions_count=len(fact_extractions),
+            )
+
+        for fact, extraction in fact_extractions if embeddings_succeeded else []:
+            try:
                 entities = await self._entity_extractor.extract(
                     extraction_id=extraction.id,
                     extraction_data={"fact_text": fact.fact, "category": fact.category},
@@ -191,9 +243,26 @@ class ExtractionPipelineService:
                 )
                 entities_extracted += len(entities)
 
+                # Mark extraction as having entities extracted
+                await self._extraction_repo.update_entities_extracted(
+                    extraction_id=extraction.id,
+                    entities_extracted=True,
+                )
+
             except Exception as e:
-                errors.append(f"Error processing fact: {str(e)}")
-                logger.error("fact_processing_failed", error=str(e), fact=fact.fact)
+                errors.append(f"Error extracting entities: {str(e)}")
+                logger.error(
+                    "entity_extraction_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    source_id=str(source_id),
+                    source_url=source.uri if hasattr(source, "uri") else None,
+                    source_group=source.source_group,
+                    fact_preview=fact.fact[:500] if fact.fact else None,
+                    fact_category=fact.category,
+                    fact_confidence=fact.confidence,
+                    exc_info=True,
+                )
 
         # Update source status
         await self._source_repo.update_status(source_id, "extracted")
@@ -247,6 +316,7 @@ class ExtractionPipelineService:
         profile_name: str = "general",
         max_concurrent: int = 10,
         chunk_size: int | None = None,
+        cancellation_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> BatchPipelineResult:
         """Process multiple sources in parallel.
 
@@ -257,6 +327,8 @@ class ExtractionPipelineService:
             max_concurrent: Maximum concurrent source extractions.
             chunk_size: Optional chunk size for processing in batches.
                        If provided, backpressure is checked between chunks.
+            cancellation_check: Optional async callback that returns True if
+                              processing should be cancelled.
 
         Returns:
             BatchPipelineResult with aggregated results.
@@ -278,6 +350,15 @@ class ExtractionPipelineService:
         if chunk_size and len(source_ids) > chunk_size:
             all_results = []
             for i in range(0, len(source_ids), chunk_size):
+                # Check for cancellation between chunks
+                if cancellation_check and await cancellation_check():
+                    logger.info(
+                        "batch_processing_cancelled",
+                        processed=i,
+                        remaining=len(source_ids) - i,
+                    )
+                    break
+
                 chunk = source_ids[i : i + chunk_size]
 
                 # Check backpressure between chunks
@@ -338,8 +419,19 @@ class ExtractionPipelineService:
         self,
         project_id: UUID,
         profile_name: str = "general",
+        cancellation_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> BatchPipelineResult:
-        """Process all pending sources for a project."""
+        """Process all pending sources for a project.
+
+        Args:
+            project_id: Project UUID.
+            profile_name: Extraction profile name.
+            cancellation_check: Optional async callback that returns True if
+                              processing should be cancelled.
+
+        Returns:
+            BatchPipelineResult with aggregated results.
+        """
         # Query for pending sources
         pending_sources = await self._source_repo.get_by_project_and_status(
             project_id, "pending"
@@ -348,8 +440,13 @@ class ExtractionPipelineService:
         # Extract source IDs
         source_ids = [source.id for source in pending_sources]
 
-        # Process batch
-        return await self.process_batch(source_ids, project_id, profile_name)
+        # Process batch with cancellation support
+        return await self.process_batch(
+            source_ids,
+            project_id,
+            profile_name,
+            cancellation_check=cancellation_check,
+        )
 
 
 class SchemaExtractionPipeline:

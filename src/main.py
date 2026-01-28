@@ -201,6 +201,7 @@ app.include_router(reports_router)
 app.include_router(jobs_router)
 app.include_router(metrics_router)
 app.include_router(export_router)
+app.include_router(dlq_router)
 app.include_router(sources_router)
 app.include_router(dlq_router)
 

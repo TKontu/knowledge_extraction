@@ -104,3 +104,94 @@ class TestPrometheusFormatter:
         assert "# HELP scristill_jobs_total" in output
         assert "# TYPE scristill_jobs_total gauge" in output
         assert "scristill_jobs_total 0" in output
+
+    def test_format_prometheus_includes_extractions_by_type(self) -> None:
+        """Test that extractions by type metrics are included."""
+        metrics = SystemMetrics(
+            jobs_total=10,
+            jobs_by_type={"scrape": 5},
+            jobs_by_status={"completed": 10},
+            sources_total=20,
+            sources_by_status={"completed": 20},
+            extractions_total=30,
+            entities_total=100,
+            extractions_by_type={"company": 15, "person": 15},
+            avg_confidence_by_type={},
+            entities_by_type={},
+        )
+
+        output = format_prometheus(metrics)
+
+        assert "# HELP scristill_extractions_by_type" in output
+        assert "# TYPE scristill_extractions_by_type gauge" in output
+        assert 'scristill_extractions_by_type{type="company"} 15' in output
+        assert 'scristill_extractions_by_type{type="person"} 15' in output
+
+    def test_format_prometheus_includes_confidence_metrics(self) -> None:
+        """Test that confidence metrics are included."""
+        metrics = SystemMetrics(
+            jobs_total=10,
+            jobs_by_type={"scrape": 5},
+            jobs_by_status={"completed": 10},
+            sources_total=20,
+            sources_by_status={"completed": 20},
+            extractions_total=30,
+            entities_total=100,
+            extractions_by_type={},
+            avg_confidence_by_type={"company": 0.9, "person": 0.75},
+            entities_by_type={},
+        )
+
+        output = format_prometheus(metrics)
+
+        assert "# HELP scristill_extraction_confidence_avg" in output
+        assert "# TYPE scristill_extraction_confidence_avg gauge" in output
+        assert 'scristill_extraction_confidence_avg{type="company"} 0.9000' in output
+        assert 'scristill_extraction_confidence_avg{type="person"} 0.7500' in output
+
+    def test_format_prometheus_includes_entities_by_type(self) -> None:
+        """Test that entities by type metrics are included."""
+        metrics = SystemMetrics(
+            jobs_total=10,
+            jobs_by_type={"scrape": 5},
+            jobs_by_status={"completed": 10},
+            sources_total=20,
+            sources_by_status={"completed": 20},
+            extractions_total=30,
+            entities_total=100,
+            extractions_by_type={},
+            avg_confidence_by_type={},
+            entities_by_type={"PERSON": 60, "ORGANIZATION": 40},
+        )
+
+        output = format_prometheus(metrics)
+
+        assert "# HELP scristill_entities_by_type" in output
+        assert "# TYPE scristill_entities_by_type gauge" in output
+        assert 'scristill_entities_by_type{type="PERSON"} 60' in output
+        assert 'scristill_entities_by_type{type="ORGANIZATION"} 40' in output
+
+    def test_format_prometheus_handles_empty_quality_metrics(self) -> None:
+        """Test that empty quality metrics don't cause errors."""
+        metrics = SystemMetrics(
+            jobs_total=10,
+            jobs_by_type={"scrape": 5},
+            jobs_by_status={"completed": 10},
+            sources_total=20,
+            sources_by_status={"completed": 20},
+            extractions_total=30,
+            entities_total=100,
+            extractions_by_type={},
+            avg_confidence_by_type={},
+            entities_by_type={},
+        )
+
+        output = format_prometheus(metrics)
+
+        # Should still include HELP and TYPE lines even with empty dicts
+        assert "# HELP scristill_extractions_by_type" in output
+        assert "# TYPE scristill_extractions_by_type gauge" in output
+        assert "# HELP scristill_extraction_confidence_avg" in output
+        assert "# TYPE scristill_extraction_confidence_avg gauge" in output
+        assert "# HELP scristill_entities_by_type" in output
+        assert "# TYPE scristill_entities_by_type gauge" in output
