@@ -1,5 +1,7 @@
 """Repository for Source CRUD operations."""
 
+from __future__ import annotations
+
 import builtins
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -45,6 +47,7 @@ class SourceRepository:
         meta_data: dict | None = None,
         outbound_links: list | None = None,
         status: str = "pending",
+        created_by_job_id: UUID | None = None,
     ) -> Source:
         """Create a new source.
 
@@ -59,6 +62,7 @@ class SourceRepository:
             meta_data: Optional metadata dictionary
             outbound_links: Optional list of outbound links
             status: Source status (pending, processing, completed, failed)
+            created_by_job_id: Optional ID of the job that created this source
 
         Returns:
             Created Source instance
@@ -74,6 +78,7 @@ class SourceRepository:
             meta_data=meta_data or {},
             outbound_links=outbound_links or [],
             status=status,
+            created_by_job_id=created_by_job_id,
         )
 
         self._session.add(source)

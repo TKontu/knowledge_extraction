@@ -83,7 +83,7 @@ class Settings(BaseSettings):
         description="HTTP timeout for LLM requests in seconds (reduced to detect stuck models)",
     )
     llm_max_tokens: int = Field(
-        default=4096,
+        default=8192,
         description="Maximum tokens for LLM response (prevents endless generation)",
     )
     llm_max_retries: int = Field(
