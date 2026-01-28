@@ -38,6 +38,22 @@ from services.storage.repositories.source import SourceRepository
 from shutdown import get_shutdown_manager
 
 
+# Per-job-type stale thresholds
+# These prevent long-running jobs from being incorrectly marked as stale
+def get_stale_thresholds() -> dict[str, timedelta]:
+    """Get stale thresholds from settings.
+
+    Returns:
+        Dictionary mapping job types to their stale thresholds.
+    """
+    return {
+        "scrape": timedelta(seconds=settings.job_stale_threshold_scrape),
+        "extract": timedelta(seconds=settings.job_stale_threshold_extract),
+        "crawl": timedelta(seconds=settings.job_stale_threshold_crawl),
+        "default": timedelta(seconds=600),  # 10 minutes default
+    }
+
+
 class JobScheduler:
     """Background scheduler for processing queued jobs.
 
@@ -182,9 +198,8 @@ class JobScheduler:
 
                     # If no queued jobs, check for stale running jobs that need recovery
                     if not job:
-                        stale_threshold = datetime.now(UTC) - timedelta(
-                            seconds=self.poll_interval
-                        )
+                        thresholds = get_stale_thresholds()
+                        stale_threshold = datetime.now(UTC) - thresholds["scrape"]
                         job = (
                             db.query(Job)
                             .filter(
@@ -197,10 +212,14 @@ class JobScheduler:
                             .first()
                         )
                         if job:
+                            runtime = datetime.now(UTC) - job.updated_at
                             logger.warning(
                                 "scrape_recovering_stale_job",
                                 job_id=str(job.id),
+                                job_type="scrape",
+                                runtime_seconds=runtime.total_seconds(),
                                 updated_at=str(job.updated_at),
+                                threshold_seconds=thresholds["scrape"].total_seconds(),
                             )
 
                     if job:
@@ -259,9 +278,8 @@ class JobScheduler:
                     # If no queued jobs, try to get a running job that needs polling
                     # Only poll if it hasn't been updated recently (avoid redundant polls)
                     if not job:
-                        stale_threshold = datetime.now(UTC) - timedelta(
-                            seconds=self.poll_interval
-                        )
+                        thresholds = get_stale_thresholds()
+                        stale_threshold = datetime.now(UTC) - thresholds["crawl"]
                         job = (
                             db.query(Job)
                             .filter(
@@ -273,6 +291,16 @@ class JobScheduler:
                             .with_for_update(skip_locked=True)
                             .first()
                         )
+                        if job:
+                            runtime = datetime.now(UTC) - job.updated_at
+                            logger.warning(
+                                "crawl_recovering_stale_job",
+                                job_id=str(job.id),
+                                job_type="crawl",
+                                runtime_seconds=runtime.total_seconds(),
+                                updated_at=str(job.updated_at),
+                                threshold_seconds=thresholds["crawl"].total_seconds(),
+                            )
 
                     if job:
                         worker = CrawlWorker(
@@ -322,9 +350,8 @@ class JobScheduler:
 
                     # If no queued jobs, check for stale running jobs that need recovery
                     if not job:
-                        stale_threshold = datetime.now(UTC) - timedelta(
-                            seconds=self.poll_interval
-                        )
+                        thresholds = get_stale_thresholds()
+                        stale_threshold = datetime.now(UTC) - thresholds["extract"]
                         job = (
                             db.query(Job)
                             .filter(
@@ -337,10 +364,14 @@ class JobScheduler:
                             .first()
                         )
                         if job:
+                            runtime = datetime.now(UTC) - job.updated_at
                             logger.warning(
                                 "extract_recovering_stale_job",
                                 job_id=str(job.id),
+                                job_type="extract",
+                                runtime_seconds=runtime.total_seconds(),
                                 updated_at=str(job.updated_at),
+                                threshold_seconds=thresholds["extract"].total_seconds(),
                             )
 
                     if job:
