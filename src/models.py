@@ -282,6 +282,27 @@ class ExtractionListResponse(BaseModel):
     )
 
 
+class RecoverySummaryResponse(BaseModel):
+    """Response body for embedding recovery operation."""
+
+    total_processed: int = Field(
+        ...,
+        description="Total number of extractions processed",
+    )
+    total_succeeded: int = Field(
+        ...,
+        description="Number of extractions successfully recovered",
+    )
+    total_failed: int = Field(
+        ...,
+        description="Number of extractions that failed recovery",
+    )
+    batches_processed: int = Field(
+        ...,
+        description="Number of batches processed",
+    )
+
+
 # Project-related Pydantic models for API
 
 
