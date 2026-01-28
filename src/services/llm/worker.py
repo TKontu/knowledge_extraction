@@ -104,6 +104,17 @@ class LLMWorker:
         # Running state
         self._running = False
 
+    def _response_channel(self, request_id: str) -> str:
+        """Get pub/sub channel name for response notification.
+
+        Args:
+            request_id: Request ID to get channel for.
+
+        Returns:
+            Redis pub/sub channel name.
+        """
+        return f"llm:response:notify:{request_id}"
+
     async def initialize(self) -> None:
         """Initialize worker, creating consumer group if needed."""
         try:
@@ -302,6 +313,10 @@ class LLMWorker:
                 300,  # 5 minute TTL
                 response.to_json(),
             )
+
+            # Publish notification to wake up waiting clients
+            channel = self._response_channel(request.request_id)
+            await self.redis.publish(channel, "ready")
 
             # Acknowledge message
             await self.redis.xack(
@@ -671,6 +686,10 @@ class LLMWorker:
                 300,  # 5 minute TTL
                 response.to_json(),
             )
+
+            # Publish notification to wake up waiting clients
+            channel = self._response_channel(request.request_id)
+            await self.redis.publish(channel, "ready")
 
     async def _requeue_with_retry(self, request: LLMRequest) -> None:
         """Requeue a request with incremented retry count.

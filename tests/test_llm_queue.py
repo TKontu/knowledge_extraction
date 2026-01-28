@@ -205,6 +205,17 @@ class TestLLMRequestQueue:
         redis.get = AsyncMock(return_value=None)
         redis.setex = AsyncMock()
         redis.xgroup_create = AsyncMock()
+        redis.delete = AsyncMock(return_value=1)
+        redis.publish = AsyncMock(return_value=1)
+
+        # Mock pubsub object
+        mock_pubsub = MagicMock()
+        mock_pubsub.subscribe = AsyncMock()
+        mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.aclose = AsyncMock()
+        mock_pubsub.get_message = AsyncMock(return_value=None)
+        redis.pubsub = MagicMock(return_value=mock_pubsub)
+
         return redis
 
     @pytest.fixture
@@ -216,6 +227,7 @@ class TestLLMRequestQueue:
             redis=mock_redis,
             max_queue_depth=1000,
             backpressure_threshold=500,
+            poll_fallback_interval=0.5,  # Fast fallback for tests
         )
 
     @pytest.mark.asyncio
@@ -386,6 +398,16 @@ class TestWaitForResultCleanup:
         redis.xlen = AsyncMock(return_value=0)
         redis.get = AsyncMock(return_value=None)
         redis.delete = AsyncMock(return_value=1)
+        redis.publish = AsyncMock(return_value=1)
+
+        # Mock pubsub object
+        mock_pubsub = MagicMock()
+        mock_pubsub.subscribe = AsyncMock()
+        mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.aclose = AsyncMock()
+        mock_pubsub.get_message = AsyncMock(return_value=None)
+        redis.pubsub = MagicMock(return_value=mock_pubsub)
+
         return redis
 
     @pytest.fixture
@@ -398,6 +420,7 @@ class TestWaitForResultCleanup:
             max_queue_depth=1000,
             backpressure_threshold=500,
             poll_interval=0.01,  # Fast polling for tests
+            poll_fallback_interval=0.5,  # Fast fallback for tests
         )
 
     @pytest.mark.asyncio
@@ -488,6 +511,7 @@ class TestLLMWorker:
         redis.xreadgroup = AsyncMock(return_value=[])
         redis.xack = AsyncMock()
         redis.setex = AsyncMock()
+        redis.publish = AsyncMock(return_value=1)
         return redis
 
     @pytest.fixture

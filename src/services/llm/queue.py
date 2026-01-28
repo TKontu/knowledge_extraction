@@ -46,6 +46,7 @@ class LLMRequestQueue:
         backpressure_threshold: int = 500,
         response_ttl: int = 300,
         poll_interval: float = 0.1,
+        poll_fallback_interval: float = 5.0,
     ):
         """Initialize LLM request queue.
 
@@ -55,7 +56,8 @@ class LLMRequestQueue:
             max_queue_depth: Maximum allowed queue depth.
             backpressure_threshold: Queue depth that triggers backpressure.
             response_ttl: TTL for response keys in seconds.
-            poll_interval: Interval for polling responses in seconds.
+            poll_interval: Interval for polling responses in seconds (deprecated, kept for compatibility).
+            poll_fallback_interval: Interval for fallback polling when pub/sub is used.
         """
         self.redis = redis
         self.stream_key = stream_key
@@ -63,6 +65,7 @@ class LLMRequestQueue:
         self.backpressure_threshold = backpressure_threshold
         self.response_ttl = response_ttl
         self.poll_interval = poll_interval
+        self.poll_fallback_interval = poll_fallback_interval
 
     async def submit(self, request: LLMRequest) -> str:
         """Submit request to queue.
@@ -108,12 +111,37 @@ class LLMRequestQueue:
 
         return request.request_id
 
+    def _response_channel(self, request_id: str) -> str:
+        """Get pub/sub channel name for response notification.
+
+        Args:
+            request_id: Request ID to get channel for.
+
+        Returns:
+            Redis pub/sub channel name.
+        """
+        return f"llm:response:notify:{request_id}"
+
+    def _parse_response(self, result: bytes | str) -> LLMResponse:
+        """Parse response from Redis.
+
+        Args:
+            result: Raw response from Redis.
+
+        Returns:
+            Parsed LLMResponse.
+        """
+        # Handle bytes from Redis
+        if isinstance(result, bytes):
+            result = result.decode("utf-8")
+        return LLMResponse.from_json(result)
+
     async def wait_for_result(
         self,
         request_id: str,
-        timeout: float = 300.0,
+        timeout: float = 300.0,  # noqa: ASYNC109
     ) -> LLMResponse:
-        """Wait for response with polling.
+        """Wait for response using pub/sub notification with fallback polling.
 
         Args:
             request_id: Request ID to wait for.
@@ -126,37 +154,106 @@ class LLMRequestQueue:
             RequestTimeoutError: If response not received within timeout.
         """
         response_key = f"llm:response:{request_id}"
-        deadline = time.time() + timeout
+        channel = self._response_channel(request_id)
 
-        while time.time() < deadline:
-            result = await self.redis.get(response_key)
-            if result:
-                # Handle bytes from Redis
-                if isinstance(result, bytes):
-                    result = result.decode("utf-8")
-                response = LLMResponse.from_json(result)
+        # Check if already complete (in case response arrived before subscribe)
+        result = await self.redis.get(response_key)
+        if result:
+            response = self._parse_response(result)
 
-                # Clean up response key after reading
+            # Clean up response key after reading
+            try:
+                await self.redis.delete(response_key)
+            except Exception as e:
+                logger.warning(
+                    "llm_response_key_cleanup_failed",
+                    request_id=request_id,
+                    error=str(e),
+                )
+
+            return response
+
+        # Subscribe and wait for notification
+        pubsub = self.redis.pubsub()
+        try:
+            await pubsub.subscribe(channel)
+
+            # Wait for message with timeout and fallback polling
+            deadline = time.time() + timeout
+            last_poll = time.time()
+
+            while time.time() < deadline:
+                # Check for pub/sub message (non-blocking with short timeout)
                 try:
-                    await self.redis.delete(response_key)
-                except Exception as e:
-                    logger.warning(
-                        "llm_response_key_cleanup_failed",
-                        request_id=request_id,
-                        error=str(e),
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True),
+                        timeout=0.1,
                     )
 
-                return response
-            await asyncio.sleep(self.poll_interval)
+                    if message and message["type"] == "message":
+                        # Notification received, fetch result
+                        result = await self.redis.get(response_key)
+                        if result:
+                            response = self._parse_response(result)
 
-        logger.error(
-            "llm_request_timeout",
-            request_id=request_id,
-            timeout=timeout,
-        )
-        raise RequestTimeoutError(
-            f"Request {request_id} timed out after {timeout}s"
-        )
+                            # Clean up response key after reading
+                            try:
+                                await self.redis.delete(response_key)
+                            except Exception as e:
+                                logger.warning(
+                                    "llm_response_key_cleanup_failed",
+                                    request_id=request_id,
+                                    error=str(e),
+                                )
+
+                            return response
+                except TimeoutError:
+                    # No pub/sub message, continue loop
+                    pass
+
+                # Fallback polling in case pub/sub message was missed
+                if time.time() - last_poll >= self.poll_fallback_interval:
+                    result = await self.redis.get(response_key)
+                    if result:
+                        logger.info(
+                            "llm_response_found_via_fallback_poll",
+                            request_id=request_id,
+                        )
+                        response = self._parse_response(result)
+
+                        # Clean up response key after reading
+                        try:
+                            await self.redis.delete(response_key)
+                        except Exception as e:
+                            logger.warning(
+                                "llm_response_key_cleanup_failed",
+                                request_id=request_id,
+                                error=str(e),
+                            )
+
+                        return response
+                    last_poll = time.time()
+
+            # Timeout reached
+            logger.error(
+                "llm_request_timeout",
+                request_id=request_id,
+                timeout=timeout,
+            )
+            raise RequestTimeoutError(
+                f"Request {request_id} timed out after {timeout}s"
+            )
+        finally:
+            # Always clean up subscription
+            try:
+                await pubsub.unsubscribe(channel)
+                await pubsub.aclose()
+            except Exception as e:
+                logger.warning(
+                    "llm_pubsub_cleanup_failed",
+                    request_id=request_id,
+                    error=str(e),
+                )
 
     async def get_queue_depth(self) -> int:
         """Get current queue depth.
