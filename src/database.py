@@ -1,9 +1,9 @@
 """Database connection and session management."""
 
-from typing import Generator
+from collections.abc import Generator
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from config import settings
 
@@ -14,8 +14,9 @@ database_url = settings.database_url.replace("postgresql://", "postgresql+psycop
 engine = create_engine(
     database_url,
     pool_pre_ping=True,  # Verify connections before using them
-    pool_size=5,
-    max_overflow=10,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout,
 )
 
 # Create session factory

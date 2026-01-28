@@ -124,21 +124,33 @@ class MetricsCollector:
         """
         from sqlalchemy import extract
 
+        # Determine database dialect
+        try:
+            dialect_name = self._db.bind.dialect.name
+        except AttributeError:
+            dialect_name = "sqlite"
+
+        # Build duration expression based on dialect
+        if dialect_name == "postgresql":
+            # PostgreSQL: Use extract epoch
+            duration_expr = (
+                extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
+            )
+        else:
+            # SQLite: Use julianday
+            duration_expr = (
+                (func.julianday(Job.completed_at) - func.julianday(Job.started_at))
+                * 86400
+            )
+
         # Query for completed jobs with valid timestamps
-        # Calculate duration in seconds using database-level extraction
         result = self._db.execute(
             select(
                 Job.type,
                 func.count(Job.id),
-                func.avg(
-                    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
-                ),
-                func.min(
-                    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
-                ),
-                func.max(
-                    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
-                ),
+                func.avg(duration_expr),
+                func.min(duration_expr),
+                func.max(duration_expr),
             )
             .where(
                 Job.status == "completed",
