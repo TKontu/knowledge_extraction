@@ -111,4 +111,9 @@ def format_prometheus(metrics: SystemMetrics) -> str:
             f'scristill_jobs_completed_total{{type="{job_type}"}} {stats.count}'
         )
 
+    # Orphaned extractions
+    lines.append("# HELP scristill_orphaned_extractions_total Extractions without embeddings")
+    lines.append("# TYPE scristill_orphaned_extractions_total gauge")
+    lines.append(f"scristill_orphaned_extractions_total {metrics.orphaned_extractions_total}")
+
     return "\n".join(lines) + "\n"
