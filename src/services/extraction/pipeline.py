@@ -1,6 +1,7 @@
 """Extraction pipeline service for orchestrating the complete extraction flow."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -203,6 +204,12 @@ class ExtractionPipelineService:
                     )
                 ]
                 await self._qdrant_repo.upsert_batch(items)
+
+                # Phase 3b: Update extraction records with embedding_id
+                # This tracks which extractions have embeddings in Qdrant
+                extraction_ids = [extraction.id for _, extraction in fact_extractions]
+                await self._extraction_repo.update_embedding_ids_batch(extraction_ids)
+
                 embeddings_succeeded = True
 
             except Exception as e:
@@ -309,6 +316,7 @@ class ExtractionPipelineService:
         profile_name: str = "general",
         max_concurrent: int = 10,
         chunk_size: int | None = None,
+        cancellation_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> BatchPipelineResult:
         """Process multiple sources in parallel.
 
@@ -319,6 +327,8 @@ class ExtractionPipelineService:
             max_concurrent: Maximum concurrent source extractions.
             chunk_size: Optional chunk size for processing in batches.
                        If provided, backpressure is checked between chunks.
+            cancellation_check: Optional async callback that returns True if
+                              processing should be cancelled.
 
         Returns:
             BatchPipelineResult with aggregated results.
@@ -340,6 +350,15 @@ class ExtractionPipelineService:
         if chunk_size and len(source_ids) > chunk_size:
             all_results = []
             for i in range(0, len(source_ids), chunk_size):
+                # Check for cancellation between chunks
+                if cancellation_check and await cancellation_check():
+                    logger.info(
+                        "batch_processing_cancelled",
+                        processed=i,
+                        remaining=len(source_ids) - i,
+                    )
+                    break
+
                 chunk = source_ids[i : i + chunk_size]
 
                 # Check backpressure between chunks
@@ -400,8 +419,19 @@ class ExtractionPipelineService:
         self,
         project_id: UUID,
         profile_name: str = "general",
+        cancellation_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> BatchPipelineResult:
-        """Process all pending sources for a project."""
+        """Process all pending sources for a project.
+
+        Args:
+            project_id: Project UUID.
+            profile_name: Extraction profile name.
+            cancellation_check: Optional async callback that returns True if
+                              processing should be cancelled.
+
+        Returns:
+            BatchPipelineResult with aggregated results.
+        """
         # Query for pending sources
         pending_sources = await self._source_repo.get_by_project_and_status(
             project_id, "pending"
@@ -410,8 +440,13 @@ class ExtractionPipelineService:
         # Extract source IDs
         source_ids = [source.id for source in pending_sources]
 
-        # Process batch
-        return await self.process_batch(source_ids, project_id, profile_name)
+        # Process batch with cancellation support
+        return await self.process_batch(
+            source_ids,
+            project_id,
+            profile_name,
+            cancellation_check=cancellation_check,
+        )
 
 
 class SchemaExtractionPipeline:

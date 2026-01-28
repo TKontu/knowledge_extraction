@@ -9,6 +9,16 @@ from orm_models import Entity, Extraction, Job, Source
 
 
 @dataclass
+class JobDurationStats:
+    """Job duration statistics by type."""
+
+    avg_seconds: float
+    min_seconds: float
+    max_seconds: float
+    count: int
+
+
+@dataclass
 class SystemMetrics:
     """System metrics for Prometheus."""
 
@@ -24,6 +34,9 @@ class SystemMetrics:
     extractions_by_type: dict[str, int] = field(default_factory=dict)
     avg_confidence_by_type: dict[str, float] = field(default_factory=dict)
     entities_by_type: dict[str, int] = field(default_factory=dict)
+
+    # Job duration metrics (completed jobs only)
+    job_duration_by_type: dict[str, JobDurationStats] = field(default_factory=dict)
 
 
 class MetricsCollector:
@@ -45,6 +58,7 @@ class MetricsCollector:
             extractions_by_type=self._count_extractions_by_type(),
             avg_confidence_by_type=self._avg_confidence_by_type(),
             entities_by_type=self._count_entities_by_type(),
+            job_duration_by_type=self._job_duration_by_type(),
         )
 
     def _count_total(self, model) -> int:
@@ -99,3 +113,49 @@ class MetricsCollector:
             )
         )
         return {row[0]: row[1] for row in result.all()}
+
+    def _job_duration_by_type(self) -> dict[str, JobDurationStats]:
+        """Calculate job duration statistics by type for completed jobs.
+
+        Only includes jobs with both started_at and completed_at set.
+
+        Returns:
+            Dictionary mapping job type to duration statistics.
+        """
+        from sqlalchemy import extract
+
+        # Query for completed jobs with valid timestamps
+        # Calculate duration in seconds using database-level extraction
+        result = self._db.execute(
+            select(
+                Job.type,
+                func.count(Job.id),
+                func.avg(
+                    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
+                ),
+                func.min(
+                    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
+                ),
+                func.max(
+                    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
+                ),
+            )
+            .where(
+                Job.status == "completed",
+                Job.started_at.isnot(None),
+                Job.completed_at.isnot(None),
+            )
+            .group_by(Job.type)
+        )
+
+        stats = {}
+        for row in result.all():
+            job_type, count, avg_sec, min_sec, max_sec = row
+            if count and count > 0:
+                stats[job_type] = JobDurationStats(
+                    avg_seconds=float(avg_sec) if avg_sec else 0.0,
+                    min_seconds=float(min_sec) if min_sec else 0.0,
+                    max_seconds=float(max_sec) if max_sec else 0.0,
+                    count=count,
+                )
+        return stats

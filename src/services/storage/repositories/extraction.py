@@ -327,3 +327,48 @@ class ExtractionRepository:
         if extraction:
             extraction.entities_extracted = entities_extracted
             self._session.flush()
+
+    async def update_embedding_id(
+        self, extraction_id: UUID, embedding_id: str
+    ) -> None:
+        """Update the embedding_id for an extraction.
+
+        Args:
+            extraction_id: Extraction UUID
+            embedding_id: Vector embedding ID (typically string version of extraction_id)
+        """
+        extraction = await self.get(extraction_id)
+        if extraction:
+            extraction.embedding_id = embedding_id
+            self._session.flush()
+
+    async def update_embedding_ids_batch(
+        self, extraction_ids: list[UUID]
+    ) -> int:
+        """Update embedding_id for multiple extractions in batch.
+
+        Sets embedding_id to the string representation of each extraction's ID,
+        matching the Qdrant point ID convention.
+
+        Args:
+            extraction_ids: List of extraction UUIDs to update
+
+        Returns:
+            Number of extractions updated
+        """
+        if not extraction_ids:
+            return 0
+
+        from sqlalchemy import String, cast, update
+
+        # Single UPDATE for all extractions using IN clause
+        # Uses cast(id, String) to convert UUID to string in the database
+        # This is O(1) database round-trips instead of O(n)
+        result = self._session.execute(
+            update(Extraction)
+            .where(Extraction.id.in_(extraction_ids))
+            .values(embedding_id=cast(Extraction.id, String))
+        )
+
+        self._session.flush()
+        return result.rowcount
