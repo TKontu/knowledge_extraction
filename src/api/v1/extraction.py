@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import ExtractionListResponse, ExtractRequest, ExtractResponse
+from models import (
+    ExtractionListResponse,
+    ExtractRequest,
+    ExtractResponse,
+    RecoverySummaryResponse,
+)
 from orm_models import Job
 from services.projects.repository import ProjectRepository
 from services.storage.repositories.extraction import (
@@ -314,3 +319,99 @@ async def extract_schema(
     )
 
     return result
+
+
+@router.post("/projects/{project_id}/extractions/recover", status_code=status.HTTP_200_OK)
+async def recover_orphaned_extractions(
+    project_id: str,
+    max_batches: int = Query(default=10, le=100, description="Maximum batches to process"),
+    db: Session = Depends(get_db),
+) -> RecoverySummaryResponse:
+    """
+    Manually trigger recovery of orphaned extractions.
+
+    Finds extractions with embedding_id IS NULL and retries embedding generation.
+    This operation is idempotent and safe to run multiple times.
+
+    Args:
+        project_id: Project UUID to recover extractions for.
+        max_batches: Maximum number of batches to process (default 10, max 100).
+        db: Database session.
+
+    Returns:
+        RecoverySummaryResponse with recovery statistics.
+
+    Raises:
+        HTTPException: 404 if project not found, 422 if invalid UUID format.
+    """
+    from config import settings
+    from services.extraction.embedding_recovery import EmbeddingRecoveryService
+    from services.storage.embedding import EmbeddingService
+    from services.storage.qdrant.repository import QdrantRepository
+
+    # Validate project_id format
+    try:
+        project_uuid = UUID(project_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid project_id format. Must be a valid UUID.",
+        )
+
+    # Verify project exists
+    project_repo = ProjectRepository(db)
+    project = await project_repo.get(project_uuid)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    logger.info(
+        "embedding_recovery_endpoint_called",
+        project_id=project_id,
+        max_batches=max_batches,
+    )
+
+    # Create service dependencies
+    from qdrant_client import QdrantClient
+
+    qdrant_client = QdrantClient(
+        host=settings.qdrant_host,
+        port=settings.qdrant_port,
+    )
+    qdrant_repo = QdrantRepository(qdrant_client)
+    embedding_service = EmbeddingService(settings)
+    extraction_repo = ExtractionRepository(db)
+
+    # Create recovery service
+    recovery_service = EmbeddingRecoveryService(
+        db=db,
+        embedding_service=embedding_service,
+        qdrant_repo=qdrant_repo,
+        extraction_repo=extraction_repo,
+        batch_size=50,
+    )
+
+    # Run recovery
+    summary = await recovery_service.run_recovery(
+        project_id=project_uuid,
+        max_batches=max_batches,
+    )
+
+    logger.info(
+        "embedding_recovery_completed",
+        project_id=project_id,
+        total_found=summary.total_found,
+        total_recovered=summary.total_recovered,
+        total_failed=summary.total_failed,
+        batches_processed=summary.batches_processed,
+    )
+
+    return RecoverySummaryResponse(
+        total_found=summary.total_found,
+        total_recovered=summary.total_recovered,
+        total_failed=summary.total_failed,
+        batches_processed=summary.batches_processed,
+        errors=summary.errors,
+    )

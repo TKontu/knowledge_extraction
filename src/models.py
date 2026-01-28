@@ -9,6 +9,31 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class RecoverySummaryResponse(BaseModel):
+    """Response for embedding recovery endpoint."""
+
+    total_found: int = Field(
+        ...,
+        description="Total number of orphaned extractions found",
+    )
+    total_recovered: int = Field(
+        ...,
+        description="Total number successfully recovered",
+    )
+    total_failed: int = Field(
+        ...,
+        description="Total number that failed to recover",
+    )
+    batches_processed: int = Field(
+        ...,
+        description="Number of batches processed",
+    )
+    errors: list[str] = Field(
+        default_factory=list,
+        description="List of error messages encountered",
+    )
+
+
 class ScrapeRequest(BaseModel):
     """Request body for scrape endpoint."""
 
