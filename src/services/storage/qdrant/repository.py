@@ -1,15 +1,18 @@
 """Qdrant repository for embedding storage and search."""
 
+import asyncio
 from dataclasses import dataclass
+from functools import partial
 from uuid import UUID
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
-    PointStruct,
-    Filter,
     FieldCondition,
+    Filter,
     MatchValue,
+    PointStruct,
+    VectorParams,
 )
 
 
@@ -50,17 +53,26 @@ class QdrantRepository:
         - Vector size: 1024 (BGE-large-en)
         - Distance metric: Cosine
         """
+        # Run sync operations in executor
+        loop = asyncio.get_event_loop()
+
         # Check if collection exists
-        collections = self.client.get_collections().collections
-        if any(c.name == self.collection_name for c in collections):
+        collections = await loop.run_in_executor(
+            None, self.client.get_collections
+        )
+        if any(c.name == self.collection_name for c in collections.collections):
             return
 
         # Create collection with BGE-large-en configuration
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            vectors_config=VectorParams(
-                size=1024,  # BGE-large-en dimension
-                distance=Distance.COSINE,
+        await loop.run_in_executor(
+            None,
+            partial(
+                self.client.create_collection,
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(
+                    size=1024,  # BGE-large-en dimension
+                    distance=Distance.COSINE,
+                ),
             ),
         )
 
@@ -82,16 +94,21 @@ class QdrantRepository:
         """
         point_id = str(extraction_id)
 
-        # Upsert point (will insert new or update existing)
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=[
-                PointStruct(
-                    id=point_id,
-                    vector=embedding,
-                    payload=payload,
-                )
-            ],
+        # Run sync operation in executor
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            partial(
+                self.client.upsert,
+                collection_name=self.collection_name,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding,
+                        payload=payload,
+                    )
+                ],
+            ),
         )
 
         return point_id
@@ -118,10 +135,15 @@ class QdrantRepository:
             for item in items
         ]
 
-        # Batch upsert
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=points,
+        # Run sync operation in executor
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            partial(
+                self.client.upsert,
+                collection_name=self.collection_name,
+                points=points,
+            ),
         )
 
         return [str(item.extraction_id) for item in items]
@@ -151,12 +173,17 @@ class QdrantRepository:
             ]
             query_filter = Filter(must=conditions)
 
-        # Perform vector search
-        search_results = self.client.search(
-            collection_name=self.collection_name,
-            query_vector=query_embedding,
-            limit=limit,
-            query_filter=query_filter,
+        # Run sync operation in executor
+        loop = asyncio.get_event_loop()
+        search_results = await loop.run_in_executor(
+            None,
+            partial(
+                self.client.search,
+                collection_name=self.collection_name,
+                query_vector=query_embedding,
+                limit=limit,
+                query_filter=query_filter,
+            ),
         )
 
         # Convert to SearchResult objects
@@ -180,10 +207,15 @@ class QdrantRepository:
         """
         point_id = str(extraction_id)
 
-        # Delete point (idempotent - doesn't fail if point doesn't exist)
-        self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=[point_id],
+        # Run sync operation in executor
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            partial(
+                self.client.delete,
+                collection_name=self.collection_name,
+                points_selector=[point_id],
+            ),
         )
 
         return True

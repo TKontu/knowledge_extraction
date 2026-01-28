@@ -37,6 +37,20 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL",
     )
 
+    # Database pool settings
+    db_pool_size: int = Field(
+        default=5,
+        description="Database connection pool size",
+    )
+    db_max_overflow: int = Field(
+        default=10,
+        description="Max overflow connections",
+    )
+    db_pool_timeout: int = Field(
+        default=30,
+        description="Pool connection timeout in seconds",
+    )
+
     # Redis
     redis_url: str = Field(
         default="redis://localhost:6379",
