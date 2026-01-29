@@ -1,8 +1,9 @@
 """Qdrant connection and client management."""
 
-from typing import Generator
+from collections.abc import Generator
 
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from config import settings
 
@@ -34,5 +35,5 @@ def check_qdrant_connection() -> bool:
         # Check health to verify connection
         qdrant_client.get_collections()
         return True
-    except Exception:
+    except (UnexpectedResponse, ResponseHandlingException, ConnectionError, OSError):
         return False

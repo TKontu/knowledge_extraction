@@ -7,6 +7,7 @@ import structlog
 from sqlalchemy.orm import Session
 
 from orm_models import Extraction
+from services.alerting import get_alert_service
 from services.storage.embedding import EmbeddingService
 from services.storage.qdrant.repository import EmbeddingItem, QdrantRepository
 from services.storage.repositories.extraction import ExtractionRepository
@@ -197,5 +198,20 @@ class EmbeddingRecoveryService:
                 succeeded=batch_result.succeeded,
                 failed=batch_result.failed,
             )
+
+        # Send recovery completion alert
+        if summary.total_recovered > 0 or summary.total_failed > 0:
+            try:
+                alert_service = get_alert_service()
+                await alert_service.alert_recovery_completed(
+                    project_id=project_id or UUID("00000000-0000-0000-0000-000000000000"),
+                    recovered=summary.total_recovered,
+                    failed=summary.total_failed,
+                )
+            except Exception as alert_err:
+                logger.warning(
+                    "recovery_alert_failed",
+                    error=str(alert_err),
+                )
 
         return summary

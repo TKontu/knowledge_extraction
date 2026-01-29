@@ -59,7 +59,7 @@ def get_redis_client() -> redis.Redis | None:
     try:
         redis_client.ping()
         return redis_client
-    except Exception:
+    except (redis.ConnectionError, redis.TimeoutError, OSError):
         return None
 
 
@@ -74,5 +74,5 @@ def check_redis_connection() -> bool:
         # Ping Redis to verify connection
         redis_client.ping()
         return True
-    except Exception:
+    except (redis.ConnectionError, redis.TimeoutError, OSError):
         return False
