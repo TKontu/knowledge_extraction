@@ -102,7 +102,7 @@ class EntityExtractor:
         # For plan, feature, and unknown types: use default lowercase + strip
         return normalized
 
-    async def _store_entities(
+    def _store_entities(
         self,
         entities: list[dict],
         project_id: UUID,
@@ -120,7 +120,7 @@ class EntityExtractor:
         """
         results = []
         for entity in entities:
-            entity_obj, created = await self._entity_repo.get_or_create(
+            entity_obj, created = self._entity_repo.get_or_create(
                 project_id=project_id,
                 source_group=source_group,
                 entity_type=entity["type"],
@@ -160,7 +160,7 @@ class EntityExtractor:
         )
 
         # Step 2: Store entities with deduplication and normalization
-        stored_entities = await self._store_entities(
+        stored_entities = self._store_entities(
             entities=entity_dicts,
             project_id=project_id,
             source_group=source_group,
@@ -169,7 +169,7 @@ class EntityExtractor:
         # Step 3: Link entities to extraction
         entities = []
         for entity, _created in stored_entities:
-            link, link_created = await self._entity_repo.link_to_extraction(
+            link, link_created = self._entity_repo.link_to_extraction(
                 entity_id=entity.id,
                 extraction_id=extraction_id,
             )

@@ -1,17 +1,16 @@
 """Tests for embedding recovery service."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
+
+import pytest
 
 from orm_models import Extraction
 from services.extraction.embedding_recovery import (
     EmbeddingRecoveryService,
-    RecoveryResult,
-    RecoverySummary,
 )
 from services.storage.embedding import EmbeddingService
-from services.storage.qdrant.repository import EmbeddingItem, QdrantRepository
+from services.storage.qdrant.repository import QdrantRepository
 from services.storage.repositories.extraction import ExtractionRepository
 
 
@@ -40,9 +39,9 @@ def mock_qdrant_repo():
 @pytest.fixture
 def mock_extraction_repo():
     """Mock extraction repository."""
-    repo = AsyncMock(spec=ExtractionRepository)
-    repo.find_orphaned = AsyncMock(return_value=[])
-    repo.update_embedding_ids_batch = AsyncMock(return_value=2)
+    repo = MagicMock(spec=ExtractionRepository)
+    repo.find_orphaned = MagicMock(return_value=[])
+    repo.update_embedding_ids_batch = MagicMock(return_value=2)
     return repo
 
 
@@ -87,10 +86,10 @@ class TestFindOrphanedExtractions:
                 embedding_id=None,
             ),
         ]
-        mock_extraction_repo.find_orphaned = AsyncMock(return_value=orphaned)
+        mock_extraction_repo.find_orphaned = MagicMock(return_value=orphaned)
 
         # Act
-        result = await recovery_service.find_orphaned_extractions(
+        result = recovery_service.find_orphaned_extractions(
             project_id=project_id, limit=100
         )
 
@@ -118,10 +117,10 @@ class TestFindOrphanedExtractions:
                 embedding_id=None,
             ),
         ]
-        mock_extraction_repo.find_orphaned = AsyncMock(return_value=orphaned_only)
+        mock_extraction_repo.find_orphaned = MagicMock(return_value=orphaned_only)
 
         # Act
-        result = await recovery_service.find_orphaned_extractions(
+        result = recovery_service.find_orphaned_extractions(
             project_id=project_id, limit=100
         )
 
@@ -137,7 +136,7 @@ class TestFindOrphanedExtractions:
         project_id = uuid4()
 
         # Act
-        await recovery_service.find_orphaned_extractions(
+        recovery_service.find_orphaned_extractions(
             project_id=project_id, limit=50
         )
 
@@ -154,7 +153,7 @@ class TestFindOrphanedExtractions:
         project_id = uuid4()
 
         # Act
-        await recovery_service.find_orphaned_extractions(
+        recovery_service.find_orphaned_extractions(
             project_id=project_id, limit=25
         )
 
@@ -318,7 +317,7 @@ class TestRunRecovery:
             for i in range(30)
         ]
         # First call returns batch_1, second call returns batch_2, third returns empty
-        mock_extraction_repo.find_orphaned = AsyncMock(
+        mock_extraction_repo.find_orphaned = MagicMock(
             side_effect=[batch_1, batch_2, []]
         )
         # Return correct number of embeddings for each batch
@@ -359,7 +358,7 @@ class TestRunRecovery:
             for i in range(50)
         ]
         # Always return a full batch (simulating many orphans)
-        mock_extraction_repo.find_orphaned = AsyncMock(return_value=batch)
+        mock_extraction_repo.find_orphaned = MagicMock(return_value=batch)
         mock_embedding_service.embed_batch = AsyncMock(
             return_value=[[0.1] * 1024] * 50
         )

@@ -60,7 +60,7 @@ class EmbeddingRecoveryService:
         self._extraction_repo = extraction_repo
         self._batch_size = batch_size
 
-    async def find_orphaned_extractions(
+    def find_orphaned_extractions(
         self,
         project_id: UUID | None = None,
         limit: int = 100,
@@ -74,7 +74,7 @@ class EmbeddingRecoveryService:
         Returns:
             List of orphaned Extraction instances.
         """
-        return await self._extraction_repo.find_orphaned(
+        return self._extraction_repo.find_orphaned(
             project_id=project_id,
             limit=limit,
         )
@@ -125,7 +125,7 @@ class EmbeddingRecoveryService:
 
             # Update embedding_id in database
             extraction_ids = [extraction.id for extraction in extractions]
-            await self._extraction_repo.update_embedding_ids_batch(extraction_ids)
+            self._extraction_repo.update_embedding_ids_batch(extraction_ids)
 
             result.succeeded = len(extractions)
 
@@ -167,7 +167,7 @@ class EmbeddingRecoveryService:
 
         for batch_num in range(max_batches):
             # Find next batch of orphaned extractions
-            orphaned = await self.find_orphaned_extractions(
+            orphaned = self.find_orphaned_extractions(
                 project_id=project_id,
                 limit=self._batch_size,
             )

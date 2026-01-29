@@ -178,9 +178,9 @@ class TestStoreEntities:
             normalized_value="pro plan",
             attributes={},
         )
-        entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
+        entity_repo.get_or_create = MagicMock(return_value=(mock_entity, True))
 
-        results = await extractor._store_entities(entities, project_id, source_group)
+        results = extractor._store_entities(entities, project_id, source_group)
 
         assert len(results) == 1
         entity, created = results[0]
@@ -210,9 +210,9 @@ class TestStoreEntities:
             normalized_value="pro plan",
             attributes={},
         )
-        entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, False))
+        entity_repo.get_or_create = MagicMock(return_value=(mock_entity, False))
 
-        results = await extractor._store_entities(entities, project_id, source_group)
+        results = extractor._store_entities(entities, project_id, source_group)
 
         assert len(results) == 1
         entity, created = results[0]
@@ -240,9 +240,9 @@ class TestStoreEntities:
             normalized_value="pro plan",
             attributes={},
         )
-        entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
+        entity_repo.get_or_create = MagicMock(return_value=(mock_entity, True))
 
-        await extractor._store_entities(entities, project_id, source_group)
+        extractor._store_entities(entities, project_id, source_group)
 
         # Verify normalized_value was passed to get_or_create
         call_args = entity_repo.get_or_create.call_args
@@ -287,10 +287,10 @@ class TestExtract:
             normalized_value="pro plan",
             attributes={},
         )
-        entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
+        entity_repo.get_or_create = MagicMock(return_value=(mock_entity, True))
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
-        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        entity_repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
@@ -336,10 +336,10 @@ class TestExtract:
             normalized_value="pro",
             attributes={},
         )
-        entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
+        entity_repo.get_or_create = MagicMock(return_value=(mock_entity, True))
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
-        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        entity_repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
 
         await extractor.extract(
             extraction_id=extraction_id,
@@ -380,10 +380,10 @@ class TestExtract:
             normalized_value="pro",
             attributes={},
         )
-        entity_repo.get_or_create = AsyncMock(return_value=(mock_entity, True))
+        entity_repo.get_or_create = MagicMock(return_value=(mock_entity, True))
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
-        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        entity_repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
@@ -414,7 +414,7 @@ class TestExtract:
 
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
-        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        entity_repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
@@ -483,12 +483,12 @@ class TestExtract:
                 attributes={},
             ),
         ]
-        entity_repo.get_or_create = AsyncMock(
+        entity_repo.get_or_create = MagicMock(
             side_effect=[(e, True) for e in mock_entities]
         )
         # link_to_extraction returns (ExtractionEntity, bool) tuple
         mock_link = MagicMock()
-        entity_repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        entity_repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
 
         entities = await extractor.extract(
             extraction_id=extraction_id,
