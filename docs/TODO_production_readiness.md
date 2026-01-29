@@ -1,6 +1,6 @@
 # TODO: Production Readiness
 
-Review date: 2026-01-29
+Review date: 2026-01-29 (verified)
 
 ## Summary
 
@@ -31,15 +31,18 @@ Replace broad `except Exception:` with specific types.
 | `src/redis_client.py` | 50-54 | `except Exception:` | `except (redis.ConnectionError, redis.TimeoutError):` |
 | `src/qdrant_connection.py` | 33-38 | `except Exception:` | `except (QdrantException, ConnectionError):` |
 
-### 3. Fix Lint Error
+### ~~3. Fix Lint Error~~ (NOT AN ISSUE)
 - **File:** `src/services/extraction/schema_orchestrator.py`
-- **Issue:** `ExtractionContext` forward reference
-- **Action:** Add `from __future__ import annotations` or use string annotation
+- **Status:** ✅ NOT A BUG - Deliberate design pattern
+- **Analysis:** Uses string annotation `"ExtractionContext | None"` with deferred import inside `__init__`. This is a valid pattern to avoid circular imports.
 
-### 4. Add Queue Mode Test
-- **File:** `tests/test_llm_client_queue.py` (or new file)
-- **Issue:** `_complete_via_queue` method lacks test coverage
-- **Action:** Add test with mocked Redis queue
+### ~~4. Add Queue Mode Test~~ (DONE)
+- **File:** `tests/test_llm_client_queue.py`
+- **Status:** ✅ COMPLETED (verified 2026-01-29)
+- **Tests:** 497 lines of comprehensive tests including:
+  - `TestLLMClientQueueMode` - 6 tests for fact extraction via queue
+  - `TestLLMClientExtractEntities` - 7 tests for entity extraction via queue
+  - `TestLLMClientConcurrency` - concurrent operations test
 
 ---
 

@@ -1,6 +1,6 @@
 # TODO: Architecture - Database Consistency & Worker Robustness
 
-Review date: 2026-01-29
+Review date: 2026-01-29 (verified)
 
 ## Summary
 
@@ -36,7 +36,11 @@ await self._qdrant_repo.upsert_batch(items)
 
 - **Recommended Actions:**
   - [x] ~~Track `embedding_id` in PostgreSQL after Qdrant upsert~~ (DONE - 2026-01-28)
-  - [ ] Add background task to find orphaned extractions (`embedding_id IS NULL`) and retry embedding
+  - [x] ~~Add service to find orphaned extractions and retry embedding~~ (DONE - 2026-01-29)
+    - Service: `src/services/extraction/embedding_recovery.py`
+    - API endpoint: `POST /projects/{project_id}/extractions/recover`
+    - Tests: `tests/test_embedding_recovery.py`
+    - **Note**: Manual trigger via API, not automatic background task
   - [ ] Consider transactional outbox pattern for critical consistency
   - [ ] Add alerting for partial-failure states
 
@@ -88,26 +92,29 @@ async def create(self, ...) -> Extraction:
 
 ---
 
-### 4. LLM Response Polling Inefficiency
+### ~~4. LLM Response Polling Inefficiency~~ (DONE)
 
 - **Severity:** MEDIUM
-- **Files:** `src/services/llm/queue.py:131-150`
-- **Issue:** Polling Redis every 100ms for up to 300 seconds = 3000 round-trips per request
+- **Files:** `src/services/llm/queue.py:176-256`
+- **Status:** ✅ COMPLETED (verified 2026-01-29)
+- **Implementation:** Redis pub/sub with fallback polling
 
 ```python
-while time.time() < deadline:
-    result = await self.redis.get(response_key)
-    if result:
-        return response
-    await asyncio.sleep(self.poll_interval)  # 0.1s polling
+# Subscribe and wait for notification
+pubsub = self.redis.pubsub()
+await pubsub.subscribe(channel)
+
+# Wait for message with timeout and fallback polling
+message = await asyncio.wait_for(
+    pubsub.get_message(ignore_subscribe_messages=True),
+    timeout=0.1,
+)
 ```
 
-- **Impact:** Unnecessary Redis load, especially under high concurrency
-
-- **Recommended Actions:**
-  - [ ] Replace with Redis pub/sub for response notification
-  - [ ] Alternative: Use Redis BLPOP/blocking read patterns
-  - [ ] Increase poll interval for longer-running requests
+- **Features:**
+  - Primary: Redis pub/sub for instant notification
+  - Fallback: Periodic polling every `poll_fallback_interval` seconds (reliability)
+  - Proper cleanup with `pubsub.unsubscribe()` and `pubsub.aclose()`
 
 ---
 
@@ -145,41 +152,47 @@ async def upsert_batch(self, items: list[EmbeddingItem]) -> list[str]:
 
 ---
 
-### 7. Job Duration Metrics Use PostgreSQL-Specific SQL
+### ~~7. Job Duration Metrics Use PostgreSQL-Specific SQL~~ (DONE)
 
 - **Severity:** LOW
-- **File:** `src/services/metrics/collector.py:134-141`
-- **Issue:** `extract("epoch", timestamp)` is PostgreSQL-specific syntax
-- **Context:**
-  - Tests use PostgreSQL (verified in `conftest.py:54-58`)
-  - Production uses PostgreSQL
-  - Other repository code already handles SQLite fallbacks (e.g., `extraction.py:223,251,286,307`)
+- **File:** `src/services/metrics/collector.py:131-148`
+- **Status:** ✅ COMPLETED (verified 2026-01-29)
+- **Implementation:** SQLite fallback using `julianday()` already exists at lines 145-148
 
 ```python
-func.avg(
-    extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
-)
+# PostgreSQL: Use extract epoch
+if dialect_name == "postgresql":
+    duration_expr = (
+        extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
+    )
+else:
+    # SQLite: Use julianday
+    duration_expr = (
+        (func.julianday(Job.completed_at) - func.julianday(Job.started_at))
+        * 86400
+    )
 ```
-
-- **Recommended Actions:**
-  - [ ] Add SQLite fallback using `julianday()` for consistency with other code
-  - [ ] Or document PostgreSQL as a hard requirement
 
 ---
 
-### 8. Missing Unit Tests for New Methods
+### ~~8. Missing Unit Tests for New Methods~~ (DONE)
 
 - **Severity:** LOW
-- **Files:**
-  - `src/services/storage/repositories/extraction.py` - `update_embedding_id()`, `update_embedding_ids_batch()`
-  - `src/services/metrics/collector.py` - `_job_duration_by_type()`
-- **Issue:** New methods added 2026-01-28 lack dedicated unit tests
-- **Impact:** Regression risk if these methods are modified
-
-- **Recommended Actions:**
-  - [ ] Add test for `update_embedding_ids_batch()` verifying single query execution
-  - [ ] Add test for `_job_duration_by_type()` with mock job data
-  - [ ] Add test for edge cases (empty list, NULL timestamps)
+- **Status:** ✅ COMPLETED (verified 2026-01-29)
+- **Test Files:**
+  - `tests/test_extraction_repository_batch.py` - Tests for `update_embedding_ids_batch()`
+    - `test_updates_single_extraction`
+    - `test_updates_multiple_extractions`
+    - `test_empty_list_returns_zero`
+    - `test_nonexistent_ids_ignored`
+  - `tests/test_metrics_job_duration.py` - Tests for `_job_duration_by_type()`
+    - `test_calculates_avg_duration`
+    - `test_handles_no_completed_jobs`
+    - `test_groups_by_job_type`
+    - `test_excludes_jobs_without_timestamps`
+    - `test_excludes_non_completed_jobs`
+  - `tests/test_embedding_recovery.py` - Tests for embedding recovery service
+    - Full test coverage for `find_orphaned_extractions`, `recover_batch`, `run_recovery`
 
 ---
 
@@ -206,15 +219,16 @@ func.avg(
 
 ### Phase 1: Critical Fixes (Before Next Major Release)
 1. ~~Increase stale job threshold~~ (DONE)
-2. Add embedding retry background task
+2. ~~Add embedding retry service~~ (DONE - manual API endpoint exists)
 
 ### Phase 2: Performance Improvements
-2. Fix async/sync mismatch (choose strategy)
-3. Improve LLM response pattern (pub/sub)
+1. Fix async/sync mismatch (choose strategy)
+2. ~~Improve LLM response pattern (pub/sub)~~ (DONE)
 
 ### Phase 3: Robustness
-4. Document transaction boundary strategy
-5. Add transactional outbox for critical paths
+1. Document transaction boundary strategy
+2. Add transactional outbox for critical paths
+3. Add alerting for partial-failure states
 
 ---
 
