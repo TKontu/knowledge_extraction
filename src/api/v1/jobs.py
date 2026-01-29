@@ -294,9 +294,13 @@ async def delete_job(
 
     # Don't allow deleting active jobs without cleanup
     if job.status in ("queued", "running", "cancelling") and not cleanup:
+        if job.status == "cancelling":
+            detail = "Job is cancelling. Wait for 'cancelled' or use cleanup=true."
+        else:
+            detail = "Cannot delete active job. Use cleanup=true or cancel first."
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete active job. Use cleanup=true or cancel first.",
+            detail=detail,
         )
 
     # Perform cleanup if requested

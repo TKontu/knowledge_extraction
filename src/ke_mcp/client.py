@@ -425,6 +425,53 @@ class KnowledgeExtractionClient:
         """Get job details."""
         return await self._request("GET", f"/api/v1/jobs/{job_id}")
 
+    async def cancel_job(self, job_id: str) -> dict[str, Any]:
+        """Request cancellation of a queued or running job.
+
+        Args:
+            job_id: Job UUID to cancel.
+
+        Returns:
+            Cancellation response with job_id, status, message.
+        """
+        return await self._request("POST", f"/api/v1/jobs/{job_id}/cancel")
+
+    async def cleanup_job(
+        self, job_id: str, delete_job: bool = False
+    ) -> dict[str, Any]:
+        """Delete all artifacts created by a job.
+
+        Args:
+            job_id: Job UUID to cleanup.
+            delete_job: Also delete the job record itself.
+
+        Returns:
+            Cleanup response with deletion counts.
+        """
+        return await self._request(
+            "POST",
+            f"/api/v1/jobs/{job_id}/cleanup",
+            json={"delete_job": delete_job},
+        )
+
+    async def delete_job_record(
+        self, job_id: str, cleanup: bool = False
+    ) -> dict[str, Any]:
+        """Delete a job record from the database.
+
+        Args:
+            job_id: Job UUID to delete.
+            cleanup: Also delete associated artifacts.
+
+        Returns:
+            Deletion response with status.
+        """
+        return await self._request(
+            "DELETE",
+            f"/api/v1/jobs/{job_id}",
+            params={"cleanup": cleanup},
+        )
+
     # =========================================================================
     # Polling Helpers
     # =========================================================================

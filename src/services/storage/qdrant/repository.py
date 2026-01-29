@@ -234,10 +234,15 @@ class QdrantRepository:
 
         point_ids = [str(eid) for eid in extraction_ids]
 
-        # Batch delete (idempotent)
-        self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=point_ids,
+        # Run sync operation in executor (consistent with other methods)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            partial(
+                self.client.delete,
+                collection_name=self.collection_name,
+                points_selector=point_ids,
+            ),
         )
 
         return len(point_ids)

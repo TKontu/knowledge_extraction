@@ -54,6 +54,10 @@ class CrawlWorker:
             if await self.job_repo.is_cancellation_requested(job.id):
                 logger.info("crawl_job_cancelled_early", job_id=str(job.id))
                 await self.job_repo.mark_cancelled(job.id)
+                job.result = {
+                    "cancelled_early": True,
+                    "reason": "Cancelled before processing started",
+                }
                 self.db.commit()
                 return
 
@@ -147,6 +151,11 @@ class CrawlWorker:
                         pages_available=len(status.pages),
                     )
                     await self.job_repo.mark_cancelled(job.id)
+                    job.result = {
+                        "cancelled_before_storage": True,
+                        "pages_available": len(status.pages),
+                        "pages_stored": 0,
+                    }
                     self.db.commit()
                     return
 

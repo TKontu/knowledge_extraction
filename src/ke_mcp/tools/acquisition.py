@@ -216,33 +216,16 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
         client = ctx.request_context.lifespan_context["client"]
 
         try:
-            response = await client.post(f"/api/v1/jobs/{job_id}/cancel")
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "success": True,
-                    "job_id": data["job_id"],
-                    "status": data["status"],
-                    "message": data["message"],
-                    "sources_to_cleanup": data.get("sources_to_cleanup"),
-                }
-            elif response.status_code == 409:
-                return {
-                    "success": False,
-                    "error": response.json().get("detail", "Cannot cancel job"),
-                }
-            elif response.status_code == 404:
-                return {
-                    "success": False,
-                    "error": f"Job {job_id} not found",
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": response.json().get("detail", "Unknown error"),
-                }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+            result = await client.cancel_job(job_id)
+            return {
+                "success": True,
+                "job_id": result["job_id"],
+                "status": result["status"],
+                "message": result["message"],
+                "sources_to_cleanup": result.get("sources_to_cleanup"),
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}
 
     @mcp.tool()
     async def cleanup_job(
@@ -258,28 +241,18 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
         client = ctx.request_context.lifespan_context["client"]
 
         try:
-            response = await client.post(
-                f"/api/v1/jobs/{job_id}/cleanup",
-                json={"delete_job": delete_job},
-            )
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "success": True,
-                    "job_id": data["job_id"],
-                    "sources_deleted": data["sources_deleted"],
-                    "extractions_deleted": data["extractions_deleted"],
-                    "embeddings_deleted": data["embeddings_deleted"],
-                    "dlq_items_deleted": data["dlq_items_deleted"],
-                    "job_deleted": data["job_deleted"],
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": response.json().get("detail", "Unknown error"),
-                }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+            result = await client.cleanup_job(job_id, delete_job=delete_job)
+            return {
+                "success": True,
+                "job_id": result["job_id"],
+                "sources_deleted": result["sources_deleted"],
+                "extractions_deleted": result["extractions_deleted"],
+                "embeddings_deleted": result["embeddings_deleted"],
+                "dlq_items_deleted": result["dlq_items_deleted"],
+                "job_deleted": result["job_deleted"],
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}
 
     @mcp.tool()
     async def delete_job(
@@ -295,23 +268,13 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
         client = ctx.request_context.lifespan_context["client"]
 
         try:
-            response = await client.delete(
-                f"/api/v1/jobs/{job_id}",
-                params={"cleanup": cleanup},
-            )
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "success": True,
-                    "job_id": data["job_id"],
-                    "deleted": data["deleted"],
-                    "cleanup_performed": data["cleanup_performed"],
-                    "cleanup_stats": data.get("cleanup_stats"),
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": response.json().get("detail", "Unknown error"),
-                }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+            result = await client.delete_job_record(job_id, cleanup=cleanup)
+            return {
+                "success": True,
+                "job_id": result["job_id"],
+                "deleted": result["deleted"],
+                "cleanup_performed": result["cleanup_performed"],
+                "cleanup_stats": result.get("cleanup_stats"),
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}

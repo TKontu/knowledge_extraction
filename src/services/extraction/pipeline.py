@@ -372,11 +372,19 @@ class ExtractionPipelineService:
                 all_results.extend(chunk_results)
             results = all_results
         else:
-            # Process all sources in parallel with bounded concurrency
-            results = await asyncio.gather(
-                *[process_with_limit(sid) for sid in source_ids],
-                return_exceptions=True,
-            )
+            # Check cancellation before starting non-chunked batch
+            if cancellation_check and await cancellation_check():
+                logger.info(
+                    "batch_processing_cancelled_before_start",
+                    total_sources=len(source_ids),
+                )
+                results = []
+            else:
+                # Process all sources in parallel with bounded concurrency
+                results = await asyncio.gather(
+                    *[process_with_limit(sid) for sid in source_ids],
+                    return_exceptions=True,
+                )
 
         # Handle exceptions in results
         processed_results = []
