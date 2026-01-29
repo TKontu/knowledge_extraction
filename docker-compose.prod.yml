@@ -17,7 +17,7 @@ services:
       - HOST=0.0.0.0
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
-      - NUM_WORKERS_PER_QUEUE=6
+      - NUM_WORKERS_PER_QUEUE=12
       - PLAYWRIGHT_MICROSERVICE_URL=http://camoufox:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -46,10 +46,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
-          cpus: '1'
+          memory: 24G
+          cpus: '6'
         reservations:
-          memory: 512M
+          memory: 4G
 
   camoufox:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/camoufox:${CAMOUFOX_TAG:-latest}
@@ -57,8 +57,8 @@ services:
       - "3004:3003"
     environment:
       - CAMOUFOX_PORT=3003
-      - CAMOUFOX_BROWSER_COUNT=${CAMOUFOX_BROWSER_COUNT:-5}
-      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-10}
+      - CAMOUFOX_BROWSER_COUNT=${CAMOUFOX_BROWSER_COUNT:-10}
+      - CAMOUFOX_POOL_SIZE=${CAMOUFOX_POOL_SIZE:-20}
       - CAMOUFOX_TIMEOUT=${CAMOUFOX_TIMEOUT:-180000}
       - CAMOUFOX_NETWORKIDLE_TIMEOUT=${CAMOUFOX_NETWORKIDLE_TIMEOUT:-5000}
       - CAMOUFOX_CONTENT_STABILITY_CHECKS=${CAMOUFOX_CONTENT_STABILITY_CHECKS:-2}
@@ -73,10 +73,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 16G
-          cpus: '3'
+          memory: 32G
+          cpus: '6'
         reservations:
-          memory: 1G
+          memory: 4G
 
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
@@ -235,13 +235,13 @@ services:
       RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-bge-large-en}
       SCRAPE_DELAY_MIN: ${SCRAPE_DELAY_MIN:-2}
       SCRAPE_DELAY_MAX: ${SCRAPE_DELAY_MAX:-5}
-      SCRAPE_MAX_CONCURRENT_PER_DOMAIN: ${SCRAPE_MAX_CONCURRENT_PER_DOMAIN:-2}
+      SCRAPE_MAX_CONCURRENT_PER_DOMAIN: ${SCRAPE_MAX_CONCURRENT_PER_DOMAIN:-4}
       SCRAPE_DAILY_LIMIT_PER_DOMAIN: ${SCRAPE_DAILY_LIMIT_PER_DOMAIN:-500}
       SCRAPE_MAX_RETRIES: ${SCRAPE_MAX_RETRIES:-3}
       SCRAPE_TIMEOUT: ${SCRAPE_TIMEOUT:-180}
       CRAWL_DELAY_MS: ${CRAWL_DELAY_MS:-2000}
-      CRAWL_MAX_CONCURRENCY: ${CRAWL_MAX_CONCURRENCY:-2}
-      MAX_CONCURRENT_CRAWLS: ${MAX_CONCURRENT_CRAWLS:-6}
+      CRAWL_MAX_CONCURRENCY: ${CRAWL_MAX_CONCURRENCY:-4}
+      MAX_CONCURRENT_CRAWLS: ${MAX_CONCURRENT_CRAWLS:-12}
       LLM_HTTP_TIMEOUT: ${LLM_HTTP_TIMEOUT:-900}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-5}
       LLM_RETRY_BACKOFF_MIN: ${LLM_RETRY_BACKOFF_MIN:-2}
