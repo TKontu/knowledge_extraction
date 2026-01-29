@@ -1,84 +1,63 @@
-# Handoff: TODO Verification Complete
+# Handoff: Production Readiness Improvements Complete
 
-## Session Summary
+## Completed This Session
 
-Performed comprehensive verification of all TODO items. **Major discovery**: Many items marked "pending" were actually completed. Updated both TODO files with accurate status.
+### PR #75 Merged - Production Readiness Improvements
 
-## Newly Discovered Completed Items
+1. **Specific Exception Handling** (was MEDIUM priority)
+   - `redis_client.py`: `except Exception:` → `(ConnectionError, TimeoutError, OSError)`
+   - `qdrant_connection.py`: `except Exception:` → specific Qdrant exceptions
 
-| Item | Location | Evidence |
-|------|----------|----------|
-| Embedding Recovery Service | `src/services/extraction/embedding_recovery.py` | Full service + API endpoint + tests |
-| Embedding Recovery API | `POST /projects/{project_id}/extractions/recover` | Manual trigger endpoint |
-| Embedding Recovery Tests | `tests/test_embedding_recovery.py` | 374 lines |
-| LLM pub/sub | `src/services/llm/queue.py:176-256` | Redis pub/sub with fallback |
-| Queue Mode Tests | `tests/test_llm_client_queue.py` | 497 lines |
-| `update_embedding_ids_batch()` tests | `tests/test_extraction_repository_batch.py` | 108 lines |
-| `_job_duration_by_type()` tests | `tests/test_metrics_job_duration.py` | 201 lines |
-| SQLite fallback | `src/services/metrics/collector.py:145-148` | Uses `julianday()` |
-| ExtractionContext "lint error" | `schema_orchestrator.py:22-27` | Valid pattern, not a bug |
+2. **Schema Update Safety** (was HIGH priority)
+   - Added `force` query parameter to `PUT /projects/{id}`
+   - Blocks schema/entity_types changes when extractions exist (returns 409)
+   - Requires `?force=true` to proceed, logs warning
 
-## Updated TODO Summary
+3. **Alerting Service for Partial-Failure States** (was HIGH priority)
+   - New `src/services/alerting/` module
+   - Webhook support (JSON and Slack formats)
+   - 5-minute throttling to prevent alert storms
+   - Alert types: `embedding_failure`, `orphaned_extractions`, `job_failed`, `recovery_completed`
+   - Integrated into extraction pipeline and recovery service
+   - HTTP client cleanup registered in app lifespan
 
-### TODO_architecture_database_consistency.md
+4. **Additional Fixes from Pipeline Review**
+   - Replaced deprecated `datetime.utcnow()` with `datetime.now(UTC)`
+   - Added OpenAPI description for `force` parameter
+   - Consistent string format for error details
+   - f-string interpolation for recovery action URLs
 
-| # | Item | Status |
-|---|------|--------|
-| 1 | No distributed transactions | **Partial** - recovery service exists (manual) |
-| 2 | Async/sync mismatch | Pending |
-| 3 | Inconsistent transaction boundaries | Pending |
-| 4 | LLM polling → pub/sub | ✅ **DONE** |
-| 5 | Database pool sizing | Pending (LOW) |
-| 6 | Qdrant sync operations | Pending (LOW) |
-| 7 | SQLite fallback | ✅ **DONE** |
-| 8 | Unit tests for new methods | ✅ **DONE** |
+### Files Added/Changed
+- `src/services/alerting/__init__.py` - Module exports
+- `src/services/alerting/models.py` - Alert, AlertLevel, AlertType
+- `src/services/alerting/service.py` - AlertService with throttling
+- `src/api/v1/projects.py` - Schema update safety
+- `src/main.py` - Alert service cleanup registration
+- `src/config.py` - Alerting configuration
+- `tests/test_alerting_service.py` - 13 tests
+- `tests/test_project_schema_safety.py` - 6 tests
 
-### TODO_production_readiness.md
-
-| # | Item | Status |
-|---|------|--------|
-| 1 | Schema update safety | Pending (HIGH) |
-| 2 | Specific exception handling | Pending (MEDIUM) |
-| 3 | ExtractionContext lint error | ✅ **NOT A BUG** |
-| 4 | Queue mode test | ✅ **DONE** |
-| 5-8 | Low priority items | Pending |
-
-## Actual Remaining Work
-
-### HIGH Priority
-- [ ] **Schema update safety** - Block or require `force=true` when updating schema with existing extractions
-- [ ] **Alerting for partial-failure states** - Notify when PostgreSQL succeeds but Qdrant fails
+## Remaining Work
 
 ### MEDIUM Priority
 - [ ] **Async/sync mismatch** - Choose: AsyncSession or remove async keywords
-- [ ] **Specific exception handling** - Replace `except Exception:` in redis_client.py and qdrant_connection.py
 - [ ] **Transaction boundary documentation** - Document and add savepoints
 
 ### LOW Priority
 - [ ] Database pool sizing load test
 - [ ] Qdrant async client evaluation
-- [ ] Crawl pipeline improvements (see PLAN-crawl-improvements.md)
 - [ ] JSONB validation
 - [ ] LLM timeout monitoring
 
-## Key File Reference
+## Configuration
 
-| File | Purpose |
-|------|---------|
-| `src/services/extraction/embedding_recovery.py` | Recovery service for orphaned extractions |
-| `src/services/llm/queue.py:176-256` | Redis pub/sub implementation |
-| `tests/test_llm_client_queue.py` | Queue mode tests (497 lines) |
-| `tests/test_embedding_recovery.py` | Recovery service tests |
-| `tests/test_extraction_repository_batch.py` | Batch update tests |
-| `tests/test_metrics_job_duration.py` | Job duration metric tests |
-
-## Note on Embedding Recovery
-
-The embedding recovery service exists as a **manual trigger** via API, not an automatic background task. To recover orphaned extractions:
-
+New environment variables for alerting (`.env.example` updated):
 ```bash
-curl -X POST "http://localhost:8000/api/v1/projects/{project_id}/extractions/recover?max_batches=10" \
-  -H "X-API-Key: your-api-key"
+ALERTING_ENABLED=true
+ALERT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+ALERT_WEBHOOK_FORMAT=json  # or "slack"
 ```
 
-If automatic background recovery is needed, a scheduled task calling `EmbeddingRecoveryService.run_recovery()` would need to be added to the scheduler.
+## Note
+
+Run `/clear` to start fresh with full context budget.
