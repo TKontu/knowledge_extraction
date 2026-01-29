@@ -199,3 +199,119 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
 
         except APIError as e:
             return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def cancel_job(
+        job_id: Annotated[str, "Job UUID to cancel"],
+        ctx: Context = None,
+    ) -> dict:
+        """Cancel a queued or running job.
+
+        Sets the job status to 'cancelling'. Workers check for this status
+        at checkpoints and will stop processing when they see it.
+
+        Note: For crawl jobs using Firecrawl, cancellation cannot stop the
+        external crawl - it will only prevent new results from being stored.
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            response = await client.post(f"/api/v1/jobs/{job_id}/cancel")
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "success": True,
+                    "job_id": data["job_id"],
+                    "status": data["status"],
+                    "message": data["message"],
+                    "sources_to_cleanup": data.get("sources_to_cleanup"),
+                }
+            elif response.status_code == 409:
+                return {
+                    "success": False,
+                    "error": response.json().get("detail", "Cannot cancel job"),
+                }
+            elif response.status_code == 404:
+                return {
+                    "success": False,
+                    "error": f"Job {job_id} not found",
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.json().get("detail", "Unknown error"),
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    @mcp.tool()
+    async def cleanup_job(
+        job_id: Annotated[str, "Job UUID to cleanup"],
+        delete_job: Annotated[bool, "Also delete the job record"] = False,
+        ctx: Context = None,
+    ) -> dict:
+        """Delete all artifacts (sources, extractions, embeddings) created by a job.
+
+        Only works for jobs in terminal states (completed, failed, cancelled).
+        Use cancel_job first for running jobs.
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            response = await client.post(
+                f"/api/v1/jobs/{job_id}/cleanup",
+                json={"delete_job": delete_job},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "success": True,
+                    "job_id": data["job_id"],
+                    "sources_deleted": data["sources_deleted"],
+                    "extractions_deleted": data["extractions_deleted"],
+                    "embeddings_deleted": data["embeddings_deleted"],
+                    "dlq_items_deleted": data["dlq_items_deleted"],
+                    "job_deleted": data["job_deleted"],
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.json().get("detail", "Unknown error"),
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    @mcp.tool()
+    async def delete_job(
+        job_id: Annotated[str, "Job UUID to delete"],
+        cleanup: Annotated[bool, "Also delete associated artifacts"] = False,
+        ctx: Context = None,
+    ) -> dict:
+        """Delete a job record from the database.
+
+        Optionally also cleans up all artifacts (sources, extractions, embeddings)
+        created by the job.
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            response = await client.delete(
+                f"/api/v1/jobs/{job_id}",
+                params={"cleanup": cleanup},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "success": True,
+                    "job_id": data["job_id"],
+                    "deleted": data["deleted"],
+                    "cleanup_performed": data["cleanup_performed"],
+                    "cleanup_stats": data.get("cleanup_stats"),
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.json().get("detail", "Unknown error"),
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}

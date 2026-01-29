@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from config import settings
 from orm_models import Job
 from services.scraper.client import FirecrawlClient
+from services.storage.repositories.job import JobRepository
 from services.storage.repositories.source import SourceRepository
 
 logger = structlog.get_logger(__name__)
@@ -42,12 +43,20 @@ class CrawlWorker:
         self.db = db
         self.client = firecrawl_client
         self.source_repo = SourceRepository(db)
+        self.job_repo = JobRepository(db)
 
     async def process_job(self, job: Job) -> None:
         """Process a crawl job."""
         logger.info("crawl_job_started", job_id=str(job.id))
 
         try:
+            # Check for cancellation before processing
+            if await self.job_repo.is_cancellation_requested(job.id):
+                logger.info("crawl_job_cancelled_early", job_id=str(job.id))
+                await self.job_repo.mark_cancelled(job.id)
+                self.db.commit()
+                return
+
             payload = job.payload
             firecrawl_job_id = payload.get("firecrawl_job_id")
 
@@ -128,6 +137,19 @@ class CrawlWorker:
                 return
 
             if status.status == "completed":
+                # Check for cancellation before storing pages
+                # Note: Firecrawl crawl cannot be cancelled, but we can skip storing results
+                if await self.job_repo.is_cancellation_requested(job.id):
+                    logger.info(
+                        "crawl_job_cancelled_before_storage",
+                        job_id=str(job.id),
+                        firecrawl_job_id=firecrawl_job_id,
+                        pages_available=len(status.pages),
+                    )
+                    await self.job_repo.mark_cancelled(job.id)
+                    self.db.commit()
+                    return
+
                 # Step 3: Store all pages as sources
                 sources_created = await self._store_pages(job, status.pages)
 
