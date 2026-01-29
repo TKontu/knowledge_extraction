@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from orm_models import Project
+from qdrant_connection import qdrant_client
 from redis_client import get_async_redis
 from services.dlq.service import DLQService
 from services.projects.repository import ProjectRepository
+from services.storage.qdrant.repository import QdrantRepository
 
 
 async def get_project_or_404(
@@ -46,3 +48,12 @@ async def get_dlq_service() -> DLQService:
     """
     redis = await get_async_redis()
     return DLQService(redis)
+
+
+def get_qdrant_repository() -> QdrantRepository:
+    """Get QdrantRepository instance.
+
+    Returns:
+        QdrantRepository instance with the global Qdrant client.
+    """
+    return QdrantRepository(qdrant_client)

@@ -164,3 +164,28 @@ class DLQService:
                 # Item was already removed by concurrent request
                 return None
         return None
+
+    async def remove_by_job_id(self, job_id: str) -> int:
+        """Remove all DLQ items associated with a specific job.
+
+        Searches both scrape and extraction DLQs for items matching the job_id
+        and removes them.
+
+        Args:
+            job_id: Job UUID string to match against DLQ items.
+
+        Returns:
+            Total number of items removed from both DLQs.
+        """
+        removed = 0
+
+        # Process both DLQ queues
+        for dlq_key in [SCRAPE_DLQ_KEY, EXTRACTION_DLQ_KEY]:
+            items_json = await self._redis.lrange(dlq_key, 0, -1)
+            for item_json in items_json:
+                item_data = json.loads(item_json)
+                if item_data.get("job_id") == job_id:
+                    count = await self._redis.lrem(dlq_key, 1, item_json)
+                    removed += count
+
+        return removed

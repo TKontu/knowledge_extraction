@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -295,3 +295,39 @@ class SourceRepository:
 
         self._session.flush()
         return source, created
+
+    async def delete_by_job_id(self, job_id: UUID) -> int:
+        """Delete all sources created by a specific job.
+
+        This cascades to delete associated extractions and entities due to
+        the ON DELETE CASCADE foreign key constraints.
+
+        Args:
+            job_id: UUID of the job that created the sources
+
+        Returns:
+            Number of sources deleted
+        """
+        result = self._session.execute(
+            delete(Source).where(Source.created_by_job_id == job_id)
+        )
+        self._session.flush()
+        return result.rowcount
+
+    async def count_by_job_id(self, job_id: UUID) -> int:
+        """Count sources created by a specific job.
+
+        Args:
+            job_id: UUID of the job that created the sources
+
+        Returns:
+            Number of sources created by the job
+        """
+        from sqlalchemy import func
+
+        result = self._session.execute(
+            select(func.count()).select_from(Source).where(
+                Source.created_by_job_id == job_id
+            )
+        )
+        return result.scalar() or 0
