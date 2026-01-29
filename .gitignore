@@ -70,4 +70,5 @@ input/
 /debug.mcp.json
 /debug/*
 
+.mcp.json.claude/settings.local.json
 .mcp.json
