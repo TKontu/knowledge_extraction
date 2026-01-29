@@ -17,7 +17,7 @@ services:
       - HOST=0.0.0.0
       - REDIS_URL=redis://redis:6379
       - REDIS_RATE_LIMIT_URL=redis://redis:6379
-      - NUM_WORKERS_PER_QUEUE=12
+      - NUM_WORKERS_PER_QUEUE=8
       - PLAYWRIGHT_MICROSERVICE_URL=http://camoufox:3003/scrape
       - NUQ_DATABASE_URL=postgresql://postgres:postgres@firecrawl-db:5432/postgres
       - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -46,10 +46,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 24G
-          cpus: '6'
+          memory: 16G
+          cpus: '4'
         reservations:
-          memory: 4G
+          memory: 2G
 
   camoufox:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/camoufox:${CAMOUFOX_TAG:-latest}
@@ -73,10 +73,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 32G
-          cpus: '6'
+          memory: 24G
+          cpus: '4'
         reservations:
-          memory: 4G
+          memory: 2G
 
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
