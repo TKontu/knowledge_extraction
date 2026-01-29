@@ -29,7 +29,7 @@ class EntityRepository:
         """
         self._session = session
 
-    async def create(
+    def create(
         self,
         project_id: UUID,
         source_group: str,
@@ -64,7 +64,7 @@ class EntityRepository:
         self._session.flush()
         return entity
 
-    async def get(self, entity_id: UUID) -> Optional[Entity]:
+    def get(self, entity_id: UUID) -> Optional[Entity]:
         """Get entity by ID.
 
         Args:
@@ -76,7 +76,7 @@ class EntityRepository:
         result = self._session.execute(select(Entity).where(Entity.id == entity_id))
         return result.scalar_one_or_none()
 
-    async def get_or_create(
+    def get_or_create(
         self,
         project_id: UUID,
         source_group: str,
@@ -120,7 +120,7 @@ class EntityRepository:
             return existing, False
 
         # Create new entity
-        entity = await self.create(
+        entity = self.create(
             project_id=project_id,
             source_group=source_group,
             entity_type=entity_type,
@@ -130,7 +130,7 @@ class EntityRepository:
         )
         return entity, True
 
-    async def list_by_type(
+    def list_by_type(
         self,
         project_id: UUID,
         entity_type: str,
@@ -162,7 +162,7 @@ class EntityRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def list(self, filters: EntityFilters) -> list[Entity]:
+    def list(self, filters: EntityFilters) -> list[Entity]:
         """List entities with optional filtering.
 
         Args:
@@ -191,7 +191,7 @@ class EntityRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def link_to_extraction(
+    def link_to_extraction(
         self,
         extraction_id: UUID,
         entity_id: UUID,
@@ -238,7 +238,7 @@ class EntityRepository:
         self._session.flush()
         return link, True
 
-    async def get_entities_for_extraction(self, extraction_id: UUID) -> list[Entity]:
+    def get_entities_for_extraction(self, extraction_id: UUID) -> list[Entity]:
         """Get all entities linked to an extraction.
 
         Args:
@@ -258,7 +258,7 @@ class EntityRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def get_extractions_for_entity(self, entity_id: UUID) -> list[Extraction]:
+    def get_extractions_for_entity(self, entity_id: UUID) -> list[Extraction]:
         """Get all extractions linked to an entity.
 
         Args:

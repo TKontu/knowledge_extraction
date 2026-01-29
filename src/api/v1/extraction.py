@@ -57,7 +57,7 @@ async def create_extraction_job(
 
     # Verify project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_uuid)
+    project = project_repo.get(project_uuid)
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -79,7 +79,7 @@ async def create_extraction_job(
         # Verify sources belong to project
         source_repo = SourceRepository(db)
         for source_uuid in source_uuids:
-            source = await source_repo.get(source_uuid)
+            source = source_repo.get(source_uuid)
             if source is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -95,7 +95,7 @@ async def create_extraction_job(
         # Count pending sources for the project
         source_repo = SourceRepository(db)
         filters = SourceFilters(project_id=project_uuid, status="pending")
-        pending_sources = await source_repo.list(filters)
+        pending_sources = source_repo.list(filters)
         source_count = len(pending_sources)
 
     # Create job ID
@@ -182,7 +182,7 @@ async def list_extractions(
 
     # Verify project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_uuid)
+    project = project_repo.get(project_uuid)
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -211,7 +211,7 @@ async def list_extractions(
 
     # Query extractions
     extraction_repo = ExtractionRepository(db)
-    all_extractions = await extraction_repo.list(filters)
+    all_extractions = extraction_repo.list(filters)
 
     # Get total count
     total = len(all_extractions)
@@ -360,7 +360,7 @@ async def recover_orphaned_extractions(
 
     # Verify project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_uuid)
+    project = project_repo.get(project_uuid)
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -711,3 +711,57 @@ class SourceSummaryResponse(BaseModel):
     by_source_group: list[SourceGroupCount] = Field(
         ..., description="Source counts by source group"
     )
+
+
+# Job management API models
+
+
+@dataclass
+class JobCleanupStats:
+    """Statistics from job cleanup operation."""
+
+    sources_deleted: int
+    extractions_deleted: int
+    embeddings_deleted: int
+    dlq_items_deleted: int
+
+
+class JobCancelResponse(BaseModel):
+    """Response for job cancellation request."""
+
+    job_id: str = Field(..., description="Job UUID")
+    status: str = Field(..., description="New job status (cancelling)")
+    message: str = Field(..., description="Human-readable status message")
+    sources_to_cleanup: int | None = Field(
+        default=None, description="Number of sources created by this job"
+    )
+
+
+class JobCleanupRequest(BaseModel):
+    """Request body for job cleanup."""
+
+    delete_job: bool = Field(
+        default=False, description="Also delete the job record itself"
+    )
+
+
+class JobCleanupResponse(BaseModel):
+    """Response for job cleanup operation."""
+
+    job_id: str = Field(..., description="Job UUID")
+    sources_deleted: int = Field(..., description="Number of sources deleted")
+    extractions_deleted: int = Field(..., description="Number of extractions deleted")
+    embeddings_deleted: int = Field(..., description="Number of embeddings deleted")
+    dlq_items_deleted: int = Field(..., description="Number of DLQ items deleted")
+    job_deleted: bool = Field(..., description="Whether the job record was deleted")
+
+
+class JobDeleteResponse(BaseModel):
+    """Response for job deletion."""
+
+    job_id: str = Field(..., description="Job UUID")
+    deleted: bool = Field(..., description="Whether the job was deleted")
+    cleanup_performed: bool = Field(..., description="Whether cleanup was performed")
+    cleanup_stats: dict | None = Field(
+        default=None, description="Cleanup statistics if cleanup was performed"
+    )

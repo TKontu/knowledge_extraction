@@ -7,12 +7,14 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from orm_models import Project
+from qdrant_connection import qdrant_client
 from redis_client import get_async_redis
 from services.dlq.service import DLQService
 from services.projects.repository import ProjectRepository
+from services.storage.qdrant.repository import QdrantRepository
 
 
-async def get_project_or_404(
+def get_project_or_404(
     project_id: UUID,
     db: Session = Depends(get_db),
 ) -> Project:
@@ -29,7 +31,7 @@ async def get_project_or_404(
         HTTPException: 404 if the project does not exist.
     """
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_id)
+    project = project_repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -46,3 +48,12 @@ async def get_dlq_service() -> DLQService:
     """
     redis = await get_async_redis()
     return DLQService(redis)
+
+
+def get_qdrant_repository() -> QdrantRepository:
+    """Get QdrantRepository instance.
+
+    Returns:
+        QdrantRepository instance with the global Qdrant client.
+    """
+    return QdrantRepository(qdrant_client)

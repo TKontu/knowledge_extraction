@@ -49,7 +49,7 @@ async def search_extractions(
 
     # Verify project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_uuid)
+    project = project_repo.get(project_uuid)
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

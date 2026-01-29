@@ -45,7 +45,7 @@ async def create_report(
     """
     # Validate project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_id)
+    project = project_repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -108,7 +108,7 @@ async def list_reports(
     """
     # Validate project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_id)
+    project = project_repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -166,7 +166,7 @@ async def get_report(
     """
     # Validate project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_id)
+    project = project_repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

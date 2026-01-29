@@ -4,8 +4,8 @@ TDD: These tests define the expected behavior after refactoring EntityExtractor
 to use the new LLMClient.extract_entities() method instead of direct LLM calls.
 """
 
-from datetime import datetime, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -27,9 +27,9 @@ class TestEntityExtractorUsesLLMClient:
     @pytest.fixture
     def mock_entity_repo(self):
         """Create mock entity repository."""
-        repo = AsyncMock()
-        # Mock get_or_create to return entity and created flag
-        async def mock_get_or_create(**kwargs):
+        repo = MagicMock()
+        # Mock get_or_create to return entity and created flag (sync method)
+        def mock_get_or_create(**kwargs):
             entity = MagicMock()
             entity.id = uuid4()
             entity.entity_type = kwargs["entity_type"]
@@ -38,9 +38,9 @@ class TestEntityExtractorUsesLLMClient:
             entity.attributes = kwargs["attributes"]
             return entity, True
         repo.get_or_create = mock_get_or_create
-        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        # link_to_extraction returns (ExtractionEntity, bool) tuple (sync method)
         mock_link = MagicMock()
-        repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
         return repo
 
     @pytest.mark.asyncio
@@ -165,9 +165,9 @@ class TestEntityExtractorUsesLLMClient:
             {"type": "limit", "value": "10,000/min", "normalized": "10,000/min", "attributes": {}},
         ])
 
-        # Track what gets passed to get_or_create
+        # Track what gets passed to get_or_create (sync method)
         created_values = []
-        async def track_get_or_create(**kwargs):
+        def track_get_or_create(**kwargs):
             created_values.append(kwargs)
             entity = MagicMock()
             entity.id = uuid4()
@@ -267,7 +267,8 @@ class TestEntityExtractorNormalization:
         )
 
         result = extractor._normalize("pricing", "$19.99/month")
-        assert result == "1999_per_month"
+        # $19.99 = 19,990,000 microcents (millionths of a dollar)
+        assert result == "19990000_microcents_per_month"
 
     def test_normalize_plan_name(self, mock_llm_client, mock_entity_repo):
         """Test normalization of plan names."""
@@ -305,8 +306,8 @@ class TestEntityExtractorWithQueueMode:
 
     @pytest.fixture
     def mock_entity_repo(self):
-        repo = AsyncMock()
-        async def mock_get_or_create(**kwargs):
+        repo = MagicMock()
+        def mock_get_or_create(**kwargs):
             entity = MagicMock()
             entity.id = uuid4()
             entity.entity_type = kwargs["entity_type"]
@@ -314,9 +315,9 @@ class TestEntityExtractorWithQueueMode:
             entity.normalized_value = kwargs["normalized_value"]
             return entity, True
         repo.get_or_create = mock_get_or_create
-        # link_to_extraction returns (ExtractionEntity, bool) tuple
+        # link_to_extraction returns (ExtractionEntity, bool) tuple (sync method)
         mock_link = MagicMock()
-        repo.link_to_extraction = AsyncMock(return_value=(mock_link, True))
+        repo.link_to_extraction = MagicMock(return_value=(mock_link, True))
         return repo
 
     @pytest.mark.asyncio
@@ -324,9 +325,9 @@ class TestEntityExtractorWithQueueMode:
         self, mock_settings, mock_queue, mock_entity_repo
     ):
         """Test EntityExtractor works when LLMClient is in queue mode."""
-        from src.services.llm.models import LLMResponse
-        from services.llm.client import LLMClient
         from services.knowledge.extractor import EntityExtractor
+        from services.llm.client import LLMClient
+        from src.services.llm.models import LLMResponse
 
         # Configure queue response
         mock_queue.wait_for_result.return_value = LLMResponse(

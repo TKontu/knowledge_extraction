@@ -199,3 +199,82 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
 
         except APIError as e:
             return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def cancel_job(
+        job_id: Annotated[str, "Job UUID to cancel"],
+        ctx: Context = None,
+    ) -> dict:
+        """Cancel a queued or running job.
+
+        Sets the job status to 'cancelling'. Workers check for this status
+        at checkpoints and will stop processing when they see it.
+
+        Note: For crawl jobs using Firecrawl, cancellation cannot stop the
+        external crawl - it will only prevent new results from being stored.
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            result = await client.cancel_job(job_id)
+            return {
+                "success": True,
+                "job_id": result["job_id"],
+                "status": result["status"],
+                "message": result["message"],
+                "sources_to_cleanup": result.get("sources_to_cleanup"),
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def cleanup_job(
+        job_id: Annotated[str, "Job UUID to cleanup"],
+        delete_job: Annotated[bool, "Also delete the job record"] = False,
+        ctx: Context = None,
+    ) -> dict:
+        """Delete all artifacts (sources, extractions, embeddings) created by a job.
+
+        Only works for jobs in terminal states (completed, failed, cancelled).
+        Use cancel_job first for running jobs.
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            result = await client.cleanup_job(job_id, delete_job=delete_job)
+            return {
+                "success": True,
+                "job_id": result["job_id"],
+                "sources_deleted": result["sources_deleted"],
+                "extractions_deleted": result["extractions_deleted"],
+                "embeddings_deleted": result["embeddings_deleted"],
+                "dlq_items_deleted": result["dlq_items_deleted"],
+                "job_deleted": result["job_deleted"],
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}
+
+    @mcp.tool()
+    async def delete_job(
+        job_id: Annotated[str, "Job UUID to delete"],
+        cleanup: Annotated[bool, "Also delete associated artifacts"] = False,
+        ctx: Context = None,
+    ) -> dict:
+        """Delete a job record from the database.
+
+        Optionally also cleans up all artifacts (sources, extractions, embeddings)
+        created by the job.
+        """
+        client = ctx.request_context.lifespan_context["client"]
+
+        try:
+            result = await client.delete_job_record(job_id, cleanup=cleanup)
+            return {
+                "success": True,
+                "job_id": result["job_id"],
+                "deleted": result["deleted"],
+                "cleanup_performed": result["cleanup_performed"],
+                "cleanup_stats": result.get("cleanup_stats"),
+            }
+        except APIError as e:
+            return {"success": False, "error": e.message}

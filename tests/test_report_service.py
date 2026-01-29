@@ -146,9 +146,9 @@ class TestReportServiceGenerate:
             source_groups=["company-a"],
         )
 
-        # Mock repository responses
-        mock_extraction_repo.list = AsyncMock(return_value=[])
-        mock_entity_repo.list = AsyncMock(return_value=[])
+        # Mock repository responses (sync methods)
+        mock_extraction_repo.list = MagicMock(return_value=[])
+        mock_entity_repo.list = MagicMock(return_value=[])
 
         # Execute
         report = await report_service.generate(project_id, request)
@@ -172,11 +172,11 @@ class TestReportServiceGatherData:
         # Setup
         project_id = uuid4()
         source_groups = ["company-a"]
-        mock_extraction_repo.list = AsyncMock(return_value=[])
-        mock_entity_repo.list = AsyncMock(return_value=[])
+        mock_extraction_repo.list = MagicMock(return_value=[])
+        mock_entity_repo.list = MagicMock(return_value=[])
 
         # Execute
-        await report_service._gather_data(
+        report_service._gather_data(
             project_id=project_id,
             source_groups=source_groups,
             categories=None,
@@ -196,11 +196,11 @@ class TestReportServiceGatherData:
         project_id = uuid4()
         source_groups = ["company-a"]
         entity_types = ["limit", "pricing"]
-        mock_extraction_repo.list = AsyncMock(return_value=[])
-        mock_entity_repo.list = AsyncMock(return_value=[])
+        mock_extraction_repo.list = MagicMock(return_value=[])
+        mock_entity_repo.list = MagicMock(return_value=[])
 
         # Execute
-        await report_service._gather_data(
+        report_service._gather_data(
             project_id=project_id,
             source_groups=source_groups,
             categories=None,
@@ -352,7 +352,7 @@ class TestGenerateComparisonReport:
             entity_count=2,
         )
 
-        markdown = await report_service._generate_comparison_report(data, None)
+        markdown = report_service._generate_comparison_report(data, None)
 
         assert "## Limit" in markdown
         assert "| Entity |" in markdown
@@ -383,7 +383,7 @@ class TestGenerateComparisonReport:
             entity_count=0,
         )
 
-        markdown = await report_service._generate_comparison_report(data, None)
+        markdown = report_service._generate_comparison_report(data, None)
 
         assert "## Detailed Findings" in markdown
         assert "### company-a" in markdown

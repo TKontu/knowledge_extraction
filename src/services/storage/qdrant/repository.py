@@ -219,3 +219,30 @@ class QdrantRepository:
         )
 
         return True
+
+    async def delete_batch(self, extraction_ids: list[UUID]) -> int:
+        """Delete multiple embeddings in batch.
+
+        Args:
+            extraction_ids: List of extraction UUIDs to delete.
+
+        Returns:
+            Number of points deleted (may be less than input if some didn't exist).
+        """
+        if not extraction_ids:
+            return 0
+
+        point_ids = [str(eid) for eid in extraction_ids]
+
+        # Run sync operation in executor (consistent with other methods)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            partial(
+                self.client.delete,
+                collection_name=self.collection_name,
+                points_selector=point_ids,
+            ),
+        )
+
+        return len(point_ids)

@@ -115,7 +115,7 @@ class ExtractionPipelineService:
         entities_deduplicated = 0
 
         # Fetch source
-        source = await self._source_repo.get(source_id)
+        source = self._source_repo.get(source_id)
         if not source or not source.content:
             return PipelineResult(
                 source_id=source_id,
@@ -127,7 +127,7 @@ class ExtractionPipelineService:
             )
 
         # Get project for entity types
-        project = await self._project_repo.get(project_id)
+        project = self._project_repo.get(project_id)
         entity_types = project.entity_types if project else []
 
         # Load extraction profile
@@ -162,7 +162,7 @@ class ExtractionPipelineService:
                     continue
 
                 # Store extraction
-                extraction = await self._extraction_repo.create(
+                extraction = self._extraction_repo.create(
                     project_id=project_id,
                     source_id=source_id,
                     data={"fact_text": fact.fact, "category": fact.category},
@@ -208,7 +208,7 @@ class ExtractionPipelineService:
                 # Phase 3b: Update extraction records with embedding_id
                 # This tracks which extractions have embeddings in Qdrant
                 extraction_ids = [extraction.id for _, extraction in fact_extractions]
-                await self._extraction_repo.update_embedding_ids_batch(extraction_ids)
+                self._extraction_repo.update_embedding_ids_batch(extraction_ids)
 
                 embeddings_succeeded = True
 
@@ -244,7 +244,7 @@ class ExtractionPipelineService:
                 entities_extracted += len(entities)
 
                 # Mark extraction as having entities extracted
-                await self._extraction_repo.update_entities_extracted(
+                self._extraction_repo.update_entities_extracted(
                     extraction_id=extraction.id,
                     entities_extracted=True,
                 )
@@ -265,7 +265,7 @@ class ExtractionPipelineService:
                 )
 
         # Update source status
-        await self._source_repo.update_status(source_id, "extracted")
+        self._source_repo.update_status(source_id, "extracted")
 
         return PipelineResult(
             source_id=source_id,
@@ -372,11 +372,19 @@ class ExtractionPipelineService:
                 all_results.extend(chunk_results)
             results = all_results
         else:
-            # Process all sources in parallel with bounded concurrency
-            results = await asyncio.gather(
-                *[process_with_limit(sid) for sid in source_ids],
-                return_exceptions=True,
-            )
+            # Check cancellation before starting non-chunked batch
+            if cancellation_check and await cancellation_check():
+                logger.info(
+                    "batch_processing_cancelled_before_start",
+                    total_sources=len(source_ids),
+                )
+                results = []
+            else:
+                # Process all sources in parallel with bounded concurrency
+                results = await asyncio.gather(
+                    *[process_with_limit(sid) for sid in source_ids],
+                    return_exceptions=True,
+                )
 
         # Handle exceptions in results
         processed_results = []
@@ -433,7 +441,7 @@ class ExtractionPipelineService:
             BatchPipelineResult with aggregated results.
         """
         # Query for pending sources
-        pending_sources = await self._source_repo.get_by_project_and_status(
+        pending_sources = self._source_repo.get_by_project_and_status(
             project_id, "pending"
         )
 

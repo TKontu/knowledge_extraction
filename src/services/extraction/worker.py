@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from orm_models import Job
 from services.extraction.pipeline import ExtractionPipelineService
+from services.storage.repositories.job import JobRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -43,6 +44,7 @@ class ExtractionWorker:
         """
         self.db = db
         self.pipeline_service = pipeline_service
+        self.job_repo = JobRepository(db)
 
     async def process_job(self, job: Job) -> None:
         """Process an extraction job.
@@ -57,6 +59,13 @@ class ExtractionWorker:
         """
         logger.info("extraction_job_started", job_id=str(job.id))
         try:
+            # Check for cancellation before starting
+            if self.job_repo.is_cancellation_requested(job.id):
+                logger.info("extraction_job_cancelled_early", job_id=str(job.id))
+                self.job_repo.mark_cancelled(job.id)
+                self.db.commit()
+                return
+
             # Update job status to running
             job.status = "running"
             job.started_at = datetime.now(UTC)
@@ -83,6 +92,10 @@ class ExtractionWorker:
                 source_count=len(source_ids) if source_ids else "all_pending",
             )
 
+            # Create cancellation check callback for pipeline
+            async def check_cancellation() -> bool:
+                return self.job_repo.is_cancellation_requested(job.id)
+
             # Process sources
             if source_ids:
                 # Process specific sources
@@ -92,13 +105,34 @@ class ExtractionWorker:
                     source_ids=source_ids,
                     project_id=project_id,
                     profile_name=profile_name,
+                    cancellation_check=check_cancellation,
                 )
             else:
                 # Process all pending sources for project
                 result = await self.pipeline_service.process_project_pending(
                     project_id=project_id,
                     profile_name=profile_name,
+                    cancellation_check=check_cancellation,
                 )
+
+            # Check if job was cancelled during processing
+            if self.job_repo.is_cancellation_requested(job.id):
+                logger.info(
+                    "extraction_job_cancelled_during_processing",
+                    job_id=str(job.id),
+                    sources_processed=result.sources_processed,
+                )
+                self.job_repo.mark_cancelled(job.id)
+                job.result = {
+                    "sources_processed": result.sources_processed,
+                    "sources_failed": result.sources_failed,
+                    "total_extractions": result.total_extractions,
+                    "total_deduplicated": result.total_deduplicated,
+                    "total_entities": result.total_entities,
+                    "cancelled": True,
+                }
+                self.db.commit()
+                return
 
             # Update job with results
             if result.sources_failed > 0 and result.sources_processed == result.sources_failed:

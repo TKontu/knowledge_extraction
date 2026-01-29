@@ -76,7 +76,7 @@ class ReportService:
             Generated Report ORM object
         """
         # Gather data
-        data = await self._gather_data(
+        data = self._gather_data(
             project_id=project_id,
             source_groups=request.source_groups,
             categories=request.categories,
@@ -92,7 +92,7 @@ class ReportService:
             # Create title if not provided (need it before generation)
             title = request.title or f"Table: {' vs '.join(request.source_groups)}"
 
-            md_content, excel_bytes = await self._generate_table_report(
+            md_content, excel_bytes = self._generate_table_report(
                 data=data,
                 title=title,
                 columns=request.columns,
@@ -117,7 +117,7 @@ class ReportService:
             title = (
                 request.title or f"Schema Report: {', '.join(request.source_groups)}"
             )
-            md_content, excel_bytes = await self._generate_table_report(
+            md_content, excel_bytes = self._generate_table_report(
                 data=data,
                 title=title,
                 columns=request.columns,
@@ -132,7 +132,7 @@ class ReportService:
             content = await self._generate_single_report(data, request.title)
             title = request.title or f"{request.source_groups[0]} - Extraction Report"
         else:
-            content = await self._generate_comparison_report(
+            content = self._generate_comparison_report(
                 data, request.title, request.max_detail_extractions
             )
             title = request.title or f"Comparison: {' vs '.join(request.source_groups)}"
@@ -157,7 +157,7 @@ class ReportService:
 
         return report
 
-    async def _gather_data(
+    def _gather_data(
         self,
         project_id: UUID,
         source_groups: list[str],
@@ -188,7 +188,7 @@ class ReportService:
                 project_id=project_id,
                 source_group=source_group,
             )
-            extractions = await self._extraction_repo.list(
+            extractions = self._extraction_repo.list(
                 filters=filters, limit=max_extractions, offset=0, include_source=True
             )
             extractions_by_group[source_group] = [
@@ -218,7 +218,7 @@ class ReportService:
                         source_group=source_group,
                         entity_type=entity_type,
                     )
-                    entities = await self._entity_repo.list(filters=filters)
+                    entities = self._entity_repo.list(filters=filters)
                     entities_by_group[source_group][entity_type] = [
                         {
                             "id": str(ent.id),
@@ -330,7 +330,7 @@ class ReportService:
 
         return "\n".join(lines)
 
-    async def _generate_comparison_report(
+    def _generate_comparison_report(
         self,
         data: ReportData,
         title: str | None,
@@ -479,7 +479,7 @@ class ReportService:
         """Convert field_name to Human Readable Label."""
         return field_name.replace("_", " ").title()
 
-    async def _get_project_schema(self, project_id: UUID) -> dict | None:
+    def _get_project_schema(self, project_id: UUID) -> dict | None:
         """Load project's extraction_schema.
 
         Args:
@@ -488,10 +488,10 @@ class ReportService:
         Returns:
             The extraction_schema dict, or None if project not found.
         """
-        project = await self._project_repo.get(project_id)
+        project = self._project_repo.get(project_id)
         return project.extraction_schema if project else None
 
-    async def _aggregate_for_table(
+    def _aggregate_for_table(
         self,
         data: ReportData,
         columns: list[str] | None,
@@ -698,7 +698,7 @@ class ReportService:
 
         return "\n".join(lines)
 
-    async def _generate_table_report(
+    def _generate_table_report(
         self,
         data: ReportData,
         title: str | None,
@@ -724,9 +724,9 @@ class ReportService:
         # Load schema if project_id provided
         extraction_schema = None
         if project_id:
-            extraction_schema = await self._get_project_schema(project_id)
+            extraction_schema = self._get_project_schema(project_id)
 
-        rows, final_columns, labels = await self._aggregate_for_table(
+        rows, final_columns, labels = self._aggregate_for_table(
             data, columns, extraction_schema
         )
 
