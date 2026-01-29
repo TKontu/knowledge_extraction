@@ -19,7 +19,7 @@ class ProjectRepository:
         """
         self._session = session
 
-    async def create(
+    def create(
         self,
         name: str,
         extraction_schema: dict,
@@ -64,7 +64,7 @@ class ProjectRepository:
         self._session.flush()
         return project
 
-    async def get(self, project_id: UUID) -> Optional[Project]:
+    def get(self, project_id: UUID) -> Optional[Project]:
         """Get project by ID.
 
         Args:
@@ -76,7 +76,7 @@ class ProjectRepository:
         result = self._session.execute(select(Project).where(Project.id == project_id))
         return result.scalar_one_or_none()
 
-    async def get_by_name(self, name: str) -> Optional[Project]:
+    def get_by_name(self, name: str) -> Optional[Project]:
         """Get project by name.
 
         Args:
@@ -88,7 +88,7 @@ class ProjectRepository:
         result = self._session.execute(select(Project).where(Project.name == name))
         return result.scalar_one_or_none()
 
-    async def list_all(self, include_inactive: bool = False) -> list[Project]:
+    def list_all(self, include_inactive: bool = False) -> list[Project]:
         """List all projects.
 
         Args:
@@ -105,7 +105,7 @@ class ProjectRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def list_templates(self) -> list[Project]:
+    def list_templates(self) -> list[Project]:
         """List template projects.
 
         Returns:
@@ -119,7 +119,7 @@ class ProjectRepository:
         )
         return list(result.scalars().all())
 
-    async def update(self, project_id: UUID, updates: dict) -> Optional[Project]:
+    def update(self, project_id: UUID, updates: dict) -> Optional[Project]:
         """Update project fields.
 
         Args:
@@ -129,7 +129,7 @@ class ProjectRepository:
         Returns:
             Updated Project if found, None otherwise
         """
-        project = await self.get(project_id)
+        project = self.get(project_id)
         if not project:
             return None
 
@@ -140,7 +140,7 @@ class ProjectRepository:
         self._session.flush()
         return project
 
-    async def delete(self, project_id: UUID) -> bool:
+    def delete(self, project_id: UUID) -> bool:
         """Soft delete a project by setting is_active=False.
 
         Args:
@@ -149,7 +149,7 @@ class ProjectRepository:
         Returns:
             True if project was deleted, False if not found
         """
-        project = await self.get(project_id)
+        project = self.get(project_id)
         if not project:
             return False
 
@@ -157,18 +157,18 @@ class ProjectRepository:
         self._session.flush()
         return True
 
-    async def get_default_project(self) -> Project:
+    def get_default_project(self) -> Project:
         """Get or create the default company_analysis project.
 
         Returns:
             The default company_analysis Project
         """
-        project = await self.get_by_name("company_analysis")
+        project = self.get_by_name("company_analysis")
         if project:
             return project
 
         # Create default project from template
-        return await self.create(
+        return self.create(
             name=COMPANY_ANALYSIS_TEMPLATE["name"],
             description=COMPANY_ANALYSIS_TEMPLATE["description"],
             source_config=COMPANY_ANALYSIS_TEMPLATE["source_config"],

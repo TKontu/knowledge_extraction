@@ -144,7 +144,7 @@ def get_job(
 
 
 @router.post("/jobs/{job_id}/cancel", status_code=status.HTTP_200_OK)
-async def cancel_job(
+def cancel_job(
     job_id: str,
     db: Session = Depends(get_db),
 ) -> JobCancelResponse:
@@ -166,11 +166,11 @@ async def cancel_job(
         ) from e
 
     job_repo = JobRepository(db)
-    job = await job_repo.request_cancellation(job_uuid)
+    job = job_repo.request_cancellation(job_uuid)
 
     if not job:
         # Check if job exists to give appropriate error
-        existing = await job_repo.get(job_uuid)
+        existing = job_repo.get(job_uuid)
         if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -223,7 +223,7 @@ async def cleanup_job(
         ) from e
 
     job_repo = JobRepository(db)
-    job = await job_repo.get(job_uuid)
+    job = job_repo.get(job_uuid)
 
     if not job:
         raise HTTPException(
@@ -245,7 +245,7 @@ async def cleanup_job(
     # Optionally delete job record
     job_deleted = False
     if request.delete_job:
-        job_deleted = await job_repo.delete(job_uuid)
+        job_deleted = job_repo.delete(job_uuid)
 
     db.commit()
 
@@ -284,7 +284,7 @@ async def delete_job(
         ) from e
 
     job_repo = JobRepository(db)
-    job = await job_repo.get(job_uuid)
+    job = job_repo.get(job_uuid)
 
     if not job:
         raise HTTPException(
@@ -316,7 +316,7 @@ async def delete_job(
         }
 
     # Delete job record
-    deleted = await job_repo.delete(job_uuid)
+    deleted = job_repo.delete(job_uuid)
     db.commit()
 
     return JobDeleteResponse(

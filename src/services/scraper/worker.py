@@ -97,7 +97,7 @@ class ScraperWorker:
 
             # Get or create default project if project_id not provided
             if not project_id:
-                default_project = await self.project_repo.get_default_project()
+                default_project = self.project_repo.get_default_project()
                 project_id = default_project.id
 
             # Track results
@@ -108,14 +108,14 @@ class ScraperWorker:
             # Process each URL
             for url in urls:
                 # Check for cancellation before each URL
-                if await self.job_repo.is_cancellation_requested(job.id):
+                if self.job_repo.is_cancellation_requested(job.id):
                     logger.info(
                         "scrape_job_cancelled",
                         job_id=str(job.id),
                         urls_processed=sources_scraped + sources_failed,
                         urls_remaining=len(urls) - (sources_scraped + sources_failed),
                     )
-                    await self.job_repo.mark_cancelled(job.id)
+                    self.job_repo.mark_cancelled(job.id)
                     self.db.commit()
                     return
 
@@ -128,7 +128,7 @@ class ScraperWorker:
 
                     # Store successful scrapes
                     if result and result.success and result.markdown:
-                        await self.source_repo.create(
+                        self.source_repo.create(
                             project_id=project_id,
                             uri=result.url,
                             source_group=source_group,

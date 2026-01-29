@@ -35,7 +35,7 @@ class SourceRepository:
         """
         self._session = session
 
-    async def create(
+    def create(
         self,
         project_id: UUID,
         uri: str,
@@ -85,7 +85,7 @@ class SourceRepository:
         self._session.flush()
         return source
 
-    async def get(self, source_id: UUID) -> Source | None:
+    def get(self, source_id: UUID) -> Source | None:
         """Get source by ID.
 
         Args:
@@ -97,7 +97,7 @@ class SourceRepository:
         result = self._session.execute(select(Source).where(Source.id == source_id))
         return result.scalar_one_or_none()
 
-    async def get_by_uri(self, project_id: UUID, uri: str) -> Source | None:
+    def get_by_uri(self, project_id: UUID, uri: str) -> Source | None:
         """Get source by URI within a project.
 
         Args:
@@ -115,7 +115,7 @@ class SourceRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list(self, filters: SourceFilters) -> list[Source]:
+    def list(self, filters: SourceFilters) -> list[Source]:
         """List sources with optional filtering.
 
         Args:
@@ -142,7 +142,7 @@ class SourceRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def update_status(self, source_id: UUID, status: str) -> Source | None:
+    def update_status(self, source_id: UUID, status: str) -> Source | None:
         """Update source status.
 
         Args:
@@ -152,7 +152,7 @@ class SourceRepository:
         Returns:
             Updated Source instance or None if not found
         """
-        source = await self.get(source_id)
+        source = self.get(source_id)
         if source is None:
             return None
 
@@ -165,7 +165,7 @@ class SourceRepository:
         self._session.flush()
         return source
 
-    async def get_by_project_and_status(
+    def get_by_project_and_status(
         self, project_id: UUID, status: str
     ) -> builtins.list[Source]:
         """Get sources by project ID and status.
@@ -184,7 +184,7 @@ class SourceRepository:
         )
         return list(result.scalars().all())
 
-    async def update_content(
+    def update_content(
         self,
         source_id: UUID,
         content: str,
@@ -204,7 +204,7 @@ class SourceRepository:
         Returns:
             Updated Source instance or None if not found
         """
-        source = await self.get(source_id)
+        source = self.get(source_id)
         if source is None:
             return None
 
@@ -219,7 +219,7 @@ class SourceRepository:
         self._session.flush()
         return source
 
-    async def upsert(
+    def upsert(
         self,
         project_id: UUID,
         uri: str,
@@ -287,7 +287,7 @@ class SourceRepository:
         source_id = result.scalar_one()
 
         # Get the source to return
-        source = await self.get(source_id)
+        source = self.get(source_id)
 
         # Check if it was a create or update by checking created_at
         # If the source was just created, its created_at will be very recent
@@ -296,7 +296,7 @@ class SourceRepository:
         self._session.flush()
         return source, created
 
-    async def delete_by_job_id(self, job_id: UUID) -> int:
+    def delete_by_job_id(self, job_id: UUID) -> int:
         """Delete all sources created by a specific job.
 
         This cascades to delete associated extractions and entities due to
@@ -314,7 +314,7 @@ class SourceRepository:
         self._session.flush()
         return result.rowcount
 
-    async def count_by_job_id(self, job_id: UUID) -> int:
+    def count_by_job_id(self, job_id: UUID) -> int:
         """Count sources created by a specific job.
 
         Args:

@@ -37,7 +37,7 @@ async def create_project(
     repo = ProjectRepository(db)
 
     # Check name uniqueness
-    existing = await repo.get_by_name(project.name)
+    existing = repo.get_by_name(project.name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -52,7 +52,7 @@ async def create_project(
         )
 
     # Create project
-    db_project = await repo.create(
+    db_project = repo.create(
         name=project.name,
         description=project.description,
         source_config=project.source_config,
@@ -74,7 +74,7 @@ async def list_projects(
 ) -> list[ProjectResponse]:
     """List all projects."""
     repo = ProjectRepository(db)
-    projects = await repo.list_all(include_inactive=include_inactive)
+    projects = repo.list_all(include_inactive=include_inactive)
     return [ProjectResponse.model_validate(p) for p in projects]
 
 
@@ -132,7 +132,7 @@ async def get_project(
 ) -> ProjectResponse:
     """Get project by ID."""
     repo = ProjectRepository(db)
-    project = await repo.get(project_id)
+    project = repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -152,7 +152,7 @@ async def update_project(
     repo = ProjectRepository(db)
 
     # Check if project exists
-    existing = await repo.get(project_id)
+    existing = repo.get(project_id)
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -176,7 +176,7 @@ async def update_project(
 
     # Update project
     updates = project_update.model_dump(exclude_unset=True)
-    updated_project = await repo.update(project_id, updates)
+    updated_project = repo.update(project_id, updates)
     db.commit()
     db.refresh(updated_project)
 
@@ -190,7 +190,7 @@ async def delete_project(
 ) -> None:
     """Soft delete a project."""
     repo = ProjectRepository(db)
-    success = await repo.delete(project_id)
+    success = repo.delete(project_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -220,7 +220,7 @@ async def create_from_template(
     repo = ProjectRepository(db)
 
     # Check name uniqueness
-    existing = await repo.get_by_name(request.name)
+    existing = repo.get_by_name(request.name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -228,7 +228,7 @@ async def create_from_template(
         )
 
     # Create project from template
-    db_project = await repo.create(
+    db_project = repo.create(
         name=request.name,
         description=request.description or template["description"],
         source_config=template["source_config"],

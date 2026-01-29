@@ -35,7 +35,7 @@ async def list_entities(
     """List entities for a project with optional filtering and pagination."""
     # Validate project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_id)
+    project = project_repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -51,7 +51,7 @@ async def list_entities(
 
     # Get entities
     entity_repo = EntityRepository(db)
-    all_entities = await entity_repo.list(filters)
+    all_entities = entity_repo.list(filters)
 
     # Apply pagination
     total = len(all_entities)
@@ -92,7 +92,7 @@ async def get_entity_types(
     """Get count of entities per type for a project."""
     # Validate project exists
     project_repo = ProjectRepository(db)
-    project = await project_repo.get(project_id)
+    project = project_repo.get(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -107,7 +107,7 @@ async def get_entity_types(
 
     # Get entities
     entity_repo = EntityRepository(db)
-    entities = await entity_repo.list(filters)
+    entities = entity_repo.list(filters)
 
     # Count by type
     type_counts = Counter(e.entity_type for e in entities)
@@ -143,7 +143,7 @@ async def get_source_groups_by_entity(
 
     # Get entities of this type
     entity_repo = EntityRepository(db)
-    entities = await entity_repo.list(filters)
+    entities = entity_repo.list(filters)
 
     # Normalize search value for case-insensitive matching
     search_normalized = value.lower().strip()
@@ -173,7 +173,7 @@ async def get_entity(
     """Get a single entity by ID."""
     # Get entity
     entity_repo = EntityRepository(db)
-    entity = await entity_repo.get(entity_id)
+    entity = entity_repo.get(entity_id)
 
     # Check if entity exists and belongs to project
     if not entity or entity.project_id != project_id:

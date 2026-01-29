@@ -35,7 +35,7 @@ class ExtractionRepository:
         """
         self._session = session
 
-    async def create(
+    def create(
         self,
         project_id: UUID,
         source_id: UUID,
@@ -82,7 +82,7 @@ class ExtractionRepository:
         self._session.flush()
         return extraction
 
-    async def create_batch(self, extractions: list[dict]) -> list[Extraction]:
+    def create_batch(self, extractions: list[dict]) -> list[Extraction]:
         """Create multiple extractions in batch.
 
         Args:
@@ -114,7 +114,7 @@ class ExtractionRepository:
         self._session.flush()
         return extraction_objs
 
-    async def get(self, extraction_id: UUID) -> Extraction | None:
+    def get(self, extraction_id: UUID) -> Extraction | None:
         """Get extraction by ID.
 
         Args:
@@ -128,7 +128,7 @@ class ExtractionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_source(self, source_id: UUID) -> list[Extraction]:
+    def get_by_source(self, source_id: UUID) -> list[Extraction]:
         """Get all extractions for a source.
 
         Args:
@@ -144,7 +144,7 @@ class ExtractionRepository:
         )
         return list(result.scalars().all())
 
-    async def list(
+    def list(
         self,
         filters: ExtractionFilters,
         limit: int | None = None,
@@ -200,7 +200,7 @@ class ExtractionRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def query_jsonb(
+    def query_jsonb(
         self, project_id: UUID, path: str, value: Any
     ) -> list[Extraction]:
         """Query extractions by JSONB path and value.
@@ -263,7 +263,7 @@ class ExtractionRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def filter_by_data(self, project_id: UUID, filters: dict) -> list[Extraction]:
+    def filter_by_data(self, project_id: UUID, filters: dict) -> list[Extraction]:
         """Filter extractions by multiple JSONB data fields.
 
         Args:
@@ -275,7 +275,7 @@ class ExtractionRepository:
         """
         if not filters:
             # No filters, return all for project
-            return await self.list(ExtractionFilters(project_id=project_id))
+            return self.list(ExtractionFilters(project_id=project_id))
 
         from sqlalchemy import func, text
 
@@ -314,7 +314,7 @@ class ExtractionRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    async def update_entities_extracted(
+    def update_entities_extracted(
         self, extraction_id: UUID, entities_extracted: bool = True
     ) -> None:
         """Update the entities_extracted flag for an extraction.
@@ -323,12 +323,12 @@ class ExtractionRepository:
             extraction_id: Extraction UUID
             entities_extracted: Flag indicating if entities were successfully extracted
         """
-        extraction = await self.get(extraction_id)
+        extraction = self.get(extraction_id)
         if extraction:
             extraction.entities_extracted = entities_extracted
             self._session.flush()
 
-    async def update_embedding_id(
+    def update_embedding_id(
         self, extraction_id: UUID, embedding_id: str
     ) -> None:
         """Update the embedding_id for an extraction.
@@ -337,12 +337,12 @@ class ExtractionRepository:
             extraction_id: Extraction UUID
             embedding_id: Vector embedding ID (typically string version of extraction_id)
         """
-        extraction = await self.get(extraction_id)
+        extraction = self.get(extraction_id)
         if extraction:
             extraction.embedding_id = embedding_id
             self._session.flush()
 
-    async def update_embedding_ids_batch(
+    def update_embedding_ids_batch(
         self, extraction_ids: list[UUID]
     ) -> int:
         """Update embedding_id for multiple extractions in batch.
@@ -373,7 +373,7 @@ class ExtractionRepository:
         self._session.flush()
         return result.rowcount
 
-    async def find_orphaned(
+    def find_orphaned(
         self,
         project_id: UUID | None = None,
         limit: int = 100,

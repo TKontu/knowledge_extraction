@@ -51,9 +51,9 @@ class CrawlWorker:
 
         try:
             # Check for cancellation before processing
-            if await self.job_repo.is_cancellation_requested(job.id):
+            if self.job_repo.is_cancellation_requested(job.id):
                 logger.info("crawl_job_cancelled_early", job_id=str(job.id))
-                await self.job_repo.mark_cancelled(job.id)
+                self.job_repo.mark_cancelled(job.id)
                 job.result = {
                     "cancelled_early": True,
                     "reason": "Cancelled before processing started",
@@ -143,14 +143,14 @@ class CrawlWorker:
             if status.status == "completed":
                 # Check for cancellation before storing pages
                 # Note: Firecrawl crawl cannot be cancelled, but we can skip storing results
-                if await self.job_repo.is_cancellation_requested(job.id):
+                if self.job_repo.is_cancellation_requested(job.id):
                     logger.info(
                         "crawl_job_cancelled_before_storage",
                         job_id=str(job.id),
                         firecrawl_job_id=firecrawl_job_id,
                         pages_available=len(status.pages),
                     )
-                    await self.job_repo.mark_cancelled(job.id)
+                    self.job_repo.mark_cancelled(job.id)
                     job.result = {
                         "cancelled_before_storage": True,
                         "pages_available": len(status.pages),
@@ -314,7 +314,7 @@ class CrawlWorker:
 
             # Use upsert to handle race conditions when concurrent crawlers
             # process the same URL. The unique constraint prevents duplicates.
-            source, created = await self.source_repo.upsert(
+            source, created = self.source_repo.upsert(
                 project_id=project_id,
                 uri=url,
                 source_group=company,

@@ -60,9 +60,9 @@ class ExtractionWorker:
         logger.info("extraction_job_started", job_id=str(job.id))
         try:
             # Check for cancellation before starting
-            if await self.job_repo.is_cancellation_requested(job.id):
+            if self.job_repo.is_cancellation_requested(job.id):
                 logger.info("extraction_job_cancelled_early", job_id=str(job.id))
-                await self.job_repo.mark_cancelled(job.id)
+                self.job_repo.mark_cancelled(job.id)
                 self.db.commit()
                 return
 
@@ -94,7 +94,7 @@ class ExtractionWorker:
 
             # Create cancellation check callback for pipeline
             async def check_cancellation() -> bool:
-                return await self.job_repo.is_cancellation_requested(job.id)
+                return self.job_repo.is_cancellation_requested(job.id)
 
             # Process sources
             if source_ids:
@@ -116,13 +116,13 @@ class ExtractionWorker:
                 )
 
             # Check if job was cancelled during processing
-            if await self.job_repo.is_cancellation_requested(job.id):
+            if self.job_repo.is_cancellation_requested(job.id):
                 logger.info(
                     "extraction_job_cancelled_during_processing",
                     job_id=str(job.id),
                     sources_processed=result.sources_processed,
                 )
-                await self.job_repo.mark_cancelled(job.id)
+                self.job_repo.mark_cancelled(job.id)
                 job.result = {
                     "sources_processed": result.sources_processed,
                     "sources_failed": result.sources_failed,

@@ -22,7 +22,7 @@ class JobRepository:
         """
         self._session = session
 
-    async def get(self, job_id: UUID) -> Job | None:
+    def get(self, job_id: UUID) -> Job | None:
         """Get job by ID.
 
         Args:
@@ -34,7 +34,7 @@ class JobRepository:
         result = self._session.execute(select(Job).where(Job.id == job_id))
         return result.scalar_one_or_none()
 
-    async def request_cancellation(self, job_id: UUID) -> Job | None:
+    def request_cancellation(self, job_id: UUID) -> Job | None:
         """Request cancellation of a job.
 
         Sets the job status to 'cancelling' if the job is in a cancellable state
@@ -46,7 +46,7 @@ class JobRepository:
         Returns:
             Updated Job instance or None if not found or not cancellable
         """
-        job = await self.get(job_id)
+        job = self.get(job_id)
         if not job:
             return None
 
@@ -59,7 +59,7 @@ class JobRepository:
         self._session.flush()
         return job
 
-    async def mark_cancelled(self, job_id: UUID) -> Job | None:
+    def mark_cancelled(self, job_id: UUID) -> Job | None:
         """Mark a job as fully cancelled.
 
         Called by workers when they detect cancellation and have stopped processing.
@@ -70,7 +70,7 @@ class JobRepository:
         Returns:
             Updated Job instance or None if not found
         """
-        job = await self.get(job_id)
+        job = self.get(job_id)
         if not job:
             return None
 
@@ -79,7 +79,7 @@ class JobRepository:
         self._session.flush()
         return job
 
-    async def delete(self, job_id: UUID) -> bool:
+    def delete(self, job_id: UUID) -> bool:
         """Delete a job record.
 
         Args:
@@ -88,7 +88,7 @@ class JobRepository:
         Returns:
             True if deleted, False if not found
         """
-        job = await self.get(job_id)
+        job = self.get(job_id)
         if not job:
             return False
 
@@ -96,7 +96,7 @@ class JobRepository:
         self._session.flush()
         return True
 
-    async def is_cancellation_requested(self, job_id: UUID) -> bool:
+    def is_cancellation_requested(self, job_id: UUID) -> bool:
         """Check if cancellation has been requested for a job.
 
         Workers should call this at key checkpoints to determine if they should
@@ -108,5 +108,5 @@ class JobRepository:
         Returns:
             True if job status is 'cancelling', False otherwise
         """
-        job = await self.get(job_id)
+        job = self.get(job_id)
         return job is not None and job.status == "cancelling"
