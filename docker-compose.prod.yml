@@ -25,6 +25,8 @@ services:
       - HTTPS_PROXY=http://proxy-adapter:8192
       - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant,camoufox,firecrawl-db,rabbitmq
       - LOGGING_LEVEL=${FIRECRAWL_LOGGING_LEVEL:-info}
+      - MAX_CPU=0.95
+      - MAX_RAM=0.95
     depends_on:
       firecrawl-db:
         condition: service_healthy
@@ -46,10 +48,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 16G
+          memory: 32G
           cpus: '4'
         reservations:
-          memory: 2G
+          memory: 4G
 
   camoufox:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/camoufox:${CAMOUFOX_TAG:-latest}
@@ -73,10 +75,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 24G
+          memory: 32G
           cpus: '4'
         reservations:
-          memory: 2G
+          memory: 4G
 
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
