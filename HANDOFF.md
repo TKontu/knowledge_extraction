@@ -1,20 +1,16 @@
-# Handoff: PR Review, Merge, and TODO Cleanup
+# Handoff: TODO Review and Cleanup
 
 ## Completed
 
-- **Reviewed PR #74** (job cancellation, cleanup, delete endpoints)
-  - Identified async/sync mismatch in JobRepository
-  - Found fix already existed in uncommitted changes on `fix/residual-async-methods`
+- **Reviewed and updated TODO files**
+  - `TODO_production_readiness.md`: Removed stale "Commit Pending Changes" item (already merged via PR #74)
+  - `TODO_architecture_database_consistency.md`: Moved stale job threshold fix to Completed (was already implemented with per-job-type configurable thresholds)
+  - Removed dead reference to deleted `TODO_extraction_reliability.md`
+  - Renumbered items and updated review dates
 
-- **Merged async-to-sync fixes into PR #74**
-  - Committed uncommitted changes (`eb46135`)
-  - Merged into `feat/job-cancellation-cleanup-delete` branch
-  - Pushed and merged PR #74 to main
-
-- **Cleaned up stale TODO files** (10 files removed)
-  - `TODO-agent-*.md` (8 files) - all completed via PRs #63-73
-  - `TODO_json_repair.md` - fully implemented
-  - `TODO_extraction_reliability.md` - ~90% complete, remaining tracked elsewhere
+- **Discovered completed work not tracked**
+  - Stale job thresholds are now configurable per job type in `src/config.py:313-324`
+  - Scrape: 5min, Extract: 15min, Crawl: 30min (was 5 seconds for all)
 
 ## In Progress
 
@@ -22,23 +18,22 @@ Nothing in progress - clean working directory.
 
 ## Next Steps
 
-- [ ] Address remaining items in `docs/TODO_architecture_database_consistency.md`:
-  - Transaction boundary documentation
-  - SQLite fallback for job duration metrics
-  - Unit tests for `update_embedding_ids_batch()` and `_job_duration_by_type()`
-- [ ] Complete `docs/TODO_production_readiness.md` checklist before production deployment
-- [ ] Investigate Firecrawl 0-page crawl root cause (logging added, needs observation)
+- [ ] **HIGH**: Add background task for orphaned extraction retry (`embedding_id IS NULL`)
+- [ ] **HIGH**: Add alerting for partial-failure states (PostgreSQL success, Qdrant failure)
+- [ ] **MEDIUM**: Fix async/sync mismatch in repositories (Option A: AsyncSession, or Option B: remove async keywords)
+- [ ] **MEDIUM**: Replace LLM response polling with Redis pub/sub
+- [ ] **LOW**: Add unit tests for `update_embedding_ids_batch()` and `_job_duration_by_type()`
 
 ## Key Files
 
-- `docs/TODO_architecture_database_consistency.md` - remaining technical debt items
-- `docs/TODO_production_readiness.md` - deployment checklist
-- `src/services/storage/repositories/job.py` - new JobRepository (sync methods)
-- `src/services/job/cleanup_service.py` - job artifact cleanup logic
+- `docs/TODO_architecture_database_consistency.md` - 8 remaining items (1 HIGH, 3 MEDIUM, 4 LOW)
+- `docs/TODO_production_readiness.md` - 8 remaining items (1 HIGH, 3 MEDIUM, 4 LOW)
+- `src/config.py:313-324` - Per-job-type stale thresholds (already implemented)
+- `src/services/scraper/scheduler.py:43-52` - `get_stale_thresholds()` function
 
 ## Context
 
-- All repositories now use **sync methods** (not async) - callers should NOT use `await`
-- Job cancellation uses **database polling** - workers check `status == "cancelling"` at checkpoints
-- The `check_cancellation` callback in workers is intentionally async (pipeline interface requires it)
-- 127 unit tests pass for modified files; infrastructure tests (Postgres/Redis/Qdrant) skip without services
+- Two active TODO files track remaining technical debt
+- No open PRs
+- All previous agent work (PRs #63-74) has been merged
+- System uses 3 databases (PostgreSQL, Redis, Qdrant) without distributed transactions - acceptable for eventual consistency use case
