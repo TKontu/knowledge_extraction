@@ -235,13 +235,14 @@ class CamoufoxScraper:
                 "forcing_browser_pool_shutdown", remaining_pages=self._active_pages
             )
 
-        # Close all browsers
-        for i, browser in enumerate(self._browsers):
+        # Cleanup AsyncCamoufox context managers
+        # __aexit__ handles browser.close() internally, so we don't call it separately
+        for i, camoufox in enumerate(self._camoufox_instances):
             try:
-                await browser.close()
-                logger.debug("browser_closed", browser_index=i)
+                await camoufox.__aexit__(None, None, None)
+                logger.debug("camoufox_context_cleaned", browser_index=i)
             except Exception as e:
-                logger.error("browser_close_error", browser_index=i, error=str(e))
+                logger.error("camoufox_cleanup_error", browser_index=i, error=str(e))
 
         self._browsers = []
         self._camoufox_instances = []
@@ -332,7 +333,8 @@ class CamoufoxScraper:
             log.info("ajax_discovery_elements_found", count=len(elements))
 
             # Click each element and wait for network activity
-            for i, element in enumerate(elements[:20]):  # Limit to 20 clicks
+            max_clicks = self.config.ajax_discovery_max_clicks
+            for i, element in enumerate(elements[:max_clicks]):
                 try:
                     # Check if element is visible and clickable
                     is_visible = await element.is_visible()

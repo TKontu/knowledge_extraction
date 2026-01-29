@@ -321,11 +321,11 @@ class FirecrawlClient:
             "formats": ["markdown"],
             "timeout": scrape_timeout,  # Playwright page load timeout (ms)
         }
-        if user_agent or not ignore_robots_txt:
-            # Use custom user agent
-            scrape_options["headers"] = {
-                "User-Agent": user_agent or DEFAULT_USER_AGENT
-            }
+        # Always identify ourselves - transparency is good practice
+        # regardless of robots.txt handling
+        scrape_options["headers"] = {
+            "User-Agent": user_agent or DEFAULT_USER_AGENT
+        }
 
         # Build crawl request with rate limiting options
         crawl_request = {
@@ -366,13 +366,16 @@ class FirecrawlClient:
         return data["id"]
 
     async def get_crawl_status(self, crawl_id: str) -> CrawlStatus:
-        """Get crawl job status.
+        """Get crawl job status, fetching all paginated results.
+
+        When a crawl is completed, Firecrawl may return results across multiple
+        pages. This method follows the pagination cursor to collect all pages.
 
         Args:
             crawl_id: Firecrawl job ID.
 
         Returns:
-            CrawlStatus with progress and pages.
+            CrawlStatus with progress and all pages.
         """
         logger.debug(
             "firecrawl_get_crawl_status_request",
@@ -408,8 +411,8 @@ class FirecrawlClient:
         status = data.get("status", "unknown")
         total = data.get("total", 0)
         completed = data.get("completed", 0)
-        pages = data.get("data", [])
-        next_url = data.get("next")  # Pagination cursor if more pages available
+        all_pages = data.get("data", [])
+        next_url = data.get("next")
         error = data.get("error")
 
         logger.debug(
@@ -418,7 +421,7 @@ class FirecrawlClient:
             status=status,
             total=total,
             completed=completed,
-            pages_in_response=len(pages),
+            pages_in_response=len(all_pages),
             has_next=next_url is not None,
             duration_ms=duration_ms,
         )
@@ -431,39 +434,107 @@ class FirecrawlClient:
                 crawl_id=crawl_id,
                 total=total,
                 completed=completed,
-                pages_in_response=len(pages),
+                pages_in_response=len(all_pages),
                 response_keys=list(data.keys()),
                 has_next=next_url is not None,
-                next_url=next_url[:100] if next_url else None,  # Truncate for logging
+                next_url=next_url[:100] if next_url else None,
                 error=error,
             )
 
-        # Log if pagination is present (we may be missing pages)
-        if next_url:
-            logger.info(
-                "firecrawl_pagination_detected",
+        # Follow pagination to get all pages when crawl is completed
+        # Max 100 iterations to prevent infinite loops
+        page_num = 1
+        max_pages = 100
+        pagination_start = time.monotonic()
+        pagination_errors: list[str] = []
+
+        while next_url and status == "completed" and page_num < max_pages:
+            page_num += 1
+            logger.debug(
+                "firecrawl_fetching_next_page",
                 crawl_id=crawl_id,
-                status=status,
+                page_num=page_num,
+                pages_so_far=len(all_pages),
                 total=total,
-                pages_in_response=len(pages),
-                next_url=next_url[:100] if next_url else None,
             )
 
-        # Log mismatch between total and actual pages received
-        if status == "completed" and len(pages) != total and total > 0:
+            try:
+                response = await self._http_client.get(next_url)
+                data = response.json()
+                pages = data.get("data", [])
+                all_pages.extend(pages)
+                next_url = data.get("next")
+
+                # Capture errors from paginated responses
+                page_error = data.get("error")
+                if page_error:
+                    pagination_errors.append(f"page {page_num}: {page_error}")
+                    logger.warning(
+                        "firecrawl_pagination_page_error",
+                        crawl_id=crawl_id,
+                        page_num=page_num,
+                        error=page_error,
+                    )
+
+                logger.debug(
+                    "firecrawl_page_fetched",
+                    crawl_id=crawl_id,
+                    page_num=page_num,
+                    pages_in_response=len(pages),
+                    total_pages_so_far=len(all_pages),
+                    has_more=next_url is not None,
+                )
+            except Exception as e:
+                logger.error(
+                    "firecrawl_pagination_error",
+                    crawl_id=crawl_id,
+                    page_num=page_num,
+                    error=str(e),
+                )
+                pagination_errors.append(f"page {page_num}: {str(e)}")
+                break  # Return what we have so far
+
+        # Log pagination summary if we fetched additional pages
+        if page_num > 1:
+            pagination_duration_ms = int((time.monotonic() - pagination_start) * 1000)
+            logger.info(
+                "firecrawl_pagination_completed",
+                crawl_id=crawl_id,
+                pages_fetched=page_num,
+                total_results=len(all_pages),
+                duration_ms=pagination_duration_ms,
+                errors=len(pagination_errors),
+            )
+
+        if page_num >= max_pages and next_url:
+            logger.warning(
+                "firecrawl_pagination_limit_reached",
+                crawl_id=crawl_id,
+                max_pages=max_pages,
+                pages_collected=len(all_pages),
+                total=total,
+            )
+
+        # Combine initial error with any pagination errors
+        if pagination_errors:
+            all_errors = ([error] if error else []) + pagination_errors
+            error = "; ".join(all_errors) if all_errors else None
+
+        # Log if we still have a mismatch after pagination
+        if status == "completed" and len(all_pages) != total and total > 0:
             logger.warning(
                 "firecrawl_page_count_mismatch",
                 crawl_id=crawl_id,
                 expected_pages=total,
-                actual_pages=len(pages),
-                has_next=next_url is not None,
+                actual_pages=len(all_pages),
+                pages_fetched=page_num,
             )
 
         return CrawlStatus(
             status=status,
             total=total,
             completed=completed,
-            pages=pages,
+            pages=all_pages,
             error=error,
         )
 

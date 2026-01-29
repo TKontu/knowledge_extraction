@@ -299,6 +299,9 @@ class CrawlWorker:
                         url=url,
                         timeout=settings.language_detection_timeout_seconds,
                     )
+                    # Flag for downstream processing - language not confirmed
+                    metadata["language_detection_failed"] = True
+                    metadata["language_detection_error"] = "timeout"
                     # Continue storing page (timeout shouldn't block crawl)
                 except Exception as e:
                     logger.error(
@@ -308,6 +311,9 @@ class CrawlWorker:
                         error=str(e),
                         exc_info=True,
                     )
+                    # Flag for downstream processing - language not confirmed
+                    metadata["language_detection_failed"] = True
+                    metadata["language_detection_error"] = str(e)[:200]
                     # Continue storing page (detection error shouldn't break crawl)
 
             domain = urlparse(url).netloc

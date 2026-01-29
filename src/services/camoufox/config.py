@@ -57,6 +57,12 @@ class CamoufoxSettings(BaseSettings):
         description="Interval between content stability checks in milliseconds",
     )
 
+    # AJAX discovery
+    ajax_discovery_max_clicks: int = Field(
+        default=20,
+        description="Maximum interactive elements to click for AJAX content discovery",
+    )
+
     # Proxy
     proxy: str | None = Field(
         default=None,
