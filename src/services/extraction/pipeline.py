@@ -9,6 +9,7 @@ from uuid import UUID
 import structlog
 
 from models import ExtractionProfile
+from services.alerting import get_alert_service
 
 if TYPE_CHECKING:
     from services.llm.queue import LLMRequestQueue
@@ -222,6 +223,22 @@ class ExtractionPipelineService:
                 )
                 # Skip entity extraction - extractions exist but aren't searchable
                 # entities_extracted will remain False, signaling incomplete processing
+
+                # Alert on partial failure (PG succeeded, Qdrant failed)
+                try:
+                    alert_service = get_alert_service()
+                    await alert_service.alert_embedding_failure(
+                        project_id=project_id,
+                        source_id=source_id,
+                        extractions_affected=len(fact_extractions),
+                        error=str(e),
+                    )
+                except Exception as alert_err:
+                    # Don't let alerting failure break the pipeline
+                    logger.warning(
+                        "alert_delivery_failed",
+                        error=str(alert_err),
+                    )
 
         # Phase 4: Entity extraction (only if embeddings succeeded)
         if not embeddings_succeeded and fact_extractions:

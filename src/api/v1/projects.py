@@ -3,7 +3,7 @@
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -146,9 +146,29 @@ async def update_project(
     project_id: UUID,
     project_update: ProjectUpdate,
     response: Response,
+    force: bool = Query(
+        default=False,
+        description="Allow schema/entity_types changes even with existing extractions. "
+        "Required when modifying extraction_schema or entity_types on a project "
+        "that already has extractions.",
+    ),
     db: Session = Depends(get_db),
 ) -> ProjectResponse:
-    """Update an existing project."""
+    """Update an existing project.
+
+    Args:
+        project_id: UUID of the project to update.
+        project_update: Fields to update.
+        response: FastAPI response object for headers.
+        force: If True, allow schema/entity_types changes even with existing extractions.
+        db: Database session.
+
+    Returns:
+        Updated project.
+
+    Raises:
+        HTTPException: 404 if project not found, 409 if schema change blocked.
+    """
     repo = ProjectRepository(db)
 
     # Check if project exists
@@ -159,20 +179,46 @@ async def update_project(
             detail=f"Project {project_id} not found",
         )
 
-    # Count existing extractions for warning
-    extraction_count = db.execute(
-        select(func.count(Extraction.id)).where(Extraction.project_id == project_id)
-    ).scalar()
-
     # Check if schema or entity_types are being updated
     schema_changed = project_update.extraction_schema is not None
     entities_changed = project_update.entity_types is not None
 
-    if extraction_count > 0 and (schema_changed or entities_changed):
-        response.headers["X-Extraction-Warning"] = (
-            f"Project has {extraction_count} existing extractions. "
-            "Schema changes may cause inconsistencies."
-        )
+    # Block schema changes when extractions exist (unless force=True)
+    if schema_changed or entities_changed:
+        extraction_count = db.execute(
+            select(func.count(Extraction.id)).where(Extraction.project_id == project_id)
+        ).scalar()
+
+        if extraction_count > 0 and not force:
+            changed_fields = []
+            if schema_changed:
+                changed_fields.append("extraction_schema")
+            if entities_changed:
+                changed_fields.append("entity_types")
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Schema modification blocked: Project has {extraction_count} existing "
+                    f"extractions. Modifying {', '.join(changed_fields)} may cause data "
+                    f"inconsistencies. Add ?force=true to proceed anyway, or delete "
+                    f"existing extractions first."
+                ),
+            )
+
+        if extraction_count > 0 and force:
+            # Log when force is used
+            logger.warning(
+                "schema_update_forced",
+                project_id=str(project_id),
+                extraction_count=extraction_count,
+                schema_changed=schema_changed,
+                entities_changed=entities_changed,
+            )
+            response.headers["X-Extraction-Warning"] = (
+                f"Schema updated with force=true. {extraction_count} existing extractions "
+                "may be inconsistent with new schema."
+            )
 
     # Update project
     updates = project_update.model_dump(exclude_unset=True)

@@ -281,6 +281,20 @@ class Settings(BaseSettings):
         description="Enable Prometheus metrics",
     )
 
+    # Alerting
+    alerting_enabled: bool = Field(
+        default=True,
+        description="Enable alerting system (always logs, webhook optional)",
+    )
+    alert_webhook_url: str | None = Field(
+        default=None,
+        description="Webhook URL for alerts (Slack, Discord, or generic endpoint)",
+    )
+    alert_webhook_format: str = Field(
+        default="json",
+        description="Webhook payload format: 'json' (generic) or 'slack' (Slack-formatted)",
+    )
+
     # Rate limiting
     rate_limit_enabled: bool = Field(
         default=True,
