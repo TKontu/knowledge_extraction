@@ -373,13 +373,9 @@ async def recover_orphaned_extractions(
         max_batches=max_batches,
     )
 
-    # Create service dependencies
-    from qdrant_client import QdrantClient
+    # Create service dependencies - use singleton Qdrant client
+    from qdrant_connection import qdrant_client
 
-    qdrant_client = QdrantClient(
-        host=settings.qdrant_host,
-        port=settings.qdrant_port,
-    )
     qdrant_repo = QdrantRepository(qdrant_client)
     embedding_service = EmbeddingService(settings)
     extraction_repo = ExtractionRepository(db)
@@ -398,6 +394,10 @@ async def recover_orphaned_extractions(
         project_id=project_uuid,
         max_batches=max_batches,
     )
+
+    # Commit embedding_id updates to persist changes
+    # Without this, autocommit=False causes rollback on session close
+    db.commit()
 
     logger.info(
         "embedding_recovery_completed",
