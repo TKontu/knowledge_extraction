@@ -1,5 +1,6 @@
 """Alert service for sending operational notifications."""
 
+import time
 from uuid import UUID
 
 import httpx
@@ -9,6 +10,9 @@ from services.alerting.models import Alert, AlertLevel, AlertType
 
 logger = structlog.get_logger(__name__)
 
+# Default throttle window: 5 minutes per alert type + project combination
+DEFAULT_THROTTLE_SECONDS = 300
+
 
 class AlertService:
     """Service for sending alerts via configured backends.
@@ -16,6 +20,7 @@ class AlertService:
     Supports:
     - Webhook (generic JSON or Slack-formatted)
     - Logging (always enabled as fallback)
+    - Throttling to prevent alert storms
     """
 
     def __init__(
@@ -23,6 +28,7 @@ class AlertService:
         webhook_url: str | None = None,
         webhook_format: str = "json",
         enabled: bool = True,
+        throttle_seconds: int = DEFAULT_THROTTLE_SECONDS,
     ) -> None:
         """Initialize alert service.
 
@@ -30,11 +36,15 @@ class AlertService:
             webhook_url: URL to POST alerts to. If None, only logs alerts.
             webhook_format: Format for webhook payload ('json' or 'slack').
             enabled: Master switch for alerting.
+            throttle_seconds: Minimum seconds between same alert type+project webhooks.
         """
         self._webhook_url = webhook_url
         self._webhook_format = webhook_format
         self._enabled = enabled
+        self._throttle_seconds = throttle_seconds
         self._client: httpx.AsyncClient | None = None
+        # Track last webhook send time per (alert_type, project_id) tuple
+        self._last_webhook_times: dict[tuple[str, str | None], float] = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -84,8 +94,46 @@ class AlertService:
 
         return True
 
+    def _is_throttled(self, alert: Alert) -> bool:
+        """Check if alert should be throttled.
+
+        Args:
+            alert: Alert to check.
+
+        Returns:
+            True if alert should be skipped due to throttling.
+        """
+        if self._throttle_seconds <= 0:
+            return False
+
+        key = (alert.type.value, str(alert.project_id) if alert.project_id else None)
+        now = time.monotonic()
+        last_time = self._last_webhook_times.get(key)
+
+        if last_time is not None:
+            elapsed = now - last_time
+            if elapsed < self._throttle_seconds:
+                logger.debug(
+                    "alert_throttled",
+                    alert_type=alert.type.value,
+                    project_id=str(alert.project_id) if alert.project_id else None,
+                    seconds_until_next=int(self._throttle_seconds - elapsed),
+                )
+                return True
+
+        return False
+
+    def _record_webhook_sent(self, alert: Alert) -> None:
+        """Record that a webhook was sent for throttling purposes."""
+        key = (alert.type.value, str(alert.project_id) if alert.project_id else None)
+        self._last_webhook_times[key] = time.monotonic()
+
     async def _send_webhook(self, alert: Alert) -> bool:
-        """Send alert to webhook."""
+        """Send alert to webhook with throttling."""
+        # Check throttling before sending
+        if self._is_throttled(alert):
+            return True  # Return True since alert was logged, just webhook skipped
+
         try:
             client = await self._get_client()
 
@@ -108,6 +156,9 @@ class AlertService:
                     alert_type=alert.type.value,
                 )
                 return False
+
+            # Record successful send for throttling
+            self._record_webhook_sent(alert)
 
             logger.debug(
                 "webhook_delivered",
@@ -148,7 +199,7 @@ class AlertService:
                 details={
                     "extractions_affected": extractions_affected,
                     "error": error[:500],  # Truncate long errors
-                    "recovery_action": "POST /projects/{project_id}/extractions/recover",
+                    "recovery_action": f"POST /projects/{project_id}/extractions/recover",
                 },
             )
         )
@@ -171,7 +222,7 @@ class AlertService:
                 project_id=project_id,
                 details={
                     "orphan_count": orphan_count,
-                    "recovery_action": "POST /projects/{project_id}/extractions/recover",
+                    "recovery_action": f"POST /projects/{project_id}/extractions/recover",
                 },
             )
         )
@@ -201,24 +252,33 @@ class AlertService:
 
     async def alert_recovery_completed(
         self,
-        project_id: UUID,
         recovered: int,
         failed: int,
+        project_id: UUID | None = None,
     ) -> bool:
-        """Alert when recovery completes."""
+        """Alert when recovery completes.
+
+        Args:
+            recovered: Number of extractions successfully recovered.
+            failed: Number of extractions that failed recovery.
+            project_id: Optional project UUID. None indicates global recovery.
+        """
         level = AlertLevel.INFO if failed == 0 else AlertLevel.WARNING
+        scope = f"project {project_id}" if project_id else "all projects"
         return await self.send(
             Alert(
                 type=AlertType.RECOVERY_COMPLETED,
                 level=level,
                 title="Extraction Recovery Completed",
                 message=(
-                    f"Recovery finished: {recovered} extractions recovered, {failed} failed."
+                    f"Recovery finished for {scope}: "
+                    f"{recovered} extractions recovered, {failed} failed."
                 ),
                 project_id=project_id,
                 details={
                     "recovered": recovered,
                     "failed": failed,
+                    "scope": "project" if project_id else "global",
                 },
             )
         )
@@ -254,3 +314,15 @@ def reset_alert_service() -> None:
     """Reset alert service singleton (for testing)."""
     global _alert_service
     _alert_service = None
+
+
+async def close_alert_service() -> None:
+    """Close the alert service and release resources.
+
+    Call this during application shutdown to properly close HTTP connections.
+    """
+    global _alert_service
+    if _alert_service is not None:
+        await _alert_service.close()
+        _alert_service = None
+        logger.debug("alert_service_closed")

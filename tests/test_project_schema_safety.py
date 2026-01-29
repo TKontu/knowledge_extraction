@@ -1,7 +1,7 @@
 """Tests for project schema update safety (force parameter)."""
 
 import pytest
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -31,8 +31,8 @@ class TestProjectSchemaUpdateSafety:
         project.prompt_templates = {}
         project.is_template = False
         project.is_active = True
-        project.created_at = datetime.utcnow()
-        project.updated_at = datetime.utcnow()
+        project.created_at = datetime.now(UTC)
+        project.updated_at = datetime.now(UTC)
         return project
 
     @pytest.fixture
@@ -278,8 +278,10 @@ class TestProjectSchemaUpdateSafety:
                 )
 
             detail = exc_info.value.detail
-            assert detail["error"] == "Schema modification blocked"
-            assert detail["extraction_count"] == 25
-            assert "extraction_schema" in detail["message"]
-            assert "entity_types" in detail["message"]
-            assert "force=true" in detail["resolution"]
+            # Error detail is now a string for consistency
+            assert isinstance(detail, str)
+            assert "Schema modification blocked" in detail
+            assert "25" in detail  # extraction_count
+            assert "extraction_schema" in detail
+            assert "entity_types" in detail
+            assert "force=true" in detail

@@ -204,9 +204,9 @@ class EmbeddingRecoveryService:
             try:
                 alert_service = get_alert_service()
                 await alert_service.alert_recovery_completed(
-                    project_id=project_id or UUID("00000000-0000-0000-0000-000000000000"),
                     recovered=summary.total_recovered,
                     failed=summary.total_failed,
+                    project_id=project_id,  # None for global recovery is valid
                 )
             except Exception as alert_err:
                 logger.warning(

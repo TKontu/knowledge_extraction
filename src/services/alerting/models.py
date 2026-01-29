@@ -1,11 +1,16 @@
 """Alert models and types."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+
+def _utc_now() -> datetime:
+    """Get current UTC time (timezone-aware)."""
+    return datetime.now(UTC)
 
 
 class AlertLevel(str, Enum):
@@ -41,7 +46,7 @@ class Alert(BaseModel):
     level: AlertLevel
     title: str
     message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utc_now)
 
     # Context
     project_id: UUID | None = None

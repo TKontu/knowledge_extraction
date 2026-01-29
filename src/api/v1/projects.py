@@ -3,7 +3,7 @@
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -146,7 +146,12 @@ async def update_project(
     project_id: UUID,
     project_update: ProjectUpdate,
     response: Response,
-    force: bool = False,
+    force: bool = Query(
+        default=False,
+        description="Allow schema/entity_types changes even with existing extractions. "
+        "Required when modifying extraction_schema or entity_types on a project "
+        "that already has extractions.",
+    ),
     db: Session = Depends(get_db),
 ) -> ProjectResponse:
     """Update an existing project.
@@ -156,8 +161,6 @@ async def update_project(
         project_update: Fields to update.
         response: FastAPI response object for headers.
         force: If True, allow schema/entity_types changes even with existing extractions.
-               Required when modifying extraction_schema or entity_types on a project
-               that already has extractions.
         db: Database session.
 
     Returns:
@@ -195,15 +198,12 @@ async def update_project(
 
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "Schema modification blocked",
-                    "message": (
-                        f"Project has {extraction_count} existing extractions. "
-                        f"Modifying {', '.join(changed_fields)} may cause data inconsistencies."
-                    ),
-                    "extraction_count": extraction_count,
-                    "resolution": "Add ?force=true to proceed anyway, or delete existing extractions first.",
-                },
+                detail=(
+                    f"Schema modification blocked: Project has {extraction_count} existing "
+                    f"extractions. Modifying {', '.join(changed_fields)} may cause data "
+                    f"inconsistencies. Add ?force=true to proceed anyway, or delete "
+                    f"existing extractions first."
+                ),
             )
 
         if extraction_count > 0 and force:

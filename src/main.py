@@ -31,6 +31,7 @@ from middleware.request_logging import RequestLoggingMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
 from qdrant_connection import check_qdrant_connection, qdrant_client
 from redis_client import check_redis_connection
+from services.alerting import close_alert_service
 from services.projects.template_loader import TemplateLoadError, load_templates
 from services.scraper.scheduler import start_scheduler, stop_scheduler
 from services.storage.qdrant.repository import QdrantRepository
@@ -149,6 +150,7 @@ async def lifespan(app: FastAPI):
 
     # Register cleanup callbacks
     shutdown_manager.register_cleanup(stop_scheduler)
+    shutdown_manager.register_cleanup(close_alert_service)
 
     yield
 
