@@ -1,6 +1,6 @@
 # TODO: Architecture - Database Consistency & Worker Robustness
 
-Review date: 2026-01-28
+Review date: 2026-01-29
 
 ## Summary
 
@@ -42,29 +42,9 @@ await self._qdrant_repo.upsert_batch(items)
 
 ---
 
-### 2. Stale Job Recovery Window Too Aggressive
-
-- **Severity:** HIGH
-- **Files:** `src/services/scraper/scheduler.py:185-198`, `scheduler.py:262-275`, `scheduler.py:325-338`
-- **Issue:** Jobs considered "stale" after only 5 seconds (`poll_interval`)
-
-```python
-stale_threshold = datetime.now(UTC) - timedelta(seconds=self.poll_interval)  # 5 seconds!
-```
-
-- **Problem:** LLM extraction jobs can take minutes; slow jobs may be "recovered" while still running
-- **Risk:** Duplicate processing, race conditions
-
-- **Recommended Actions:**
-  - [ ] Increase stale threshold to 5-10 minutes for extraction jobs
-  - [ ] Consider per-job-type thresholds (scrape: 2min, extract: 10min, crawl: 30min)
-  - [ ] Add heartbeat mechanism for long-running jobs
-
----
-
 ## Medium Priority
 
-### 3. Async/Sync Mismatch in Repositories
+### 2. Async/Sync Mismatch in Repositories
 
 - **Severity:** MEDIUM
 - **Files:** `src/services/storage/repositories/extraction.py`, `source.py`, `entity.py`
@@ -87,7 +67,7 @@ async def create(self, ...) -> Extraction:
 
 ---
 
-### 4. Inconsistent Transaction Boundaries
+### 3. Inconsistent Transaction Boundaries
 
 - **Severity:** MEDIUM
 - **Files:**
@@ -108,7 +88,7 @@ async def create(self, ...) -> Extraction:
 
 ---
 
-### 5. LLM Response Polling Inefficiency
+### 4. LLM Response Polling Inefficiency
 
 - **Severity:** MEDIUM
 - **Files:** `src/services/llm/queue.py:131-150`
@@ -133,7 +113,7 @@ while time.time() < deadline:
 
 ## Low Priority
 
-### 6. Database Pool Sizing Review
+### 5. Database Pool Sizing Review
 
 - **Severity:** LOW
 - **File:** `src/database.py:17`
@@ -147,7 +127,7 @@ while time.time() < deadline:
 
 ---
 
-### 7. Qdrant Repository Sync Operations
+### 6. Qdrant Repository Sync Operations
 
 - **Severity:** LOW
 - **File:** `src/services/storage/qdrant/repository.py`
@@ -165,7 +145,7 @@ async def upsert_batch(self, items: list[EmbeddingItem]) -> list[str]:
 
 ---
 
-### 8. Job Duration Metrics Use PostgreSQL-Specific SQL
+### 7. Job Duration Metrics Use PostgreSQL-Specific SQL
 
 - **Severity:** LOW
 - **File:** `src/services/metrics/collector.py:134-141`
@@ -187,7 +167,7 @@ func.avg(
 
 ---
 
-### 9. Missing Unit Tests for New Methods
+### 8. Missing Unit Tests for New Methods
 
 - **Severity:** LOW
 - **Files:**
@@ -225,23 +205,22 @@ func.avg(
 ## Implementation Recommendations
 
 ### Phase 1: Critical Fixes (Before Next Major Release)
-1. Increase stale job threshold
+1. ~~Increase stale job threshold~~ (DONE)
 2. Add embedding retry background task
 
 ### Phase 2: Performance Improvements
-3. Fix async/sync mismatch (choose strategy)
-4. Improve LLM response pattern (pub/sub)
+2. Fix async/sync mismatch (choose strategy)
+3. Improve LLM response pattern (pub/sub)
 
 ### Phase 3: Robustness
-5. Document transaction boundary strategy
-6. Add transactional outbox for critical paths
+4. Document transaction boundary strategy
+5. Add transactional outbox for critical paths
 
 ---
 
 ## Related Documents
 
 - `docs/TODO_production_readiness.md` - Production checklist
-- `docs/TODO_extraction_reliability.md` - Extraction-specific improvements
 - `docs/PLAN-crawl-improvements.md` - Crawl pipeline enhancements
 - `docs/pipeline_review_embedding_tracking_changes.md` - Pipeline review for 2026-01-28 changes
 
@@ -277,4 +256,14 @@ func.avg(
 - **File:** `src/services/storage/repositories/extraction.py:345-376`
 - **Change:** Replaced N individual UPDATE statements with single UPDATE using `cast(Extraction.id, String)`
 - **Impact:** O(1) database round-trips instead of O(n) for batch embedding updates
+
+**5. Fixed stale job recovery thresholds** (was 5 seconds for all job types)
+- **Files modified:**
+  - `src/config.py:313-324` - Added configurable per-job-type thresholds
+  - `src/services/scraper/scheduler.py:43-52` - Added `get_stale_thresholds()` function
+- **New settings:**
+  - `job_stale_threshold_scrape`: 300s (5 minutes)
+  - `job_stale_threshold_extract`: 900s (15 minutes)
+  - `job_stale_threshold_crawl`: 1800s (30 minutes)
+- **Impact:** Eliminates duplicate processing risk for long-running extraction jobs
 
