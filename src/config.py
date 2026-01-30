@@ -341,6 +341,16 @@ class Settings(BaseSettings):
         description="Crawl job stale threshold in seconds (default: 30 minutes)",
     )
 
+    # Page Classification (extraction optimization)
+    classification_enabled: bool = Field(
+        default=False,
+        description="Enable page classification to filter field groups before extraction",
+    )
+    classification_skip_enabled: bool = Field(
+        default=False,
+        description="Enable skipping pages classified as irrelevant (careers, news, etc.)",
+    )
+
     @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v: str) -> str:

@@ -316,6 +316,12 @@ class Source(Base):
         UUID, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    # Classification columns (for page classification optimization)
+    page_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    relevant_field_groups: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    classification_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="sources")
     extractions: Mapped[list["Extraction"]] = relationship(
