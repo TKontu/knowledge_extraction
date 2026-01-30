@@ -46,10 +46,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 32G
+          memory: 24G
           cpus: '4'
         reservations:
-          memory: 4G
+          memory: 2G
 
   camoufox:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/camoufox:${CAMOUFOX_TAG:-latest}
@@ -73,10 +73,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 32G
+          memory: 24G
           cpus: '4'
         reservations:
-          memory: 4G
+          memory: 2G
 
   firecrawl-db:
     image: ghcr.io/firecrawl/nuq-postgres:latest
