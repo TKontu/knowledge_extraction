@@ -19,7 +19,7 @@ from services.storage.repositories.extraction import (
     ExtractionFilters,
     ExtractionRepository,
 )
-from services.storage.repositories.source import SourceFilters, SourceRepository
+from services.storage.repositories.source import SourceRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -92,11 +92,23 @@ async def create_extraction_job(
                 )
         source_count = len(source_uuids)
     else:
-        # Count pending sources for the project
-        source_repo = SourceRepository(db)
-        filters = SourceFilters(project_id=project_uuid, status="pending")
-        pending_sources = source_repo.list(filters)
-        source_count = len(pending_sources)
+        # Count sources that will be processed based on force flag
+        # Worker processes: "ready" + "pending", and "extracted" if force=True
+        from orm_models import Source
+
+        allowed_statuses = ["ready", "pending"]
+        if request.force:
+            allowed_statuses.append("extracted")
+
+        source_count = (
+            db.query(Source)
+            .filter(
+                Source.project_id == project_uuid,
+                Source.status.in_(allowed_statuses),
+                Source.content.isnot(None),
+            )
+            .count()
+        )
 
     # Create job ID
     job_id = uuid4()
@@ -244,7 +256,11 @@ async def list_extractions(
     )
 
 
-@router.post("/projects/{project_id}/extract-schema")
+@router.post(
+    "/projects/{project_id}/extract-schema",
+    deprecated=True,
+    summary="[DEPRECATED] Run schema-based extraction",
+)
 async def extract_schema(
     project_id: str,
     source_groups: list[str] | None = None,
@@ -252,8 +268,17 @@ async def extract_schema(
 ) -> dict:
     """Run schema-based extraction on project sources.
 
-    This uses the drivetrain company template with 7 field groups,
-    running multiple focused LLM calls per source.
+    .. deprecated::
+        This endpoint is deprecated. Use POST /projects/{project_id}/extract instead.
+        The /extract endpoint automatically detects if the project has a schema and
+        uses the appropriate extraction method. It also provides:
+        - Job tracking and status monitoring
+        - Cancellation support
+        - force parameter for re-extraction
+        - source_ids parameter for selective extraction
+
+    This endpoint runs extraction synchronously in the request context, which can
+    timeout for large projects. Use /extract for production workloads.
 
     Args:
         project_id: Project UUID.
@@ -269,6 +294,14 @@ async def extract_schema(
     from services.extraction.schema_extractor import SchemaExtractor
     from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
     from services.llm.queue import LLMRequestQueue
+
+    # Log deprecation warning
+    logger.warning(
+        "deprecated_endpoint_called",
+        endpoint="/extract-schema",
+        recommended="/extract",
+        project_id=project_id,
+    )
 
     # Validate project_id format
     try:
@@ -317,6 +350,11 @@ async def extract_schema(
     result = await pipeline.extract_project(
         project_id=project_uuid,
         source_groups=source_groups,
+    )
+
+    # Add deprecation notice to response
+    result["_deprecated"] = (
+        "This endpoint is deprecated. Use POST /projects/{project_id}/extract instead."
     )
 
     return result

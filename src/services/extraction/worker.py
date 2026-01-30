@@ -114,6 +114,7 @@ class ExtractionWorker:
         source_ids: list[UUID] | None,
         source_groups: list[str] | None = None,
         force: bool = False,
+        cancellation_check=None,
     ) -> SchemaExtractionResult:
         """Process extraction using schema-based pipeline.
 
@@ -122,6 +123,8 @@ class ExtractionWorker:
             source_ids: Optional specific source IDs to process.
             source_groups: Optional filter by source groups.
             force: If True, re-extract already extracted sources.
+            cancellation_check: Optional async callback that returns True if
+                              processing should be cancelled.
 
         Returns:
             SchemaExtractionResult with extraction counts.
@@ -132,8 +135,10 @@ class ExtractionWorker:
         # skip_extracted=False when force=True to re-extract
         result = await pipeline.extract_project(
             project_id=project_id,
+            source_ids=source_ids,
             source_groups=source_groups,
             skip_extracted=not force,
+            cancellation_check=cancellation_check,
         )
 
         # Handle error case
@@ -146,7 +151,7 @@ class ExtractionWorker:
 
         return SchemaExtractionResult(
             sources_processed=result.get("sources_processed", 0),
-            sources_failed=0,  # Schema pipeline doesn't track individual failures
+            sources_failed=result.get("sources_failed", 0),
             total_extractions=result.get("extractions_created", 0),
             total_deduplicated=0,
             total_entities=0,
@@ -197,6 +202,10 @@ class ExtractionWorker:
             # Check if project has extraction schema
             has_schema, project = self._has_extraction_schema(project_id)
 
+            # Create cancellation check callback for both pipelines
+            async def check_cancellation() -> bool:
+                return self.job_repo.is_cancellation_requested(job.id)
+
             if has_schema and self.settings:
                 # Use schema-based extraction
                 schema_name = project.extraction_schema.get("name", "unknown")
@@ -213,6 +222,7 @@ class ExtractionWorker:
                     project_id=project_id,
                     source_ids=[UUID(sid) for sid in source_ids] if source_ids else None,
                     force=force,
+                    cancellation_check=check_cancellation,
                 )
             else:
                 # Use generic fact extraction (original behavior)
@@ -230,10 +240,6 @@ class ExtractionWorker:
                     profile=profile_name,
                     source_count=len(source_ids) if source_ids else "all_pending",
                 )
-
-                # Create cancellation check callback for pipeline
-                async def check_cancellation() -> bool:
-                    return self.job_repo.is_cancellation_requested(job.id)
 
                 # Process sources with generic pipeline
                 if source_ids:

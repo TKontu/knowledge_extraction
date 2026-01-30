@@ -554,18 +554,25 @@ class SchemaExtractionPipeline:
     async def extract_project(
         self,
         project_id: UUID,
+        source_ids: list[UUID] | None = None,
         source_groups: list[str] | None = None,
         skip_extracted: bool = True,
+        cancellation_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> dict:
         """Extract all sources in a project.
 
         Args:
             project_id: Project UUID.
+            source_ids: Optional specific source IDs to process. If provided,
+                        only these sources are extracted (ignores skip_extracted).
             source_groups: Optional filter by company names.
             skip_extracted: If True, skip sources with 'extracted' status.
+                           Ignored when source_ids is provided.
+            cancellation_check: Optional async callback that returns True if
+                              processing should be cancelled.
 
         Returns:
-            Summary dict with extraction counts.
+            Summary dict with extraction counts including sources_failed.
         """
         from orm_models import Project, Source
 
@@ -605,17 +612,26 @@ class SchemaExtractionPipeline:
             field_groups_count=len(field_groups),
         )
 
-        # Build list of allowed statuses based on skip_extracted flag
-        allowed_statuses = ["ready", "pending"]
-        if not skip_extracted:
-            allowed_statuses.append("extracted")
+        # Build query based on whether specific source_ids are provided
+        if source_ids:
+            # When specific source_ids provided, extract those regardless of status
+            query = self._db.query(Source).filter(
+                Source.project_id == project_id,
+                Source.id.in_(source_ids),
+                Source.content.isnot(None),
+            )
+        else:
+            # Build list of allowed statuses based on skip_extracted flag
+            allowed_statuses = ["ready", "pending"]
+            if not skip_extracted:
+                allowed_statuses.append("extracted")
 
-        # Include sources that are ready (and optionally extracted)
-        query = self._db.query(Source).filter(
-            Source.project_id == project_id,
-            Source.status.in_(allowed_statuses),
-            Source.content.isnot(None),
-        )
+            # Include sources that are ready (and optionally extracted)
+            query = self._db.query(Source).filter(
+                Source.project_id == project_id,
+                Source.status.in_(allowed_statuses),
+                Source.content.isnot(None),
+            )
 
         if source_groups:
             query = query.filter(Source.source_group.in_(source_groups))
@@ -632,40 +648,90 @@ class SchemaExtractionPipeline:
         # Get schema name for tracking
         schema_name = schema.get("name", "unknown")
 
-        # Process sources in parallel
+        # Check for cancellation before starting
+        if cancellation_check and await cancellation_check():
+            logger.info(
+                "schema_extraction_cancelled_before_start",
+                project_id=str(project_id),
+                source_count=len(sources),
+            )
+            return {
+                "project_id": str(project_id),
+                "sources_processed": 0,
+                "sources_failed": 0,
+                "extractions_created": 0,
+                "field_groups": len(field_groups),
+                "schema_name": schema.get("name", "unknown"),
+                "cancelled": True,
+            }
+
+        # Process sources in parallel with cancellation support
+        # Use chunked processing to allow cancellation checks between batches
         semaphore = asyncio.Semaphore(10)
+        chunk_size = 20  # Check cancellation every 20 sources
 
-        async def extract_with_limit(source) -> int:
+        async def extract_with_limit(source) -> tuple[int, bool]:
+            """Extract source and return (extraction_count, success)."""
             async with semaphore:
-                extractions = await self.extract_source(
-                    source=source,
-                    source_context=source.source_group,
-                    field_groups=field_groups,
-                    schema_name=schema_name,
+                try:
+                    extractions = await self.extract_source(
+                        source=source,
+                        source_context=source.source_group,
+                        field_groups=field_groups,
+                        schema_name=schema_name,
+                    )
+                    # Update source status to "extracted" on success
+                    source.status = "extracted"
+                    return len(extractions), True
+                except Exception as e:
+                    logger.error(
+                        "schema_extraction_failed",
+                        source_id=str(source.id),
+                        error=str(e),
+                        exc_info=True,
+                    )
+                    return 0, False
+
+        # Process in chunks to allow cancellation checks
+        all_results = []
+        cancelled = False
+        for i in range(0, len(sources), chunk_size):
+            # Check for cancellation between chunks
+            if cancellation_check and await cancellation_check():
+                logger.info(
+                    "schema_extraction_cancelled",
+                    project_id=str(project_id),
+                    processed=i,
+                    remaining=len(sources) - i,
                 )
-                return len(extractions)
+                cancelled = True
+                break
 
-        extraction_counts = await asyncio.gather(
-            *[extract_with_limit(s) for s in sources],
-            return_exceptions=True,
-        )
+            chunk = sources[i : i + chunk_size]
+            chunk_results = await asyncio.gather(
+                *[extract_with_limit(s) for s in chunk],
+            )
+            all_results.extend(chunk_results)
 
-        total_extractions = sum(c for c in extraction_counts if isinstance(c, int))
+        # Count successes and failures
+        total_extractions = sum(count for count, _ in all_results)
+        sources_failed = sum(1 for _, success in all_results if not success)
+        sources_processed = len(all_results)
 
-        for i, result in enumerate(extraction_counts):
-            if isinstance(result, Exception):
-                logger.error(
-                    "schema_extraction_failed",
-                    source_id=str(sources[i].id),
-                    error=str(result),
-                )
+        # Commit any changes made during processing
+        if sources_processed > 0:
+            self._db.commit()
 
-        self._db.commit()
-
-        return {
+        result = {
             "project_id": str(project_id),
-            "sources_processed": len(sources),
+            "sources_processed": sources_processed,
+            "sources_failed": sources_failed,
             "extractions_created": total_extractions,
             "field_groups": len(field_groups),
             "schema_name": schema.get("name", "unknown"),
         }
+
+        if cancelled:
+            result["cancelled"] = True
+
+        return result
