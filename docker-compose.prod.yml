@@ -26,6 +26,8 @@ services:
       - NO_PROXY=localhost,127.0.0.1,redis,postgres,qdrant,camoufox,firecrawl-db,rabbitmq
       - LOGGING_LEVEL=${FIRECRAWL_LOGGING_LEVEL:-info}
       - NODE_OPTIONS=--max-old-space-size=20480
+      - MAX_RAM=0.95
+      - MAX_CPU=0.95
     depends_on:
       firecrawl-db:
         condition: service_healthy
@@ -35,13 +37,12 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    # Healthcheck disabled - debugging deployment failures
-    # healthcheck:
-    #   test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3002/', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
-    #   interval: 5s
-    #   timeout: 5s
-    #   retries: 12
-    #   start_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3002/', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
     restart: unless-stopped
     networks:
       - scristill
@@ -262,7 +263,7 @@ services:
       qdrant:
         condition: service_healthy
       firecrawl-api:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - scristill
