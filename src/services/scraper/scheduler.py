@@ -414,9 +414,12 @@ class JobScheduler:
 
                         # Process the job
                         # The worker will handle status transitions within its own transaction
+                        # Pass settings and llm_queue for schema-based extraction support
                         worker = ExtractionWorker(
                             db=db,
                             pipeline_service=pipeline_service,
+                            settings=settings,
+                            llm_queue=llm_queue,
                         )
                         await worker.process_job(job)
                     else:

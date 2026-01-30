@@ -263,6 +263,10 @@ class ExtractRequest(BaseModel):
         default=None,
         description="Optional extraction profile/depth",
     )
+    force: bool = Field(
+        default=False,
+        description="If True, re-extract sources even if already extracted. Useful for re-running with a different template.",
+    )
 
 
 class ExtractResponse(BaseModel):

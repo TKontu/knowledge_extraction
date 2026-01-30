@@ -20,6 +20,10 @@ def register_extraction_tools(mcp: FastMCP) -> None:
             list[str] | None,
             "Specific source UUIDs to extract (omit for all pending sources)",
         ] = None,
+        force: Annotated[
+            bool,
+            "If True, re-extract sources even if already extracted (useful for re-running with different template)",
+        ] = False,
         ctx: Context = None,
     ) -> dict:
         """Run LLM-based knowledge extraction on sources.
@@ -28,7 +32,11 @@ def register_extraction_tools(mcp: FastMCP) -> None:
         structured extractions. This uses the LLM to identify facts, entities,
         and relationships in the content.
 
+        If the project has an extraction_schema (from a template), uses schema-based
+        extraction with field groups. Otherwise, uses generic fact extraction.
+
         If source_ids is omitted, extracts from all sources with 'pending' status.
+        Use force=True to re-extract sources that were already extracted.
 
         This operation may take several minutes depending on the number of sources.
         """
@@ -38,6 +46,7 @@ def register_extraction_tools(mcp: FastMCP) -> None:
             job = await client.create_extraction(
                 project_id=project_id,
                 source_ids=source_ids,
+                force=force,
             )
 
             return {

@@ -240,12 +240,22 @@ class KnowledgeExtractionClient:
         self,
         project_id: str,
         source_ids: list[str] | None = None,
+        force: bool = False,
     ) -> dict[str, Any]:
-        """Start an extraction job."""
+        """Start an extraction job.
+
+        Args:
+            project_id: Project UUID.
+            source_ids: Optional specific source IDs to extract.
+            force: If True, re-extract sources even if already extracted.
+
+        Returns:
+            Job creation response with job_id.
+        """
         return await self._request(
             "POST",
             f"/api/v1/projects/{project_id}/extract",
-            json={"source_ids": source_ids},
+            json={"source_ids": source_ids, "force": force},
         )
 
     async def list_extractions(
