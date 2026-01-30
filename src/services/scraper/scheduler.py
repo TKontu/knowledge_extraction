@@ -250,6 +250,11 @@ class JobScheduler:
         This worker continuously polls for crawl jobs and processes them to completion.
         Multiple instances of this worker run in parallel to enable multi-domain parallelism.
 
+        Polling strategy:
+        1. Queued jobs (highest priority) - start new crawls
+        2. Running jobs needing status poll (updated_at > crawl_poll_interval ago)
+        3. Stale jobs are logged as warnings but handled by the same poll mechanism
+
         Args:
             worker_id: Unique identifier for this worker (for logging).
         """
@@ -260,9 +265,6 @@ class JobScheduler:
             try:
                 db: Session = SessionLocal()
                 try:
-                    # Strategy: Prefer queued jobs, only poll running jobs if stale
-                    # This prevents multiple workers from redundantly polling the same job
-
                     # First, try to get a queued job (highest priority)
                     job = (
                         db.query(Job)
@@ -276,31 +278,37 @@ class JobScheduler:
                     )
 
                     # If no queued jobs, try to get a running job that needs polling
-                    # Only poll if it hasn't been updated recently (avoid redundant polls)
+                    # Poll every crawl_poll_interval seconds to check Firecrawl status
                     if not job:
-                        thresholds = get_stale_thresholds()
-                        stale_threshold = datetime.now(UTC) - thresholds["crawl"]
+                        poll_threshold = datetime.now(UTC) - timedelta(
+                            seconds=settings.crawl_poll_interval
+                        )
                         job = (
                             db.query(Job)
                             .filter(
                                 Job.type == "crawl",
                                 Job.status == "running",
-                                Job.updated_at < stale_threshold,
+                                Job.updated_at < poll_threshold,
                             )
-                            .order_by(Job.priority.desc(), Job.created_at.asc())
+                            .order_by(Job.updated_at.asc())  # Poll oldest first
                             .with_for_update(skip_locked=True)
                             .first()
                         )
+
+                        # Log warning if job is past stale threshold (potential issue)
                         if job:
-                            runtime = datetime.now(UTC) - job.updated_at
-                            logger.warning(
-                                "crawl_recovering_stale_job",
-                                job_id=str(job.id),
-                                job_type="crawl",
-                                runtime_seconds=runtime.total_seconds(),
-                                updated_at=str(job.updated_at),
-                                threshold_seconds=thresholds["crawl"].total_seconds(),
-                            )
+                            thresholds = get_stale_thresholds()
+                            stale_threshold = datetime.now(UTC) - thresholds["crawl"]
+                            if job.updated_at < stale_threshold:
+                                runtime = datetime.now(UTC) - job.updated_at
+                                logger.warning(
+                                    "crawl_recovering_stale_job",
+                                    job_id=str(job.id),
+                                    job_type="crawl",
+                                    runtime_seconds=runtime.total_seconds(),
+                                    updated_at=str(job.updated_at),
+                                    threshold_seconds=thresholds["crawl"].total_seconds(),
+                                )
 
                     if job:
                         worker = CrawlWorker(

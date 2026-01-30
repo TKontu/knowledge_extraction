@@ -188,6 +188,10 @@ class Settings(BaseSettings):
         default=6,
         description="Max parallel crawl jobs (different domains) - adjust based on available resources",
     )
+    crawl_poll_interval: int = Field(
+        default=10,
+        description="Interval in seconds between polling Firecrawl for crawl job status updates",
+    )
 
     # Camoufox Timeout Strategy
     camoufox_networkidle_timeout: int = Field(
