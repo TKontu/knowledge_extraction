@@ -368,6 +368,7 @@ class KnowledgeExtractionClient:
         source_groups: list[str],
         title: str | None = None,
         output_format: str = "md",
+        group_by: str = "source_group",
     ) -> dict[str, Any]:
         """Generate a report."""
         return await self._request(
@@ -378,6 +379,7 @@ class KnowledgeExtractionClient:
                 "source_groups": source_groups,
                 "title": title,
                 "output_format": output_format,
+                "group_by": group_by,
             },
         )
 

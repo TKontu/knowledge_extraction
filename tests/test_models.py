@@ -3,7 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from models import ReportRequest, ReportResponse, ReportJobResponse, ReportType, ProjectCreate
+from models import (
+    ProjectCreate,
+    ReportJobResponse,
+    ReportRequest,
+    ReportResponse,
+    ReportType,
+)
 
 
 class TestReportRequest:
@@ -88,6 +94,70 @@ class TestReportRequest:
                 source_groups=["company-a"],
                 max_extractions=201,
             )
+
+    def test_report_request_group_by_default(self):
+        """Test group_by defaults to source_group."""
+        request = ReportRequest(
+            type=ReportType.TABLE,
+            source_groups=["company-a"],
+        )
+        assert request.group_by == "source_group"
+
+    def test_report_request_group_by_extraction_allowed_for_table(self):
+        """Test group_by='extraction' is allowed for table reports."""
+        request = ReportRequest(
+            type=ReportType.TABLE,
+            source_groups=["company-a"],
+            group_by="extraction",
+        )
+        assert request.group_by == "extraction"
+
+    def test_report_request_group_by_extraction_allowed_for_schema_table(self):
+        """Test group_by='extraction' is allowed for schema_table reports."""
+        request = ReportRequest(
+            type=ReportType.SCHEMA_TABLE,
+            source_groups=["company-a"],
+            group_by="extraction",
+        )
+        assert request.group_by == "extraction"
+
+    def test_report_request_group_by_extraction_rejected_for_single(self):
+        """Test group_by='extraction' is rejected for single reports."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReportRequest(
+                type=ReportType.SINGLE,
+                source_groups=["company-a"],
+                group_by="extraction",
+            )
+        assert "only applies to table" in str(exc_info.value)
+
+    def test_report_request_group_by_extraction_rejected_for_comparison(self):
+        """Test group_by='extraction' is rejected for comparison reports."""
+        with pytest.raises(ValidationError) as exc_info:
+            ReportRequest(
+                type=ReportType.COMPARISON,
+                source_groups=["company-a", "company-b"],
+                group_by="extraction",
+            )
+        assert "only applies to table" in str(exc_info.value)
+
+    def test_report_request_group_by_source_group_allowed_for_all(self):
+        """Test group_by='source_group' is allowed for all report types."""
+        # Single
+        request = ReportRequest(
+            type=ReportType.SINGLE,
+            source_groups=["company-a"],
+            group_by="source_group",
+        )
+        assert request.group_by == "source_group"
+
+        # Comparison
+        request = ReportRequest(
+            type=ReportType.COMPARISON,
+            source_groups=["company-a", "company-b"],
+            group_by="source_group",
+        )
+        assert request.group_by == "source_group"
 
 
 class TestReportResponse:

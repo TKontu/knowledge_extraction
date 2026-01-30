@@ -98,6 +98,7 @@ class ReportService:
                 columns=request.columns,
                 output_format=request.output_format,
                 project_id=project_id,  # Pass project_id for schema-driven columns
+                group_by=request.group_by,
             )
             content = md_content
             if excel_bytes:
@@ -123,6 +124,7 @@ class ReportService:
                 columns=request.columns,
                 output_format=request.output_format,
                 project_id=project_id,
+                group_by=request.group_by,
             )
             content = md_content
             if excel_bytes:
@@ -496,17 +498,23 @@ class ReportService:
         data: ReportData,
         columns: list[str] | None,
         extraction_schema: dict | None = None,
+        group_by: str = "source_group",
     ) -> tuple[list[dict], list[str], dict[str, str]]:
         """Aggregate extractions into table rows.
 
-        For each source_group, consolidate multiple extractions
-        into a single row. When extraction_schema is provided, derives
-        columns and labels from the schema for template-agnostic output.
+        When group_by="source_group", consolidates multiple extractions into
+        a single row per source_group.
+        When group_by="extraction", creates one row per extraction with
+        source metadata columns.
+
+        When extraction_schema is provided, derives columns and labels from
+        the schema for template-agnostic output.
 
         Args:
             data: Report data with extractions by group
             columns: Specific columns to include, or None for all
             extraction_schema: Optional project schema for column/label derivation
+            group_by: Grouping level - "source_group" or "extraction"
 
         Returns:
             Tuple of (rows list, columns list, labels dict)
@@ -540,9 +548,80 @@ class ReportService:
             labels = {}
             entity_list_groups = {}
 
+        # One row per extraction mode
+        if group_by == "extraction":
+            for source_group in data.source_groups:
+                extractions = data.extractions_by_group.get(source_group, [])
+                for ext in extractions:
+                    row: dict = {
+                        "source_group": source_group,
+                        "source_url": ext.get("source_uri") or "",
+                        "source_title": ext.get("source_title") or "",
+                        "confidence": ext.get("confidence"),
+                    }
+                    # Add metadata columns
+                    all_columns.add("source_url")
+                    all_columns.add("source_title")
+                    all_columns.add("confidence")
+
+                    # Copy all fields from extraction data
+                    ext_data = ext.get("data", {})
+                    for field, value in ext_data.items():
+                        row[field] = value
+                        if value is not None:
+                            all_columns.add(field)
+
+                    rows.append(row)
+
+            # Determine column order for extraction mode
+            # Metadata columns first, then data fields
+            metadata_cols = ["source_group", "source_url", "source_title"]
+            final_columns = metadata_cols.copy()
+
+            # Columns to exclude from data columns (added separately)
+            reserved_cols = metadata_cols + ["confidence"]
+
+            if columns:
+                # User-specified columns (excluding reserved which are handled separately)
+                final_columns.extend(
+                    c for c in columns if c in all_columns and c not in reserved_cols
+                )
+            elif schema_columns:
+                # Schema-derived columns (preserve schema order)
+                final_columns.extend(
+                    c
+                    for c in schema_columns
+                    if c in all_columns and c not in reserved_cols
+                )
+            else:
+                # Fallback: alphabetical (excluding reserved columns)
+                final_columns.extend(
+                    sorted(c for c in all_columns if c not in reserved_cols)
+                )
+
+            # Add confidence at the end
+            if "confidence" in all_columns:
+                final_columns.append("confidence")
+
+            # Build labels dict for extraction mode
+            final_labels = {
+                "source_group": "Source",
+                "source_url": "URL",
+                "source_title": "Title",
+                "confidence": "Confidence",
+            }
+            for col in final_columns:
+                if col in labels:
+                    final_labels[col] = labels[col]
+                elif col not in final_labels:
+                    final_labels[col] = self._humanize(col)
+
+            return rows, final_columns, final_labels
+
+        # Original aggregated mode (group_by="source_group")
         for source_group in data.source_groups:
             extractions = data.extractions_by_group.get(source_group, [])
-            row: dict = {"source_group": source_group}
+            row = {"source_group": source_group}
 
             # Group extractions by type for entity list handling
             by_type: dict[str, list[dict]] = {}
@@ -691,9 +770,17 @@ class ReportService:
                 elif isinstance(val, bool):
                     values.append("Yes" if val else "No")
                 elif isinstance(val, list):
-                    values.append(", ".join(str(v) for v in val))
+                    # Sanitize each list item for markdown table compatibility
+                    sanitized_items = [
+                        str(v).replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+                        for v in val
+                    ]
+                    values.append(", ".join(sanitized_items))
                 else:
-                    values.append(str(val))
+                    # Sanitize for markdown table: newlines and pipe characters
+                    values.append(
+                        str(val).replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+                    )
             lines.append("| " + " | ".join(values) + " |")
 
         return "\n".join(lines)
@@ -705,6 +792,7 @@ class ReportService:
         columns: list[str] | None,
         output_format: str,
         project_id: UUID | None = None,
+        group_by: str = "source_group",
     ) -> tuple[str, bytes | None]:
         """Generate table report in markdown or Excel.
 
@@ -717,6 +805,7 @@ class ReportService:
             columns: Fields to include as columns
             output_format: Output format ("md" or "xlsx")
             project_id: Optional project ID for schema-driven columns/labels
+            group_by: Grouping level - "source_group" or "extraction"
 
         Returns:
             Tuple of (markdown_content, excel_bytes or None)
@@ -727,7 +816,7 @@ class ReportService:
             extraction_schema = self._get_project_schema(project_id)
 
         rows, final_columns, labels = self._aggregate_for_table(
-            data, columns, extraction_schema
+            data, columns, extraction_schema, group_by
         )
 
         md_content = self._build_markdown_table(rows, final_columns, title, labels)

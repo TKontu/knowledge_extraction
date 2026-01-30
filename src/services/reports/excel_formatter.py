@@ -70,13 +70,19 @@ class ExcelFormatter:
                 cell.border = self._border
                 cell.alignment = Alignment(wrap_text=True)
 
-        # Auto-adjust column widths
+        # Auto-adjust column widths based on longest line (for multi-line cells)
         for col_idx, col_name in enumerate(columns, 1):
             max_length = len(labels.get(col_name, self._humanize(col_name)))
             for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
                 for cell in row:
                     if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
+                        # For multi-line values, use the longest line
+                        cell_str = str(cell.value)
+                        if "\n" in cell_str:
+                            line_lengths = [len(line) for line in cell_str.split("\n")]
+                            max_length = max(max_length, max(line_lengths))
+                        else:
+                            max_length = max(max_length, len(cell_str))
             ws.column_dimensions[get_column_letter(col_idx)].width = min(
                 max_length + 2, 50
             )
@@ -97,5 +103,5 @@ class ExcelFormatter:
         if isinstance(value, bool):
             return "Yes" if value else "No"
         if isinstance(value, list):
-            return ", ".join(str(v) for v in value)
+            return "\n".join(str(v) for v in value)
         return str(value)

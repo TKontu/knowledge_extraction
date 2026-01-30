@@ -27,6 +27,10 @@ def register_report_tools(mcp: FastMCP) -> None:
         output_format: Annotated[
             Literal["md", "xlsx"], "Output format: md (markdown) or xlsx (Excel)"
         ] = "md",
+        group_by: Annotated[
+            Literal["source_group", "extraction"],
+            "Grouping: source_group (aggregate per company) or extraction (one row per fact)",
+        ] = "source_group",
         ctx: Context = None,
     ) -> dict:
         """Generate an analysis report from extracted knowledge.
@@ -37,12 +41,17 @@ def register_report_tools(mcp: FastMCP) -> None:
         - table: Tabular format of extracted data
         - schema_table: Structured table following extraction schema
 
+        Grouping (table reports only):
+        - source_group: One row per company (default, aggregates extractions)
+        - extraction: One row per extraction (shows individual facts with source URLs)
+
         Example:
             create_report(
                 project_id="...",
-                report_type="comparison",
+                report_type="table",
                 source_groups=["Acme Inc", "Competitor Corp"],
-                title="Pricing Comparison"
+                output_format="xlsx",
+                group_by="extraction"
             )
         """
         client = ctx.request_context.lifespan_context["client"]
@@ -54,6 +63,7 @@ def register_report_tools(mcp: FastMCP) -> None:
                 source_groups=source_groups,
                 title=title,
                 output_format=output_format,
+                group_by=group_by,
             )
 
             return {

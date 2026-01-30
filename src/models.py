@@ -593,6 +593,10 @@ class ReportRequest(BaseModel):
         le=100,
         description="Max extractions to show in detailed findings section (comparison reports)",
     )
+    group_by: Literal["source_group", "extraction"] = Field(
+        default="source_group",
+        description="Grouping: source_group (aggregate per company) or extraction (one row per fact). Only applies to table reports.",
+    )
 
     @field_validator("source_groups")
     @classmethod
@@ -600,6 +604,20 @@ class ReportRequest(BaseModel):
         """Validate comparison reports require at least 2 source_groups."""
         if info.data.get("type") == ReportType.COMPARISON and len(v) < 2:
             raise ValueError("Comparison reports require at least 2 source_groups")
+        return v
+
+    @field_validator("group_by")
+    @classmethod
+    def validate_group_by_only_for_tables(cls, v, info):
+        """Validate group_by='extraction' only applies to table reports."""
+        report_type = info.data.get("type")
+        if v == "extraction" and report_type not in (
+            ReportType.TABLE,
+            ReportType.SCHEMA_TABLE,
+        ):
+            raise ValueError(
+                "group_by='extraction' only applies to table and schema_table reports"
+            )
         return v
 
 
