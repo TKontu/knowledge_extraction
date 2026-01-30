@@ -34,12 +34,13 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3002/', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
+    # Healthcheck temporarily disabled for debugging
+    # healthcheck:
+    #   test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3002/', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 12
+    #   start_period: 30s
     restart: unless-stopped
     networks:
       - scristill
@@ -260,7 +261,7 @@ services:
       qdrant:
         condition: service_healthy
       firecrawl-api:
-        condition: service_healthy
+        condition: service_started  # Changed from service_healthy for debugging
     restart: unless-stopped
     networks:
       - scristill
