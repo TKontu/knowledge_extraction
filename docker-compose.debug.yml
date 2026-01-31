@@ -1,0 +1,17 @@
+# Standalone debug tools - deploy separately from main stack
+# Usage: docker compose -f docker-compose.debug.yml up -d
+#
+# This runs independently and monitors ALL containers on the host.
+
+services:
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle-debug
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - DOZZLE_LEVEL=info
+      - DOZZLE_NO_ANALYTICS=true
+    restart: always
