@@ -134,19 +134,35 @@ class TestPageClassifier:
         )
         assert result.skip_extraction
 
-    def test_skip_news_page(self, classifier):
-        """News/blog pages should be skipped."""
+    def test_news_page_not_skipped(self, classifier):
+        """News pages should NOT be skipped - may contain valuable company info."""
         result = classifier.classify(
             url="https://example.com/news/2024/announcement",
             title="Company News",
         )
-        assert result.skip_extraction
+        assert not result.skip_extraction  # News may have product announcements, partnerships
 
-    def test_skip_blog_page(self, classifier):
-        """Blog pages should be skipped."""
+    def test_blog_page_not_skipped(self, classifier):
+        """Blog pages should NOT be skipped - may contain valuable company info."""
         result = classifier.classify(
             url="https://example.com/blog/industry-trends",
             title="Industry Blog",
+        )
+        assert not result.skip_extraction  # Blogs may have technical insights
+
+    def test_press_release_not_skipped(self, classifier):
+        """Press releases should NOT be skipped - contain important announcements."""
+        result = classifier.classify(
+            url="https://example.com/press/new-product-launch",
+            title="Press Release",
+        )
+        assert not result.skip_extraction
+
+    def test_skip_event_calendar(self, classifier):
+        """Event calendar/registration pages should be skipped."""
+        result = classifier.classify(
+            url="https://example.com/event-calendar/2024",
+            title="Upcoming Events",
         )
         assert result.skip_extraction
 

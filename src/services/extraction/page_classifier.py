@@ -41,12 +41,15 @@ class PageClassifier:
     """
 
     # Universal patterns that indicate pages to skip entirely (template-agnostic)
+    # NOTE: Be conservative - only skip pages that are clearly irrelevant
+    # News/press/blog are NOT skipped as they may contain product announcements,
+    # partnerships, and other valuable company information
     DEFAULT_SKIP_PATTERNS: list[str] = [
-        r"/career|/job|/employ|/vacanc",
-        r"/news|/blog|/press|/media|/event",
-        r"/privacy|/terms|/legal|/cookie|/gdpr",
-        r"/login|/account|/cart|/checkout",
-        r"/sitemap|/search|/404|/error",
+        r"/career|/job|/employ|/vacanc|/recruiting|/openings",  # Job pages
+        r"/privacy|/terms|/legal|/cookie|/gdpr|/imprint|/impressum",  # Legal
+        r"/login|/account|/cart|/checkout|/register|/signup",  # Auth/commerce
+        r"/sitemap|/search|/404|/error|/tag/|/category/|/author/",  # Navigation/taxonomy
+        r"/event-calendar|/webinar-registration|/trade-show",  # Event registration only
     ]
 
     def __init__(
