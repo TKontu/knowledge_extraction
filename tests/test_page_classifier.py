@@ -9,12 +9,54 @@ from services.extraction.page_classifier import (
 )
 
 
+# Sample patterns for testing (similar to drivetrain template)
+SAMPLE_URL_PATTERNS = {
+    r"/products?($|/)": ["products_gearbox", "products_motor", "products_accessory"],
+    r"/gearbox|/gear-?box|/reducer|/gear-?reducer": ["products_gearbox", "manufacturing"],
+    r"/motor|/electric-?motor|/servo|/drive": ["products_motor", "manufacturing"],
+    r"/coupling|/shaft|/bearing|/brake|/clutch": ["products_accessory"],
+    r"/service|/repair|/maintenance|/refurbish": ["services"],
+    r"/field-?service|/on-?site": ["services"],
+    r"/about|/company|/who-?we-?are|/history": ["company_info", "company_meta"],
+    r"/contact|/location|/office|/address": ["company_info"],
+    r"/certific|/quality|/iso|/standard": ["company_meta"],
+    r"/facilit|/plant|/factory|/manufactur": ["company_meta", "manufacturing"],
+}
+
+SAMPLE_TITLE_KEYWORDS = {
+    "gearbox": ["products_gearbox"],
+    "gear box": ["products_gearbox"],
+    "reducer": ["products_gearbox"],
+    "planetary": ["products_gearbox"],
+    "helical": ["products_gearbox"],
+    "motor": ["products_motor"],
+    "servo": ["products_motor"],
+    "coupling": ["products_accessory"],
+    "service": ["services"],
+    "repair": ["services"],
+    "maintenance": ["services"],
+    "about": ["company_info"],
+    "contact": ["company_info"],
+    "certification": ["company_meta"],
+    "iso": ["company_meta"],
+}
+
+
 class TestPageClassifier:
     """Tests for page classification system."""
 
     @pytest.fixture
     def classifier(self):
-        """Create a default classifier."""
+        """Create a classifier with sample patterns for testing field group filtering."""
+        return PageClassifier(
+            method=ClassificationMethod.RULE_BASED,
+            url_patterns=SAMPLE_URL_PATTERNS,
+            title_keywords=SAMPLE_TITLE_KEYWORDS,
+        )
+
+    @pytest.fixture
+    def skip_only_classifier(self):
+        """Create a classifier with only skip patterns (template-agnostic default)."""
         return PageClassifier(method=ClassificationMethod.RULE_BASED)
 
     def test_product_page_classification(self, classifier):
@@ -143,6 +185,26 @@ class TestPageClassifier:
         assert result.confidence < 0.5
         assert result.page_type == "general"
 
+    def test_template_agnostic_no_patterns(self, skip_only_classifier):
+        """Classifier without patterns should return all groups for non-skip pages."""
+        result = skip_only_classifier.classify(
+            url="https://example.com/products/gearboxes",
+            title="Gearbox Products",
+        )
+        # No field group filtering without patterns
+        assert result.relevant_groups == []  # Empty = use all groups
+        assert not result.skip_extraction
+        assert result.page_type == "general"
+
+    def test_template_agnostic_still_skips(self, skip_only_classifier):
+        """Classifier without patterns should still skip irrelevant pages."""
+        result = skip_only_classifier.classify(
+            url="https://example.com/careers/apply",
+            title="Join Our Team",
+        )
+        assert result.skip_extraction
+        assert result.page_type == "skip"
+
     def test_title_keyword_matching_gearbox(self, classifier):
         """Title keywords should influence classification."""
         result = classifier.classify(
@@ -169,7 +231,11 @@ class TestPageClassifier:
 
     def test_available_groups_filtering(self):
         """Classification should filter to available groups."""
-        classifier = PageClassifier(available_groups=["company_info", "services"])
+        classifier = PageClassifier(
+            available_groups=["company_info", "services"],
+            url_patterns=SAMPLE_URL_PATTERNS,
+            title_keywords=SAMPLE_TITLE_KEYWORDS,
+        )
         result = classifier.classify(
             url="https://example.com/products/gearboxes",
             title="Gearboxes",
@@ -181,7 +247,9 @@ class TestPageClassifier:
     def test_available_groups_preserves_matching(self):
         """Available groups filter should preserve matching groups."""
         classifier = PageClassifier(
-            available_groups=["company_info", "services", "products_gearbox"]
+            available_groups=["company_info", "services", "products_gearbox"],
+            url_patterns=SAMPLE_URL_PATTERNS,
+            title_keywords=SAMPLE_TITLE_KEYWORDS,
         )
         result = classifier.classify(
             url="https://example.com/products/gearboxes",

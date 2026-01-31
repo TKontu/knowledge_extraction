@@ -32,32 +32,16 @@ class ClassificationResult:
 class PageClassifier:
     """Classifies pages to determine relevant extraction field groups.
 
-    Uses URL patterns and title keywords to identify page type and select
-    only the field groups likely to contain relevant information.
+    Template-agnostic classifier that:
+    1. Skips irrelevant pages (careers, news, legal, etc.) - universal patterns
+    2. Optionally filters field groups based on configurable URL/title patterns
+
+    By default, only skip detection is enabled. Field group filtering requires
+    explicit patterns to be provided during initialization.
     """
 
-    # URL pattern -> relevant field groups mapping
-    URL_PATTERNS: dict[str, list[str]] = {
-        # Product pages
-        r"/products?($|/)": ["products_gearbox", "products_motor", "products_accessory"],
-        r"/gearbox|/gear-?box|/reducer|/gear-?reducer": [
-            "products_gearbox",
-            "manufacturing",
-        ],
-        r"/motor|/electric-?motor|/servo|/drive": ["products_motor", "manufacturing"],
-        r"/coupling|/shaft|/bearing|/brake|/clutch": ["products_accessory"],
-        # Service pages
-        r"/service|/repair|/maintenance|/refurbish": ["services"],
-        r"/field-?service|/on-?site": ["services"],
-        # Company pages
-        r"/about|/company|/who-?we-?are|/history": ["company_info", "company_meta"],
-        r"/contact|/location|/office|/address": ["company_info"],
-        r"/certific|/quality|/iso|/standard": ["company_meta"],
-        r"/facilit|/plant|/factory|/manufactur": ["company_meta", "manufacturing"],
-    }
-
-    # Patterns that indicate pages to skip entirely
-    SKIP_PATTERNS: list[str] = [
+    # Universal patterns that indicate pages to skip entirely (template-agnostic)
+    DEFAULT_SKIP_PATTERNS: list[str] = [
         r"/career|/job|/employ|/vacanc",
         r"/news|/blog|/press|/media|/event",
         r"/privacy|/terms|/legal|/cookie|/gdpr",
@@ -65,29 +49,13 @@ class PageClassifier:
         r"/sitemap|/search|/404|/error",
     ]
 
-    # Title keywords -> field groups mapping
-    TITLE_KEYWORDS: dict[str, list[str]] = {
-        "gearbox": ["products_gearbox"],
-        "gear box": ["products_gearbox"],
-        "reducer": ["products_gearbox"],
-        "planetary": ["products_gearbox"],
-        "helical": ["products_gearbox"],
-        "motor": ["products_motor"],
-        "servo": ["products_motor"],
-        "coupling": ["products_accessory"],
-        "service": ["services"],
-        "repair": ["services"],
-        "maintenance": ["services"],
-        "about": ["company_info"],
-        "contact": ["company_info"],
-        "certification": ["company_meta"],
-        "iso": ["company_meta"],
-    }
-
     def __init__(
         self,
         method: ClassificationMethod = ClassificationMethod.RULE_BASED,
         available_groups: list[str] | None = None,
+        url_patterns: dict[str, list[str]] | None = None,
+        title_keywords: dict[str, list[str]] | None = None,
+        skip_patterns: list[str] | None = None,
     ):
         """Initialize classifier.
 
@@ -95,9 +63,18 @@ class PageClassifier:
             method: Classification method to use.
             available_groups: List of valid field group names. If provided,
                 classification results are filtered to only include these.
+            url_patterns: Optional URL pattern -> field groups mapping.
+                If not provided, no field group filtering is done (all groups used).
+            title_keywords: Optional title keyword -> field groups mapping.
+                If not provided, no title-based filtering is done.
+            skip_patterns: Optional custom skip patterns. If not provided,
+                DEFAULT_SKIP_PATTERNS are used.
         """
         self._method = method
         self._available_groups = set(available_groups) if available_groups else None
+        self._url_patterns = url_patterns or {}
+        self._title_keywords = title_keywords or {}
+        self._skip_patterns = skip_patterns if skip_patterns is not None else self.DEFAULT_SKIP_PATTERNS
 
     def classify(
         self,
@@ -135,8 +112,8 @@ class PageClassifier:
         """Rule-based classification using URL and title patterns."""
         url_lower = url.lower()
 
-        # Check skip patterns first
-        for pattern in self.SKIP_PATTERNS:
+        # Check skip patterns first (template-agnostic)
+        for pattern in self._skip_patterns:
             if re.search(pattern, url_lower):
                 return ClassificationResult(
                     page_type="skip",
@@ -147,23 +124,34 @@ class PageClassifier:
                     reasoning=f"URL matches skip pattern: {pattern}",
                 )
 
+        # If no URL/title patterns configured, return all groups (template-agnostic default)
+        if not self._url_patterns and not self._title_keywords:
+            return ClassificationResult(
+                page_type="general",
+                relevant_groups=[],  # Empty means "use all groups"
+                skip_extraction=False,
+                confidence=0.5,
+                method=ClassificationMethod.RULE_BASED,
+                reasoning="No field group patterns configured, using all groups",
+            )
+
         matched_groups: set[str] = set()
         confidence = 0.0
         page_type = "general"
         reasoning_parts: list[str] = []
 
-        # URL pattern matching
-        for pattern, groups in self.URL_PATTERNS.items():
+        # URL pattern matching (only if patterns provided)
+        for pattern, groups in self._url_patterns.items():
             if re.search(pattern, url_lower):
                 matched_groups.update(groups)
                 confidence = max(confidence, 0.8)
                 page_type = self._infer_page_type(groups)
                 reasoning_parts.append(f"URL matches: {pattern}")
 
-        # Title keyword matching
-        if title:
+        # Title keyword matching (only if keywords provided)
+        if title and self._title_keywords:
             title_lower = title.lower()
-            for keyword, groups in self.TITLE_KEYWORDS.items():
+            for keyword, groups in self._title_keywords.items():
                 if keyword in title_lower:
                     matched_groups.update(groups)
                     confidence = max(confidence, 0.7)
