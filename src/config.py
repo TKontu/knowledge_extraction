@@ -1,4 +1,4 @@
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -351,6 +351,39 @@ class Settings(BaseSettings):
         description="Enable skipping pages classified as irrelevant (careers, news, etc.)",
     )
 
+    # Smart Classification (embedding + reranker)
+    smart_classification_enabled: bool = Field(
+        default=False,
+        description="Enable embedding-based smart classification (requires embedding server)",
+    )
+    reranker_model: str = Field(
+        default="bge-reranker-v2-m3",
+        description="Reranker model name for relevance scoring",
+    )
+    classification_embedding_high_threshold: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description="Embedding similarity threshold for high confidence (use matched groups)",
+    )
+    classification_embedding_low_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Below this threshold, use all groups (conservative)",
+    )
+    classification_reranker_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Reranker score threshold for including a field group",
+    )
+    classification_cache_ttl: int = Field(
+        default=86400,
+        ge=0,
+        description="TTL for field group embedding cache in seconds (24 hours)",
+    )
+
     @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v: str) -> str:
@@ -389,6 +422,18 @@ class Settings(BaseSettings):
             # Split by comma and strip whitespace
             return [domain.strip() for domain in v.split(",") if domain.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_classification_thresholds(self) -> "Settings":
+        """Validate classification thresholds are logically consistent."""
+        high = self.classification_embedding_high_threshold
+        low = self.classification_embedding_low_threshold
+        if high <= low:
+            raise ValueError(
+                f"classification_embedding_high_threshold ({high}) must be greater than "
+                f"classification_embedding_low_threshold ({low})"
+            )
+        return self
 
     @property
     def allowed_origins_list(self) -> list[str]:

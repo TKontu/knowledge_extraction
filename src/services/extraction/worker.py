@@ -96,16 +96,31 @@ class ExtractionWorker:
             return True, project
         return False, project
 
-    def _create_schema_pipeline(self) -> SchemaExtractionPipeline:
+    async def _create_schema_pipeline(self) -> SchemaExtractionPipeline:
         """Create a SchemaExtractionPipeline for schema-based extraction."""
+        from redis_client import get_async_redis
         from services.extraction.schema_extractor import SchemaExtractor
         from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+        from services.extraction.smart_classifier import SmartClassifier
+        from services.storage.embedding import EmbeddingService
 
         if not self.settings:
             raise ValueError("settings required for schema extraction")
 
         extractor = SchemaExtractor(self.settings, llm_queue=self.llm_queue)
-        orchestrator = SchemaExtractionOrchestrator(extractor)
+
+        # Create smart classifier if enabled
+        smart_classifier = None
+        if self.settings.smart_classification_enabled:
+            async_redis = await get_async_redis()
+            embedding_service = EmbeddingService(self.settings)
+            smart_classifier = SmartClassifier(
+                embedding_service=embedding_service,
+                redis_client=async_redis,
+                settings=self.settings,
+            )
+
+        orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)
         return SchemaExtractionPipeline(orchestrator, self.db)
 
     async def _process_with_schema_pipeline(
@@ -129,7 +144,7 @@ class ExtractionWorker:
         Returns:
             SchemaExtractionResult with extraction counts.
         """
-        pipeline = self._create_schema_pipeline()
+        pipeline = await self._create_schema_pipeline()
 
         # Schema pipeline processes sources for the project
         # skip_extracted=False when force=True to re-extract

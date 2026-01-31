@@ -1,6 +1,9 @@
 """Orchestrates multi-pass schema extraction across field groups."""
 
+from __future__ import annotations
+
 import asyncio
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
@@ -14,6 +17,9 @@ from services.extraction.page_classifier import (
 from services.extraction.schema_extractor import SchemaExtractor
 from services.llm.chunking import chunk_document
 
+if TYPE_CHECKING:
+    from services.extraction.smart_classifier import SmartClassifier
+
 logger = structlog.get_logger(__name__)
 
 
@@ -24,11 +30,22 @@ class SchemaExtractionOrchestrator:
         self,
         schema_extractor: SchemaExtractor,
         context: "ExtractionContext | None" = None,
+        smart_classifier: "SmartClassifier | None" = None,
     ):
+        """Initialize the orchestrator.
+
+        Args:
+            schema_extractor: Extractor for field groups.
+            context: Extraction context configuration.
+            smart_classifier: Optional smart classifier for embedding-based
+                classification. When provided and settings.smart_classification_enabled
+                is True, uses semantic similarity for field group selection.
+        """
         from services.extraction.schema_adapter import ExtractionContext
 
         self._extractor = schema_extractor
         self._context = context or ExtractionContext()
+        self._smart_classifier = smart_classifier
 
     async def extract_all_groups(
         self,
@@ -68,9 +85,21 @@ class SchemaExtractionOrchestrator:
 
         # Classify page if URL is available and classification is enabled
         if source_url and settings.classification_enabled:
-            available_group_names = [g.name for g in field_groups]
-            classifier = PageClassifier(available_groups=available_group_names)
-            classification = classifier.classify(url=source_url, title=source_title)
+            # Use smart classifier if available and enabled
+            if self._smart_classifier and settings.smart_classification_enabled:
+                classification = await self._smart_classifier.classify(
+                    url=source_url,
+                    title=source_title,
+                    content=markdown,
+                    field_groups=field_groups,
+                )
+                classification_method = "smart"
+            else:
+                # Fall back to rule-based classification
+                available_group_names = [g.name for g in field_groups]
+                classifier = PageClassifier(available_groups=available_group_names)
+                classification = classifier.classify(url=source_url, title=source_title)
+                classification_method = "rule"
 
             logger.info(
                 "page_classified",
@@ -80,6 +109,7 @@ class SchemaExtractionOrchestrator:
                 relevant_groups=classification.relevant_groups,
                 skip=classification.skip_extraction,
                 confidence=classification.confidence,
+                method=classification_method,
             )
 
             # Only skip if both classification says skip AND skip is enabled

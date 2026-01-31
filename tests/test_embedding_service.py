@@ -96,3 +96,119 @@ class TestEmbeddingServiceEmbedBatch:
         assert result[0][0] == 1.0
         assert result[1][1] == 2.0
         assert result[2][2] == 3.0
+
+
+class TestEmbeddingServiceRerank:
+    """Test EmbeddingService.rerank() method."""
+
+    async def test_rerank_with_empty_documents(self, embedding_service):
+        """Should return empty list when given empty documents."""
+        result = await embedding_service.rerank("query", [])
+
+        assert result == []
+
+    async def test_rerank_returns_sorted_results(self, embedding_service):
+        """Should return results sorted by relevance score descending."""
+        mock_response_data = {
+            "results": [
+                {"index": 0, "relevance_score": 0.3},
+                {"index": 1, "relevance_score": 0.9},
+                {"index": 2, "relevance_score": 0.5},
+            ]
+        }
+
+        # Mock the shared http client
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_response_data
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        embedding_service._http_client = mock_client
+
+        result = await embedding_service.rerank(
+            query="test query",
+            documents=["doc1", "doc2", "doc3"],
+            model="bge-reranker-v2-m3",
+        )
+
+        # Should be sorted by score descending
+        assert result[0] == (1, 0.9)  # doc2 has highest score
+        assert result[1] == (2, 0.5)  # doc3 has second highest
+        assert result[2] == (0, 0.3)  # doc1 has lowest score
+
+    async def test_rerank_single_document(self, embedding_service):
+        """Should handle single document correctly."""
+        mock_response_data = {
+            "results": [{"index": 0, "relevance_score": 0.8}]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_response_data
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        embedding_service._http_client = mock_client
+
+        result = await embedding_service.rerank(
+            query="test query",
+            documents=["single doc"],
+            model="bge-reranker-v2-m3",
+        )
+
+        assert len(result) == 1
+        assert result[0] == (0, 0.8)
+
+    async def test_rerank_uses_default_model(self, embedding_service):
+        """Should use default reranker model from settings when not specified."""
+        mock_response_data = {
+            "results": [{"index": 0, "relevance_score": 0.7}]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_response_data
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        embedding_service._http_client = mock_client
+
+        # Call without model parameter - should use default from settings
+        result = await embedding_service.rerank(
+            query="test query",
+            documents=["doc"],
+        )
+
+        assert len(result) == 1
+        # Verify post was called
+        mock_client.post.assert_called_once()
+
+    async def test_rerank_returns_index_score_tuples(self, embedding_service):
+        """Should return list of (index, score) tuples."""
+        mock_response_data = {
+            "results": [
+                {"index": 0, "relevance_score": 0.6},
+                {"index": 1, "relevance_score": 0.8},
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_response_data
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        embedding_service._http_client = mock_client
+
+        result = await embedding_service.rerank(
+            query="test",
+            documents=["a", "b"],
+            model="test-model",
+        )
+
+        for item in result:
+            assert isinstance(item, tuple)
+            assert len(item) == 2
+            assert isinstance(item[0], int)
+            assert isinstance(item[1], float)

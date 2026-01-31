@@ -293,7 +293,9 @@ async def extract_schema(
     from services.extraction.pipeline import SchemaExtractionPipeline
     from services.extraction.schema_extractor import SchemaExtractor
     from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+    from services.extraction.smart_classifier import SmartClassifier
     from services.llm.queue import LLMRequestQueue
+    from services.storage.embedding import EmbeddingService
 
     # Log deprecation warning
     logger.warning(
@@ -343,7 +345,19 @@ async def extract_schema(
 
     # Create extraction pipeline
     extractor = SchemaExtractor(settings, llm_queue=llm_queue)
-    orchestrator = SchemaExtractionOrchestrator(extractor)
+
+    # Create smart classifier if enabled
+    smart_classifier = None
+    if settings.smart_classification_enabled:
+        async_redis = await get_async_redis()
+        embedding_service = EmbeddingService(settings)
+        smart_classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=async_redis,
+            settings=settings,
+        )
+
+    orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)
     pipeline = SchemaExtractionPipeline(orchestrator, db)
 
     # Run extraction
