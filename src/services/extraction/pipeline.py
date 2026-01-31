@@ -689,8 +689,11 @@ class SchemaExtractionPipeline:
                         field_groups=field_groups,
                         schema_name=schema_name,
                     )
-                    # Update source status to "extracted" on success
-                    source.status = "extracted"
+                    # Update source status based on classification result
+                    if source.page_type == "skip":
+                        source.status = "skipped"
+                    else:
+                        source.status = "extracted"
                     return len(extractions), True
                 except Exception as e:
                     logger.error(
