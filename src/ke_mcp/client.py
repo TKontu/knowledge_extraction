@@ -191,21 +191,41 @@ class KnowledgeExtractionClient:
         max_depth: int = 2,
         limit: int = 100,
         prefer_english_only: bool = True,
+        smart_crawl_enabled: bool = True,
+        relevance_threshold: float | None = None,
+        focus_terms: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Start a crawl job."""
-        return await self._request(
-            "POST",
-            "/api/v1/crawl",
-            json={
-                "url": url,
-                "project_id": project_id,
-                "company": company,
-                "max_depth": max_depth,
-                "limit": limit,
-                "prefer_english_only": prefer_english_only,
-                "auto_extract": False,  # Control extraction separately
-            },
-        )
+        """Start a crawl job.
+
+        Args:
+            url: Starting URL to crawl.
+            project_id: Project UUID to store sources in.
+            company: Company/source group name.
+            max_depth: How many levels deep to crawl (1-10).
+            limit: Maximum number of pages to crawl.
+            prefer_english_only: Filter out non-English pages.
+            smart_crawl_enabled: Use Map + Filter + Batch Scrape flow.
+            relevance_threshold: Embedding similarity threshold (0.0-1.0).
+            focus_terms: Semantic focus terms for URL filtering.
+        """
+        payload = {
+            "url": url,
+            "project_id": project_id,
+            "company": company,
+            "max_depth": max_depth,
+            "limit": limit,
+            "prefer_english_only": prefer_english_only,
+            "auto_extract": False,  # Control extraction separately
+            "smart_crawl_enabled": smart_crawl_enabled,
+        }
+
+        # Add optional smart crawl parameters
+        if relevance_threshold is not None:
+            payload["relevance_threshold"] = relevance_threshold
+        if focus_terms is not None:
+            payload["focus_terms"] = focus_terms
+
+        return await self._request("POST", "/api/v1/crawl", json=payload)
 
     async def get_crawl_status(self, job_id: str) -> dict[str, Any]:
         """Get crawl job status."""

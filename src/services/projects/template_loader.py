@@ -6,7 +6,11 @@ from typing import Any
 import structlog
 import yaml
 
-from services.extraction.schema_adapter import SchemaAdapter
+from services.extraction.schema_adapter import (
+    ClassificationConfig,
+    CrawlConfig,
+    SchemaAdapter,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -114,6 +118,23 @@ class TemplateRegistry:
         # Fail on errors
         if not result.is_valid:
             raise TemplateLoadError(template_name, result.errors)
+
+        # Validate classification_config if present
+        if "classification_config" in template:
+            classification_config = ClassificationConfig.from_dict(
+                template["classification_config"]
+            )
+            is_valid, config_errors = classification_config.validate()
+            if not is_valid:
+                raise TemplateLoadError(template_name, config_errors)
+
+        # Validate crawl_config if present
+        if "crawl_config" in template:
+            crawl_config = CrawlConfig.from_dict(template["crawl_config"])
+            if crawl_config:
+                is_valid, config_errors = crawl_config.validate()
+                if not is_valid:
+                    raise TemplateLoadError(template_name, config_errors)
 
         return template
 

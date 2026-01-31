@@ -78,6 +78,43 @@ class CrawlStatus:
     error: str | None = None
 
 
+@dataclass
+class MapResult:
+    """Result from a map operation.
+
+    Attributes:
+        urls: List of discovered URLs with metadata.
+            Each item contains: url, title (optional), description (optional).
+        total: Total count of discovered URLs.
+        success: Whether the map operation succeeded.
+        error: Error message if operation failed.
+    """
+
+    urls: list[dict]  # [{url, title, description}, ...]
+    total: int
+    success: bool
+    error: str | None = None
+
+
+@dataclass
+class BatchScrapeResult:
+    """Result from a batch scrape operation.
+
+    Attributes:
+        status: Current status ("scraping", "completed", "failed").
+        total: Total number of URLs being scraped.
+        completed: Number of URLs scraped so far.
+        pages: List of scraped page data (available when completed).
+        error: Error message if operation failed.
+    """
+
+    status: str  # "scraping", "completed", "failed"
+    total: int
+    completed: int
+    pages: list[dict]  # List of scraped page data
+    error: str | None = None
+
+
 class ScrapeError(Exception):
     """Exception raised when scraping fails."""
 
@@ -537,6 +574,286 @@ class FirecrawlClient:
             pages=all_pages,
             error=error,
         )
+
+    async def map(
+        self,
+        url: str,
+        search: str | None = None,
+        limit: int = 5000,
+        include_subdomains: bool = False,
+        ignore_query_parameters: bool = True,
+    ) -> MapResult:
+        """Discover URLs from a website using Firecrawl Map endpoint.
+
+        The map endpoint crawls the sitemap and discovers URLs without
+        scraping their content. Returns URL metadata (title, description)
+        for relevance filtering.
+
+        Args:
+            url: Starting URL to map from.
+            search: Optional semantic search terms to filter URLs.
+            limit: Maximum URLs to return (default 5000).
+            include_subdomains: Include URLs from subdomains.
+            ignore_query_parameters: Deduplicate URLs ignoring query params.
+
+        Returns:
+            MapResult with discovered URLs and metadata.
+
+        Example:
+            result = await client.map(
+                "https://example.com",
+                search="product specifications pricing",
+                limit=1000
+            )
+            for url_info in result.urls:
+                print(f"{url_info['url']}: {url_info.get('title', 'No title')}")
+        """
+        logger.info(
+            "firecrawl_map_request",
+            url=url,
+            search=search,
+            limit=limit,
+            include_subdomains=include_subdomains,
+        )
+
+        map_request: dict = {
+            "url": url,
+            "limit": limit,
+            "includeSubdomains": include_subdomains,
+            "ignoreSitemap": False,
+        }
+
+        if search:
+            map_request["search"] = search
+
+        if ignore_query_parameters:
+            map_request["ignoreQueryParameters"] = True
+
+        try:
+            response = await self._http_client.post(
+                f"{self.base_url}/v1/map",
+                json=map_request,
+            )
+
+            data = response.json()
+
+            if response.status_code != 200 or not data.get("success"):
+                error = data.get("error", "Map operation failed")
+                logger.error(
+                    "firecrawl_map_failed",
+                    url=url,
+                    status_code=response.status_code,
+                    error=error,
+                )
+                return MapResult(
+                    urls=[],
+                    total=0,
+                    success=False,
+                    error=error,
+                )
+
+            # Parse URLs from response
+            # Firecrawl returns: {"success": true, "links": ["url1", "url2", ...]}
+            # or with metadata: {"success": true, "links": [{"url": ..., "title": ...}, ...]}
+            links = data.get("links", [])
+            urls = []
+
+            for link in links:
+                if isinstance(link, str):
+                    urls.append({"url": link, "title": None, "description": None})
+                elif isinstance(link, dict):
+                    urls.append({
+                        "url": link.get("url", ""),
+                        "title": link.get("title"),
+                        "description": link.get("description"),
+                    })
+
+            logger.info(
+                "firecrawl_map_completed",
+                url=url,
+                urls_found=len(urls),
+            )
+
+            return MapResult(
+                urls=urls,
+                total=len(urls),
+                success=True,
+                error=None,
+            )
+
+        except Exception as e:
+            logger.error(
+                "firecrawl_map_error",
+                url=url,
+                error=str(e),
+                exc_info=True,
+            )
+            return MapResult(
+                urls=[],
+                total=0,
+                success=False,
+                error=str(e),
+            )
+
+    async def start_batch_scrape(
+        self,
+        urls: list[str],
+        formats: list[str] | None = None,
+        max_concurrency: int | None = None,
+    ) -> str:
+        """Start async batch scrape job for multiple URLs.
+
+        Args:
+            urls: List of URLs to scrape.
+            formats: Output formats (default: ["markdown"]).
+            max_concurrency: Max concurrent scrape requests.
+
+        Returns:
+            Batch job ID for status polling.
+
+        Raises:
+            ScrapeError: If batch scrape fails to start.
+        """
+        if not urls:
+            raise ScrapeError("No URLs provided for batch scrape")
+
+        if formats is None:
+            formats = ["markdown"]
+
+        logger.info(
+            "firecrawl_batch_scrape_request",
+            url_count=len(urls),
+            formats=formats,
+            max_concurrency=max_concurrency,
+        )
+
+        batch_request: dict = {
+            "urls": urls,
+            "formats": formats,
+        }
+
+        if max_concurrency is not None:
+            batch_request["maxConcurrency"] = max_concurrency
+
+        try:
+            response = await self._http_client.post(
+                f"{self.base_url}/v1/batch/scrape",
+                json=batch_request,
+            )
+
+            data = response.json()
+
+            if not data.get("success"):
+                error = data.get("error", "Failed to start batch scrape")
+                raise ScrapeError(error)
+
+            job_id = data.get("id")
+            if not job_id:
+                raise ScrapeError("No job ID returned from batch scrape")
+
+            logger.info(
+                "firecrawl_batch_scrape_started",
+                job_id=job_id,
+                url_count=len(urls),
+            )
+
+            return job_id
+
+        except ScrapeError:
+            raise
+        except Exception as e:
+            logger.error(
+                "firecrawl_batch_scrape_error",
+                error=str(e),
+                exc_info=True,
+            )
+            raise ScrapeError(f"Batch scrape failed: {e}") from e
+
+    async def get_batch_scrape_status(self, job_id: str) -> BatchScrapeResult:
+        """Get batch scrape job status.
+
+        Args:
+            job_id: Batch scrape job ID.
+
+        Returns:
+            BatchScrapeResult with progress and scraped pages.
+        """
+        logger.debug(
+            "firecrawl_batch_scrape_status_request",
+            job_id=job_id,
+        )
+
+        start_time = time.monotonic()
+
+        try:
+            response = await self._http_client.get(
+                f"{self.base_url}/v1/batch/scrape/{job_id}"
+            )
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+
+            data = response.json()
+
+            status = data.get("status", "unknown")
+            total = data.get("total", 0)
+            completed = data.get("completed", 0)
+            pages = data.get("data", [])
+            error = data.get("error")
+
+            logger.debug(
+                "firecrawl_batch_scrape_status_response",
+                job_id=job_id,
+                status=status,
+                total=total,
+                completed=completed,
+                pages_in_response=len(pages),
+                duration_ms=duration_ms,
+            )
+
+            # Handle pagination for completed jobs (same as crawl)
+            next_url = data.get("next")
+            all_pages = list(pages)
+            page_num = 1
+            max_pages = 100
+
+            while next_url and status == "completed" and page_num < max_pages:
+                page_num += 1
+                try:
+                    response = await self._http_client.get(next_url)
+                    data = response.json()
+                    pages = data.get("data", [])
+                    all_pages.extend(pages)
+                    next_url = data.get("next")
+                except Exception as e:
+                    logger.error(
+                        "firecrawl_batch_pagination_error",
+                        job_id=job_id,
+                        page_num=page_num,
+                        error=str(e),
+                    )
+                    break
+
+            return BatchScrapeResult(
+                status=status,
+                total=total,
+                completed=completed,
+                pages=all_pages,
+                error=error,
+            )
+
+        except Exception as e:
+            logger.error(
+                "firecrawl_batch_scrape_status_error",
+                job_id=job_id,
+                error=str(e),
+                exc_info=True,
+            )
+            return BatchScrapeResult(
+                status="error",
+                total=0,
+                completed=0,
+                pages=[],
+                error=str(e),
+            )
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL.

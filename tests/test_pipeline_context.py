@@ -156,7 +156,7 @@ class TestParseTemplateInPipeline:
             },
         }
 
-        field_groups, context = adapter.parse_template(template)
+        field_groups, context, _, _ = adapter.parse_template(template)
 
         assert len(field_groups) == 1
         assert context.source_type == "recipe blog"

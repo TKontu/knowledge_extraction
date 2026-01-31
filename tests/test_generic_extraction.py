@@ -66,14 +66,14 @@ class TestExtractionContext:
 
 
 class TestParseTemplate:
-    """Test parse_template helper that returns both field_groups and context."""
+    """Test parse_template helper that returns field_groups, context, classification_config, and crawl_config."""
 
     @pytest.fixture
     def adapter(self):
         return SchemaAdapter()
 
     def test_parse_template_returns_tuple(self, adapter):
-        """parse_template should return (field_groups, context) tuple."""
+        """parse_template should return (field_groups, context, classification_config, crawl_config) tuple."""
         template = {
             "name": "test_template",
             "extraction_context": {
@@ -100,7 +100,7 @@ class TestParseTemplate:
             },
         }
 
-        field_groups, context = adapter.parse_template(template)
+        field_groups, context, _, _ = adapter.parse_template(template)
 
         assert len(field_groups) == 1
         assert field_groups[0].name == "recipes"
@@ -130,7 +130,7 @@ class TestParseTemplate:
             },
         }
 
-        field_groups, context = adapter.parse_template(template)
+        field_groups, context, _, _ = adapter.parse_template(template)
 
         assert len(field_groups) == 1
         assert context.source_type == "content"
@@ -155,7 +155,7 @@ class TestParseTemplate:
             ],
         }
 
-        field_groups, context = adapter.parse_template(template)
+        field_groups, context, _, _ = adapter.parse_template(template)
 
         assert len(field_groups) == 1
         assert context.source_type == "content"

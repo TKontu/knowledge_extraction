@@ -9,7 +9,10 @@ import structlog
 from sqlalchemy.orm import Session
 
 from orm_models import Job, Project
-from services.extraction.pipeline import ExtractionPipelineService, SchemaExtractionPipeline
+from services.extraction.pipeline import (
+    ExtractionPipelineService,
+    SchemaExtractionPipeline,
+)
 from services.storage.repositories.job import JobRepository
 
 if TYPE_CHECKING:
@@ -96,9 +99,16 @@ class ExtractionWorker:
             return True, project
         return False, project
 
-    async def _create_schema_pipeline(self) -> SchemaExtractionPipeline:
-        """Create a SchemaExtractionPipeline for schema-based extraction."""
+    async def _create_schema_pipeline(
+        self, project: Project | None = None
+    ) -> SchemaExtractionPipeline:
+        """Create a SchemaExtractionPipeline for schema-based extraction.
+
+        Args:
+            project: Optional project to extract classification_config from.
+        """
         from redis_client import get_async_redis
+        from services.extraction.schema_adapter import ClassificationConfig
         from services.extraction.schema_extractor import SchemaExtractor
         from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
         from services.extraction.smart_classifier import SmartClassifier
@@ -109,6 +119,24 @@ class ExtractionWorker:
 
         extractor = SchemaExtractor(self.settings, llm_queue=self.llm_queue)
 
+        # Extract classification_config from project's extraction_schema
+        classification_config = None
+        if project and project.extraction_schema:
+            classification_config = ClassificationConfig.from_dict(
+                project.extraction_schema.get("classification_config")
+            )
+            # Validate and log warnings for invalid patterns
+            if classification_config:
+                is_valid, config_errors = classification_config.validate()
+                if not is_valid:
+                    logger.warning(
+                        "invalid_classification_config",
+                        project_id=str(project.id),
+                        errors=config_errors,
+                    )
+                    # Reset to None to use defaults instead of failing
+                    classification_config = None
+
         # Create smart classifier if enabled
         smart_classifier = None
         if self.settings.smart_classification_enabled:
@@ -118,6 +146,7 @@ class ExtractionWorker:
                 embedding_service=embedding_service,
                 redis_client=async_redis,
                 settings=self.settings,
+                classification_config=classification_config,
             )
 
         orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)
@@ -130,6 +159,7 @@ class ExtractionWorker:
         source_groups: list[str] | None = None,
         force: bool = False,
         cancellation_check=None,
+        project: Project | None = None,
     ) -> SchemaExtractionResult:
         """Process extraction using schema-based pipeline.
 
@@ -140,11 +170,12 @@ class ExtractionWorker:
             force: If True, re-extract already extracted sources.
             cancellation_check: Optional async callback that returns True if
                               processing should be cancelled.
+            project: Optional project for classification_config extraction.
 
         Returns:
             SchemaExtractionResult with extraction counts.
         """
-        pipeline = await self._create_schema_pipeline()
+        pipeline = await self._create_schema_pipeline(project=project)
 
         # Schema pipeline processes sources for the project
         # skip_extracted=False when force=True to re-extract
@@ -238,6 +269,7 @@ class ExtractionWorker:
                     source_ids=[UUID(sid) for sid in source_ids] if source_ids else None,
                     force=force,
                     cancellation_check=check_cancellation,
+                    project=project,
                 )
             else:
                 # Use generic fact extraction (original behavior)

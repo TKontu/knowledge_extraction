@@ -1,7 +1,176 @@
 """Schema adapter for converting JSONB extraction schemas to FieldGroup objects."""
 
+import re
 from dataclasses import dataclass, field
-from typing import Any
+
+
+@dataclass
+class ClassificationConfig:
+    """Configuration for page classification during extraction.
+
+    Controls skip patterns used by PageClassifier to filter pages before
+    semantic classification. This enables context-agnostic extraction where
+    patterns that might be irrelevant for one use case (e.g., /careers/ for
+    company analysis) could be relevant for another (e.g., HR research).
+
+    Attributes:
+        skip_patterns: URL patterns to skip during extraction.
+            - None: Use system default (context-agnostic when smart classification on)
+            - []: Explicitly disable all skip patterns
+            - [...]: Use custom patterns only
+    """
+
+    skip_patterns: list[str] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "ClassificationConfig":
+        """Create from template's classification_config dict.
+
+        Args:
+            data: Dictionary with classification_config fields, or None.
+
+        Returns:
+            ClassificationConfig instance with parsed values.
+        """
+        if not data:
+            return cls()
+        return cls(skip_patterns=data.get("skip_patterns"))
+
+    def validate(self) -> tuple[bool, list[str]]:
+        """Validate configuration values.
+
+        Returns:
+            Tuple of (is_valid, error_messages).
+        """
+        errors = []
+
+        if self.skip_patterns is not None:
+            if not isinstance(self.skip_patterns, list):
+                errors.append("classification_config.skip_patterns must be a list or null")
+            else:
+                for i, pattern in enumerate(self.skip_patterns):
+                    if not isinstance(pattern, str):
+                        errors.append(
+                            f"classification_config.skip_patterns[{i}] must be a string"
+                        )
+                    else:
+                        try:
+                            re.compile(pattern)
+                        except re.error as e:
+                            errors.append(
+                                f"classification_config.skip_patterns[{i}] is invalid regex: {e}"
+                            )
+
+        return len(errors) == 0, errors
+
+
+@dataclass
+class CrawlConfig:
+    """Optional template-driven crawl configuration for smart crawl.
+
+    Controls URL filtering behavior during smart crawl. When provided in a
+    template, these settings enhance the default field_group-based filtering.
+
+    Attributes:
+        include_patterns: URL regex patterns to always include (whitelist).
+        exclude_patterns: URL regex patterns to always exclude (blacklist).
+        focus_terms: Semantic search/focus terms for URL filtering.
+            These are used both for Firecrawl Map's search parameter and
+            to enhance the embedding context for relevance scoring.
+        relevance_threshold: Minimum embedding similarity for URL relevance.
+            Overrides the system default (smart_crawl_default_relevance_threshold).
+    """
+
+    include_patterns: list[str] | None = None
+    exclude_patterns: list[str] | None = None
+    focus_terms: list[str] | None = None
+    relevance_threshold: float | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "CrawlConfig | None":
+        """Create from template's crawl_config dict.
+
+        Args:
+            data: Dictionary with crawl_config fields, or None.
+
+        Returns:
+            CrawlConfig instance or None if no config provided.
+        """
+        if not data:
+            return None  # Backward compatible - no config = system defaults
+
+        return cls(
+            include_patterns=data.get("include_patterns"),
+            exclude_patterns=data.get("exclude_patterns"),
+            focus_terms=data.get("focus_terms"),
+            relevance_threshold=data.get("relevance_threshold"),
+        )
+
+    def validate(self) -> tuple[bool, list[str]]:
+        """Validate configuration values.
+
+        Returns:
+            Tuple of (is_valid, error_messages).
+        """
+        errors = []
+
+        # Validate include_patterns
+        if self.include_patterns is not None:
+            if not isinstance(self.include_patterns, list):
+                errors.append("crawl_config.include_patterns must be a list or null")
+            else:
+                for i, pattern in enumerate(self.include_patterns):
+                    if not isinstance(pattern, str):
+                        errors.append(
+                            f"crawl_config.include_patterns[{i}] must be a string"
+                        )
+                    else:
+                        try:
+                            re.compile(pattern)
+                        except re.error as e:
+                            errors.append(
+                                f"crawl_config.include_patterns[{i}] is invalid regex: {e}"
+                            )
+
+        # Validate exclude_patterns
+        if self.exclude_patterns is not None:
+            if not isinstance(self.exclude_patterns, list):
+                errors.append("crawl_config.exclude_patterns must be a list or null")
+            else:
+                for i, pattern in enumerate(self.exclude_patterns):
+                    if not isinstance(pattern, str):
+                        errors.append(
+                            f"crawl_config.exclude_patterns[{i}] must be a string"
+                        )
+                    else:
+                        try:
+                            re.compile(pattern)
+                        except re.error as e:
+                            errors.append(
+                                f"crawl_config.exclude_patterns[{i}] is invalid regex: {e}"
+                            )
+
+        # Validate focus_terms
+        if self.focus_terms is not None:
+            if not isinstance(self.focus_terms, list):
+                errors.append("crawl_config.focus_terms must be a list or null")
+            else:
+                for i, term in enumerate(self.focus_terms):
+                    if not isinstance(term, str):
+                        errors.append(
+                            f"crawl_config.focus_terms[{i}] must be a string"
+                        )
+
+        # Validate relevance_threshold
+        if self.relevance_threshold is not None:
+            if not isinstance(self.relevance_threshold, (int, float)):
+                errors.append("crawl_config.relevance_threshold must be a number")
+            elif not 0.0 <= self.relevance_threshold <= 1.0:
+                errors.append(
+                    "crawl_config.relevance_threshold must be between 0.0 and 1.0"
+                )
+
+        return len(errors) == 0, errors
 
 
 @dataclass
@@ -181,19 +350,27 @@ class SchemaAdapter:
             warnings=warnings,
         )
 
-    def parse_template(self, template: dict) -> tuple[list, ExtractionContext]:
-        """Parse template into FieldGroups and ExtractionContext.
+    def parse_template(
+        self, template: dict
+    ) -> tuple[list, ExtractionContext, ClassificationConfig, "CrawlConfig | None"]:
+        """Parse template into FieldGroups, ExtractionContext, ClassificationConfig, and CrawlConfig.
 
         Args:
-            template: Full template dict with extraction_context and extraction_schema.
+            template: Full template dict with extraction_context, extraction_schema,
+                optional classification_config, and optional crawl_config.
 
         Returns:
-            Tuple of (field_groups, context).
+            Tuple of (field_groups, context, classification_config, crawl_config).
+            crawl_config is None if not present in template.
         """
         schema = template.get("extraction_schema", template)  # Backward compat
         field_groups = self.convert_to_field_groups(schema)
         context = ExtractionContext.from_dict(template.get("extraction_context"))
-        return field_groups, context
+        classification_config = ClassificationConfig.from_dict(
+            template.get("classification_config")
+        )
+        crawl_config = CrawlConfig.from_dict(template.get("crawl_config"))
+        return field_groups, context, classification_config, crawl_config
 
     def convert_to_field_groups(self, schema: dict) -> list:
         """Convert JSONB schema to list of FieldGroup objects.
@@ -265,6 +442,6 @@ class SchemaAdapter:
         # Add guidance for list fields (complex to extract)
         list_fields = [f.get("name") for f in fields if f.get("field_type") == "list"]
         if list_fields:
-            hints.append(f"For list fields, collect all mentioned values.")
+            hints.append("For list fields, collect all mentioned values.")
 
         return " ".join(hints)

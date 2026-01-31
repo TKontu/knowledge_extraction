@@ -8,7 +8,6 @@ from services.extraction.page_classifier import (
     PageClassifier,
 )
 
-
 # Sample patterns for testing (similar to drivetrain template)
 SAMPLE_URL_PATTERNS = {
     r"/products?($|/)": ["products_gearbox", "products_motor", "products_accessory"],
@@ -388,3 +387,87 @@ class TestClassificationMethod:
         """ClassificationMethod should convert to string."""
         assert str(ClassificationMethod.RULE_BASED) == "ClassificationMethod.RULE_BASED"
         assert ClassificationMethod.RULE_BASED.value == "rule"
+
+
+class TestCustomSkipPatterns:
+    """Tests for custom skip patterns configuration."""
+
+    def test_custom_skip_patterns(self):
+        """Custom skip patterns should override defaults."""
+        custom_patterns = [r"/custom-skip/", r"/another-custom/"]
+        classifier = PageClassifier(
+            method=ClassificationMethod.RULE_BASED,
+            skip_patterns=custom_patterns,
+        )
+
+        # Custom pattern should match
+        result = classifier.classify(
+            url="https://example.com/custom-skip/page",
+            title="Custom Page",
+        )
+        assert result.skip_extraction is True
+
+        # Default patterns should NOT match (they're overridden)
+        result = classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+        )
+        assert result.skip_extraction is False  # careers not in custom patterns
+
+    def test_empty_skip_patterns_disables_skipping(self):
+        """Empty skip patterns list disables all URL-based skipping."""
+        classifier = PageClassifier(
+            method=ClassificationMethod.RULE_BASED,
+            skip_patterns=[],  # Explicitly empty
+        )
+
+        # Career pages should NOT be skipped with empty patterns
+        result = classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+        )
+        assert result.skip_extraction is False
+
+        # Privacy pages should NOT be skipped with empty patterns
+        result = classifier.classify(
+            url="https://example.com/privacy-policy",
+            title="Privacy",
+        )
+        assert result.skip_extraction is False
+
+    def test_null_skip_patterns_uses_defaults(self):
+        """None skip patterns should use DEFAULT_SKIP_PATTERNS."""
+        classifier = PageClassifier(
+            method=ClassificationMethod.RULE_BASED,
+            skip_patterns=None,  # Explicitly None (default)
+        )
+
+        # Career pages should be skipped (default behavior)
+        result = classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+        )
+        assert result.skip_extraction is True
+
+    def test_custom_patterns_with_url_patterns(self):
+        """Custom skip patterns work alongside URL patterns for field groups."""
+        classifier = PageClassifier(
+            method=ClassificationMethod.RULE_BASED,
+            skip_patterns=[r"/skip-this/"],
+            url_patterns=SAMPLE_URL_PATTERNS,
+        )
+
+        # Custom skip pattern should work
+        result = classifier.classify(
+            url="https://example.com/skip-this/page",
+            title="Skip Page",
+        )
+        assert result.skip_extraction is True
+
+        # URL patterns should still work for non-skipped pages
+        result = classifier.classify(
+            url="https://example.com/products/gearbox",
+            title="Gearbox",
+        )
+        assert not result.skip_extraction
+        assert "products_gearbox" in result.relevant_groups

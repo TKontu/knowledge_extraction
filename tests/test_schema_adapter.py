@@ -1,7 +1,7 @@
 """Tests for SchemaAdapter - validates and converts extraction schemas."""
 
 
-from services.extraction.schema_adapter import SchemaAdapter
+from services.extraction.schema_adapter import ClassificationConfig, SchemaAdapter
 
 
 class TestValidateExtractionSchema:
@@ -590,3 +590,163 @@ class TestConvertToFieldGroups:
         assert field_by_name["list_field"].field_type == "list"
         assert field_by_name["enum_field"].field_type == "enum"
         assert field_by_name["enum_field"].enum_values == ["option1", "option2"]
+
+
+class TestClassificationConfig:
+    """Tests for ClassificationConfig dataclass."""
+
+    def test_from_dict_with_none(self):
+        """from_dict with None returns default config."""
+        config = ClassificationConfig.from_dict(None)
+        assert config.skip_patterns is None
+
+    def test_from_dict_with_empty_dict(self):
+        """from_dict with empty dict returns default config."""
+        config = ClassificationConfig.from_dict({})
+        assert config.skip_patterns is None
+
+    def test_from_dict_with_skip_patterns_none(self):
+        """from_dict with skip_patterns: null returns None patterns."""
+        config = ClassificationConfig.from_dict({"skip_patterns": None})
+        assert config.skip_patterns is None
+
+    def test_from_dict_with_skip_patterns_empty_list(self):
+        """from_dict with skip_patterns: [] returns empty list."""
+        config = ClassificationConfig.from_dict({"skip_patterns": []})
+        assert config.skip_patterns == []
+
+    def test_from_dict_with_custom_patterns(self):
+        """from_dict with custom patterns preserves them."""
+        patterns = [r"/custom/", r"/pattern/"]
+        config = ClassificationConfig.from_dict({"skip_patterns": patterns})
+        assert config.skip_patterns == patterns
+
+    def test_validate_with_none_patterns(self):
+        """Validation passes with None patterns."""
+        config = ClassificationConfig(skip_patterns=None)
+        is_valid, errors = config.validate()
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_validate_with_empty_list(self):
+        """Validation passes with empty list."""
+        config = ClassificationConfig(skip_patterns=[])
+        is_valid, errors = config.validate()
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_validate_with_valid_patterns(self):
+        """Validation passes with valid regex patterns."""
+        config = ClassificationConfig(skip_patterns=[r"/career|/job", r"/privacy"])
+        is_valid, errors = config.validate()
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_validate_with_invalid_regex(self):
+        """Validation fails with invalid regex pattern."""
+        config = ClassificationConfig(skip_patterns=[r"[invalid"])  # Unclosed bracket
+        is_valid, errors = config.validate()
+        assert not is_valid
+        assert len(errors) == 1
+        assert "invalid regex" in errors[0].lower()
+
+    def test_validate_with_non_string_pattern(self):
+        """Validation fails with non-string pattern."""
+        config = ClassificationConfig(skip_patterns=[123, "/valid/"])  # type: ignore
+        is_valid, errors = config.validate()
+        assert not is_valid
+        assert any("must be a string" in e for e in errors)
+
+    def test_validate_with_mixed_valid_invalid(self):
+        """Validation reports all invalid patterns."""
+        config = ClassificationConfig(skip_patterns=[r"/valid/", r"[invalid", r"(also[bad"])
+        is_valid, errors = config.validate()
+        assert not is_valid
+        assert len(errors) == 2  # Two invalid patterns
+
+
+class TestParseTemplateWithClassificationConfig:
+    """Tests for parse_template including classification_config."""
+
+    def test_parse_template_without_classification_config(self):
+        """parse_template returns default ClassificationConfig when not present."""
+        adapter = SchemaAdapter()
+        template = {
+            "extraction_schema": {
+                "name": "test",
+                "field_groups": [
+                    {
+                        "name": "group",
+                        "description": "desc",
+                        "fields": [
+                            {
+                                "name": "field",
+                                "field_type": "text",
+                                "description": "A field",
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+
+        field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
+        assert classification_config is not None
+        assert classification_config.skip_patterns is None
+        assert crawl_config is None  # Not in template
+
+    def test_parse_template_with_classification_config(self):
+        """parse_template extracts classification_config."""
+        adapter = SchemaAdapter()
+        template = {
+            "extraction_schema": {
+                "name": "test",
+                "field_groups": [
+                    {
+                        "name": "group",
+                        "description": "desc",
+                        "fields": [
+                            {
+                                "name": "field",
+                                "field_type": "text",
+                                "description": "A field",
+                            }
+                        ],
+                    }
+                ],
+            },
+            "classification_config": {
+                "skip_patterns": [r"/custom/"]
+            },
+        }
+
+        field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
+        assert classification_config.skip_patterns == [r"/custom/"]
+
+    def test_parse_template_with_empty_skip_patterns(self):
+        """parse_template handles empty skip_patterns list."""
+        adapter = SchemaAdapter()
+        template = {
+            "extraction_schema": {
+                "name": "test",
+                "field_groups": [
+                    {
+                        "name": "group",
+                        "description": "desc",
+                        "fields": [
+                            {
+                                "name": "field",
+                                "field_type": "text",
+                                "description": "A field",
+                            }
+                        ],
+                    }
+                ],
+            },
+            "classification_config": {
+                "skip_patterns": []
+            },
+        }
+
+        field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
+        assert classification_config.skip_patterns == []
