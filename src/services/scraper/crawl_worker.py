@@ -474,6 +474,10 @@ class CrawlWorker:
                 self.db.commit()
                 return
 
+            # Refresh job to reload attributes after async call (commit expires objects)
+            self.db.refresh(job)
+            payload = job.payload
+
             # Store mapped URLs in payload
             payload["mapped_urls"] = map_result.urls
             payload["smart_crawl_phase"] = "filter"
@@ -624,6 +628,10 @@ class CrawlWorker:
                     urls_after_relevance=len(filtered_urls),
                     threshold_used=filter_result.threshold_used,
                 )
+
+            # Refresh job to reload attributes after async calls (commit expires objects)
+            self.db.refresh(job)
+            payload = job.payload
 
             # Store filtered URLs
             payload["filtered_urls"] = filtered_urls
