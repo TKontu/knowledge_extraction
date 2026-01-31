@@ -525,13 +525,22 @@ class SchemaExtractionPipeline:
             )
             return []
 
-        # Run extraction for all field groups
-        results = await self._orchestrator.extract_all_groups(
+        # Run extraction for all field groups (with classification)
+        results, classification = await self._orchestrator.extract_all_groups(
             source_id=source.id,
             markdown=source.content,
             source_context=context_value,
             field_groups=field_groups,
+            source_url=source.uri,
+            source_title=source.title,
         )
+
+        # Store classification result on source if available
+        if classification:
+            source.page_type = classification.page_type
+            source.relevant_field_groups = classification.relevant_groups
+            source.classification_method = classification.method.value
+            source.classification_confidence = classification.confidence
 
         # Store each result as an extraction
         extractions = []

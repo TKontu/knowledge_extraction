@@ -7,6 +7,10 @@ import structlog
 
 from config import settings
 from services.extraction.field_groups import FieldGroup
+from services.extraction.page_classifier import (
+    ClassificationResult,
+    PageClassifier,
+)
 from services.extraction.schema_extractor import SchemaExtractor
 from services.llm.chunking import chunk_document
 
@@ -32,8 +36,10 @@ class SchemaExtractionOrchestrator:
         markdown: str,
         source_context: str,
         field_groups: list[FieldGroup],
+        source_url: str | None = None,
+        source_title: str | None = None,
         company_name: str | None = None,  # Deprecated, backward compat
-    ) -> list[dict]:
+    ) -> tuple[list[dict], ClassificationResult | None]:
         """Extract all field groups from source content.
 
         Args:
@@ -41,13 +47,16 @@ class SchemaExtractionOrchestrator:
             markdown: Markdown content.
             source_context: Source context (e.g., company name, website name).
             field_groups: Field groups to extract (REQUIRED).
+            source_url: Source URL for classification.
+            source_title: Source title for classification.
             company_name: DEPRECATED. Use source_context instead.
 
         Returns:
-            List of extraction results, one per field group.
+            Tuple of (extraction results, classification result or None).
         """
         # Backward compatibility
         context_value = source_context if source_context is not None else company_name
+        classification: ClassificationResult | None = None
 
         if not field_groups:
             logger.error(
@@ -55,7 +64,45 @@ class SchemaExtractionOrchestrator:
                 source_id=str(source_id),
                 message="field_groups parameter is required but was empty",
             )
-            return []
+            return [], None
+
+        # Classify page if URL is available and classification is enabled
+        if source_url and settings.classification_enabled:
+            available_group_names = [g.name for g in field_groups]
+            classifier = PageClassifier(available_groups=available_group_names)
+            classification = classifier.classify(url=source_url, title=source_title)
+
+            logger.info(
+                "page_classified",
+                source_id=str(source_id),
+                url=source_url,
+                page_type=classification.page_type,
+                relevant_groups=classification.relevant_groups,
+                skip=classification.skip_extraction,
+                confidence=classification.confidence,
+            )
+
+            # Only skip if both classification says skip AND skip is enabled
+            if classification.skip_extraction and settings.classification_skip_enabled:
+                logger.info(
+                    "skipping_extraction",
+                    source_id=str(source_id),
+                    reason=classification.reasoning,
+                )
+                return [], classification
+
+            # Filter field groups if classification found specific matches
+            if classification.relevant_groups:
+                relevant_names = set(classification.relevant_groups)
+                field_groups = [g for g in field_groups if g.name in relevant_names]
+
+                if not field_groups:
+                    logger.warning(
+                        "no_matching_field_groups",
+                        source_id=str(source_id),
+                        classified_groups=classification.relevant_groups,
+                    )
+                    return [], classification
 
         groups = field_groups
         results = []
@@ -106,7 +153,7 @@ class SchemaExtractionOrchestrator:
             results_count=len(results),
         )
 
-        return results
+        return results, classification
 
     async def _extract_chunks_batched(
         self,

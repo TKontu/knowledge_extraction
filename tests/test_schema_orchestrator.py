@@ -1,11 +1,12 @@
 """Tests for SchemaExtractionOrchestrator."""
 
-import pytest
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
-from unittest.mock import Mock, AsyncMock
 
+import pytest
+
+from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
-from services.extraction.field_groups import FieldGroup, FieldDefinition
 
 
 @pytest.fixture
@@ -44,14 +45,15 @@ class TestExtractAllGroups:
         orchestrator = SchemaExtractionOrchestrator(mock_extractor)
         source_id = uuid4()
 
-        result = await orchestrator.extract_all_groups(
+        results, classification = await orchestrator.extract_all_groups(
             source_id=source_id,
             markdown="# Test content",
-            company_name="Test Company",
+            source_context="Test Company",
             field_groups=[],
         )
 
-        assert result == []
+        assert results == []
+        assert classification is None
 
     @pytest.mark.asyncio
     async def test_extract_all_groups_logs_error_if_no_groups(self, mock_extractor):
@@ -59,15 +61,16 @@ class TestExtractAllGroups:
         orchestrator = SchemaExtractionOrchestrator(mock_extractor)
         source_id = uuid4()
 
-        result = await orchestrator.extract_all_groups(
+        results, classification = await orchestrator.extract_all_groups(
             source_id=source_id,
             markdown="# Test content",
-            company_name="Test Company",
+            source_context="Test Company",
             field_groups=[],
         )
 
         # Should return empty list when no field_groups
-        assert result == []
+        assert results == []
+        assert classification is None
 
     @pytest.mark.asyncio
     async def test_extract_all_groups_works_with_field_groups(
@@ -77,12 +80,14 @@ class TestExtractAllGroups:
         orchestrator = SchemaExtractionOrchestrator(mock_extractor)
         source_id = uuid4()
 
-        result = await orchestrator.extract_all_groups(
+        results, classification = await orchestrator.extract_all_groups(
             source_id=source_id,
             markdown="# Test content",
-            company_name="Test Company",
+            source_context="Test Company",
             field_groups=sample_field_groups,
         )
 
         # Should have results (not empty)
-        assert len(result) >= 0  # Depends on implementation
+        assert len(results) >= 0  # Depends on implementation
+        # Classification is None when classification_enabled=False (default)
+        assert classification is None

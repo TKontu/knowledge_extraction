@@ -5,7 +5,7 @@ not serially, to maximize vLLM throughput.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -286,7 +286,7 @@ class TestSchemaExtractionPipelineParallel:
             async with lock:
                 current_concurrent -= 1
 
-            return []  # Return empty extractions list
+            return [], None  # Return tuple (empty extractions list, no classification)
 
         mock_orchestrator.extract_all_groups = tracking_extract
 
