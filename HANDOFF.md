@@ -1,63 +1,36 @@
-# Handoff: Production Readiness Improvements Complete
+# Handoff: Extraction Pipeline Optimization Planning
 
-## Completed This Session
+## Completed
+- Reviewed `TODO_extraction_optimization.md` against actual codebase
+- Identified gaps between plan and implementation (return type changes, call chain, test files)
+- Rewrote plan to focus on Phase 1 only (page classification)
+- Deferred Phases 2-4 with clear reasoning
+- Added risk analysis with breaking vs additive changes
+- Designed 3-increment development approach with effort estimates
+- Added two-stage feature flag rollout (`classification_enabled`, `classification_skip_enabled`)
+- Identified all 6 test files needing updates for return type change
 
-### PR #75 Merged - Production Readiness Improvements
+## In Progress
+- `docs/TODO_extraction_optimization.md` is modified but not committed
 
-1. **Specific Exception Handling** (was MEDIUM priority)
-   - `redis_client.py`: `except Exception:` → `(ConnectionError, TimeoutError, OSError)`
-   - `qdrant_connection.py`: `except Exception:` → specific Qdrant exceptions
+## Next Steps
+- [ ] Commit the updated TODO file
+- [ ] Assign Increment 1 (Foundation) to an agent - ~2h, additive, no risk
+- [ ] Assign Increment 2 (Classifier) to an agent in parallel - ~3h, additive, no risk
+- [ ] After both merge, assign Increment 3 (Integration) - ~4h, has breaking changes
 
-2. **Schema Update Safety** (was HIGH priority)
-   - Added `force` query parameter to `PUT /projects/{id}`
-   - Blocks schema/entity_types changes when extractions exist (returns 409)
-   - Requires `?force=true` to proceed, logs warning
+## Key Files
+- `docs/TODO_extraction_optimization.md` - Complete implementation plan with code snippets
+- `src/services/extraction/schema_orchestrator.py:29` - `extract_all_groups()` signature to change
+- `src/services/extraction/pipeline.py:529` - Only caller of `extract_all_groups()`
 
-3. **Alerting Service for Partial-Failure States** (was HIGH priority)
-   - New `src/services/alerting/` module
-   - Webhook support (JSON and Slack formats)
-   - 5-minute throttling to prevent alert storms
-   - Alert types: `embedding_failure`, `orphaned_extractions`, `job_failed`, `recovery_completed`
-   - Integrated into extraction pipeline and recovery service
-   - HTTP client cleanup registered in app lifespan
+## Context
+**Breaking change in Increment 3:** Return type changes from `list[dict]` to `tuple[list[dict], ClassificationResult | None]`. Six test files must be updated in the same PR:
+- `tests/test_pipeline_context.py`
+- `tests/test_schema_orchestrator.py`
+- `tests/test_parallel_extraction.py`
+- `tests/test_schema_orchestrator_concurrency.py`
+- `tests/test_extraction_pipeline.py`
+- `tests/test_template_compatibility.py`
 
-4. **Additional Fixes from Pipeline Review**
-   - Replaced deprecated `datetime.utcnow()` with `datetime.now(UTC)`
-   - Added OpenAPI description for `force` parameter
-   - Consistent string format for error details
-   - f-string interpolation for recovery action URLs
-
-### Files Added/Changed
-- `src/services/alerting/__init__.py` - Module exports
-- `src/services/alerting/models.py` - Alert, AlertLevel, AlertType
-- `src/services/alerting/service.py` - AlertService with throttling
-- `src/api/v1/projects.py` - Schema update safety
-- `src/main.py` - Alert service cleanup registration
-- `src/config.py` - Alerting configuration
-- `tests/test_alerting_service.py` - 13 tests
-- `tests/test_project_schema_safety.py` - 6 tests
-
-## Remaining Work
-
-### MEDIUM Priority
-- [ ] **Async/sync mismatch** - Choose: AsyncSession or remove async keywords
-- [ ] **Transaction boundary documentation** - Document and add savepoints
-
-### LOW Priority
-- [ ] Database pool sizing load test
-- [ ] Qdrant async client evaluation
-- [ ] JSONB validation
-- [ ] LLM timeout monitoring
-
-## Configuration
-
-New environment variables for alerting (`.env.example` updated):
-```bash
-ALERTING_ENABLED=true
-ALERT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-ALERT_WEBHOOK_FORMAT=json  # or "slack"
-```
-
-## Note
-
-Run `/clear` to start fresh with full context budget.
+**Safe rollout:** Both feature flags default to `False`. Deploy all code first, then enable `classification_enabled` (filtering only), then `classification_skip_enabled` (full skip behavior).

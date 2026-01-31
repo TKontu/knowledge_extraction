@@ -2,7 +2,17 @@
 
 ## Executive Summary
 
-Optimize the extraction pipeline to reduce LLM calls by ~80% through intelligent page classification, targeted field group extraction, and content deduplication. This enables cost-effective processing at scale (300+ domains × 50 pages).
+Optimize the extraction pipeline to reduce LLM calls by ~65% through intelligent page classification and targeted field group extraction. This enables cost-effective processing at scale (300+ domains × 50 pages).
+
+### Risk Profile
+
+| Increment | Effort | Additive? | Breaking Changes |
+|-----------|--------|-----------|------------------|
+| 1. Foundation | ~2h | ✅ Yes | None |
+| 2. Classifier | ~3h | ✅ Yes | None |
+| 3. Integration | ~4h | ⚠️ No | Return type change, 6 test files |
+
+**Key mitigation:** Two feature flags (`classification_enabled`, `classification_skip_enabled`) allow gradual rollout with instant rollback.
 
 ## Problem Statement
 
@@ -23,13 +33,13 @@ Optimize the extraction pipeline to reduce LLM calls by ~80% through intelligent
 3. **Cost at scale** - Linear scaling of LLM calls makes large projects expensive
 4. **Time at scale** - 210K calls × 2s avg = ~116 hours of LLM time
 
-### Target State
+### Target State (Phase 1)
 
 | Metric | Current | Target | Improvement |
 |--------|---------|--------|-------------|
-| LLM calls per page (avg) | 14 | 3 | -78% |
-| Total LLM calls | 210,000 | 45,000 | -78% |
-| Estimated processing time | ~116 hours | ~25 hours | -78% |
+| LLM calls per page (avg) | 14 | 5 | -65% |
+| Total LLM calls | 210,000 | 75,000 | -65% |
+| Pages skipped (careers, news, etc.) | 0% | ~15% | New |
 
 ---
 
@@ -44,38 +54,32 @@ Source → Chunk → Extract ALL Field Groups → Merge → Store
               (regardless of page content)
 ```
 
-### Proposed Pipeline
+### Proposed Pipeline (Phase 1)
 
 ```
 Source → Classify → Select Relevant Groups → Chunk → Extract → Merge → Store
-             ↓              ↓
-        Page Type    1-3 field groups
-        Detection    (not 7)
+             ↓              ↓                                       ↓
+        Page Type    1-4 field groups                    Store classification
+        Detection    (not 7)                             result on Source
 ```
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Page Classification System
+### Phase 1: Page Classification System ✅ ACTIVE
 **Priority: HIGH | Impact: -65% LLM calls**
 
 Add a pre-extraction classification step that determines which field groups are relevant for each page.
 
-### Phase 2: Combined Field Groups
-**Priority: MEDIUM | Impact: -30% additional**
+### Phase 2: Combined Field Groups ⏸️ DEFERRED
+**Reason:** Complex entity list merging, template maintenance burden. Evaluate after Phase 1 metrics.
 
-Merge related simple field groups to reduce extraction calls.
+### Phase 3: Content Deduplication ⏸️ DEFERRED
+**Reason:** Need to verify actual duplicate rate first (~10% assumed). Implement after Phase 1.
 
-### Phase 3: Content Deduplication
-**Priority: MEDIUM | Impact: -15% additional**
-
-Skip extraction for duplicate/similar content across pages.
-
-### Phase 4: Adaptive Extraction Depth
-**Priority: LOW | Impact: -10% additional**
-
-Vary extraction thoroughness based on page importance.
+### Phase 4: Adaptive Extraction Depth ⏸️ DEFERRED
+**Reason:** Optimization of optimization. Low priority until Phase 1 proves value.
 
 ---
 
@@ -85,184 +89,190 @@ Vary extraction thoroughness based on page importance.
 
 Classify each page before extraction to determine which field groups are relevant, reducing unnecessary LLM calls by ~65%.
 
-### Classification Strategies
+### Implementation Tasks
 
-#### Strategy A: Rule-Based Classification (Recommended First)
+#### Task 1: Create PageClassifier Service
 
-**Pros:** Zero LLM calls, instant, predictable
-**Cons:** Less accurate for edge cases
-
-```python
-class PageClassifier:
-    """Rule-based page classification using URL and title patterns."""
-
-    # URL pattern → relevant field groups mapping
-    URL_PATTERNS = {
-        r'/products?/': ['products_gearbox', 'products_motor', 'products_accessory'],
-        r'/gearbox|/reducer|/gear': ['products_gearbox', 'manufacturing'],
-        r'/motor|/drive': ['products_motor', 'manufacturing'],
-        r'/service|/repair|/maintenance': ['services'],
-        r'/about|/company|/who-we-are': ['company_info', 'company_meta'],
-        r'/contact|/location': ['company_info'],
-        r'/career|/jobs': [],  # Skip - not relevant
-        r'/news|/blog|/press': [],  # Skip - usually not useful
-        r'/certific|/quality|/iso': ['company_meta'],
-    }
-
-    # Title keywords → field groups mapping
-    TITLE_KEYWORDS = {
-        'gearbox': ['products_gearbox'],
-        'reducer': ['products_gearbox'],
-        'motor': ['products_motor'],
-        'service': ['services'],
-        'repair': ['services'],
-        # ... etc
-    }
-
-    def classify(self, url: str, title: str, headers: list[str]) -> ClassificationResult:
-        """Classify page and return relevant field groups."""
-        ...
-```
-
-#### Strategy B: LLM-Assisted Classification (Future Enhancement)
-
-**Pros:** More accurate, handles edge cases
-**Cons:** 1 additional LLM call per page (but much smaller/faster)
+**File:** `src/services/extraction/page_classifier.py`
 
 ```python
-CLASSIFICATION_PROMPT = """
-Classify this page for a drivetrain company analysis.
+"""Page classification for targeted field group extraction."""
 
-URL: {url}
-Title: {title}
-First 500 chars: {content_preview}
-
-Which categories apply? (comma-separated)
-- products_gearbox: Gearbox/reducer product pages
-- products_motor: Motor product pages
-- products_accessory: Coupling, shaft, bearing pages
-- manufacturing: Manufacturing capabilities
-- services: Repair/maintenance services
-- company_info: About, history, leadership
-- company_meta: Certifications, locations
-- skip: Not relevant (careers, news, legal)
-
-Categories:
-"""
-```
-
-### Data Model Changes
-
-```python
-# New: Page classification result stored with source
-class Source:
-    # ... existing fields ...
-
-    # New fields for classification
-    page_type: str | None  # e.g., "product", "about", "service"
-    relevant_field_groups: list[str] | None  # Groups to extract
-    classification_method: str | None  # "rule" or "llm"
-    classification_confidence: float | None
-```
-
-### New Components
-
-#### 1. PageClassifier Service
-
-**Location:** `src/services/extraction/page_classifier.py`
-
-```python
+import re
 from dataclasses import dataclass
 from enum import Enum
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+
 class ClassificationMethod(str, Enum):
     RULE_BASED = "rule"
-    LLM_ASSISTED = "llm"
-    HYBRID = "hybrid"
+    LLM_ASSISTED = "llm"  # Future
+    HYBRID = "hybrid"  # Future
+
 
 @dataclass
 class ClassificationResult:
     """Result of page classification."""
-    page_type: str  # product, service, about, contact, other
-    relevant_groups: list[str]  # Field groups to extract
+
+    page_type: str  # product, service, about, contact, skip, general
+    relevant_groups: list[str]  # Field group names to extract
     skip_extraction: bool  # True if page should be skipped entirely
     confidence: float  # 0.0 - 1.0
     method: ClassificationMethod
-    reasoning: str | None = None  # For debugging
+    reasoning: str | None = None
+
 
 class PageClassifier:
-    """Classifies pages to determine relevant extraction field groups."""
+    """Classifies pages to determine relevant extraction field groups.
+
+    Uses URL patterns and title keywords to identify page type and select
+    only the field groups likely to contain relevant information.
+    """
+
+    # URL pattern → relevant field groups mapping
+    URL_PATTERNS: dict[str, list[str]] = {
+        # Product pages
+        r"/products?($|/)": ["products_gearbox", "products_motor", "products_accessory"],
+        r"/gearbox|/gear-?box|/reducer|/gear-?reducer": ["products_gearbox", "manufacturing"],
+        r"/motor|/electric-?motor|/servo|/drive": ["products_motor", "manufacturing"],
+        r"/coupling|/shaft|/bearing|/brake|/clutch": ["products_accessory"],
+        # Service pages
+        r"/service|/repair|/maintenance|/refurbish": ["services"],
+        r"/field-?service|/on-?site": ["services"],
+        # Company pages
+        r"/about|/company|/who-?we-?are|/history": ["company_info", "company_meta"],
+        r"/contact|/location|/office|/address": ["company_info"],
+        r"/certific|/quality|/iso|/standard": ["company_meta"],
+        r"/facilit|/plant|/factory|/manufactur": ["company_meta", "manufacturing"],
+    }
+
+    # Patterns that indicate pages to skip entirely
+    SKIP_PATTERNS: list[str] = [
+        r"/career|/job|/employ|/vacanc",
+        r"/news|/blog|/press|/media|/event",
+        r"/privacy|/terms|/legal|/cookie|/gdpr",
+        r"/login|/account|/cart|/checkout",
+        r"/sitemap|/search|/404|/error",
+    ]
+
+    # Title keywords → field groups mapping
+    TITLE_KEYWORDS: dict[str, list[str]] = {
+        "gearbox": ["products_gearbox"],
+        "gear box": ["products_gearbox"],
+        "reducer": ["products_gearbox"],
+        "planetary": ["products_gearbox"],
+        "helical": ["products_gearbox"],
+        "motor": ["products_motor"],
+        "servo": ["products_motor"],
+        "coupling": ["products_accessory"],
+        "service": ["services"],
+        "repair": ["services"],
+        "maintenance": ["services"],
+        "about": ["company_info"],
+        "contact": ["company_info"],
+        "certification": ["company_meta"],
+        "iso": ["company_meta"],
+    }
 
     def __init__(
         self,
         method: ClassificationMethod = ClassificationMethod.RULE_BASED,
-        llm_client: LLMClient | None = None,
+        available_groups: list[str] | None = None,
     ):
+        """Initialize classifier.
+
+        Args:
+            method: Classification method to use.
+            available_groups: List of valid field group names. If provided,
+                classification results are filtered to only include these.
+        """
         self._method = method
-        self._llm_client = llm_client
-        self._url_patterns = self._load_url_patterns()
-        self._title_keywords = self._load_title_keywords()
+        self._available_groups = set(available_groups) if available_groups else None
 
     def classify(
         self,
         url: str,
-        title: str | None,
-        content_preview: str | None = None,
-        headers: list[str] | None = None,
+        title: str | None = None,
     ) -> ClassificationResult:
-        """Classify a page and determine relevant field groups."""
+        """Classify a page and determine relevant field groups.
 
+        Args:
+            url: Page URL.
+            title: Page title (optional but improves accuracy).
+
+        Returns:
+            ClassificationResult with page type and relevant groups.
+        """
         if self._method == ClassificationMethod.RULE_BASED:
-            return self._classify_rule_based(url, title, headers)
-        elif self._method == ClassificationMethod.LLM_ASSISTED:
-            return self._classify_llm(url, title, content_preview)
-        else:  # HYBRID
-            rule_result = self._classify_rule_based(url, title, headers)
-            if rule_result.confidence < 0.7:
-                return self._classify_llm(url, title, content_preview)
-            return rule_result
+            result = self._classify_rule_based(url, title)
+        else:
+            # Future: LLM-assisted classification
+            result = self._classify_rule_based(url, title)
+
+        # Filter to available groups if specified
+        if self._available_groups and result.relevant_groups:
+            result.relevant_groups = [
+                g for g in result.relevant_groups if g in self._available_groups
+            ]
+
+        return result
 
     def _classify_rule_based(
-        self, url: str, title: str | None, headers: list[str] | None
+        self,
+        url: str,
+        title: str | None,
     ) -> ClassificationResult:
         """Rule-based classification using URL and title patterns."""
-        matched_groups = set()
+        url_lower = url.lower()
+
+        # Check skip patterns first
+        for pattern in self.SKIP_PATTERNS:
+            if re.search(pattern, url_lower):
+                return ClassificationResult(
+                    page_type="skip",
+                    relevant_groups=[],
+                    skip_extraction=True,
+                    confidence=0.9,
+                    method=ClassificationMethod.RULE_BASED,
+                    reasoning=f"URL matches skip pattern: {pattern}",
+                )
+
+        matched_groups: set[str] = set()
         confidence = 0.0
-        page_type = "other"
+        page_type = "general"
+        reasoning_parts: list[str] = []
 
         # URL pattern matching
-        url_lower = url.lower()
-        for pattern, groups in self._url_patterns.items():
+        for pattern, groups in self.URL_PATTERNS.items():
             if re.search(pattern, url_lower):
                 matched_groups.update(groups)
                 confidence = max(confidence, 0.8)
                 page_type = self._infer_page_type(groups)
+                reasoning_parts.append(f"URL matches: {pattern}")
 
         # Title keyword matching
         if title:
             title_lower = title.lower()
-            for keyword, groups in self._title_keywords.items():
+            for keyword, groups in self.TITLE_KEYWORDS.items():
                 if keyword in title_lower:
                     matched_groups.update(groups)
                     confidence = max(confidence, 0.7)
+                    reasoning_parts.append(f"Title contains: {keyword}")
 
-        # Skip patterns (careers, news, legal)
-        skip_patterns = [r'/career', r'/job', r'/news', r'/blog', r'/press',
-                        r'/privacy', r'/terms', r'/legal', r'/cookie']
-        if any(re.search(p, url_lower) for p in skip_patterns):
-            return ClassificationResult(
-                page_type="skip",
-                relevant_groups=[],
-                skip_extraction=True,
-                confidence=0.9,
-                method=ClassificationMethod.RULE_BASED,
-            )
-
-        # Default: extract core groups if no specific match
+        # Default: use ALL groups with low confidence (conservative)
+        # This ensures we don't miss important content on unclassified pages
         if not matched_groups:
-            matched_groups = {'company_info', 'manufacturing', 'services'}
-            confidence = 0.5
-            page_type = "general"
+            return ClassificationResult(
+                page_type="general",
+                relevant_groups=[],  # Empty means "use all groups"
+                skip_extraction=False,
+                confidence=0.3,
+                method=ClassificationMethod.RULE_BASED,
+                reasoning="No patterns matched, using all groups",
+            )
 
         return ClassificationResult(
             page_type=page_type,
@@ -270,181 +280,411 @@ class PageClassifier:
             skip_extraction=False,
             confidence=confidence,
             method=ClassificationMethod.RULE_BASED,
+            reasoning="; ".join(reasoning_parts) if reasoning_parts else None,
         )
+
+    def _infer_page_type(self, groups: list[str]) -> str:
+        """Infer page type from matched groups."""
+        if any("product" in g for g in groups):
+            return "product"
+        if "services" in groups:
+            return "service"
+        if "company_info" in groups:
+            return "about"
+        return "general"
 ```
 
-#### 2. Classification Configuration
+#### Task 2: Update Pipeline Call Chain
 
-**Location:** `src/services/extraction/classification_config.py`
+**File:** `src/services/extraction/pipeline.py`
+
+Update `extract_source()` to pass URL and title:
 
 ```python
-"""Classification rules configuration.
+# In extract_source(), around line 529, change:
 
-This module defines the URL patterns and keywords used for rule-based
-page classification. Rules can be customized per template.
-"""
+# BEFORE:
+results = await self._orchestrator.extract_all_groups(
+    source_id=source.id,
+    markdown=source.content,
+    source_context=context_value,
+    field_groups=field_groups,
+)
 
-# Default rules for drivetrain_company templates
-DRIVETRAIN_URL_PATTERNS = {
-    # Product pages
-    r'/products?($|/)': ['products_gearbox', 'products_motor', 'products_accessory'],
-    r'/gearbox|/gear-?box|/reducer|/gear-?reducer': ['products_gearbox', 'manufacturing'],
-    r'/motor|/electric-?motor|/servo|/drive': ['products_motor', 'manufacturing'],
-    r'/coupling|/shaft|/bearing|/brake|/clutch': ['products_accessory'],
-
-    # Service pages
-    r'/service|/repair|/maintenance|/refurbish': ['services'],
-    r'/field-?service|/on-?site': ['services'],
-
-    # Company pages
-    r'/about|/company|/who-?we-?are|/history': ['company_info', 'company_meta'],
-    r'/contact|/location|/office|/address': ['company_info'],
-    r'/certific|/quality|/iso|/standard': ['company_meta'],
-    r'/facilit|/plant|/factory|/manufactur': ['company_meta', 'manufacturing'],
-
-    # Skip pages (low value for extraction)
-    r'/career|/job|/employ|/vacanc': [],
-    r'/news|/blog|/press|/media|/event': [],
-    r'/privacy|/terms|/legal|/cookie|/gdpr': [],
-    r'/login|/account|/cart|/checkout': [],
-    r'/sitemap|/search|/404|/error': [],
-}
-
-DRIVETRAIN_TITLE_KEYWORDS = {
-    'gearbox': ['products_gearbox'],
-    'gear box': ['products_gearbox'],
-    'reducer': ['products_gearbox'],
-    'gear reducer': ['products_gearbox'],
-    'planetary': ['products_gearbox'],
-    'helical': ['products_gearbox'],
-    'worm gear': ['products_gearbox'],
-    'motor': ['products_motor'],
-    'servo': ['products_motor'],
-    'drive': ['products_motor'],
-    'coupling': ['products_accessory'],
-    'service': ['services'],
-    'repair': ['services'],
-    'maintenance': ['services'],
-    'about': ['company_info'],
-    'contact': ['company_info'],
-    'certification': ['company_meta'],
-    'iso': ['company_meta'],
-}
-
-# Template-specific rule sets
-TEMPLATE_RULES = {
-    'drivetrain_company_analysis': {
-        'url_patterns': DRIVETRAIN_URL_PATTERNS,
-        'title_keywords': DRIVETRAIN_TITLE_KEYWORDS,
-    },
-    'drivetrain_company_simple': {
-        'url_patterns': DRIVETRAIN_URL_PATTERNS,
-        'title_keywords': DRIVETRAIN_TITLE_KEYWORDS,
-    },
-    # Add more templates as needed
-}
+# AFTER:
+results = await self._orchestrator.extract_all_groups(
+    source_id=source.id,
+    markdown=source.content,
+    source_context=context_value,
+    field_groups=field_groups,
+    source_url=source.uri,
+    source_title=source.title,
+)
 ```
 
-### Pipeline Integration
+#### Task 3: Update SchemaExtractionOrchestrator
 
-#### Modified SchemaExtractionOrchestrator
+**File:** `src/services/extraction/schema_orchestrator.py`
 
 ```python
-# src/services/extraction/schema_orchestrator.py
+# Update extract_all_groups signature and add classification logic:
 
-class SchemaExtractionOrchestrator:
-    def __init__(
-        self,
-        schema_extractor: SchemaExtractor,
-        page_classifier: PageClassifier | None = None,  # NEW
-        context: ExtractionContext | None = None,
-    ):
-        self._extractor = schema_extractor
-        self._classifier = page_classifier or PageClassifier()  # NEW
-        self._context = context or ExtractionContext()
+async def extract_all_groups(
+    self,
+    source_id: UUID,
+    markdown: str,
+    source_context: str,
+    field_groups: list[FieldGroup],
+    source_url: str | None = None,
+    source_title: str | None = None,
+    company_name: str | None = None,  # Deprecated
+) -> tuple[list[dict], ClassificationResult | None]:
+    """Extract field groups with classification-based filtering.
 
-    async def extract_all_groups(
-        self,
-        source_id: UUID,
-        markdown: str,
-        source_context: str,
-        field_groups: list[FieldGroup],
-        source_url: str | None = None,  # NEW
-        source_title: str | None = None,  # NEW
-        use_classification: bool = True,  # NEW
-    ) -> list[dict]:
-        """Extract field groups with optional classification-based filtering."""
+    Args:
+        source_id: Source UUID for tracking.
+        markdown: Markdown content.
+        source_context: Source context (e.g., company name).
+        field_groups: Field groups to extract.
+        source_url: Source URL for classification.
+        source_title: Source title for classification.
+        company_name: DEPRECATED. Use source_context.
 
-        # NEW: Classify page to determine relevant groups
-        if use_classification and source_url:
-            classification = self._classifier.classify(
-                url=source_url,
-                title=source_title,
-                content_preview=markdown[:1000] if markdown else None,
-            )
+    Returns:
+        Tuple of (extraction results, classification result or None).
+    """
+    context_value = source_context if source_context is not None else company_name
+    classification: ClassificationResult | None = None
 
+    if not field_groups:
+        logger.error(
+            "extract_all_groups_no_field_groups",
+            source_id=str(source_id),
+        )
+        return [], None
+
+    # Classify page if URL is available
+    if source_url and settings.classification_enabled:
+        available_group_names = [g.name for g in field_groups]
+        classifier = PageClassifier(available_groups=available_group_names)
+        classification = classifier.classify(url=source_url, title=source_title)
+
+        logger.info(
+            "page_classified",
+            source_id=str(source_id),
+            url=source_url,
+            page_type=classification.page_type,
+            relevant_groups=classification.relevant_groups,
+            skip=classification.skip_extraction,
+            confidence=classification.confidence,
+        )
+
+        # Only skip if skip is enabled (two-stage rollout)
+        if classification.skip_extraction and settings.classification_skip_enabled:
             logger.info(
-                "page_classified",
+                "skipping_extraction",
                 source_id=str(source_id),
-                page_type=classification.page_type,
-                relevant_groups=classification.relevant_groups,
-                skip=classification.skip_extraction,
-                confidence=classification.confidence,
+                reason=classification.reasoning,
             )
+            return [], classification
 
-            if classification.skip_extraction:
-                logger.info(
-                    "skipping_extraction",
-                    source_id=str(source_id),
-                    reason="page_classified_as_skip",
-                )
-                return []
-
-            # Filter field groups to only relevant ones
+        # Filter field groups if classification found specific matches
+        if classification.relevant_groups:
             relevant_names = set(classification.relevant_groups)
             field_groups = [g for g in field_groups if g.name in relevant_names]
 
             if not field_groups:
                 logger.warning(
-                    "no_relevant_field_groups",
+                    "no_matching_field_groups",
                     source_id=str(source_id),
-                    classification=classification.relevant_groups,
+                    classified_groups=classification.relevant_groups,
                 )
-                return []
+                return [], classification
 
-        # ... rest of existing extraction logic ...
+    # Continue with existing extraction logic...
+    groups = field_groups
+    # ... rest of method unchanged ...
+
+    return results, classification
 ```
 
-### Database Migration
+#### Task 4: Store Classification Result
 
-```sql
--- Migration: Add classification columns to sources table
+**File:** `src/services/extraction/pipeline.py`
 
-ALTER TABLE sources
-ADD COLUMN page_type VARCHAR(50),
-ADD COLUMN relevant_field_groups JSONB,
-ADD COLUMN classification_method VARCHAR(20),
-ADD COLUMN classification_confidence FLOAT;
-
--- Index for filtering by page type
-CREATE INDEX ix_sources_page_type ON sources(project_id, page_type);
-```
-
-### Configuration
+After extraction, store classification on source:
 
 ```python
-# config.py additions
+# In extract_source(), after getting results:
 
+results, classification = await self._orchestrator.extract_all_groups(...)
+
+# Store classification result on source
+if classification:
+    source.page_type = classification.page_type
+    source.relevant_field_groups = classification.relevant_groups
+    source.classification_method = classification.method.value
+    source.classification_confidence = classification.confidence
+```
+
+#### Task 5: Alembic Migration
+
+**File:** `alembic/versions/YYYYMMDD_HHMM_add_source_classification_columns.py`
+
+```python
+"""Add classification columns to sources table.
+
+Revision ID: <auto-generated>
+Create Date: <auto-generated>
+"""
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers
+revision = "<auto-generated>"
+down_revision = "<previous-revision>"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.add_column(
+        "sources",
+        sa.Column("page_type", sa.String(50), nullable=True),
+    )
+    op.add_column(
+        "sources",
+        sa.Column(
+            "relevant_field_groups",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+        ),
+    )
+    op.add_column(
+        "sources",
+        sa.Column("classification_method", sa.String(20), nullable=True),
+    )
+    op.add_column(
+        "sources",
+        sa.Column("classification_confidence", sa.Float(), nullable=True),
+    )
+
+    # Index for filtering by page type
+    op.create_index(
+        "ix_sources_page_type",
+        "sources",
+        ["project_id", "page_type"],
+    )
+
+
+def downgrade() -> None:
+    op.drop_index("ix_sources_page_type", table_name="sources")
+    op.drop_column("sources", "classification_confidence")
+    op.drop_column("sources", "classification_method")
+    op.drop_column("sources", "relevant_field_groups")
+    op.drop_column("sources", "page_type")
+```
+
+#### Task 6: Update ORM Model
+
+**File:** `src/orm_models.py`
+
+Add columns to Source class:
+
+```python
+class Source(Base):
+    # ... existing columns ...
+
+    # Classification columns
+    page_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    relevant_field_groups: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    classification_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+```
+
+#### Task 7: Add Configuration
+
+**File:** `src/config.py`
+
+```python
 # Page Classification
-CLASSIFICATION_ENABLED: bool = True
-CLASSIFICATION_METHOD: str = "rule"  # "rule", "llm", "hybrid"
-CLASSIFICATION_MIN_CONFIDENCE: float = 0.5  # Below this, use default groups
+classification_enabled: bool = Field(
+    default=False,  # Safe default - enable after validation
+    description="Enable page classification to filter field groups",
+)
+classification_skip_enabled: bool = Field(
+    default=False,  # Two-stage rollout - enable filtering first, then skipping
+    description="Enable skipping pages classified as irrelevant (careers, news, etc.)",
+)
 ```
 
-### Testing Strategy
+Update orchestrator to respect `classification_skip_enabled`:
 
 ```python
-# tests/test_page_classifier.py
+if classification.skip_extraction and settings.classification_skip_enabled:
+    # Only skip if both classification says skip AND skip is enabled
+    return [], classification
+```
+
+---
+
+## Development Increments
+
+### Increment 1: Foundation (Small) ✅ Additive
+**Effort:** ~2 hours | **Risk:** None
+
+| Task | File |
+|------|------|
+| Task 5 | Alembic migration |
+| Task 6 | ORM model update |
+| Task 7 | Config setting |
+
+**Why grouped:** No logic changes, just schema/config. Can be merged and deployed independently. Existing code continues to work (columns are nullable).
+
+**Validation:** `alembic upgrade head`, app starts normally.
+
+---
+
+### Increment 2: Classifier Service (Small) ✅ Additive
+**Effort:** ~3 hours | **Risk:** None
+
+| Task | File |
+|------|------|
+| Task 1 | `src/services/extraction/page_classifier.py` |
+| Tests | `tests/services/extraction/test_page_classifier.py` |
+
+**Why separate:** Self-contained module with no integration. Can be thoroughly tested in isolation before wiring into pipeline.
+
+**Validation:** `pytest tests/services/extraction/test_page_classifier.py` passes.
+
+---
+
+### Increment 3: Pipeline Integration (Medium) ⚠️ Breaking Changes
+**Effort:** ~4 hours | **Risk:** Medium
+
+| Task | File |
+|------|------|
+| Task 2 | `src/services/extraction/pipeline.py` - pass URL/title |
+| Task 3 | `src/services/extraction/schema_orchestrator.py` - signature + logic |
+| Task 4 | `src/services/extraction/pipeline.py` - store classification |
+| Tests | Update existing tests + new integration tests |
+
+**Why grouped:** Tightly coupled - changing the return type requires updating the caller and handling the result together.
+
+**Breaking change:** Return type changes from `list[dict]` to `tuple[list[dict], ClassificationResult | None]`.
+
+**Validation:** All tests pass, manual test with `classification_enabled=False` then `=True`.
+
+---
+
+### Increment Dependency Graph
+
+```
+[Increment 1: Foundation] ──┐
+                            ├──→ [Increment 3: Integration] ──→ Review/Merge
+[Increment 2: Classifier] ──┘
+```
+
+- **Increments 1 & 2** can run in parallel (separate PRs, no conflicts)
+- **Increment 3** depends on both being merged first
+
+---
+
+## Risk Analysis
+
+### Additive Changes (Low Risk)
+
+| Change | Risk | Notes |
+|--------|------|-------|
+| New DB columns | None | Nullable, existing code ignores them |
+| New config setting | None | Default `False` for safe rollout |
+| New `PageClassifier` class | None | Nothing calls it until Increment 3 |
+
+### Breaking Changes (Medium Risk)
+
+| Change | What Breaks | Files Affected |
+|--------|-------------|----------------|
+| Return type change | Callers expect `list[dict]` | 1 caller: `pipeline.py:529` |
+| Mocked return values | Tests mock old return type | 6 test files (see below) |
+
+### Test Files Requiring Updates
+
+These files mock or assert on `extract_all_groups()` and must be updated in Increment 3:
+
+```
+tests/test_pipeline_context.py        # Mocks extract_all_groups
+tests/test_schema_orchestrator.py     # Calls extract_all_groups directly
+tests/test_parallel_extraction.py     # Mocks extract_all_groups
+tests/test_schema_orchestrator_concurrency.py
+tests/test_extraction_pipeline.py     # Mocks orchestrator
+tests/test_template_compatibility.py  # Creates orchestrator
+```
+
+### Behavioral Risks
+
+| Change | Risk | Mitigation |
+|--------|------|------------|
+| Skip patterns too aggressive | Valid pages skipped | Start with obvious patterns only (careers, privacy, news) |
+| Group filtering too narrow | Missing extractions | Empty `relevant_groups` = use all groups (conservative) |
+| Classification bugs | Silent data loss | Structured logging on every classification decision |
+
+---
+
+## Implementation Checklist
+
+### Increment 1: Foundation
+- [ ] Create Alembic migration for classification columns
+- [ ] Update Source ORM model with new columns
+- [ ] Add `classification_enabled` config setting (default: `False`)
+- [ ] Add `classification_skip_enabled` config setting (default: `False`)
+- [ ] Run migration, verify app starts
+
+### Increment 2: Classifier Service
+- [ ] Create `PageClassifier` service (`src/services/extraction/page_classifier.py`)
+- [ ] Write unit tests for PageClassifier
+- [ ] Verify tests pass in isolation
+
+### Increment 3: Pipeline Integration
+- [ ] Update `extract_source()` to pass `source.uri` and `source.title`
+- [ ] Update `extract_all_groups()` signature to accept URL/title
+- [ ] Add classification filtering before `asyncio.gather()` call
+- [ ] Respect `classification_skip_enabled` for skip behavior
+- [ ] Update return type to `tuple[list[dict], ClassificationResult | None]`
+- [ ] Store classification result on Source after extraction
+- [ ] Update 6 existing test files for new return type:
+  - `tests/test_pipeline_context.py`
+  - `tests/test_schema_orchestrator.py`
+  - `tests/test_parallel_extraction.py`
+  - `tests/test_schema_orchestrator_concurrency.py`
+  - `tests/test_extraction_pipeline.py`
+  - `tests/test_template_compatibility.py`
+- [ ] Write integration tests for classification behavior
+- [ ] Add structured logging for classification decisions
+
+### Validation & Rollout
+- [ ] Test with `classification_enabled=False` (no behavior change)
+- [ ] Test with `classification_enabled=True` on sample project
+- [ ] Measure LLM call reduction
+- [ ] Review skipped pages for false positives
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+
+**File:** `tests/services/extraction/test_page_classifier.py`
+
+```python
+import pytest
+from services.extraction.page_classifier import (
+    ClassificationMethod,
+    ClassificationResult,
+    PageClassifier,
+)
+
 
 class TestPageClassifier:
     """Tests for page classification system."""
@@ -462,6 +702,7 @@ class TestPageClassifier:
         assert result.page_type == "product"
         assert "products_gearbox" in result.relevant_groups
         assert not result.skip_extraction
+        assert result.confidence >= 0.7
 
     def test_service_page_classification(self, classifier):
         """Service URLs should map to services field group."""
@@ -470,355 +711,105 @@ class TestPageClassifier:
             title="Repair Services",
         )
         assert "services" in result.relevant_groups
+        assert not result.skip_extraction
 
-    def test_skip_page_classification(self, classifier):
-        """Career/news pages should be skipped."""
+    def test_skip_career_page(self, classifier):
+        """Career pages should be skipped."""
         result = classifier.classify(
             url="https://example.com/careers/engineer",
             title="Join Our Team",
         )
         assert result.skip_extraction
         assert result.relevant_groups == []
+        assert result.page_type == "skip"
 
-    def test_fallback_classification(self, classifier):
-        """Unknown pages should get default groups."""
+    def test_skip_news_page(self, classifier):
+        """News/blog pages should be skipped."""
+        result = classifier.classify(
+            url="https://example.com/news/2024/announcement",
+            title="Company News",
+        )
+        assert result.skip_extraction
+
+    def test_fallback_uses_all_groups(self, classifier):
+        """Unknown pages should return empty groups (meaning use all)."""
         result = classifier.classify(
             url="https://example.com/xyz123",
             title="Some Page",
         )
-        assert result.confidence < 0.7
-        assert len(result.relevant_groups) > 0  # Has defaults
-```
+        assert result.relevant_groups == []  # Empty = use all
+        assert not result.skip_extraction
+        assert result.confidence < 0.5
 
-### Metrics & Monitoring
-
-```python
-# New metrics to track classification effectiveness
-
-classification_total = Counter(
-    "extraction_classification_total",
-    "Total pages classified",
-    ["method", "page_type"]
-)
-
-classification_groups_selected = Histogram(
-    "extraction_classification_groups_selected",
-    "Number of field groups selected per page",
-    buckets=[0, 1, 2, 3, 4, 5, 6, 7]
-)
-
-extraction_skipped_total = Counter(
-    "extraction_skipped_total",
-    "Pages skipped due to classification",
-    ["reason"]
-)
-```
-
----
-
-## Phase 2: Combined Field Groups
-
-### Objective
-
-Reduce the number of separate LLM calls by combining related field groups into unified extraction calls.
-
-### Combination Strategy
-
-#### Before: 7 Field Groups
-
-```
-1. manufacturing (4 fields, mostly boolean)
-2. services (6 fields, mostly boolean)
-3. company_info (5 fields, mixed)
-4. products_gearbox (8 fields, entity list)
-5. products_motor (7 fields, entity list)
-6. products_accessory (4 fields, entity list)
-7. company_meta (2 fields, lists)
-```
-
-#### After: 4 Combined Groups
-
-```
-1. capabilities (manufacturing + services) - 10 boolean fields
-2. company_info (unchanged) - 5 mixed fields
-3. products (gearbox + motor + accessory) - 19 fields, unified entity list
-4. company_meta (unchanged) - 2 list fields
-```
-
-### Implementation
-
-#### Template Modification
-
-Create optimized versions of templates with combined groups:
-
-```yaml
-# templates/drivetrain_company_optimized.yaml
-
-name: drivetrain_company_optimized
-description: Optimized extraction with combined field groups
-
-field_groups:
-  - name: capabilities
-    description: Manufacturing and service capabilities
-    fields:
-      # From manufacturing
-      - name: manufactures_gearboxes
-        type: boolean
-        required: true
-      - name: manufactures_motors
-        type: boolean
-        required: true
-      - name: manufactures_drivetrain_accessories
-        type: boolean
-        required: true
-      - name: manufacturing_details
-        type: text
-      # From services
-      - name: provides_services
-        type: boolean
-        required: true
-      - name: services_gearboxes
-        type: boolean
-        required: true
-      - name: services_motors
-        type: boolean
-        required: true
-      - name: services_drivetrain_accessories
-        type: boolean
-        required: true
-      - name: provides_field_service
-        type: boolean
-        required: true
-      - name: service_types
-        type: list
-
-  - name: company_info
-    # ... unchanged ...
-
-  - name: products
-    description: All product types (gearboxes, motors, accessories)
-    is_entity_list: true
-    fields:
-      - name: product_name
-        type: text
-        required: true
-      - name: product_category
-        type: enum
-        enum_values: [gearbox, motor, accessory]
-        required: true
-      - name: series_name
-        type: text
-      - name: model_number
-        type: text
-      - name: subcategory
-        type: text
-      # Gearbox-specific
-      - name: gear_ratio
-        type: text
-      - name: gear_efficiency_percent
-        type: float
-      # Motor-specific
-      - name: speed_rating_rpm
-        type: float
-      - name: voltage
-        type: text
-      # Common specs
-      - name: power_rating_kw
-        type: float
-      - name: torque_rating_nm
-        type: float
-
-  - name: company_meta
-    # ... unchanged ...
-```
-
-#### Migration Path
-
-1. Create optimized templates alongside existing ones
-2. Add `optimized: true` flag to project config
-3. Gradually migrate projects to optimized templates
-4. Keep original templates for backward compatibility
-
----
-
-## Phase 3: Content Deduplication
-
-### Objective
-
-Skip extraction for pages with content identical or highly similar to already-processed pages.
-
-### Implementation
-
-#### Content Hashing
-
-```python
-# src/services/extraction/content_dedup.py
-
-import hashlib
-from dataclasses import dataclass
-
-@dataclass
-class ContentHash:
-    """Hash of page content for deduplication."""
-    full_hash: str  # SHA-256 of full content
-    structure_hash: str  # Hash of headers/structure only
-
-class ContentDeduplicator:
-    """Deduplicates pages based on content similarity."""
-
-    def __init__(self, extraction_repo: ExtractionRepository):
-        self._extraction_repo = extraction_repo
-        self._seen_hashes: dict[str, UUID] = {}  # hash -> first source_id
-
-    def compute_hash(self, content: str) -> ContentHash:
-        """Compute content hashes for deduplication."""
-        # Full content hash
-        normalized = self._normalize(content)
-        full_hash = hashlib.sha256(normalized.encode()).hexdigest()
-
-        # Structure hash (headers only)
-        headers = self._extract_headers(content)
-        structure_hash = hashlib.sha256(headers.encode()).hexdigest()
-
-        return ContentHash(full_hash=full_hash, structure_hash=structure_hash)
-
-    def check_duplicate(
-        self,
-        project_id: UUID,
-        content_hash: ContentHash
-    ) -> tuple[bool, UUID | None]:
-        """Check if content has been seen before.
-
-        Returns:
-            (is_duplicate, original_source_id)
-        """
-        cache_key = f"{project_id}:{content_hash.full_hash}"
-
-        if cache_key in self._seen_hashes:
-            return True, self._seen_hashes[cache_key]
-
-        # Check database for existing extraction with same hash
-        existing = self._extraction_repo.find_by_content_hash(
-            project_id, content_hash.full_hash
+    def test_title_keyword_matching(self, classifier):
+        """Title keywords should influence classification."""
+        result = classifier.classify(
+            url="https://example.com/page",  # Generic URL
+            title="Industrial Gearbox Solutions",
         )
+        assert "products_gearbox" in result.relevant_groups
 
-        if existing:
-            self._seen_hashes[cache_key] = existing.source_id
-            return True, existing.source_id
+    def test_available_groups_filtering(self):
+        """Classification should filter to available groups."""
+        classifier = PageClassifier(
+            available_groups=["company_info", "services"]
+        )
+        result = classifier.classify(
+            url="https://example.com/products/gearboxes",
+            title="Gearboxes",
+        )
+        # products_gearbox not in available_groups, so filtered out
+        assert "products_gearbox" not in result.relevant_groups
 
-        return False, None
-
-    def register(self, project_id: UUID, content_hash: ContentHash, source_id: UUID):
-        """Register a processed content hash."""
-        cache_key = f"{project_id}:{content_hash.full_hash}"
-        self._seen_hashes[cache_key] = source_id
-
-    def _normalize(self, content: str) -> str:
-        """Normalize content for consistent hashing."""
-        # Remove extra whitespace
-        content = ' '.join(content.split())
-        # Remove common boilerplate patterns
-        content = re.sub(r'©.*?\d{4}', '', content)  # Copyright
-        content = re.sub(r'All rights reserved\.?', '', content, flags=re.I)
-        return content.strip()
-
-    def _extract_headers(self, content: str) -> str:
-        """Extract headers for structure comparison."""
-        headers = re.findall(r'^#+\s+(.+)$', content, re.MULTILINE)
-        return '\n'.join(headers)
+    def test_multiple_patterns_match(self, classifier):
+        """Multiple matching patterns should accumulate groups."""
+        result = classifier.classify(
+            url="https://example.com/about/manufacturing",
+            title="About Our Manufacturing",
+        )
+        assert "company_info" in result.relevant_groups
+        assert "manufacturing" in result.relevant_groups
 ```
 
-#### Database Changes
+### Integration Tests
 
-```sql
--- Add content hash columns
-ALTER TABLE sources ADD COLUMN content_hash VARCHAR(64);
-ALTER TABLE sources ADD COLUMN structure_hash VARCHAR(64);
-
--- Index for fast lookup
-CREATE INDEX ix_sources_content_hash ON sources(project_id, content_hash);
-```
-
----
-
-## Phase 4: Adaptive Extraction Depth
-
-### Objective
-
-Vary extraction thoroughness based on page importance signals.
-
-### Implementation
+**File:** `tests/services/extraction/test_pipeline_classification.py`
 
 ```python
-class ExtractionDepth(str, Enum):
-    MINIMAL = "minimal"  # Quick scan, high confidence only
-    STANDARD = "standard"  # Normal extraction
-    THOROUGH = "thorough"  # Deep extraction, multiple passes
+import pytest
+from unittest.mock import AsyncMock, MagicMock
 
-def determine_depth(
-    page_type: str,
-    url_signals: dict,
-    content_length: int,
-) -> ExtractionDepth:
-    """Determine extraction depth based on page signals."""
+class TestPipelineClassification:
+    """Integration tests for extraction pipeline with classification."""
 
-    # Product pages get thorough extraction
-    if page_type == "product":
-        return ExtractionDepth.THOROUGH
+    @pytest.fixture
+    def mock_source(self):
+        source = MagicMock()
+        source.id = uuid4()
+        source.uri = "https://example.com/careers/apply"
+        source.title = "Join Our Team"
+        source.content = "# Careers\n\nWe're hiring!"
+        source.source_group = "Example Corp"
+        return source
 
-    # Short pages get minimal extraction
-    if content_length < 500:
-        return ExtractionDepth.MINIMAL
+    async def test_skip_page_no_extraction(self, mock_source, pipeline):
+        """Skipped pages should not trigger LLM extraction."""
+        # Career page should be skipped
+        results = await pipeline.extract_source(
+            source=mock_source,
+            source_context="Example Corp",
+            field_groups=[...],
+        )
+        assert results == []
+        assert mock_source.page_type == "skip"
 
-    # Homepage gets thorough (often has company overview)
-    if url_signals.get("is_homepage"):
-        return ExtractionDepth.THOROUGH
-
-    return ExtractionDepth.STANDARD
+    async def test_classification_stored_on_source(self, mock_source, pipeline):
+        """Classification result should be stored on source."""
+        mock_source.uri = "https://example.com/products/gearboxes"
+        await pipeline.extract_source(...)
+        assert mock_source.page_type == "product"
+        assert mock_source.classification_confidence >= 0.7
 ```
-
----
-
-## Implementation Checklist
-
-### Phase 1: Page Classification (Week 1-2)
-
-- [ ] Create `PageClassifier` service
-- [ ] Define URL patterns and title keywords for drivetrain template
-- [ ] Add classification columns to sources table (migration)
-- [ ] Integrate classifier into `SchemaExtractionOrchestrator`
-- [ ] Add configuration flags (`CLASSIFICATION_ENABLED`, `CLASSIFICATION_METHOD`)
-- [ ] Write unit tests for classifier
-- [ ] Write integration tests for pipeline with classification
-- [ ] Add classification metrics/logging
-- [ ] Test with drivetrain template on sample project
-- [ ] Measure LLM call reduction
-
-### Phase 2: Combined Field Groups (Week 2-3)
-
-- [ ] Create `drivetrain_company_optimized.yaml` template
-- [ ] Validate combined template produces equivalent data
-- [ ] Add template selection logic (original vs optimized)
-- [ ] Update report generation to handle combined groups
-- [ ] Test backward compatibility
-- [ ] Measure additional LLM call reduction
-
-### Phase 3: Content Deduplication (Week 3-4)
-
-- [ ] Create `ContentDeduplicator` service
-- [ ] Add content hash columns (migration)
-- [ ] Integrate deduplication into pipeline
-- [ ] Handle cross-source-group deduplication
-- [ ] Test with known duplicate content
-- [ ] Measure deduplication rate
-
-### Phase 4: Adaptive Depth (Week 4+)
-
-- [ ] Define depth levels and their behaviors
-- [ ] Implement depth determination logic
-- [ ] Adjust prompts per depth level
-- [ ] Test quality at each depth
-- [ ] Measure impact on extraction quality
 
 ---
 
@@ -828,10 +819,9 @@ def determine_depth(
 
 | Metric | Baseline | Target | Measurement |
 |--------|----------|--------|-------------|
-| LLM calls per page | 14 | 3 | Count API calls |
+| LLM calls per page | 14 | 5 | Count API calls |
 | Pages skipped | 0% | 15% | Classification skip rate |
 | Field groups per page | 7 | 2.5 avg | Logging/metrics |
-| Content dedup rate | 0% | 10% | Hash collision rate |
 
 ### Quality Metrics
 
@@ -839,45 +829,64 @@ def determine_depth(
 |--------|-----------|-------------|
 | Extraction recall | >95% | Manual review sample |
 | False skip rate | <2% | Review skipped pages |
-| Duplicate miss rate | <5% | Compare extractions |
-
-### Performance Metrics
-
-| Metric | Baseline | Target |
-|--------|----------|--------|
-| Time per 1000 pages | 8 hours | 2 hours |
-| KV cache utilization | 98-100% | 60-80% |
-| Queue wait time | Variable | Consistent |
 
 ---
 
 ## Rollout Plan
 
-### Stage 1: Shadow Mode (1 week)
-- Enable classification but don't skip extractions
-- Log what would have been skipped
-- Validate classification accuracy
+### Stage 1: Deploy with Feature Flag Off
+- Merge all increments with `classification_enabled=False` (default)
+- Zero behavior change in production
+- Verify no regressions
 
-### Stage 2: Gradual Rollout (2 weeks)
-- Enable skipping for new projects only
-- Monitor quality metrics closely
-- Adjust classification rules as needed
+### Stage 2: Shadow Mode
+- Set `classification_enabled=True` but add `classification_skip_enabled=False`
+- Classification runs and logs decisions but does NOT skip pages
+- Field group filtering active (reduced LLM calls)
+- Review logs to validate classification accuracy
 
-### Stage 3: Full Deployment (1 week)
-- Enable for all projects
-- Provide opt-out flag for projects needing full extraction
-- Document any known limitations
+### Stage 3: Full Enable
+- Set `classification_skip_enabled=True`
+- Monitor for false skips via `page_type="skip"` in logs
+- Escape hatch: `classification_enabled=False` reverts to old behavior
 
 ---
 
-## Risks and Mitigations
+## Deferred Phases
 
-| Risk | Impact | Likelihood | Mitigation |
-|------|--------|------------|------------|
-| Classification misses important pages | Data loss | Medium | Conservative default rules, manual review |
-| Combined groups reduce accuracy | Quality degradation | Low | A/B test before migration |
-| Content dedup misses variations | Incomplete data | Medium | Use structure hash fallback |
-| Performance regression | Slower pipeline | Low | Benchmark before/after |
+### Phase 2: Combined Field Groups ⏸️
+
+**Original idea:** Merge 7 groups → 4 (capabilities, company_info, products, company_meta).
+
+**Why deferred:**
+- Entity list merging (`is_entity_list: true`) is complex
+- Different `entity_id_fields` per original group
+- Requires new template maintenance
+- Phase 1 provides most of the benefit
+
+**Revisit when:** Phase 1 metrics show <50% reduction.
+
+### Phase 3: Content Deduplication ⏸️
+
+**Original idea:** Skip extraction for duplicate/similar content.
+
+**Why deferred:**
+- Need to verify actual duplicate rate first
+- Assumed 10% duplicates - may be lower
+- Content hashing adds complexity
+
+**Revisit when:** Data shows >10% content duplicates across sources.
+
+### Phase 4: Adaptive Extraction Depth ⏸️
+
+**Original idea:** MINIMAL/STANDARD/THOROUGH modes based on page importance.
+
+**Why deferred:**
+- Optimization of an optimization
+- Unclear quality impact
+- Low incremental benefit (~10%)
+
+**Revisit when:** Phase 1-3 complete and further optimization needed.
 
 ---
 
@@ -885,32 +894,3 @@ def determine_depth(
 
 - [Architecture Documentation](./architectureV1_1.md)
 - [High Concurrency Tuning](./TODO_high_concurrency_tuning.md)
-- [Extraction Pipeline Analysis](./extraction_pipeline_analysis.md)
-
----
-
-## Appendix: Classification Rules Reference
-
-### URL Patterns (Drivetrain Template)
-
-| Pattern | Field Groups | Skip |
-|---------|-------------|------|
-| `/product` | products_* | No |
-| `/gearbox`, `/reducer` | products_gearbox, manufacturing | No |
-| `/motor`, `/drive` | products_motor, manufacturing | No |
-| `/service`, `/repair` | services | No |
-| `/about`, `/company` | company_info, company_meta | No |
-| `/contact` | company_info | No |
-| `/career`, `/job` | - | Yes |
-| `/news`, `/blog` | - | Yes |
-| `/privacy`, `/terms` | - | Yes |
-
-### Title Keywords
-
-| Keyword | Field Groups |
-|---------|-------------|
-| gearbox, reducer, planetary | products_gearbox |
-| motor, servo, drive | products_motor |
-| service, repair, maintenance | services |
-| about, company, history | company_info |
-| certification, ISO, quality | company_meta |
