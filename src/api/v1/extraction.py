@@ -349,12 +349,22 @@ async def extract_schema(
     # Create smart classifier if enabled
     smart_classifier = None
     if settings.smart_classification_enabled:
+        from services.extraction.schema_adapter import ClassificationConfig
+
+        # Extract classification_config from project's extraction_schema
+        classification_config = None
+        if project.extraction_schema:
+            classification_config = ClassificationConfig.from_dict(
+                project.extraction_schema.get("classification_config")
+            )
+
         async_redis = await get_async_redis()
         embedding_service = EmbeddingService(settings)
         smart_classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=async_redis,
             settings=settings,
+            classification_config=classification_config,
         )
 
     orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)

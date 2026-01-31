@@ -68,25 +68,43 @@ async def create_crawl_job(
         exclude_paths_count=len(exclude_paths),
     )
 
+    # Build job payload
+    payload = {
+        "url": request.url,
+        "project_id": str(request.project_id),
+        "company": request.company,
+        "max_depth": request.max_depth,
+        "limit": request.limit,
+        "include_paths": include_paths,
+        "exclude_paths": exclude_paths,
+        "allow_backward_links": request.allow_backward_links,
+        "auto_extract": request.auto_extract,
+        "profile": request.profile,
+        "language_detection_enabled": request.language_detection_enabled,
+        "allowed_languages": request.allowed_languages or ["en"],
+        "firecrawl_job_id": None,  # Set when crawl starts
+        # Firecrawl Map parameters
+        "allow_subdomains": request.allow_subdomains,
+        "ignore_query_parameters": request.ignore_query_parameters,
+        # Smart crawl parameters
+        "smart_crawl_enabled": request.smart_crawl_enabled,
+    }
+
+    # Add smart crawl-specific fields if enabled
+    if request.smart_crawl_enabled:
+        payload["smart_crawl_phase"] = "map"  # Start with map phase
+        payload["relevance_threshold"] = request.relevance_threshold
+        payload["focus_terms"] = request.focus_terms
+        # Smart crawl state (populated during processing)
+        payload["mapped_urls"] = None
+        payload["filtered_urls"] = None
+        payload["batch_scrape_job_id"] = None
+
     job = Job(
         id=job_id,
         type="crawl",
         status="queued",
-        payload={
-            "url": request.url,
-            "project_id": str(request.project_id),
-            "company": request.company,
-            "max_depth": request.max_depth,
-            "limit": request.limit,
-            "include_paths": include_paths,
-            "exclude_paths": exclude_paths,
-            "allow_backward_links": request.allow_backward_links,
-            "auto_extract": request.auto_extract,
-            "profile": request.profile,
-            "language_detection_enabled": request.language_detection_enabled,
-            "allowed_languages": request.allowed_languages or ["en"],
-            "firecrawl_job_id": None,  # Set when crawl starts
-        },
+        payload=payload,
     )
 
     db.add(job)
@@ -124,14 +142,23 @@ async def get_crawl_status(
             detail=f"Crawl job {job_id} not found",
         )
 
+    # Extract smart crawl info from payload and result
+    smart_crawl_enabled = job.payload.get("smart_crawl_enabled", False)
+    result = job.result or {}
+
     return CrawlStatusResponse(
         job_id=str(job.id),
         status=job.status,
         url=job.payload.get("url", ""),
-        pages_total=job.result.get("pages_total") if job.result else None,
-        pages_completed=job.result.get("pages_completed") if job.result else None,
-        sources_created=job.result.get("sources_created") if job.result else None,
+        pages_total=result.get("pages_total"),
+        pages_completed=result.get("pages_completed"),
+        sources_created=result.get("sources_created"),
         error=job.error,
         created_at=job.created_at.isoformat(),
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
+        # Smart crawl fields
+        smart_crawl_enabled=smart_crawl_enabled,
+        smart_crawl_phase=result.get("phase") if smart_crawl_enabled else None,
+        urls_discovered=result.get("urls_discovered") if smart_crawl_enabled else None,
+        urls_relevant=result.get("urls_relevant") if smart_crawl_enabled else None,
     )

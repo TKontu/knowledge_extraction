@@ -24,12 +24,29 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
         wait_for_completion: Annotated[
             bool, "Wait for crawl to finish (may take several minutes)"
         ] = True,
+        smart_crawl_enabled: Annotated[
+            bool,
+            "Use smart crawl (Map + Filter + Batch Scrape) for intelligent URL filtering based on project's extraction schema",
+        ] = True,
+        relevance_threshold: Annotated[
+            float | None,
+            "Embedding similarity threshold for URL filtering (0.0-1.0, default 0.4). Higher = stricter filtering.",
+        ] = None,
+        focus_terms: Annotated[
+            list[str] | None,
+            "Semantic focus terms for URL filtering (e.g., ['products', 'pricing', 'specifications'])",
+        ] = None,
         ctx: Context = None,
     ) -> dict:
         """Crawl a website to discover and fetch pages.
 
         Starts from the given URL and follows links up to max_depth levels.
         Discovered pages are stored as sources in the specified project.
+
+        By default, uses Smart Crawl which:
+        1. Maps the site to discover URLs with metadata
+        2. Filters URLs by relevance to your project's extraction schema
+        3. Only scrapes relevant pages (saves time and resources)
 
         After crawling, use extract_knowledge() to process the content.
 
@@ -53,6 +70,9 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
                 max_depth=max_depth,
                 limit=limit,
                 prefer_english_only=prefer_english_only,
+                smart_crawl_enabled=smart_crawl_enabled,
+                relevance_threshold=relevance_threshold,
+                focus_terms=focus_terms,
             )
 
             job_id = job["job_id"]
@@ -63,6 +83,7 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
                     "success": True,
                     "job_id": job_id,
                     "status": "queued",
+                    "smart_crawl_enabled": smart_crawl_enabled,
                     "message": f"Crawl job started. Use get_job_status('{job_id}') to check progress.",
                 }
 
@@ -70,7 +91,7 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
             result = await client.wait_for_job(job_id, "crawl")
 
             if result.get("status") == "completed":
-                return {
+                response = {
                     "success": True,
                     "job_id": job_id,
                     "status": "completed",
@@ -78,6 +99,13 @@ def register_acquisition_tools(mcp: FastMCP) -> None:
                     "sources_created": result.get("sources_created", 0),
                     "message": "Crawl complete. Run extract_knowledge() to process the content.",
                 }
+                # Include smart crawl stats if available
+                if result.get("smart_crawl_enabled"):
+                    response["smart_crawl"] = {
+                        "urls_discovered": result.get("urls_discovered"),
+                        "urls_relevant": result.get("urls_relevant"),
+                    }
+                return response
             elif result.get("status") == "failed":
                 return {
                     "success": False,

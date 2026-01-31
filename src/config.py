@@ -203,6 +203,26 @@ class Settings(BaseSettings):
         description="Interval in seconds between polling Firecrawl for crawl job status updates",
     )
 
+    # Smart Crawl Settings
+    smart_crawl_default_relevance_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Default embedding similarity threshold for URL relevance filtering",
+    )
+    smart_crawl_map_limit: int = Field(
+        default=5000,
+        ge=1,
+        le=50000,
+        description="Maximum URLs to return from Firecrawl Map endpoint",
+    )
+    smart_crawl_batch_max_concurrency: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Max concurrent requests for batch scraping in smart crawl",
+    )
+
     # Camoufox Timeout Strategy
     camoufox_networkidle_timeout: int = Field(
         default=5000,
@@ -392,6 +412,11 @@ class Settings(BaseSettings):
         default=86400,
         ge=0,
         description="TTL for field group embedding cache in seconds (24 hours)",
+    )
+    classification_use_default_skip_patterns: bool = Field(
+        default=False,
+        description="When True, use DEFAULT_SKIP_PATTERNS if template has no classification_config. "
+        "When False (default), smart classification uses no skip patterns (context-agnostic).",
     )
 
     @field_validator("api_key")

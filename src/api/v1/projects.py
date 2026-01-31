@@ -273,12 +273,23 @@ async def create_from_template(
             detail=f"Project with name '{request.name}' already exists",
         )
 
+    # Build extraction_schema with embedded config sections
+    # This preserves crawl_config, extraction_context, and classification_config
+    # inside extraction_schema for later retrieval without schema migration
+    extraction_schema = dict(template["extraction_schema"])
+    if template.get("crawl_config"):
+        extraction_schema["crawl_config"] = template["crawl_config"]
+    if template.get("extraction_context"):
+        extraction_schema["extraction_context"] = template["extraction_context"]
+    if template.get("classification_config"):
+        extraction_schema["classification_config"] = template["classification_config"]
+
     # Create project from template
     db_project = repo.create(
         name=request.name,
         description=request.description or template["description"],
         source_config=template["source_config"],
-        extraction_schema=template["extraction_schema"],
+        extraction_schema=extraction_schema,
         entity_types=template["entity_types"],
         prompt_templates=template.get("prompt_templates", {}),
         is_template=False,

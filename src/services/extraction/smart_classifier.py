@@ -1,9 +1,12 @@
 """Smart page classifier using embeddings and reranker."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import redis.asyncio as aioredis
 import structlog
@@ -16,6 +19,9 @@ from services.extraction.page_classifier import (
     PageClassifier,
 )
 from services.storage.embedding import EmbeddingService
+
+if TYPE_CHECKING:
+    from services.extraction.schema_adapter import ClassificationConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -47,6 +53,7 @@ class SmartClassifier:
         embedding_service: EmbeddingService,
         redis_client: aioredis.Redis,
         settings: Settings,
+        classification_config: ClassificationConfig | None = None,
     ):
         """Initialize SmartClassifier.
 
@@ -54,14 +61,51 @@ class SmartClassifier:
             embedding_service: Service for generating embeddings.
             redis_client: Async Redis client for caching.
             settings: Application settings.
+            classification_config: Optional classification configuration from template.
+                Controls skip patterns for context-agnostic extraction.
         """
         self._embedding_service = embedding_service
         self._redis = redis_client
         self._settings = settings
+        self._classification_config = classification_config
+
+        # Resolve skip patterns based on config and settings
+        skip_patterns = self._resolve_skip_patterns()
+
         # Rule-based classifier for skip pattern detection
         self._rule_classifier = PageClassifier(
             method=ClassificationMethod.RULE_BASED,
+            skip_patterns=skip_patterns,
         )
+
+    def _resolve_skip_patterns(self) -> list[str] | None:
+        """Resolve skip patterns from config and settings.
+
+        Behavior matrix:
+        - Explicit list (including []): use as-is
+        - None + smart_classification: empty list (context-agnostic)
+        - None + no smart: use defaults (backward compatible)
+
+        Returns:
+            Skip patterns list, empty list for none, or None for defaults.
+        """
+        # If config provides explicit patterns (including empty list), use them
+        if (
+            self._classification_config is not None
+            and self._classification_config.skip_patterns is not None
+        ):
+            return self._classification_config.skip_patterns
+
+        # Check global override setting
+        if getattr(self._settings, "classification_use_default_skip_patterns", False):
+            return None  # Use DEFAULT_SKIP_PATTERNS
+
+        # Smart classification default: context-agnostic (no skip patterns)
+        if self._settings.smart_classification_enabled:
+            return []  # Empty list = no skip patterns
+
+        # Fallback: use DEFAULT_SKIP_PATTERNS (backward compatible)
+        return None
 
     async def classify(
         self,

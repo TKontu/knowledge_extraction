@@ -114,11 +114,26 @@ class CrawlRequest(BaseModel):
     max_depth: int = Field(default=2, ge=1, le=10, description="Crawl depth")
     limit: int = Field(default=100, ge=1, le=1000, description="Max pages")
     include_paths: list[str] | None = Field(
-        default=None, description="URL patterns to include"
+        default=None, description="URL regex patterns to include"
     )
     exclude_paths: list[str] | None = Field(
-        default=None, description="URL patterns to exclude"
+        default=None, description="URL regex patterns to exclude"
     )
+
+    @field_validator("include_paths", "exclude_paths")
+    @classmethod
+    def validate_regex_patterns(cls, v: list[str] | None) -> list[str] | None:
+        """Validate that URL patterns are valid regex."""
+        if v is None:
+            return v
+        import re
+
+        for i, pattern in enumerate(v):
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern at index {i}: {e}") from e
+        return v
     allow_backward_links: bool = Field(
         default=True, description="Allow parent/sibling URLs"
     )
@@ -135,6 +150,32 @@ class CrawlRequest(BaseModel):
     allowed_languages: list[str] | None = Field(
         default=None,
         description="ISO 639-1 codes of allowed languages (default: ['en'])",
+    )
+
+    # Firecrawl Map parameters (Phase 1)
+    allow_subdomains: bool = Field(
+        default=False,
+        description="Include subdomains in map/crawl",
+    )
+    ignore_query_parameters: bool = Field(
+        default=True,
+        description="Deduplicate URLs ignoring query parameters",
+    )
+
+    # Smart crawl parameters
+    smart_crawl_enabled: bool = Field(
+        default=True,
+        description="Use Map + Filter + Batch Scrape flow for intelligent URL filtering",
+    )
+    relevance_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Embedding similarity threshold for URL filtering (default from template or 0.4)",
+    )
+    focus_terms: list[str] | None = Field(
+        default=None,
+        description="Semantic focus terms for URL filtering (enhances field_group context)",
     )
 
 
@@ -162,6 +203,11 @@ class CrawlStatusResponse(BaseModel):
     error: str | None = None
     created_at: str
     completed_at: str | None = None
+    # Smart crawl fields
+    smart_crawl_enabled: bool = False
+    smart_crawl_phase: str | None = None  # map, filter, scrape, completed
+    urls_discovered: int | None = None
+    urls_relevant: int | None = None
 
 
 class JobStatusResponse(BaseModel):
@@ -342,6 +388,33 @@ class ProjectCreate(BaseModel):
             self.extraction_schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
         return self
 
+    @model_validator(mode="after")
+    def validate_classification_config(self):
+        """Validate classification_config skip_patterns if present."""
+        if self.extraction_schema and isinstance(self.extraction_schema, dict):
+            classification_config = self.extraction_schema.get("classification_config")
+            if classification_config and isinstance(classification_config, dict):
+                skip_patterns = classification_config.get("skip_patterns")
+                if skip_patterns is not None:
+                    if not isinstance(skip_patterns, list):
+                        raise ValueError(
+                            "classification_config.skip_patterns must be a list or null"
+                        )
+                    import re
+
+                    for i, pattern in enumerate(skip_patterns):
+                        if not isinstance(pattern, str):
+                            raise ValueError(
+                                f"classification_config.skip_patterns[{i}] must be a string"
+                            )
+                        try:
+                            re.compile(pattern)
+                        except re.error as e:
+                            raise ValueError(
+                                f"classification_config.skip_patterns[{i}] is invalid regex: {e}"
+                            ) from e
+        return self
+
 
 class ProjectUpdate(BaseModel):
     """Request model for updating an existing project."""
@@ -355,6 +428,33 @@ class ProjectUpdate(BaseModel):
     entity_types: list | None = Field(None, description="Updated entity types")
     prompt_templates: dict | None = Field(None, description="Updated prompt templates")
     is_active: bool | None = Field(None, description="Updated active status")
+
+    @model_validator(mode="after")
+    def validate_classification_config(self):
+        """Validate classification_config skip_patterns if present."""
+        if self.extraction_schema and isinstance(self.extraction_schema, dict):
+            classification_config = self.extraction_schema.get("classification_config")
+            if classification_config and isinstance(classification_config, dict):
+                skip_patterns = classification_config.get("skip_patterns")
+                if skip_patterns is not None:
+                    if not isinstance(skip_patterns, list):
+                        raise ValueError(
+                            "classification_config.skip_patterns must be a list or null"
+                        )
+                    import re
+
+                    for i, pattern in enumerate(skip_patterns):
+                        if not isinstance(pattern, str):
+                            raise ValueError(
+                                f"classification_config.skip_patterns[{i}] must be a string"
+                            )
+                        try:
+                            re.compile(pattern)
+                        except re.error as e:
+                            raise ValueError(
+                                f"classification_config.skip_patterns[{i}] is invalid regex: {e}"
+                            ) from e
+        return self
 
 
 class ProjectResponse(BaseModel):

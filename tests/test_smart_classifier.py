@@ -2,14 +2,18 @@
 
 import json
 import math
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from config import Settings
 from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.page_classifier import ClassificationMethod
-from services.extraction.smart_classifier import SmartClassifier, SmartClassificationResult
+from services.extraction.schema_adapter import ClassificationConfig
+from services.extraction.smart_classifier import (
+    SmartClassificationResult,
+    SmartClassifier,
+)
 
 
 def create_embedding_with_similarity(target_similarity: float, dim: int = 1024) -> list[float]:
@@ -61,6 +65,8 @@ def settings():
     settings.classification_embedding_low_threshold = 0.4
     settings.classification_reranker_threshold = 0.5
     settings.classification_cache_ttl = 86400
+    # Use default skip patterns for backward compatibility in tests
+    settings.classification_use_default_skip_patterns = True
     return settings
 
 
@@ -710,3 +716,322 @@ class TestPageTypeInference:
         """Empty groups should return general type."""
         page_type = smart_classifier._infer_page_type([])
         assert page_type == "general"
+
+
+class TestClassificationConfigIntegration:
+    """Tests for ClassificationConfig integration with SmartClassifier."""
+
+    async def test_custom_skip_patterns_override_defaults(
+        self, embedding_service, redis_client, field_groups
+    ):
+        """Custom skip patterns should override default patterns."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+
+        # Custom config that only skips /custom-skip/
+        classification_config = ClassificationConfig(skip_patterns=[r"/custom-skip/"])
+
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Custom pattern should match
+        result = await classifier.classify(
+            url="https://example.com/custom-skip/page",
+            title="Custom Page",
+            content="Content",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is True
+
+        # Default patterns (careers) should NOT match
+        result = await classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+            content="Join our team",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is False
+
+    async def test_empty_skip_patterns_disables_skipping(
+        self, embedding_service, redis_client, field_groups
+    ):
+        """Empty skip patterns list disables all URL-based skipping."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_embedding_high_threshold = 0.75
+        settings.classification_embedding_low_threshold = 0.4
+        settings.classification_cache_ttl = 86400
+
+        # Explicitly empty patterns = no skipping
+        classification_config = ClassificationConfig(skip_patterns=[])
+
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Mock embeddings for career page (low similarity to proceed)
+        page_embedding = reference_embedding()
+        group_embeddings = [
+            create_embedding_with_similarity(0.2),
+            create_embedding_with_similarity(0.15),
+            create_embedding_with_similarity(0.1),
+        ]
+
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = group_embeddings
+
+        # Career pages should NOT be skipped with empty patterns
+        result = await classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+            content="Join our team",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is False
+
+    async def test_null_patterns_with_smart_classification_is_context_agnostic(
+        self, embedding_service, redis_client, field_groups
+    ):
+        """Null patterns with smart classification enabled uses no skip patterns."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = False
+        settings.classification_embedding_high_threshold = 0.75
+        settings.classification_embedding_low_threshold = 0.4
+        settings.classification_cache_ttl = 86400
+
+        # None patterns = context-agnostic (no skipping when smart enabled)
+        classification_config = ClassificationConfig(skip_patterns=None)
+
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Mock embeddings
+        page_embedding = reference_embedding()
+        group_embeddings = [
+            create_embedding_with_similarity(0.2),
+            create_embedding_with_similarity(0.15),
+            create_embedding_with_similarity(0.1),
+        ]
+
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = group_embeddings
+
+        # Career pages should NOT be skipped (context-agnostic mode)
+        result = await classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+            content="Join our team",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is False
+
+    async def test_null_patterns_without_smart_uses_defaults(
+        self, embedding_service, redis_client, field_groups
+    ):
+        """Null patterns without smart classification uses default patterns."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = False
+
+        # None patterns = use defaults when smart classification disabled
+        classification_config = ClassificationConfig(skip_patterns=None)
+
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Career pages should be skipped (default behavior)
+        result = await classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+            content="Join our team",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is True
+
+    async def test_global_override_forces_default_patterns(
+        self, embedding_service, redis_client, field_groups
+    ):
+        """classification_use_default_skip_patterns setting forces defaults."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = True  # Force defaults
+
+        # None patterns with override = use defaults
+        classification_config = ClassificationConfig(skip_patterns=None)
+
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Career pages should be skipped (global override forces defaults)
+        result = await classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+            content="Join our team",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is True
+
+    async def test_explicit_patterns_override_global_setting(
+        self, embedding_service, redis_client, field_groups
+    ):
+        """Explicit patterns in config override global setting."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = True  # Would force defaults
+        settings.classification_embedding_high_threshold = 0.75
+        settings.classification_embedding_low_threshold = 0.4
+        settings.classification_cache_ttl = 86400
+
+        # Explicit empty patterns should override global setting
+        classification_config = ClassificationConfig(skip_patterns=[])
+
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Mock embeddings
+        page_embedding = reference_embedding()
+        group_embeddings = [
+            create_embedding_with_similarity(0.2),
+            create_embedding_with_similarity(0.15),
+            create_embedding_with_similarity(0.1),
+        ]
+
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = group_embeddings
+
+        # Career pages should NOT be skipped (explicit empty overrides global)
+        result = await classifier.classify(
+            url="https://example.com/careers/engineer",
+            title="Careers",
+            content="Join our team",
+            field_groups=field_groups,
+        )
+        assert result.skip_extraction is False
+
+
+class TestResolveSkipPatterns:
+    """Tests for _resolve_skip_patterns method."""
+
+    def test_explicit_empty_list(self, embedding_service, redis_client):
+        """Explicit empty list returns empty list."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = False
+
+        classification_config = ClassificationConfig(skip_patterns=[])
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        assert classifier._rule_classifier._skip_patterns == []
+
+    def test_explicit_custom_patterns(self, embedding_service, redis_client):
+        """Explicit custom patterns are used."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = False
+
+        custom = [r"/my-pattern/"]
+        classification_config = ClassificationConfig(skip_patterns=custom)
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        assert classifier._rule_classifier._skip_patterns == custom
+
+    def test_none_with_smart_enabled_uses_empty(self, embedding_service, redis_client):
+        """None patterns with smart classification uses empty list."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = False
+
+        classification_config = ClassificationConfig(skip_patterns=None)
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        assert classifier._rule_classifier._skip_patterns == []
+
+    def test_none_with_smart_disabled_uses_defaults(self, embedding_service, redis_client):
+        """None patterns without smart classification uses defaults."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = False
+
+        classification_config = ClassificationConfig(skip_patterns=None)
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        # Should use DEFAULT_SKIP_PATTERNS (passed as None to PageClassifier)
+        from services.extraction.page_classifier import PageClassifier
+
+        assert classifier._rule_classifier._skip_patterns == PageClassifier.DEFAULT_SKIP_PATTERNS
+
+    def test_no_config_with_smart_enabled_uses_empty(self, embedding_service, redis_client):
+        """No config with smart classification uses empty list (context-agnostic)."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = False
+
+        # No classification_config provided
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=None,
+        )
+
+        assert classifier._rule_classifier._skip_patterns == []
+
+    def test_global_override_forces_defaults(self, embedding_service, redis_client):
+        """Global override setting forces default patterns."""
+        settings = MagicMock(spec=Settings)
+        settings.smart_classification_enabled = True
+        settings.classification_use_default_skip_patterns = True  # Override
+
+        classification_config = ClassificationConfig(skip_patterns=None)
+        classifier = SmartClassifier(
+            embedding_service=embedding_service,
+            redis_client=redis_client,
+            settings=settings,
+            classification_config=classification_config,
+        )
+
+        from services.extraction.page_classifier import PageClassifier
+
+        assert classifier._rule_classifier._skip_patterns == PageClassifier.DEFAULT_SKIP_PATTERNS
