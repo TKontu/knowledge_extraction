@@ -126,6 +126,16 @@ class Settings(BaseSettings):
         default=80,
         description="Max concurrent chunk extractions for optimal vLLM KV cache utilization",
     )
+    extraction_max_concurrent_sources: int = Field(
+        default=20,
+        description="Max concurrent source extractions in pipeline",
+    )
+
+    # Embedding Concurrency
+    embedding_max_concurrent: int = Field(
+        default=50,
+        description="Max concurrent embedding/rerank requests to embedding server",
+    )
 
     # LLM Worker Queue Settings
     llm_worker_concurrency: int = Field(

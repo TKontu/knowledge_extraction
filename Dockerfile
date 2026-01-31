@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 # Cache buster - change this to force rebuild
-ARG CACHE_BUST=2026-01-31-071626
+ARG CACHE_BUST=2026-01-31-081013
 
 # Version information
 ARG APP_VERSION=v1.3.1

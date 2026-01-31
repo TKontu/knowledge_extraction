@@ -8,6 +8,7 @@ from uuid import UUID
 
 import structlog
 
+from config import settings as app_settings
 from models import ExtractionProfile
 from services.alerting import get_alert_service
 
@@ -676,7 +677,7 @@ class SchemaExtractionPipeline:
 
         # Process sources in parallel with cancellation support
         # Use chunked processing to allow cancellation checks between batches
-        semaphore = asyncio.Semaphore(10)
+        semaphore = asyncio.Semaphore(app_settings.extraction_max_concurrent_sources)
         chunk_size = 20  # Check cancellation every 20 sources
 
         async def extract_with_limit(source) -> tuple[int, bool]:

@@ -1,5 +1,7 @@
 """Tests for EmbeddingService."""
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from config import Settings
@@ -12,6 +14,26 @@ def embedding_service():
 
     settings = Settings()
     return EmbeddingService(settings)
+
+
+@pytest.fixture
+def reset_embedding_service_state():
+    """Reset EmbeddingService class-level state before and after test."""
+    from services.storage.embedding import EmbeddingService
+
+    # Store original state
+    original_semaphore = EmbeddingService._semaphore
+    original_max_concurrent = EmbeddingService._max_concurrent
+
+    # Reset for test
+    EmbeddingService._semaphore = None
+    EmbeddingService._max_concurrent = 50
+
+    yield
+
+    # Restore original state
+    EmbeddingService._semaphore = original_semaphore
+    EmbeddingService._max_concurrent = original_max_concurrent
 
 
 class TestEmbeddingServiceInit:
@@ -212,3 +234,100 @@ class TestEmbeddingServiceRerank:
             assert len(item) == 2
             assert isinstance(item[0], int)
             assert isinstance(item[1], float)
+
+
+class TestEmbeddingServiceConcurrency:
+    """Test EmbeddingService concurrency control."""
+
+    def test_configure_concurrency_sets_semaphore(self, reset_embedding_service_state):
+        """Should configure semaphore with specified concurrency."""
+        from services.storage.embedding import EmbeddingService
+
+        EmbeddingService.configure_concurrency(25)
+
+        assert EmbeddingService._max_concurrent == 25
+        assert EmbeddingService._semaphore is not None
+        # Semaphore internal value equals max_concurrent when no acquisitions
+        assert EmbeddingService._semaphore._value == 25
+
+    def test_get_semaphore_creates_default_if_none(self, reset_embedding_service_state):
+        """Should create semaphore with default value if none exists."""
+        from services.storage.embedding import EmbeddingService
+
+        # Ensure semaphore is None
+        assert EmbeddingService._semaphore is None
+
+        semaphore = EmbeddingService._get_semaphore()
+
+        assert semaphore is not None
+        assert EmbeddingService._semaphore is semaphore
+        assert semaphore._value == EmbeddingService._max_concurrent
+
+    def test_init_configures_from_settings(self, reset_embedding_service_state):
+        """Should configure concurrency from settings on first instance."""
+        from services.storage.embedding import EmbeddingService
+
+        settings = Settings()
+        expected_concurrent = settings.embedding_max_concurrent
+
+        # First instance should configure
+        service = EmbeddingService(settings)
+
+        assert EmbeddingService._max_concurrent == expected_concurrent
+        assert EmbeddingService._semaphore._value == expected_concurrent
+
+    def test_second_instance_reuses_semaphore(self, reset_embedding_service_state):
+        """Should reuse existing semaphore for subsequent instances."""
+        from services.storage.embedding import EmbeddingService
+
+        settings = Settings()
+
+        service1 = EmbeddingService(settings)
+        semaphore_after_first = EmbeddingService._semaphore
+
+        service2 = EmbeddingService(settings)
+        semaphore_after_second = EmbeddingService._semaphore
+
+        # Same semaphore instance
+        assert semaphore_after_first is semaphore_after_second
+
+    async def test_semaphore_limits_concurrent_requests(self, reset_embedding_service_state):
+        """Should limit concurrent embed requests to configured value."""
+        from services.storage.embedding import EmbeddingService
+
+        # Configure with low concurrency for testing
+        EmbeddingService.configure_concurrency(2)
+
+        settings = Settings()
+        service = EmbeddingService(settings)
+
+        # Track concurrent executions
+        max_concurrent_observed = 0
+        current_concurrent = 0
+        lock = asyncio.Lock()
+
+        async def mock_embed(*args, **kwargs):
+            nonlocal max_concurrent_observed, current_concurrent
+            async with lock:
+                current_concurrent += 1
+                if current_concurrent > max_concurrent_observed:
+                    max_concurrent_observed = current_concurrent
+
+            # Simulate API latency
+            await asyncio.sleep(0.05)
+
+            async with lock:
+                current_concurrent -= 1
+
+            mock_response = MagicMock()
+            mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
+            return mock_response
+
+        service.client.embeddings.create = mock_embed
+
+        # Launch more requests than semaphore allows
+        tasks = [service.embed(f"text {i}") for i in range(5)]
+        await asyncio.gather(*tasks)
+
+        # Should never exceed configured limit
+        assert max_concurrent_observed <= 2
