@@ -36,8 +36,8 @@ services:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3002/health || exit 1"]
       interval: 10s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 60s
     restart: unless-stopped
     networks:
       - scristill
@@ -161,11 +161,12 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # Check that AMQP port is actually accepting connections
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 45s
     restart: unless-stopped
     networks:
       - scristill
