@@ -557,14 +557,20 @@ class CrawlWorker:
                 payload["project_id"]
             )
 
+            # Get limit for capping URLs
+            limit = payload.get("limit", 100)
+
             if not field_groups:
                 logger.warning(
                     "smart_crawl_filter_no_field_groups",
                     job_id=str(job.id),
                     project_id=payload["project_id"],
                 )
-                # Without field_groups, can't filter - pass all URLs through
-                filtered_urls = [u.get("url") for u in mapped_urls if u.get("url")]
+                # Without field_groups, can't filter by relevance - pass URLs through but apply limit
+                all_urls = [u.get("url") for u in mapped_urls if u.get("url")]
+                urls_before_limit = len(all_urls)
+                filtered_urls = all_urls[:limit]
+                threshold_used = None
             else:
                 # Initialize URL filter if needed
                 if self._url_filter is None:
@@ -620,13 +626,21 @@ class CrawlWorker:
 
                 filtered_urls = [u.url for u in filter_result.relevant_urls]
 
+                # Apply limit to cap number of URLs for scraping (URLs already sorted by relevance)
+                urls_before_limit = len(filtered_urls)
+                threshold_used = filter_result.threshold_used
+                if len(filtered_urls) > limit:
+                    filtered_urls = filtered_urls[:limit]
+
                 logger.info(
                     "smart_crawl_filter_completed",
                     job_id=str(job.id),
                     urls_before=len(mapped_urls),
                     urls_after_patterns=len(pre_filtered),
-                    urls_after_relevance=len(filtered_urls),
-                    threshold_used=filter_result.threshold_used,
+                    urls_after_relevance=urls_before_limit,
+                    urls_after_limit=len(filtered_urls),
+                    limit_applied=limit,
+                    threshold_used=threshold_used,
                 )
 
             # Refresh job to reload attributes after async calls (commit expires objects)
@@ -642,7 +656,9 @@ class CrawlWorker:
                 "phase": "filter",
                 "status": "completed",
                 "urls_discovered": len(mapped_urls),
-                "urls_relevant": len(filtered_urls),
+                "urls_relevant": urls_before_limit,
+                "urls_to_scrape": len(filtered_urls),
+                "limit_applied": limit,
             }
             self.db.commit()
 
