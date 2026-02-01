@@ -75,6 +75,12 @@ class CamoufoxSettings(BaseSettings):
         description="Run browser in headless mode",
     )
 
+    # Browser recycling
+    recycle_after_requests: int = Field(
+        default=100,
+        description="Recycle browser after this many requests (0 to disable)",
+    )
+
     # Logging
     log_level: str = Field(
         default="INFO",

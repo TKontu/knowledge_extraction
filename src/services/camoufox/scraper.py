@@ -141,6 +141,7 @@ class CamoufoxScraper:
         self._lock = asyncio.Lock()
         self._browser_index = 0  # For round-robin selection
         self._restarting_browsers: set[int] = set()  # Track browsers being restarted
+        self._browser_request_counts: list[int] = []  # Per-browser request counters
 
     @property
     def active_pages(self) -> int:
@@ -193,6 +194,22 @@ class CamoufoxScraper:
 
         # All browsers are dead
         raise RuntimeError("All browsers in pool are disconnected")
+
+    def _should_recycle_browser(self, index: int) -> bool:
+        """Check if browser should be recycled based on request count.
+
+        Args:
+            index: Browser index to check.
+
+        Returns:
+            True if browser should be recycled, False otherwise.
+        """
+        threshold = self.config.recycle_after_requests
+        if threshold <= 0:  # Disabled
+            return False
+        if index < 0 or index >= len(self._browser_request_counts):
+            return False
+        return self._browser_request_counts[index] >= threshold
 
     def _schedule_browser_restart(self, index: int) -> None:
         """Schedule a background restart for a dead browser.
@@ -250,6 +267,9 @@ class CamoufoxScraper:
         if not self._browsers:
             raise RuntimeError("Failed to start any Camoufox browsers")
 
+        # Initialize request counters for each browser
+        self._browser_request_counts = [0] * len(self._browsers)
+
         logger.info(
             "camoufox_browser_pool_started",
             started_count=len(self._browsers),
@@ -290,6 +310,7 @@ class CamoufoxScraper:
         self._browsers = []
         self._camoufox_instances = []
         self._browser_index = 0
+        self._browser_request_counts = []
 
         logger.info("camoufox_browser_pool_stopped")
 
@@ -343,10 +364,17 @@ class CamoufoxScraper:
                 browser = await camoufox.start()
                 self._camoufox_instances[index] = camoufox
                 self._browsers[index] = browser
+
+                # Reset request counter on successful restart
+                if index < len(self._browser_request_counts):
+                    self._browser_request_counts[index] = 0
+
                 logger.info("browser_restarted", browser_index=index)
                 return browser
             except Exception as e:
-                logger.error("browser_restart_failed", browser_index=index, error=str(e))
+                logger.error(
+                    "browser_restart_failed", browser_index=index, error=str(e)
+                )
                 return None
         finally:
             self._restarting_browsers.discard(index)
@@ -409,9 +437,19 @@ class CamoufoxScraper:
                 )
             ):
                 # Skip common non-AJAX resources
-                if not any(url.endswith(ext) for ext in (
-                    ".css", ".js", ".png", ".jpg", ".gif", ".svg", ".woff", ".woff2"
-                )):
+                if not any(
+                    url.endswith(ext)
+                    for ext in (
+                        ".css",
+                        ".js",
+                        ".png",
+                        ".jpg",
+                        ".gif",
+                        ".svg",
+                        ".woff",
+                        ".woff2",
+                    )
+                ):
                     discovered_urls.add(url)
 
         page.on("request", capture_request)
@@ -464,12 +502,15 @@ class CamoufoxScraper:
                     )
                     elem_id = await element.evaluate("el => el.id || ''")
                     elem_class = await element.evaluate("el => el.className || ''")
-                    href = await element.evaluate(
-                        "el => el.getAttribute('href') || ''"
-                    )
+                    href = await element.evaluate("el => el.getAttribute('href') || ''")
 
                     # Skip navigation links that would leave the page
-                    if href and href not in ("#", "javascript:void(0)", "javascript:;", ""):
+                    if href and href not in (
+                        "#",
+                        "javascript:void(0)",
+                        "javascript:;",
+                        "",
+                    ):
                         # Skip absolute URLs and paths that would navigate away
                         if (
                             href.startswith("/")
@@ -519,9 +560,7 @@ class CamoufoxScraper:
 
         return list(discovered_urls)
 
-    async def _wait_for_content_ready(
-        self, page: Page, timeout_ms: int, log
-    ) -> None:
+    async def _wait_for_content_ready(self, page: Page, timeout_ms: int, log) -> None:
         """Wait for content to be ready using a tiered approach.
 
         Strategy:
@@ -673,6 +712,19 @@ class CamoufoxScraper:
             async with self._acquire_page():
                 result = await self._do_scrape(request, browser)
 
+                # Increment request count (even on failure - browser still did work)
+                if browser_idx < len(self._browser_request_counts):
+                    self._browser_request_counts[browser_idx] += 1
+
+                    # Check if recycling needed (proactive memory management)
+                    if self._should_recycle_browser(browser_idx):
+                        logger.info(
+                            "scheduling_browser_recycle",
+                            browser_index=browser_idx,
+                            request_count=self._browser_request_counts[browser_idx],
+                        )
+                        self._schedule_browser_restart(browser_idx)
+
                 # If scrape failed due to browser death, try to restart it
                 # for future requests (don't retry this request to avoid delays)
                 if (
@@ -685,8 +737,7 @@ class CamoufoxScraper:
                         url=request.url,
                     )
                     # Schedule restart in background (don't block this request)
-                    task = asyncio.create_task(self._restart_browser(browser_idx))
-                    task.add_done_callback(self._handle_restart_task_result)
+                    self._schedule_browser_restart(browser_idx)
 
                 return result
 
@@ -738,7 +789,8 @@ class CamoufoxScraper:
                 # These would override the browser fingerprint and break anti-bot evasion
                 protected_headers = {"user-agent", "accept-language", "accept-encoding"}
                 filtered_headers = {
-                    k: v for k, v in request.headers.items()
+                    k: v
+                    for k, v in request.headers.items()
                     if k.lower() not in protected_headers
                 }
                 if filtered_headers != request.headers:
