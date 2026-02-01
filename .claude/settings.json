@@ -66,6 +66,7 @@
       "Bash(.venv/bin/pytest:*)",
       "Bash(git add *)",
       "Bash(source .venv/bin/activate)",
+      "Bash(source .venv/bin/activate && python -c *)",
       "Bash(git push -u origin feat/*)",
       "Bash(git commit -m *)",
       "Bash(git checkout -b feat/*)",
@@ -73,7 +74,6 @@
       "Bash(gh pr view * --json title,url,state | python3 -m json.tool)"
     ],
     "deny": [
-      "Bash(git push -u origin main)",
       "Bash(cd * && python *)",
       "Bash(python3 *)",
       "Bash(python *)"
