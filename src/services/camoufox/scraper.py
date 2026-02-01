@@ -752,11 +752,12 @@ class CamoufoxScraper:
             # Always apply headers (not conditional)
             await page.set_extra_http_headers(headers_to_apply)
 
-            # Navigate to URL (wait_until="load" matches Firecrawl)
+            # Navigate to URL (domcontentloaded is faster and more reliable)
+            # "load" waits for all resources which can timeout on slow images/ads
             response: Response | None = await page.goto(
                 request.url,
                 timeout=request.timeout,
-                wait_until="load",
+                wait_until="domcontentloaded",
             )
 
             # Use smart waiting strategy (DOM + networkidle + content stability)
