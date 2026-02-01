@@ -1,82 +1,79 @@
-# Handoff: Knowledge Extraction Orchestrator
+# Handoff: Batch Crawl Running
 
 Updated: 2026-02-01
 
-## Current State
+## Completed This Session
 
-The system is **production-ready**. All major feature work is complete.
+- **Cleaned input file** - Fixed 278 URLs in `input/companies.txt`:
+  - Fixed protocol typos (`nttps://` → `https://`)
+  - Fixed domain typos (`wwww.` → `www.`)
+  - Removed duplicates and invalid URLs
+  - Organized by region (Global/NA, Latin America, Australia/NZ)
 
-### Recently Completed
+- **Updated batch crawl script** (`scripts/crawl_companies.py`):
+  - Changed default depth from 3 to **5**
+  - Disabled `prefer_english_only` (was filtering out Spanish/Portuguese content)
+  - Made `focus_terms` optional (was too strict for filtering)
+  - Added `--english-only` flag for opt-in language filtering
+  - Uses `drivetrain_company_analysis` template
 
-| Feature | Status | Date |
-|---------|--------|------|
-| Camoufox Browser Recovery | Complete | 2026-02-01 |
-| Page Classification System | Complete | 2026-01-30 |
-| Smart Classifier (LLM-assisted) | Complete | 2026-01-30 |
-| Crawl Pipeline Fixes | Complete | 2026-01-29 |
-| Embedding Recovery Service | Complete | 2026-01-29 |
-| Job Duration Metrics | Complete | 2026-01-28 |
+- **Created project**: `Industrial Drivetrain Companies 2026`
+  - Project ID: `b0cd5830-92b0-4e5e-be07-1e16598e6b78`
+  - Template: `drivetrain_company_analysis`
 
-### Camoufox Browser Recovery (Latest)
+- **Started batch crawl** - 278 companies queued and processing
 
-**Problem solved**: When `page.goto()` timed out (180s), the browser died and all queued requests failed instantly with "Browser.new_context: Target page, context or browser has been closed".
+## In Progress
 
-**Solution** (commit `45dc906`):
-- `is_connected()` health check skips dead browsers in round-robin selection
-- Background restarts scheduled for dead browsers found during selection
-- `_restart_browser()` with 30s timeout on cleanup prevents hanging
-- All-disconnected case synchronously restarts browser 0
+**Batch crawl running** - Jobs are in smart crawl scrape phase:
+- All services healthy (pipeline, camoufox, firecrawl, qdrant, postgres)
+- Scrapes completing with HTTP 200
+- Multi-language content being captured (Spanish, Portuguese, Italian, French)
+- Some expected failures: dead domains, RSS feed URLs
 
-**Key files**:
-- `src/services/camoufox/scraper.py` - Browser pool with recovery logic
-- `docs/reviews/camoufox_browser_recovery_review.md` - Detailed review & verification
+## Known Failures (Expected)
 
-**Tests**: 17/17 camoufox tests passing
-
-### Feature Flags
-
-Classification is controlled by three feature flags (all default `False` for safe rollout):
-
-| Flag | Purpose |
-|------|---------|
-| `classification_enabled` | Enable page classification |
-| `classification_skip_enabled` | Enable skipping irrelevant pages |
-| `smart_classification_enabled` | Use LLM-assisted classification |
-
-## Remaining TODO Files
-
-| File | Priority | Summary |
-|------|----------|---------|
-| `docs/TODO_production_readiness.md` | HIGH | Schema update safety, production checklist |
-| `docs/TODO_architecture_database_consistency.md` | MEDIUM | Async/sync mismatch, transaction boundaries |
-| `docs/TODO_high_concurrency_tuning.md` | LOW | Configuration for high-throughput scenarios |
-
-## Key Files
-
-| Component | Path |
-|-----------|------|
-| Camoufox Scraper | `src/services/camoufox/scraper.py` |
-| Page Classifier | `src/services/extraction/page_classifier.py` |
-| Smart Classifier | `src/services/extraction/smart_classifier.py` |
-| Schema Orchestrator | `src/services/extraction/schema_orchestrator.py` |
-| Extraction Pipeline | `src/services/extraction/pipeline.py` |
-| Config | `src/config.py` |
-
-## Test Status
-
-Core tests passing:
-- `test_camoufox_browser_pool.py`: 12 passed
-- `test_camoufox_headers.py`: 5 passed
-- `test_page_classifier.py`: 35 passed
-- `test_smart_classifier.py`: 32 passed
-- `test_schema_orchestrator.py`: 3 passed
-- `test_pipeline_context.py`: 3 passed
-
-Note: Some test files require optional dependencies (aiohttp, playwright) that may not be installed.
+| URL | Error | Reason |
+|-----|-------|--------|
+| `iabactransmisiones.com.ar` | NS_ERROR_UNKNOWN_HOST | Domain dead/unresolvable |
+| `*/feed` URLs | Download is starting | RSS feeds, not HTML pages |
 
 ## Next Steps
 
-1. **Deploy updated camoufox service** - Browser recovery is ready for production
-2. **Monitor camoufox logs** - Look for `browser_disconnected_skipping` and `browser_restarted` events
-3. **Enable classification in production** - Set `classification_enabled=True` to start filtering field groups
-4. **Address remaining TODOs** - Schema update safety is the highest priority remaining item
+- [ ] Monitor crawl completion via Portainer logs or API
+- [ ] Run extraction after crawls complete: `POST /api/v1/projects/{project_id}/extract`
+- [ ] Review extracted data quality
+- [ ] Address remaining TODO files (production readiness, database consistency)
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `input/companies.txt` | Cleaned URL list (278 companies) |
+| `scripts/crawl_companies.py` | Batch crawl script with new defaults |
+| `output/crawl_batch_state.json` | Resume state for batch script |
+
+## Script Usage
+
+```bash
+# Check crawl status
+curl "http://192.168.0.136:8742/api/v1/jobs?type=crawl&status=running" -H "X-API-Key: thisismyapikey3215215632"
+
+# Resume if interrupted
+source .venv/bin/activate && python scripts/crawl_companies.py --resume
+
+# Monitor logs via Portainer MCP
+mcp__portainer__dockerProxy (container logs)
+```
+
+## Configuration Changes
+
+| Parameter | Old | New | Reason |
+|-----------|-----|-----|--------|
+| `max_depth` | 3 | 5 | Deeper crawl for more content |
+| `prefer_english_only` | True | False | LLM can translate during extraction |
+| `focus_terms` | hardcoded | None | Optional, was too strict |
+
+## Estimated Completion
+
+Smart crawl batch: **2-4 hours** for 278 companies
