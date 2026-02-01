@@ -228,24 +228,31 @@ class TestBrowserPoolShutdown:
 
     @pytest.mark.asyncio
     async def test_stop_closes_all_browsers(self):
-        """Test that stop() closes all browser instances."""
+        """Test that stop() cleans up all camoufox instances."""
         from src.services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3)
         scraper = CamoufoxScraper(config=config)
 
-        # Setup mock browsers
+        # Setup mock browsers and camoufox instances
+        # stop() calls camoufox.__aexit__(), not browser.close() directly
         mock_browsers = [AsyncMock() for _ in range(3)]
+        mock_camoufox_instances = []
+        for _ in range(3):
+            mock_camoufox = MagicMock()
+            mock_camoufox.__aexit__ = AsyncMock()
+            mock_camoufox_instances.append(mock_camoufox)
+
         scraper._browsers = mock_browsers
-        scraper._camoufox_instances = [MagicMock() for _ in range(3)]
+        scraper._camoufox_instances = mock_camoufox_instances
         scraper._active_pages = 0
 
         await scraper.stop()
 
-        # All browsers should be closed
-        for i, browser in enumerate(mock_browsers):
-            browser.close.assert_called_once(), \
-                f"Browser {i} should have been closed"
+        # All camoufox instances should be cleaned up via __aexit__
+        for i, camoufox in enumerate(mock_camoufox_instances):
+            camoufox.__aexit__.assert_called_once(), \
+                f"Camoufox {i} should have been cleaned up via __aexit__"
 
     @pytest.mark.asyncio
     async def test_stop_waits_for_active_pages(self):

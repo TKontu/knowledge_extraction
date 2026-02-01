@@ -140,6 +140,7 @@ class CamoufoxScraper:
         self._active_pages = 0
         self._lock = asyncio.Lock()
         self._browser_index = 0  # For round-robin selection
+        self._restarting_browsers: set[int] = set()  # Track browsers being restarted
 
     @property
     def active_pages(self) -> int:
@@ -151,21 +152,63 @@ class CamoufoxScraper:
         """Get maximum concurrent pages allowed."""
         return self.config.max_concurrent_pages
 
-    def _get_next_browser(self) -> Browser:
-        """Get the next browser in round-robin order.
+    def _get_next_browser(self) -> tuple[Browser, int]:
+        """Get the next connected browser in round-robin order.
+
+        Checks browser connectivity and skips dead browsers to prevent
+        cascade failures when a browser dies from a timeout. Schedules
+        background restarts for any dead browsers found.
 
         Returns:
-            Browser instance from the pool.
+            Tuple of (Browser instance, browser index).
 
         Raises:
-            RuntimeError: If no browsers are available.
+            RuntimeError: If no browsers are available or all are disconnected.
         """
         if not self._browsers:
             raise RuntimeError("No browsers available in pool")
 
-        browser = self._browsers[self._browser_index]
-        self._browser_index = (self._browser_index + 1) % len(self._browsers)
-        return browser
+        # Track dead browsers to restart after finding a live one
+        dead_browser_indices: list[int] = []
+
+        # Try each browser once, starting from current index
+        start_index = self._browser_index
+        for _ in range(len(self._browsers)):
+            browser = self._browsers[self._browser_index]
+            current_index = self._browser_index
+            self._browser_index = (self._browser_index + 1) % len(self._browsers)
+
+            if browser.is_connected():
+                # Schedule background restarts for any dead browsers we found
+                for dead_idx in dead_browser_indices:
+                    self._schedule_browser_restart(dead_idx)
+                return browser, current_index
+            else:
+                logger.warning(
+                    "browser_disconnected_skipping",
+                    browser_index=current_index,
+                    checked_from=start_index,
+                )
+                dead_browser_indices.append(current_index)
+
+        # All browsers are dead
+        raise RuntimeError("All browsers in pool are disconnected")
+
+    def _schedule_browser_restart(self, index: int) -> None:
+        """Schedule a background restart for a dead browser.
+
+        Only schedules if restart is not already in progress for this index.
+
+        Args:
+            index: Index of the browser to restart.
+        """
+        if index in self._restarting_browsers:
+            logger.debug("browser_restart_already_scheduled", browser_index=index)
+            return
+
+        logger.info("scheduling_browser_restart", browser_index=index)
+        task = asyncio.create_task(self._restart_browser(index))
+        task.add_done_callback(self._handle_restart_task_result)
 
     async def start(self) -> None:
         """Start the Camoufox browser pool."""
@@ -249,6 +292,79 @@ class CamoufoxScraper:
         self._browser_index = 0
 
         logger.info("camoufox_browser_pool_stopped")
+
+    async def _restart_browser(self, index: int) -> Browser | None:
+        """Restart a dead browser at the given index.
+
+        Uses a tracking set to prevent concurrent restart attempts on the
+        same browser index.
+
+        Args:
+            index: Index of the browser to restart in the pool.
+
+        Returns:
+            New Browser instance, or None if restart failed or already in progress.
+        """
+        # Check if already restarting (prevent concurrent restarts)
+        if index in self._restarting_browsers:
+            logger.debug("browser_restart_already_in_progress", browser_index=index)
+            return None
+
+        self._restarting_browsers.add(index)
+        try:
+            logger.info("restarting_browser", browser_index=index)
+
+            # Clean up old camoufox instance (with timeout to prevent hanging)
+            old_camoufox = self._camoufox_instances[index]
+            try:
+                await asyncio.wait_for(
+                    old_camoufox.__aexit__(None, None, None),
+                    timeout=30.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "old_browser_cleanup_timeout", browser_index=index, timeout=30.0
+                )
+            except Exception as e:
+                logger.debug(
+                    "old_browser_cleanup_error", browser_index=index, error=str(e)
+                )
+
+            # Build launch options (same as start())
+            launch_options: dict[str, Any] = {
+                "headless": self.config.headless,
+            }
+            if self.config.proxy:
+                launch_options["proxy"] = {"server": self.config.proxy}
+
+            # Create new browser
+            try:
+                camoufox = AsyncCamoufox(geoip=True, **launch_options)
+                browser = await camoufox.start()
+                self._camoufox_instances[index] = camoufox
+                self._browsers[index] = browser
+                logger.info("browser_restarted", browser_index=index)
+                return browser
+            except Exception as e:
+                logger.error("browser_restart_failed", browser_index=index, error=str(e))
+                return None
+        finally:
+            self._restarting_browsers.discard(index)
+
+    def _handle_restart_task_result(self, task: asyncio.Task) -> None:
+        """Handle completion of background browser restart task.
+
+        Logs any unexpected exceptions that weren't caught inside _restart_browser.
+        """
+        try:
+            # This will re-raise any exception from the task
+            task.result()
+        except asyncio.CancelledError:
+            logger.debug("browser_restart_task_cancelled")
+        except Exception as e:
+            # This shouldn't happen since _restart_browser catches exceptions,
+            # but log it just in case
+            logger.error("browser_restart_task_unexpected_error", error=str(e))
 
     @asynccontextmanager
     async def _acquire_page(self):
@@ -529,7 +645,8 @@ class CamoufoxScraper:
         """Scrape a URL and return the rendered HTML content.
 
         Creates a new browser context per request on a browser from the pool,
-        using round-robin selection for even distribution.
+        using round-robin selection for even distribution. Automatically skips
+        dead browsers and attempts to restart them if all are disconnected.
 
         Args:
             request: Scrape request with URL and options.
@@ -542,10 +659,36 @@ class CamoufoxScraper:
             return {"error": "Browser pool not started"}
 
         async with self._semaphore:
-            # Select browser before acquiring page slot (round-robin)
-            browser = self._get_next_browser()
+            # Select a connected browser (round-robin with health check)
+            try:
+                browser, browser_idx = self._get_next_browser()
+            except RuntimeError as e:
+                # All browsers are disconnected - try to restart one
+                logger.warning("all_browsers_disconnected_attempting_restart")
+                browser = await self._restart_browser(0)
+                if browser is None:
+                    return {"error": str(e)}
+                browser_idx = 0
+
             async with self._acquire_page():
-                return await self._do_scrape(request, browser)
+                result = await self._do_scrape(request, browser)
+
+                # If scrape failed due to browser death, try to restart it
+                # for future requests (don't retry this request to avoid delays)
+                if (
+                    "error" in result
+                    and "browser has been closed" in result["error"].lower()
+                ):
+                    logger.warning(
+                        "browser_died_during_scrape",
+                        browser_index=browser_idx,
+                        url=request.url,
+                    )
+                    # Schedule restart in background (don't block this request)
+                    task = asyncio.create_task(self._restart_browser(browser_idx))
+                    task.add_done_callback(self._handle_restart_task_result)
+
+                return result
 
     async def _do_scrape(
         self, request: ScrapeRequest, browser: Browser
