@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from orm_models import Job, Project
 from services.extraction.pipeline import (
+    CheckpointCallback,
     ExtractionPipelineService,
     SchemaExtractionPipeline,
 )
@@ -99,6 +100,64 @@ class ExtractionWorker:
             return True, project
         return False, project
 
+    def _create_checkpoint_callback(self, job: Job) -> CheckpointCallback:
+        """Create a checkpoint callback that saves progress to job.payload.
+
+        Args:
+            job: Job instance to update with checkpoint data.
+
+        Returns:
+            Callback function that persists checkpoint state.
+        """
+
+        def callback(
+            processed_ids: list[str], extractions: int, entities: int
+        ) -> None:
+            checkpoint = {
+                "processed_source_ids": processed_ids,
+                "last_checkpoint_at": datetime.now(UTC).isoformat(),
+                "total_extractions": extractions,
+                "total_entities": entities,
+            }
+            payload = job.payload or {}
+            payload["checkpoint"] = checkpoint
+            job.payload = payload
+            # Note: No commit here - pipeline.extract_project already commits
+            # after each chunk, which includes this payload update
+            logger.debug(
+                "checkpoint_saved",
+                job_id=str(job.id),
+                processed_count=len(processed_ids),
+                extractions=extractions,
+            )
+
+        return callback
+
+    def _get_resume_state(self, job: Job) -> set[str] | None:
+        """Get the set of already-processed source IDs from job checkpoint.
+
+        Args:
+            job: Job instance to check for checkpoint data.
+
+        Returns:
+            Set of source ID strings if checkpoint exists, None otherwise.
+        """
+        if not job.payload:
+            return None
+        checkpoint = job.payload.get("checkpoint")
+        if not checkpoint:
+            return None
+        processed = checkpoint.get("processed_source_ids", [])
+        if not processed:
+            return None
+        logger.info(
+            "resuming_from_checkpoint",
+            job_id=str(job.id),
+            already_processed=len(processed),
+            last_checkpoint=checkpoint.get("last_checkpoint_at"),
+        )
+        return set(processed)
+
     async def _create_schema_pipeline(
         self, project: Project | None = None
     ) -> SchemaExtractionPipeline:
@@ -160,6 +219,7 @@ class ExtractionWorker:
         force: bool = False,
         cancellation_check=None,
         project: Project | None = None,
+        job: Job | None = None,
     ) -> SchemaExtractionResult:
         """Process extraction using schema-based pipeline.
 
@@ -171,11 +231,19 @@ class ExtractionWorker:
             cancellation_check: Optional async callback that returns True if
                               processing should be cancelled.
             project: Optional project for classification_config extraction.
+            job: Optional job for checkpoint callback and resume support.
 
         Returns:
             SchemaExtractionResult with extraction counts.
         """
         pipeline = await self._create_schema_pipeline(project=project)
+
+        # Get checkpoint callback and resume state if job provided
+        checkpoint_callback = None
+        resume_from = None
+        if job:
+            checkpoint_callback = self._create_checkpoint_callback(job)
+            resume_from = self._get_resume_state(job)
 
         # Schema pipeline processes sources for the project
         # skip_extracted=False when force=True to re-extract
@@ -185,6 +253,8 @@ class ExtractionWorker:
             source_groups=source_groups,
             skip_extracted=not force,
             cancellation_check=cancellation_check,
+            checkpoint_callback=checkpoint_callback,
+            resume_from=resume_from,
         )
 
         # Handle error case
@@ -270,6 +340,7 @@ class ExtractionWorker:
                     force=force,
                     cancellation_check=check_cancellation,
                     project=project,
+                    job=job,
                 )
             else:
                 # Use generic fact extraction (original behavior)

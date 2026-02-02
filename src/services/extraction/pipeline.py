@@ -50,6 +50,10 @@ DEFAULT_PROFILE = ExtractionProfile(
 
 logger = structlog.get_logger(__name__)
 
+# Type alias for checkpoint callback
+# Args: (processed_source_ids, total_extractions, total_entities)
+type CheckpointCallback = Callable[[list[str], int, int], None]
+
 
 @dataclass
 class PipelineResult:
@@ -568,6 +572,8 @@ class SchemaExtractionPipeline:
         source_groups: list[str] | None = None,
         skip_extracted: bool = True,
         cancellation_check: Callable[[], Awaitable[bool]] | None = None,
+        checkpoint_callback: CheckpointCallback | None = None,
+        resume_from: set[str] | None = None,
     ) -> dict:
         """Extract all sources in a project.
 
@@ -580,6 +586,9 @@ class SchemaExtractionPipeline:
                            Ignored when source_ids is provided.
             cancellation_check: Optional async callback that returns True if
                               processing should be cancelled.
+            checkpoint_callback: Optional callback invoked after each chunk commit.
+                               Called with (processed_source_ids, total_extractions, total_entities).
+            resume_from: Optional set of source IDs to skip (already processed in prior run).
 
         Returns:
             Summary dict with extraction counts including sources_failed.
@@ -705,9 +714,12 @@ class SchemaExtractionPipeline:
                     )
                     return 0, False
 
-        # Process in chunks to allow cancellation checks
+        # Process in chunks to allow cancellation checks and batch commits
         all_results = []
+        all_processed_ids: list[str] = []
         cancelled = False
+        chunk_idx = 0
+
         for i in range(0, len(sources), chunk_size):
             # Check for cancellation between chunks
             if cancellation_check and await cancellation_check():
@@ -721,19 +733,48 @@ class SchemaExtractionPipeline:
                 break
 
             chunk = sources[i : i + chunk_size]
+
+            # Filter already-processed sources when resuming
+            if resume_from:
+                chunk = [s for s in chunk if str(s.id) not in resume_from]
+                if not chunk:
+                    chunk_idx += 1
+                    continue
+
             chunk_results = await asyncio.gather(
                 *[extract_with_limit(s) for s in chunk],
             )
             all_results.extend(chunk_results)
 
+            # Track only successfully processed source IDs for checkpoint
+            # Failed sources keep their original status and can be retried
+            chunk_processed_ids = [
+                str(s.id)
+                for s, (_, success) in zip(chunk, chunk_results, strict=True)
+                if success
+            ]
+            all_processed_ids.extend(chunk_processed_ids)
+
+            # Call checkpoint callback to update job payload before commit
+            if checkpoint_callback:
+                total_extractions_so_far = sum(count for count, _ in all_results)
+                checkpoint_callback(all_processed_ids, total_extractions_so_far, 0)
+
+            # Commit after each chunk for durability (includes checkpoint update)
+            self._db.commit()
+            logger.info(
+                "chunk_committed",
+                chunk=chunk_idx + 1,
+                chunk_sources=len(chunk),
+                total_processed=len(all_processed_ids),
+            )
+
+            chunk_idx += 1
+
         # Count successes and failures
         total_extractions = sum(count for count, _ in all_results)
         sources_failed = sum(1 for _, success in all_results if not success)
         sources_processed = len(all_results)
-
-        # Commit any changes made during processing
-        if sources_processed > 0:
-            self._db.commit()
 
         result = {
             "project_id": str(project_id),
