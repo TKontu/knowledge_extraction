@@ -505,7 +505,7 @@ class LLMWorker:
                     return try_repair_json(
                         result_text, context="extract_field_group_truncated"
                     )
-                except Exception:
+                except json.JSONDecodeError:
                     # Return empty list for entity lists on unrecoverable truncation
                     logger.warning(
                         "field_group_truncation_unrecoverable",

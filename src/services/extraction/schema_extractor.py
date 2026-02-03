@@ -1,6 +1,7 @@
 """Schema-based LLM extraction with field groups."""
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -266,7 +267,7 @@ class SchemaExtractor:
                             result_data = try_repair_json(
                                 result_text, context="schema_extract_truncated"
                             )
-                        except Exception:
+                        except json.JSONDecodeError:
                             logger.warning(
                                 "schema_extraction_truncated_unrecoverable",
                                 field_group=field_group.name,
