@@ -17,8 +17,8 @@ def register_report_tools(mcp: FastMCP) -> None:
     async def create_report(
         project_id: Annotated[str, "Project UUID"],
         report_type: Annotated[
-            Literal["single", "comparison", "table", "schema_table"],
-            "Report type: single (one company), comparison (multiple), table, schema_table",
+            Literal["single", "comparison", "table"],
+            "Report type: single (one company), comparison (multiple), table (structured data)",
         ],
         source_groups: Annotated[
             list[str], "Companies/source groups to include in the report"
@@ -28,22 +28,25 @@ def register_report_tools(mcp: FastMCP) -> None:
             Literal["md", "xlsx"], "Output format: md (markdown) or xlsx (Excel)"
         ] = "md",
         group_by: Annotated[
-            Literal["source_group", "extraction"],
-            "Grouping: source_group (aggregate per company) or extraction (one row per fact)",
-        ] = "source_group",
+            Literal["source", "domain"],
+            "Grouping: 'source' (one row per URL) or 'domain' (one row per domain with LLM smart merge)",
+        ] = "source",
+        include_merge_metadata: Annotated[
+            bool,
+            "Include merge provenance (sources_used, confidence per column) when group_by='domain'",
+        ] = False,
         ctx: Context = None,
     ) -> dict:
         """Generate an analysis report from extracted knowledge.
 
         Report types:
-        - single: Summarize findings for one company
+        - single: Summarize findings for one company with LLM synthesis
         - comparison: Compare findings across multiple companies
-        - table: Tabular format of extracted data
-        - schema_table: Structured table following extraction schema
+        - table: Tabular format with all field groups flattened into columns
 
         Grouping (table reports only):
-        - source_group: One row per company (default, aggregates extractions)
-        - extraction: One row per extraction (shows individual facts with source URLs)
+        - source: One row per URL, all field group extractions consolidated (default)
+        - domain: One row per domain, LLM smart merge synthesizes values from all URLs
 
         Example:
             create_report(
@@ -51,7 +54,7 @@ def register_report_tools(mcp: FastMCP) -> None:
                 report_type="table",
                 source_groups=["Acme Inc", "Competitor Corp"],
                 output_format="xlsx",
-                group_by="extraction"
+                group_by="domain"
             )
         """
         client = ctx.request_context.lifespan_context["client"]
@@ -64,6 +67,7 @@ def register_report_tools(mcp: FastMCP) -> None:
                 title=title,
                 output_format=output_format,
                 group_by=group_by,
+                include_merge_metadata=include_merge_metadata,
             )
 
             return {

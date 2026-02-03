@@ -485,6 +485,34 @@ class LLMWorker:
         )
 
         result_text = response.choices[0].message.content
+        finish_reason = response.choices[0].finish_reason
+
+        # Check for truncation due to max_tokens limit
+        if finish_reason == "length":
+            field_group = payload.get("field_group", {})
+            is_entity_list = field_group.get("is_entity_list", False)
+            group_name = field_group.get("name", "unknown")
+            logger.warning(
+                "field_group_extraction_truncated",
+                field_group=group_name,
+                is_entity_list=is_entity_list,
+                response_length=len(result_text) if result_text else 0,
+                max_tokens=self.max_tokens,
+            )
+            # For entity lists, truncation means incomplete JSON array
+            if is_entity_list:
+                try:
+                    return try_repair_json(
+                        result_text, context="extract_field_group_truncated"
+                    )
+                except Exception:
+                    # Return empty list for entity lists on unrecoverable truncation
+                    logger.warning(
+                        "field_group_truncation_unrecoverable",
+                        field_group=group_name,
+                    )
+                    return {group_name: [], "confidence": 0.0}
+
         return try_repair_json(result_text, context="extract_field_group")
 
     async def _extract_entities(

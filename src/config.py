@@ -223,6 +223,20 @@ class Settings(BaseSettings):
         description="Max concurrent requests for batch scraping in smart crawl",
     )
 
+    # Smart Merge Settings (for domain-level report aggregation)
+    smart_merge_max_candidates: int = Field(
+        default=100,
+        ge=1,
+        le=500,
+        description="Maximum URL candidates to include per column when merging by domain",
+    )
+    smart_merge_min_confidence: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum extraction confidence to include in merge candidates",
+    )
+
     # Camoufox Timeout Strategy
     camoufox_networkidle_timeout: int = Field(
         default=5000,

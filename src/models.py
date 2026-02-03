@@ -664,7 +664,7 @@ class ReportType(str, Enum):
     SINGLE = "single"
     COMPARISON = "comparison"
     TABLE = "table"
-    SCHEMA_TABLE = "schema_table"
+    # SCHEMA_TABLE deprecated - TABLE now handles schema-based reports
 
 
 class ReportRequest(BaseModel):
@@ -697,9 +697,13 @@ class ReportRequest(BaseModel):
         le=100,
         description="Max extractions to show in detailed findings section (comparison reports)",
     )
-    group_by: Literal["source_group", "extraction"] = Field(
-        default="source_group",
-        description="Grouping: source_group (aggregate per company) or extraction (one row per fact). Only applies to table reports.",
+    group_by: Literal["source", "domain"] = Field(
+        default="source",
+        description="Grouping: 'source' (one row per URL with all field groups) or 'domain' (one row per domain with LLM smart merge). Only applies to table reports.",
+    )
+    include_merge_metadata: bool = Field(
+        default=False,
+        description="Include merge provenance metadata when group_by='domain' (sources_used, confidence per column)",
     )
 
     @field_validator("source_groups")
@@ -713,15 +717,10 @@ class ReportRequest(BaseModel):
     @field_validator("group_by")
     @classmethod
     def validate_group_by_only_for_tables(cls, v, info):
-        """Validate group_by='extraction' only applies to table reports."""
+        """Validate group_by only applies to table reports."""
         report_type = info.data.get("type")
-        if v == "extraction" and report_type not in (
-            ReportType.TABLE,
-            ReportType.SCHEMA_TABLE,
-        ):
-            raise ValueError(
-                "group_by='extraction' only applies to table and schema_table reports"
-            )
+        if v == "domain" and report_type != ReportType.TABLE:
+            raise ValueError("group_by='domain' only applies to table reports")
         return v
 
 

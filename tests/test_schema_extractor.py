@@ -119,3 +119,83 @@ class TestSchemaExtractor:
 
         assert len(result["products"]) == 1
         assert result["products"][0]["product_name"] == "D Series"
+
+    async def test_entity_list_truncation_returns_empty(self, mock_settings):
+        """Test that truncated entity list returns empty list instead of error."""
+        extractor = SchemaExtractor(mock_settings)
+
+        # Simulate truncated JSON response (finish_reason="length")
+        truncated_json = '{"products_gearbox": [{"product_name": "Prod1"}, {"product_name": "Prod2'
+        extractor.client = MagicMock()
+        extractor.client.chat.completions.create = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(content=truncated_json),
+                        finish_reason="length",  # Truncation indicator
+                    )
+                ]
+            )
+        )
+
+        result = await extractor.extract_field_group(
+            content="We have many products...",
+            field_group=PRODUCTS_GEARBOX_GROUP,
+        )
+
+        # Should return empty list rather than raising error
+        assert result["products_gearbox"] == []
+        assert result["confidence"] == 0.0
+
+    async def test_non_entity_truncation_attempts_repair(self, mock_settings):
+        """Test that truncated non-entity extraction attempts JSON repair."""
+        extractor = SchemaExtractor(mock_settings)
+
+        # Repairable truncated JSON for non-entity group
+        truncated_json = '{"manufactures_gearboxes": true, "manufactures_motors": false'
+        extractor.client = MagicMock()
+        extractor.client.chat.completions.create = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(content=truncated_json),
+                        finish_reason="length",
+                    )
+                ]
+            )
+        )
+
+        result = await extractor.extract_field_group(
+            content="We manufacture gearboxes.",
+            field_group=MANUFACTURING_GROUP,
+        )
+
+        # Should repair JSON and return result
+        assert result["manufactures_gearboxes"] is True
+        assert result["manufactures_motors"] is False
+
+    async def test_normal_completion_no_truncation_flag(self, mock_settings):
+        """Test that normal completion (finish_reason=stop) works correctly."""
+        extractor = SchemaExtractor(mock_settings)
+
+        extractor.client = MagicMock()
+        extractor.client.chat.completions.create = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content='{"manufactures_gearboxes": true, "manufactures_motors": true}'
+                        ),
+                        finish_reason="stop",  # Normal completion
+                    )
+                ]
+            )
+        )
+
+        result = await extractor.extract_field_group(
+            content="We manufacture gearboxes and motors.",
+            field_group=MANUFACTURING_GROUP,
+        )
+
+        assert result["manufactures_gearboxes"] is True
+        assert result["manufactures_motors"] is True

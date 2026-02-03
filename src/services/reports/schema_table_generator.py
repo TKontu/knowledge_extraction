@@ -1,7 +1,23 @@
 """Schema-driven table report generation."""
 
+from dataclasses import dataclass
+from typing import Any
+
 from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_adapter import SchemaAdapter
+
+
+@dataclass
+class ColumnMetadata:
+    """Metadata for a flattened column, used for LLM merge context."""
+
+    name: str
+    label: str
+    field_type: str  # boolean, integer, float, text, list, enum
+    description: str
+    field_group: str  # Which field group this came from
+    is_entity_list: bool = False
+    enum_values: list[str] | None = None
 
 
 class SchemaTableGenerator:
@@ -209,3 +225,141 @@ class SchemaTableGenerator:
             if lower_name.endswith(suffix):
                 return unit
         return ""
+
+    def get_flattened_columns_for_source(
+        self, extraction_schema: dict
+    ) -> tuple[list[str], dict[str, str], dict[str, ColumnMetadata]]:
+        """Get flattened columns for per-source (per-URL) table generation.
+
+        Flattens all field groups into a single column list. Detects name
+        collisions and prefixes with field group name when needed.
+
+        Args:
+            extraction_schema: Project's JSONB extraction schema.
+
+        Returns:
+            Tuple of (column_names, column_labels, column_metadata)
+            where column_names is ordered list including metadata columns,
+            column_labels maps name->display label,
+            and column_metadata maps name->ColumnMetadata for LLM merge context.
+        """
+        field_groups = self._adapter.convert_to_field_groups(extraction_schema)
+
+        # First pass: collect all field names to detect collisions
+        field_name_count: dict[str, int] = {}
+        for group in field_groups:
+            if group.is_entity_list:
+                # Entity lists become a single column with group name
+                key = f"{group.name}"
+                field_name_count[key] = field_name_count.get(key, 0) + 1
+            else:
+                for field in group.fields:
+                    field_name_count[field.name] = (
+                        field_name_count.get(field.name, 0) + 1
+                    )
+
+        # Metadata columns always first
+        columns: list[str] = ["source_url", "source_title", "domain"]
+        labels: dict[str, str] = {
+            "source_url": "URL",
+            "source_title": "Page Title",
+            "domain": "Domain",
+        }
+        metadata: dict[str, ColumnMetadata] = {}
+
+        # Add metadata column definitions (not from schema)
+        for col in columns:
+            metadata[col] = ColumnMetadata(
+                name=col,
+                label=labels[col],
+                field_type="text",
+                description=f"Source {col.replace('_', ' ')}",
+                field_group="_metadata",
+            )
+
+        # Second pass: build columns with prefixing for collisions
+        for group in field_groups:
+            if group.is_entity_list:
+                # Entity lists become "{group_name}" column containing formatted list
+                col_name = group.name
+                columns.append(col_name)
+                labels[col_name] = self._humanize(group.name)
+                metadata[col_name] = ColumnMetadata(
+                    name=col_name,
+                    label=labels[col_name],
+                    field_type="list",
+                    description=group.description,
+                    field_group=group.name,
+                    is_entity_list=True,
+                )
+            else:
+                for field in group.fields:
+                    # Prefix if collision exists
+                    if field_name_count.get(field.name, 0) > 1:
+                        col_name = f"{group.name}.{field.name}"
+                    else:
+                        col_name = field.name
+
+                    columns.append(col_name)
+                    labels[col_name] = self._get_field_label(field)
+                    metadata[col_name] = ColumnMetadata(
+                        name=col_name,
+                        label=labels[col_name],
+                        field_type=field.field_type,
+                        description=field.description,
+                        field_group=group.name,
+                        enum_values=field.enum_values,
+                    )
+
+        # Add confidence at the end
+        columns.append("avg_confidence")
+        labels["avg_confidence"] = "Confidence"
+        metadata["avg_confidence"] = ColumnMetadata(
+            name="avg_confidence",
+            label="Confidence",
+            field_type="float",
+            description="Average extraction confidence across all field groups",
+            field_group="_metadata",
+        )
+
+        return columns, labels, metadata
+
+    def get_extraction_type_to_fields(
+        self, extraction_schema: dict
+    ) -> dict[str, list[str]]:
+        """Map extraction_type (field group name) to its field names.
+
+        Used for flattening extractions grouped by source_id.
+
+        Args:
+            extraction_schema: Project's JSONB extraction schema.
+
+        Returns:
+            Dict mapping field group name to list of field names.
+        """
+        field_groups = self._adapter.convert_to_field_groups(extraction_schema)
+
+        # Detect collisions for prefixing
+        field_name_count: dict[str, int] = {}
+        for group in field_groups:
+            if not group.is_entity_list:
+                for field in group.fields:
+                    field_name_count[field.name] = (
+                        field_name_count.get(field.name, 0) + 1
+                    )
+
+        result: dict[str, list[str]] = {}
+        for group in field_groups:
+            if group.is_entity_list:
+                # Entity list extractions map to single column
+                result[group.name] = [group.name]
+            else:
+                fields = []
+                for field in group.fields:
+                    if field_name_count.get(field.name, 0) > 1:
+                        fields.append(f"{group.name}.{field.name}")
+                    else:
+                        fields.append(field.name)
+                result[group.name] = fields
+
+        return result

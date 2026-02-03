@@ -398,7 +398,8 @@ class KnowledgeExtractionClient:
         source_groups: list[str],
         title: str | None = None,
         output_format: str = "md",
-        group_by: str = "source_group",
+        group_by: str = "source",
+        include_merge_metadata: bool = False,
     ) -> dict[str, Any]:
         """Generate a report."""
         return await self._request(
@@ -410,6 +411,7 @@ class KnowledgeExtractionClient:
                 "title": title,
                 "output_format": output_format,
                 "group_by": group_by,
+                "include_merge_metadata": include_merge_metadata,
             },
         )
 

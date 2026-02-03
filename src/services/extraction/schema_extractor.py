@@ -247,7 +247,40 @@ class SchemaExtractor:
                 )
 
                 result_text = response.choices[0].message.content
-                result_data = try_repair_json(result_text, context="schema_extract")
+                finish_reason = response.choices[0].finish_reason
+
+                # Check for truncation due to max_tokens limit
+                if finish_reason == "length":
+                    logger.warning(
+                        "schema_extraction_truncated",
+                        field_group=field_group.name,
+                        is_entity_list=field_group.is_entity_list,
+                        response_length=len(result_text) if result_text else 0,
+                        max_tokens=max_tokens,
+                        attempt=attempt,
+                    )
+                    # For entity lists, truncation means incomplete JSON array
+                    # Try to repair, but if it fails, return empty result
+                    if field_group.is_entity_list:
+                        try:
+                            result_data = try_repair_json(
+                                result_text, context="schema_extract_truncated"
+                            )
+                        except Exception:
+                            logger.warning(
+                                "schema_extraction_truncated_unrecoverable",
+                                field_group=field_group.name,
+                                response_preview=result_text[:500] if result_text else None,
+                            )
+                            # Return empty list result for entity lists
+                            return {field_group.name: [], "confidence": 0.0}
+                    else:
+                        # Non-entity fields - try normal repair
+                        result_data = try_repair_json(
+                            result_text, context="schema_extract_truncated"
+                        )
+                else:
+                    result_data = try_repair_json(result_text, context="schema_extract")
 
                 # Apply defaults for missing fields
                 result = self._apply_defaults(result_data, field_group)
@@ -259,6 +292,7 @@ class SchemaExtractor:
                         [k for k, v in result.items() if v is not None]
                     ),
                     attempt=attempt,
+                    truncated=finish_reason == "length",
                 )
 
                 return result
@@ -366,6 +400,12 @@ For each {entity_singular} found, extract:
 
 {field_group.prompt_hint}
 
+IMPORTANT LIMITS:
+- Extract ONLY the most relevant/significant items (max 20 items)
+- For locations: focus on headquarters, manufacturing sites, main offices - NOT delivery areas or coverage lists
+- For products: focus on main product lines, not every variant or option
+- Skip generic lists of cities, countries, or regions that are just coverage/delivery info
+
 Output JSON with structure:
 {{
   "{output_key}": [
@@ -376,6 +416,7 @@ Output JSON with structure:
 }}
 
 Only include items you find clear evidence for. Return empty list if none found.
+Keep output concise - quality over quantity.
 """
 
     def _build_user_prompt(

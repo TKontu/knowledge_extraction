@@ -1,21 +1,30 @@
 """Report generation service."""
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
+import structlog
+
+from config import settings
 from models import ReportRequest, ReportType
 from orm_models import Report
 from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
 from services.reports.excel_formatter import ExcelFormatter
-from services.reports.schema_table_generator import SchemaTableGenerator
+from services.reports.schema_table_generator import ColumnMetadata, SchemaTableGenerator
+from services.reports.smart_merge import MergeCandidate, SmartMergeService
 from services.reports.synthesis import ReportSynthesizer, SynthesisResult
 from services.storage.repositories.entity import EntityFilters, EntityRepository
 from services.storage.repositories.extraction import (
     ExtractionFilters,
     ExtractionRepository,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -27,6 +36,8 @@ class ReportData:
     source_groups: list[str]
     extraction_ids: list[str]  # All extraction UUIDs for provenance tracking
     entity_count: int  # Total entity count across all groups
+    # Extractions grouped by source_id for per-URL aggregation
+    extractions_by_source: dict[str, list[dict]] = field(default_factory=dict)
 
 
 class ReportService:
@@ -92,39 +103,14 @@ class ReportService:
             # Create title if not provided (need it before generation)
             title = request.title or f"Table: {' vs '.join(request.source_groups)}"
 
-            md_content, excel_bytes = self._generate_table_report(
-                data=data,
-                title=title,
-                columns=request.columns,
-                output_format=request.output_format,
-                project_id=project_id,  # Pass project_id for schema-driven columns
-                group_by=request.group_by,
-            )
-            content = md_content
-            if excel_bytes:
-                binary_content = excel_bytes
-                report_format = "xlsx"
-        elif request.type == ReportType.SCHEMA_TABLE:
-            # DEPRECATED: Use TABLE instead - it now derives columns from schema
-            import warnings
-
-            warnings.warn(
-                "SCHEMA_TABLE is deprecated, use TABLE instead. "
-                "TABLE now derives columns from project schema.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Forward to TABLE implementation
-            title = (
-                request.title or f"Schema Report: {', '.join(request.source_groups)}"
-            )
-            md_content, excel_bytes = self._generate_table_report(
+            md_content, excel_bytes = await self._generate_table_report(
                 data=data,
                 title=title,
                 columns=request.columns,
                 output_format=request.output_format,
                 project_id=project_id,
                 group_by=request.group_by,
+                include_merge_metadata=request.include_merge_metadata,
             )
             content = md_content
             if excel_bytes:
@@ -180,6 +166,7 @@ class ReportService:
             ReportData with aggregated data including provenance info
         """
         extractions_by_group: dict[str, list[dict]] = {}
+        extractions_by_source: dict[str, list[dict]] = {}
         entities_by_group: dict[str, dict[str, list[dict]]] = {}
         all_extraction_ids: list[str] = []
         total_entity_count = 0
@@ -193,8 +180,10 @@ class ReportService:
             extractions = self._extraction_repo.list(
                 filters=filters, limit=max_extractions, offset=0, include_source=True
             )
-            extractions_by_group[source_group] = [
-                {
+
+            extraction_dicts = []
+            for ext in extractions:
+                ext_dict = {
                     "id": str(ext.id),
                     "data": ext.data,
                     "confidence": ext.confidence,
@@ -204,8 +193,15 @@ class ReportService:
                     "source_title": ext.source.title if ext.source else None,
                     "chunk_index": ext.chunk_index,
                 }
-                for ext in extractions
-            ]
+                extraction_dicts.append(ext_dict)
+
+                # Also group by source_id for per-URL aggregation
+                source_id = str(ext.source_id)
+                if source_id not in extractions_by_source:
+                    extractions_by_source[source_id] = []
+                extractions_by_source[source_id].append(ext_dict)
+
+            extractions_by_group[source_group] = extraction_dicts
             # Track all extraction IDs for provenance
             all_extraction_ids.extend(str(ext.id) for ext in extractions)
 
@@ -238,6 +234,7 @@ class ReportService:
             source_groups=source_groups,
             extraction_ids=all_extraction_ids,
             entity_count=total_entity_count,
+            extractions_by_source=extractions_by_source,
         )
 
     async def _generate_single_report(
@@ -493,237 +490,254 @@ class ReportService:
         project = self._project_repo.get(project_id)
         return project.extraction_schema if project else None
 
-    def _aggregate_for_table(
+    def _aggregate_by_source(
         self,
         data: ReportData,
-        columns: list[str] | None,
-        extraction_schema: dict | None = None,
-        group_by: str = "source_group",
-    ) -> tuple[list[dict], list[str], dict[str, str]]:
-        """Aggregate extractions into table rows.
+        extraction_schema: dict,
+    ) -> tuple[list[dict], list[str], dict[str, str], dict[str, ColumnMetadata]]:
+        """Aggregate extractions into one row per source (URL).
 
-        When group_by="source_group", consolidates multiple extractions into
-        a single row per source_group.
-        When group_by="extraction", creates one row per extraction with
-        source metadata columns.
-
-        When extraction_schema is provided, derives columns and labels from
-        the schema for template-agnostic output.
+        Consolidates all field group extractions from a single URL into one row.
 
         Args:
-            data: Report data with extractions by group
-            columns: Specific columns to include, or None for all
-            extraction_schema: Optional project schema for column/label derivation
-            group_by: Grouping level - "source_group" or "extraction"
+            data: Report data with extractions by group and by source.
+            extraction_schema: Project extraction schema for column derivation.
 
         Returns:
-            Tuple of (rows list, columns list, labels dict)
+            Tuple of (rows, columns, labels, column_metadata).
         """
-        rows = []
-        all_columns: set[str] = set()
+        # Get flattened columns from schema
+        columns, labels, col_metadata = (
+            self._schema_generator.get_flattened_columns_for_source(extraction_schema)
+        )
 
-        # Get schema-derived info if available
-        if extraction_schema:
+        # Get extraction_type to field mapping for flattening
+        type_to_fields = self._schema_generator.get_extraction_type_to_fields(
+            extraction_schema
+        )
+
+        rows = []
+
+        # Group extractions by source_id
+        for source_id, extractions in data.extractions_by_source.items():
+            if not extractions:
+                continue
+
+            # Get source metadata from first extraction
+            first_ext = extractions[0]
+            source_url = first_ext.get("source_uri") or ""
+            source_title = first_ext.get("source_title") or ""
+
+            # Extract domain from URL
             try:
-                schema_columns, labels, _field_defs = (
-                    self._schema_generator.get_columns_from_schema(extraction_schema)
-                )
+                parsed = urlparse(source_url)
+                domain = parsed.netloc or ""
+            except Exception:
+                domain = ""
+
+            row: dict = {
+                "source_url": source_url,
+                "source_title": source_title,
+                "domain": domain,
+            }
+
+            # Collect confidences for averaging
+            confidences = []
+
+            # Flatten all extractions for this source into the row
+            for ext in extractions:
+                ext_type = ext.get("extraction_type", "")
+                ext_data = ext.get("data", {})
+                ext_confidence = ext.get("confidence")
+
+                if ext_confidence is not None:
+                    confidences.append(ext_confidence)
+
+                # Map extraction data to flattened columns
+                field_mapping = type_to_fields.get(ext_type, [])
+
+                # Check if this is an entity list extraction
                 entity_list_groups = self._schema_generator.get_entity_list_groups(
                     extraction_schema
                 )
-            except (KeyError, TypeError) as e:
-                # Malformed schema - fall back to non-schema mode
-                import structlog
-
-                logger = structlog.get_logger(__name__)
-                logger.warning(
-                    "malformed_extraction_schema_fallback",
-                    error=str(e),
-                )
-                schema_columns = None
-                labels = {}
-                entity_list_groups = {}
-        else:
-            schema_columns = None
-            labels = {}
-            entity_list_groups = {}
-
-        # One row per extraction mode
-        if group_by == "extraction":
-            for source_group in data.source_groups:
-                extractions = data.extractions_by_group.get(source_group, [])
-                for ext in extractions:
-                    row: dict = {
-                        "source_group": source_group,
-                        "source_url": ext.get("source_uri") or "",
-                        "source_title": ext.get("source_title") or "",
-                        "confidence": ext.get("confidence"),
-                    }
-                    # Add metadata columns
-                    all_columns.add("source_url")
-                    all_columns.add("source_title")
-                    all_columns.add("confidence")
-
-                    # Copy all fields from extraction data
-                    ext_data = ext.get("data", {})
-                    for field, value in ext_data.items():
-                        row[field] = value
-                        if value is not None:
-                            all_columns.add(field)
-
-                    rows.append(row)
-
-            # Determine column order for extraction mode
-            # Metadata columns first, then data fields
-            metadata_cols = ["source_group", "source_url", "source_title"]
-            final_columns = metadata_cols.copy()
-
-            # Columns to exclude from data columns (added separately)
-            reserved_cols = metadata_cols + ["confidence"]
-
-            if columns:
-                # User-specified columns (excluding reserved which are handled separately)
-                final_columns.extend(
-                    c for c in columns if c in all_columns and c not in reserved_cols
-                )
-            elif schema_columns:
-                # Schema-derived columns (preserve schema order)
-                final_columns.extend(
-                    c
-                    for c in schema_columns
-                    if c in all_columns and c not in reserved_cols
-                )
-            else:
-                # Fallback: alphabetical (excluding reserved columns)
-                final_columns.extend(
-                    sorted(c for c in all_columns if c not in reserved_cols)
-                )
-
-            # Add confidence at the end
-            if "confidence" in all_columns:
-                final_columns.append("confidence")
-
-            # Build labels dict for extraction mode
-            final_labels = {
-                "source_group": "Source",
-                "source_url": "URL",
-                "source_title": "Title",
-                "confidence": "Confidence",
-            }
-            for col in final_columns:
-                if col in labels:
-                    final_labels[col] = labels[col]
-                elif col not in final_labels:
-                    final_labels[col] = self._humanize(col)
-
-            return rows, final_columns, final_labels
-
-        # Original aggregated mode (group_by="source_group")
-        for source_group in data.source_groups:
-            extractions = data.extractions_by_group.get(source_group, [])
-            row = {"source_group": source_group}
-
-            # Group extractions by type for entity list handling
-            by_type: dict[str, list[dict]] = {}
-            for ext in extractions:
-                ext_type = ext.get("extraction_type", "general")
-                by_type.setdefault(ext_type, []).append(ext.get("data", {}))
-
-            # Process entity lists (e.g., products)
-            for group_name, field_group in entity_list_groups.items():
-                col_name = f"{group_name}_list"
-                items: list[dict] = []
-                for data_dict in by_type.get(group_name, []):
-                    # Entity list data has items under various keys
-                    for key in ["products", "items", group_name, "entities", "list"]:
-                        if key in data_dict and isinstance(data_dict[key], list):
-                            items.extend(data_dict[key])
+                if ext_type in entity_list_groups:
+                    # Entity list - format the items
+                    items = []
+                    for key in ["products", "items", ext_type, "entities", "list"]:
+                        if key in ext_data and isinstance(ext_data[key], list):
+                            items.extend(ext_data[key])
                             break
                     else:
-                        # If no list key found but data_dict looks like an entity
-                        if data_dict and not any(
-                            k in data_dict
+                        # Data might be the entity itself
+                        if ext_data and not any(
+                            k in ext_data
                             for k in ["products", "items", "entities", "list"]
                         ):
-                            items.append(data_dict)
-                row[col_name] = self._schema_generator.format_entity_list(
-                    items, field_group
-                )
-                all_columns.add(col_name)
+                            items.append(ext_data)
 
-            # Collect all field values from extractions (skip entity list types)
-            field_values: dict[str, list] = {}
-            for ext in extractions:
-                ext_type = ext.get("extraction_type", "")
-                # Skip entity_list extractions - already handled above
-                if ext_type in entity_list_groups:
-                    continue
-                ext_data = ext.get("data", {})
-                for field, value in ext_data.items():
-                    if field not in field_values:
-                        field_values[field] = []
-                    if value is not None:
-                        field_values[field].append(value)
-                        all_columns.add(field)
-
-            # Aggregate values per field
-            for field, values in field_values.items():
-                if not values:
-                    row[field] = None
-                elif isinstance(values[0], bool):
-                    # Use any() for booleans - True if ANY extraction says True
-                    row[field] = any(values)
-                elif isinstance(values[0], (int, float)):
-                    # Use max for numbers
-                    row[field] = max(values)
-                elif isinstance(values[0], list):
-                    # Flatten and dedupe lists
-                    flat: list = []
-                    for v in values:
-                        flat.extend(v)
-                    row[field] = list(dict.fromkeys(flat))
+                    col_name = ext_type  # Entity list column name = group name
+                    if items:
+                        field_group = entity_list_groups[ext_type]
+                        row[col_name] = self._schema_generator.format_entity_list(
+                            items, field_group
+                        )
                 else:
-                    # For text, dedupe and concatenate unique values
-                    unique_texts = list(
-                        dict.fromkeys(str(v) for v in values if v)
-                    )
-                    if len(unique_texts) > 1:
-                        row[field] = "; ".join(unique_texts)
-                    elif unique_texts:
-                        row[field] = unique_texts[0]
-                    else:
-                        row[field] = None
+                    # Regular field group - copy fields
+                    for col_name in field_mapping:
+                        # Handle prefixed columns (group.field)
+                        if "." in col_name:
+                            _, field_name = col_name.split(".", 1)
+                        else:
+                            field_name = col_name
+
+                        if field_name in ext_data:
+                            row[col_name] = ext_data[field_name]
+
+            # Calculate average confidence
+            if confidences:
+                row["avg_confidence"] = sum(confidences) / len(confidences)
+            else:
+                row["avg_confidence"] = None
 
             rows.append(row)
 
-        # Determine column order
-        final_columns = ["source_group"]
-        if columns:
-            # User-specified columns
-            final_columns.extend(c for c in columns if c in all_columns)
-        elif schema_columns:
-            # Schema-derived columns (preserve schema order)
-            final_columns.extend(
-                c for c in schema_columns if c in all_columns or c == "source_group"
+        return rows, columns, labels, col_metadata
+
+    async def _aggregate_by_domain(
+        self,
+        data: ReportData,
+        extraction_schema: dict,
+        include_merge_metadata: bool = False,
+    ) -> tuple[list[dict], list[str], dict[str, str]]:
+        """Aggregate extractions into one row per domain with LLM smart merge.
+
+        First aggregates by source (URL), then merges all URLs of a domain
+        using LLM-based column-by-column synthesis.
+
+        Args:
+            data: Report data with extractions.
+            extraction_schema: Project extraction schema.
+            include_merge_metadata: Whether to include merge provenance.
+
+        Returns:
+            Tuple of (rows, columns, labels).
+        """
+        # First get per-source rows
+        source_rows, columns, labels, col_metadata = self._aggregate_by_source(
+            data, extraction_schema
+        )
+
+        if not source_rows:
+            return [], columns, labels
+
+        # Group source rows by domain
+        rows_by_domain: dict[str, list[dict]] = {}
+        for row in source_rows:
+            domain = row.get("domain", "unknown")
+            if domain not in rows_by_domain:
+                rows_by_domain[domain] = []
+            rows_by_domain[domain].append(row)
+
+        # Create smart merge service with config settings
+        merge_service = SmartMergeService(
+            self._llm_client,
+            max_candidates=settings.smart_merge_max_candidates,
+            min_confidence=settings.smart_merge_min_confidence,
+        )
+
+        # Columns to merge (skip metadata columns)
+        merge_columns = [
+            c for c in columns
+            if c not in ("source_url", "source_title", "domain", "avg_confidence")
+        ]
+
+        # Merge each domain
+        domain_rows = []
+        for domain, domain_source_rows in rows_by_domain.items():
+            domain_row: dict = {"domain": domain}
+
+            # If single source, no merge needed
+            if len(domain_source_rows) == 1:
+                domain_row.update(domain_source_rows[0])
+                domain_row.pop("source_url", None)
+                domain_row.pop("source_title", None)
+                domain_rows.append(domain_row)
+                continue
+
+            # Merge each column in parallel
+            async def merge_column(col_name: str) -> tuple[str, Any, float, dict | None]:
+                """Merge a single column for this domain."""
+                candidates = [
+                    MergeCandidate(
+                        value=row.get(col_name),
+                        source_url=row.get("source_url", ""),
+                        source_title=row.get("source_title"),
+                        confidence=row.get("avg_confidence"),
+                    )
+                    for row in domain_source_rows
+                ]
+
+                col_meta = col_metadata.get(col_name)
+                if not col_meta:
+                    # Fallback metadata
+                    col_meta = ColumnMetadata(
+                        name=col_name,
+                        label=labels.get(col_name, col_name),
+                        field_type="text",
+                        description=col_name,
+                        field_group="unknown",
+                    )
+
+                result = await merge_service.merge_column(
+                    col_name, col_meta, candidates
+                )
+
+                merge_meta = None
+                if include_merge_metadata:
+                    merge_meta = {
+                        "confidence": result.confidence,
+                        "sources_used": result.sources_used,
+                        "reasoning": result.reasoning,
+                    }
+
+                # Always return confidence for avg calculation
+                return col_name, result.value, result.confidence, merge_meta
+
+            # Run all column merges in parallel
+            merge_results = await asyncio.gather(
+                *[merge_column(col) for col in merge_columns]
             )
-            # Remove duplicates while preserving order
-            seen = set()
-            final_columns = [
-                c for c in final_columns if not (c in seen or seen.add(c))
-            ]
-        else:
-            # Fallback: alphabetical
-            final_columns.extend(sorted(all_columns))
 
-        # Build final labels dict
-        final_labels = {"source_group": "Source"}
-        for col in final_columns:
-            if col in labels:
-                final_labels[col] = labels[col]
-            elif col not in final_labels:
-                final_labels[col] = self._humanize(col)
+            # Build domain row from merge results
+            merge_metadata_all = {}
+            confidences = []
+            for col_name, value, confidence, merge_meta in merge_results:
+                domain_row[col_name] = value
+                if confidence is not None:
+                    confidences.append(confidence)
+                if merge_meta:
+                    merge_metadata_all[col_name] = merge_meta
 
-        return rows, final_columns, final_labels
+            # Calculate overall confidence from individual merges
+            if confidences:
+                domain_row["avg_confidence"] = sum(confidences) / len(confidences)
+
+            if include_merge_metadata:
+                domain_row["_merge_metadata"] = merge_metadata_all
+
+            domain_rows.append(domain_row)
+
+        # Update columns for domain output (remove source-specific columns)
+        domain_columns = ["domain"] + [
+            c for c in columns
+            if c not in ("source_url", "source_title", "domain")
+        ]
+
+        # Update labels
+        domain_labels = {"domain": "Domain"}
+        domain_labels.update(labels)
+
+        return domain_rows, domain_columns, domain_labels
 
     def _build_markdown_table(
         self,
@@ -785,39 +799,56 @@ class ReportService:
 
         return "\n".join(lines)
 
-    def _generate_table_report(
+    async def _generate_table_report(
         self,
         data: ReportData,
         title: str | None,
         columns: list[str] | None,
         output_format: str,
         project_id: UUID | None = None,
-        group_by: str = "source_group",
+        group_by: str = "source",
+        include_merge_metadata: bool = False,
     ) -> tuple[str, bytes | None]:
         """Generate table report in markdown or Excel.
 
-        When project_id is provided, derives columns and labels from the
-        project's extraction_schema for template-agnostic output.
-
         Args:
-            data: Aggregated report data
-            title: Report title
-            columns: Fields to include as columns
-            output_format: Output format ("md" or "xlsx")
-            project_id: Optional project ID for schema-driven columns/labels
-            group_by: Grouping level - "source_group" or "extraction"
+            data: Aggregated report data.
+            title: Report title.
+            columns: Fields to include as columns (None = all from schema).
+            output_format: Output format ("md" or "xlsx").
+            project_id: Project ID for schema-driven columns/labels.
+            group_by: "source" (one row per URL) or "domain" (LLM merged per domain).
+            include_merge_metadata: Include merge provenance for domain grouping.
 
         Returns:
-            Tuple of (markdown_content, excel_bytes or None)
+            Tuple of (markdown_content, excel_bytes or None).
         """
-        # Load schema if project_id provided
+        # Load schema - required for new aggregation
         extraction_schema = None
         if project_id:
             extraction_schema = self._get_project_schema(project_id)
 
-        rows, final_columns, labels = self._aggregate_for_table(
-            data, columns, extraction_schema, group_by
-        )
+        if not extraction_schema:
+            logger.warning(
+                "table_report_no_schema",
+                project_id=str(project_id) if project_id else None,
+            )
+            # Return empty table
+            return "# No extraction schema found\n\nCannot generate table.", None
+
+        # Aggregate based on group_by
+        if group_by == "domain":
+            rows, final_columns, labels = await self._aggregate_by_domain(
+                data, extraction_schema, include_merge_metadata
+            )
+        else:  # "source" (default)
+            rows, final_columns, labels, _ = self._aggregate_by_source(
+                data, extraction_schema
+            )
+
+        # Filter columns if specified
+        if columns:
+            final_columns = [c for c in final_columns if c in columns or c in ("source_url", "source_title", "domain", "avg_confidence")]
 
         md_content = self._build_markdown_table(rows, final_columns, title, labels)
 
@@ -827,7 +858,7 @@ class ReportService:
                 rows=rows,
                 columns=final_columns,
                 column_labels=labels,
-                sheet_name=title or "Comparison",
+                sheet_name=title or "Report",
             )
             return md_content, excel_bytes
 
