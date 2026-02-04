@@ -20,6 +20,10 @@ from services.storage.repositories.source import SourceRepository
 
 logger = structlog.get_logger(__name__)
 
+# Minimum URLs from smart crawl map to consider it successful.
+# If fewer URLs are discovered, fall back to traditional crawl.
+SMART_CRAWL_MIN_URLS_THRESHOLD = 3
+
 
 def _get_stale_warning(elapsed_seconds: float) -> str | None:
     """Get stale warning level based on elapsed time."""
@@ -113,7 +117,9 @@ class CrawlWorker:
                 job.payload["firecrawl_job_id"] = firecrawl_job_id
                 flag_modified(job, "payload")
                 job.status = "running"
-                job.started_at = datetime.now(UTC)
+                # Only set started_at if not already set (e.g., from smart crawl fallback)
+                if not job.started_at:
+                    job.started_at = datetime.now(UTC)
                 self.db.commit()
 
                 logger.info(
@@ -495,6 +501,30 @@ class CrawlWorker:
                 job_id=str(job.id),
                 urls_discovered=map_result.total,
             )
+
+            # Check if smart crawl found enough URLs, otherwise fallback to traditional crawl
+            if map_result.total < SMART_CRAWL_MIN_URLS_THRESHOLD:
+                logger.warning(
+                    "smart_crawl_fallback_triggered",
+                    job_id=str(job.id),
+                    urls_discovered=map_result.total,
+                    threshold=SMART_CRAWL_MIN_URLS_THRESHOLD,
+                    reason="Too few URLs discovered, falling back to traditional crawl",
+                )
+                # Switch to traditional crawl mode
+                payload["smart_crawl_enabled"] = False
+                payload.pop("smart_crawl_phase", None)
+                payload.pop("mapped_urls", None)
+                flag_modified(job, "payload")
+                job.status = "queued"  # Reset to queued for immediate pickup
+                job.result = {
+                    "phase": "fallback",
+                    "smart_crawl_urls_found": map_result.total,
+                    "fallback_reason": "insufficient_urls",
+                }
+                self.db.commit()
+                # Job will be picked up again and route to traditional crawl
+                return
 
             # Continue to filter phase immediately
             await self._smart_crawl_filter_phase(job)
