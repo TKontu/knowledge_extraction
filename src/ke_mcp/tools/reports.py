@@ -21,8 +21,9 @@ def register_report_tools(mcp: FastMCP) -> None:
             "Report type: single (one company), comparison (multiple), table (structured data)",
         ],
         source_groups: Annotated[
-            list[str], "Companies/source groups to include in the report"
-        ],
+            list[str] | None,
+            "Companies/source groups to include. If None or empty, includes ALL source groups in the project.",
+        ] = None,
         title: Annotated[str | None, "Custom report title"] = None,
         output_format: Annotated[
             Literal["md", "xlsx"], "Output format: md (markdown) or xlsx (Excel)"
@@ -49,10 +50,19 @@ def register_report_tools(mcp: FastMCP) -> None:
         - domain: One row per domain, LLM smart merge synthesizes values from all URLs
 
         Example:
+            # Report for specific companies
             create_report(
                 project_id="...",
                 report_type="table",
                 source_groups=["Acme Inc", "Competitor Corp"],
+                output_format="xlsx",
+                group_by="domain"
+            )
+
+            # Report for ALL companies in the project (omit source_groups)
+            create_report(
+                project_id="...",
+                report_type="table",
                 output_format="xlsx",
                 group_by="domain"
             )

@@ -671,8 +671,9 @@ class ReportRequest(BaseModel):
     """Request to generate a report."""
 
     type: ReportType
-    source_groups: list[str] = Field(
-        ..., min_length=1, description="Source groups to include"
+    source_groups: list[str] | None = Field(
+        default=None,
+        description="Source groups to include. If None or empty, includes all source groups in the project.",
     )
     entity_types: list[str] | None = Field(
         default=None, description="Entity types for comparison tables"

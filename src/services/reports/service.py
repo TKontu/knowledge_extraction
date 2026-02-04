@@ -11,7 +11,7 @@ import structlog
 
 from config import settings
 from models import ReportRequest, ReportType
-from orm_models import Report
+from orm_models import Extraction, Report
 from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
 from services.reports.excel_formatter import ExcelFormatter
@@ -72,6 +72,23 @@ class ReportService:
         self._project_repo = project_repo or ProjectRepository(db_session)
         self._schema_generator = SchemaTableGenerator()
 
+    def _get_all_source_groups(self, project_id: UUID) -> list[str]:
+        """Get all distinct source groups for a project.
+
+        Args:
+            project_id: Project UUID
+
+        Returns:
+            List of source group names
+        """
+        results = (
+            self._db.query(Extraction.source_group)
+            .filter(Extraction.project_id == project_id)
+            .distinct()
+            .all()
+        )
+        return [r[0] for r in results]
+
     async def generate(
         self,
         project_id: UUID,
@@ -86,10 +103,20 @@ class ReportService:
         Returns:
             Generated Report ORM object
         """
+        # Resolve source_groups - if None or empty, get all from project
+        source_groups = request.source_groups
+        if not source_groups:
+            source_groups = self._get_all_source_groups(project_id)
+            logger.info(
+                "Using all source groups",
+                project_id=str(project_id),
+                count=len(source_groups),
+            )
+
         # Gather data
         data = self._gather_data(
             project_id=project_id,
-            source_groups=request.source_groups,
+            source_groups=source_groups,
             categories=request.categories,
             entity_types=request.entity_types,
             max_extractions=request.max_extractions,
@@ -101,7 +128,7 @@ class ReportService:
 
         if request.type == ReportType.TABLE:
             # Create title if not provided (need it before generation)
-            title = request.title or f"Table: {' vs '.join(request.source_groups)}"
+            title = request.title or f"Table: {len(source_groups)} companies"
 
             md_content, excel_bytes = await self._generate_table_report(
                 data=data,
@@ -118,12 +145,12 @@ class ReportService:
                 report_format = "xlsx"
         elif request.type == ReportType.SINGLE:
             content = await self._generate_single_report(data, request.title)
-            title = request.title or f"{request.source_groups[0]} - Extraction Report"
+            title = request.title or f"{source_groups[0]} - Extraction Report"
         else:
             content = self._generate_comparison_report(
                 data, request.title, request.max_detail_extractions
             )
-            title = request.title or f"Comparison: {' vs '.join(request.source_groups)}"
+            title = request.title or f"Comparison: {len(source_groups)} companies"
 
         # Create and save report with provenance tracking
         report = Report(
@@ -131,7 +158,7 @@ class ReportService:
             type=request.type.value,
             title=title,
             content=content,
-            source_groups=request.source_groups,
+            source_groups=source_groups,
             categories=request.categories or [],
             extraction_ids=data.extraction_ids,
             format=report_format,

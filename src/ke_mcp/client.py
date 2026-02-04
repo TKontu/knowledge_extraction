@@ -395,13 +395,23 @@ class KnowledgeExtractionClient:
         self,
         project_id: str,
         report_type: str,
-        source_groups: list[str],
+        source_groups: list[str] | None = None,
         title: str | None = None,
         output_format: str = "md",
         group_by: str = "source",
         include_merge_metadata: bool = False,
     ) -> dict[str, Any]:
-        """Generate a report."""
+        """Generate a report.
+
+        Args:
+            project_id: Project UUID
+            report_type: Type of report (single, comparison, table)
+            source_groups: Companies to include. If None, includes all.
+            title: Custom report title
+            output_format: Output format (md, xlsx)
+            group_by: Grouping strategy (source, domain)
+            include_merge_metadata: Include merge provenance for domain grouping
+        """
         return await self._request(
             "POST",
             f"/api/v1/projects/{project_id}/reports",
