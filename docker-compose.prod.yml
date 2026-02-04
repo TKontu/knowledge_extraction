@@ -34,7 +34,7 @@ services:
       redis:
         condition: service_healthy
       camoufox:
-        condition: service_healthy
+        condition: service_started
       rabbitmq:
         condition: service_healthy
     healthcheck:
@@ -70,12 +70,6 @@ services:
       - CAMOUFOX_HEADLESS=${CAMOUFOX_HEADLESS:-true}
       - CAMOUFOX_LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CAMOUFOX_LOG_FORMAT=${LOG_FORMAT:-json}
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3003/health || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 12
-      start_period: 60s
     restart: unless-stopped
     networks:
       - scristill
