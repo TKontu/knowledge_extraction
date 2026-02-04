@@ -568,8 +568,10 @@ class ReportService:
                 "domain": domain,
             }
 
-            # Collect confidences for averaging
+            # Collect confidences for averaging and per-column tracking
             confidences = []
+            # Track confidence per column for accurate domain merge filtering
+            column_confidences: dict[str, float] = {}
 
             # Flatten all extractions for this source into the row
             for ext in extractions:
@@ -608,6 +610,9 @@ class ReportService:
                         row[col_name] = self._schema_generator.format_entity_list(
                             items, field_group
                         )
+                        # Track this extraction's confidence for the entity list column
+                        if ext_confidence is not None:
+                            column_confidences[col_name] = ext_confidence
                 else:
                     # Regular field group - copy fields
                     for col_name in field_mapping:
@@ -619,12 +624,18 @@ class ReportService:
 
                         if field_name in ext_data:
                             row[col_name] = ext_data[field_name]
+                            # Track this extraction's confidence for the column
+                            if ext_confidence is not None:
+                                column_confidences[col_name] = ext_confidence
 
             # Calculate average confidence
             if confidences:
                 row["avg_confidence"] = sum(confidences) / len(confidences)
             else:
                 row["avg_confidence"] = None
+
+            # Store per-column confidences for domain merge
+            row["_column_confidences"] = column_confidences
 
             rows.append(row)
 
@@ -672,10 +683,11 @@ class ReportService:
             min_confidence=settings.smart_merge_min_confidence,
         )
 
-        # Columns to merge (skip metadata columns)
+        # Columns to merge (skip metadata columns and internal tracking)
         merge_columns = [
             c for c in columns
             if c not in ("source_url", "source_title", "domain", "avg_confidence")
+            and not c.startswith("_")  # Exclude internal fields like _column_confidences
         ]
 
         # Merge each domain
@@ -688,18 +700,28 @@ class ReportService:
                 domain_row.update(domain_source_rows[0])
                 domain_row.pop("source_url", None)
                 domain_row.pop("source_title", None)
+                domain_row.pop("_column_confidences", None)  # Remove internal tracking
                 domain_rows.append(domain_row)
                 continue
 
             # Merge each column in parallel
             async def merge_column(col_name: str) -> tuple[str, Any, float, dict | None]:
                 """Merge a single column for this domain."""
+
+                def get_column_confidence(row: dict, col: str) -> float | None:
+                    """Get per-column confidence, falling back to avg if not available."""
+                    col_conf = row.get("_column_confidences", {}).get(col)
+                    if col_conf is not None:
+                        return col_conf
+                    return row.get("avg_confidence")
+
                 candidates = [
                     MergeCandidate(
                         value=row.get(col_name),
                         source_url=row.get("source_url", ""),
                         source_title=row.get("source_title"),
-                        confidence=row.get("avg_confidence"),
+                        # Use per-column confidence if available, otherwise fall back to avg
+                        confidence=get_column_confidence(row, col_name),
                     )
                     for row in domain_source_rows
                 ]
