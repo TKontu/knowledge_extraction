@@ -8,10 +8,20 @@ services:
   # ===================
   # Firecrawl Stack
   # ===================
+
+  # Wait service to give RabbitMQ time to fully initialize quorum queues
+  rabbitmq-ready:
+    image: alpine:latest
+    command: ["sh", "-c", "echo 'Waiting 30s for RabbitMQ quorum queues to initialize...' && sleep 30 && echo 'RabbitMQ ready!'"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - scristill
+    restart: "no"
+
   firecrawl-api:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/firecrawl-api:${FIRECRAWL_TAG:-latest}
-    # Add startup delay to let RabbitMQ fully initialize quorum queues
-    entrypoint: ["/bin/sh", "-c", "echo 'Waiting 30s for RabbitMQ queues...' && sleep 30 && exec docker-entrypoint.sh"]
     ports:
       - "3002:3002"
     environment:
@@ -37,8 +47,8 @@ services:
         condition: service_healthy
       camoufox:
         condition: service_started
-      rabbitmq:
-        condition: service_healthy
+      rabbitmq-ready:
+        condition: service_completed_successfully
     # Healthcheck disabled temporarily for debugging
     # healthcheck:
     #   test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3002/', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
