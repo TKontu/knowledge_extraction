@@ -128,11 +128,12 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # Check both ping AND that AMQP port is accepting connections
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity"]
       interval: 10s
-      timeout: 10s
-      retries: 12
-      start_period: 60s
+      timeout: 15s
+      retries: 15
+      start_period: 90s
     restart: unless-stopped
     networks:
       - scristill
