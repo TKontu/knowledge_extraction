@@ -36,6 +36,10 @@ def register_report_tools(mcp: FastMCP) -> None:
             bool,
             "Include merge provenance (sources_used, confidence per column) when group_by='domain'",
         ] = False,
+        max_extractions: Annotated[
+            int,
+            "Max extractions per source_group to include (default 50, max 200). Increase for complete data.",
+        ] = 50,
         ctx: Context = None,
     ) -> dict:
         """Generate an analysis report from extracted knowledge.
@@ -78,6 +82,7 @@ def register_report_tools(mcp: FastMCP) -> None:
                 output_format=output_format,
                 group_by=group_by,
                 include_merge_metadata=include_merge_metadata,
+                max_extractions=max_extractions,
             )
 
             return {

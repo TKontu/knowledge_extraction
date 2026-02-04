@@ -400,6 +400,7 @@ class KnowledgeExtractionClient:
         output_format: str = "md",
         group_by: str = "source",
         include_merge_metadata: bool = False,
+        max_extractions: int = 50,
     ) -> dict[str, Any]:
         """Generate a report.
 
@@ -411,6 +412,7 @@ class KnowledgeExtractionClient:
             output_format: Output format (md, xlsx)
             group_by: Grouping strategy (source, domain)
             include_merge_metadata: Include merge provenance for domain grouping
+            max_extractions: Max extractions per source_group (default 50)
         """
         return await self._request(
             "POST",
@@ -422,6 +424,7 @@ class KnowledgeExtractionClient:
                 "output_format": output_format,
                 "group_by": group_by,
                 "include_merge_metadata": include_merge_metadata,
+                "max_extractions": max_extractions,
             },
         )
 
