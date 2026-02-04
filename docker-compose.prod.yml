@@ -128,10 +128,10 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 12
+      start_period: 60s
     restart: unless-stopped
     networks:
       - scristill
