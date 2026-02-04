@@ -10,6 +10,8 @@ services:
   # ===================
   firecrawl-api:
     image: ${REGISTRY_PREFIX:-ghcr.io/tkontu}/firecrawl-api:${FIRECRAWL_TAG:-latest}
+    # Add startup delay to let RabbitMQ fully initialize quorum queues
+    entrypoint: ["/bin/sh", "-c", "echo 'Waiting 30s for RabbitMQ queues...' && sleep 30 && exec docker-entrypoint.sh"]
     ports:
       - "3002:3002"
     environment:
@@ -128,12 +130,12 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      # Check both ping AND that AMQP port is accepting connections
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity"]
+      # Full node health check - verifies alarms clear and node fully operational
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
       interval: 10s
-      timeout: 15s
-      retries: 15
-      start_period: 90s
+      timeout: 30s
+      retries: 20
+      start_period: 120s
     restart: unless-stopped
     networks:
       - scristill
