@@ -158,10 +158,11 @@ class SmartMergeService:
         # Build prompt
         prompt = self._build_merge_prompt(column_name, column_meta, candidates)
 
-        # Call LLM - complete() returns parsed dict directly
+        # Call LLM - complete() returns parsed dict when response_format is json_object
         response = await self._llm_client.complete(
             system_prompt=self._get_system_prompt(),
             user_prompt=prompt,
+            response_format={"type": "json_object"},
             temperature=0.1,  # Low temperature for consistency
         )
 
@@ -188,7 +189,7 @@ class SmartMergeService:
         candidate_lines = []
         for c in candidates:
             title_part = f" ({c.source_title})" if c.source_title else ""
-            conf_part = f" [confidence: {c.confidence:.2f}]" if c.confidence else ""
+            conf_part = f" [confidence: {c.confidence:.2f}]" if c.confidence is not None else ""
             value_str = json.dumps(c.value) if not isinstance(c.value, str) else c.value
             candidate_lines.append(f"- {c.source_url}{title_part}: {value_str}{conf_part}")
 
@@ -246,10 +247,15 @@ Rules:
             Parsed MergeResult.
         """
         try:
+            # Validate sources_used is a list
+            sources = response.get("sources_used", [])
+            if not isinstance(sources, list):
+                sources = [sources] if sources else []
+
             return MergeResult(
                 value=response.get("value"),
                 confidence=float(response.get("confidence", 0.8)),
-                sources_used=response.get("sources_used", []),
+                sources_used=sources,
                 reasoning=response.get("reasoning"),
             )
         except (KeyError, TypeError, ValueError) as e:

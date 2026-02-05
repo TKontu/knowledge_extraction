@@ -754,13 +754,27 @@ class ReportService:
 
             # Run all column merges in parallel
             merge_results = await asyncio.gather(
-                *[merge_column(col) for col in merge_columns]
+                *[merge_column(col) for col in merge_columns],
+                return_exceptions=True,
             )
 
             # Build domain row from merge results
             merge_metadata_all = {}
             confidences = []
-            for col_name, value, confidence, merge_meta in merge_results:
+            for i, result in enumerate(merge_results):
+                # Handle any exceptions from individual merges
+                if isinstance(result, Exception):
+                    col_name = merge_columns[i]
+                    logger.warning(
+                        "column_merge_failed",
+                        domain=domain,
+                        column=col_name,
+                        error=str(result),
+                    )
+                    domain_row[col_name] = None
+                    continue
+
+                col_name, value, confidence, merge_meta = result
                 domain_row[col_name] = value
                 if confidence is not None:
                     confidences.append(confidence)
