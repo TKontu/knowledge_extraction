@@ -358,7 +358,8 @@ Fields to extract:
 {field_group.prompt_hint}
 
 Output JSON with exactly these fields. Use null for unknown values.
-For boolean fields, only return true if there is clear evidence.
+For boolean fields: default to false. Only return true when the content provides clear supporting evidence.
+If no relevant information is found, return false (not null). When uncertain, prefer false over true.
 """
 
     def _build_entity_list_system_prompt(self, field_group: FieldGroup) -> str:
