@@ -387,17 +387,17 @@ class Settings(BaseSettings):
 
     # Page Classification (extraction optimization)
     classification_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable page classification to filter field groups before extraction",
     )
     classification_skip_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable skipping pages classified as irrelevant (careers, news, etc.)",
     )
 
     # Smart Classification (embedding + reranker)
     smart_classification_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable embedding-based smart classification (requires embedding server)",
     )
     reranker_model: str = Field(
@@ -428,9 +428,9 @@ class Settings(BaseSettings):
         description="TTL for field group embedding cache in seconds (24 hours)",
     )
     classification_use_default_skip_patterns: bool = Field(
-        default=False,
+        default=True,
         description="When True, use DEFAULT_SKIP_PATTERNS if template has no classification_config. "
-        "When False (default), smart classification uses no skip patterns (context-agnostic).",
+        "When False, smart classification uses no skip patterns (context-agnostic).",
     )
 
     @field_validator("api_key")
