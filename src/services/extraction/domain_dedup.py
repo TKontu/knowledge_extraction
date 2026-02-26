@@ -17,7 +17,8 @@ import hashlib
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -44,6 +45,8 @@ class DomainAnalysisResult:
     pages_cleaned: int
     blocks_boilerplate: int
     bytes_removed_total: int
+    sections_analyzed: int = 0
+    sections_with_boilerplate: int = 0
 
 
 @dataclass
@@ -91,14 +94,19 @@ def compute_domain_fingerprint(
     threshold_pct: float = 0.7,
     min_pages: int = 5,
     min_block_chars: int = 50,
+    threshold_floor: int | None = None,
 ) -> DomainFingerprintResult:
     """Compute boilerplate fingerprint for a set of pages from one domain.
 
     Args:
         pages: List of page content strings.
         threshold_pct: Fraction of pages a block must appear on to be boilerplate.
-        min_pages: Minimum pages required before analysis runs.
+        min_pages: Minimum pages required before analysis runs (gate).
         min_block_chars: Minimum chars for a block to be considered.
+        threshold_floor: Minimum absolute occurrences for a block to be
+            boilerplate. Defaults to min_pages if not set. Use a lower
+            value for section-level analysis where min_pages already
+            gates entry.
 
     Returns:
         DomainFingerprintResult with boilerplate hashes and statistics.
@@ -123,7 +131,8 @@ def compute_domain_fingerprint(
         page_hashes = {hash_block(b) for b in blocks}
         hash_page_count.update(page_hashes)
 
-    threshold = max(min_pages, int(n_pages * threshold_pct))
+    floor = threshold_floor if threshold_floor is not None else min_pages
+    threshold = max(floor, int(n_pages * threshold_pct))
     boilerplate = [h for h, count in hash_page_count.items() if count >= threshold]
 
     return DomainFingerprintResult(
@@ -132,6 +141,109 @@ def compute_domain_fingerprint(
         blocks_total=blocks_total,
         blocks_boilerplate=len(boilerplate),
     )
+
+
+def extract_path_prefix(uri: str, depth: int = 1) -> str:
+    """Extract the first path segments from a URI.
+
+    Args:
+        uri: Full URL string.
+        depth: Number of path segments to include.
+
+    Returns:
+        Path prefix like "/segment" or "/" for root/empty.
+    """
+    try:
+        path = urlparse(uri).path.rstrip("/")
+    except Exception:
+        return "/"
+    if not path:
+        return "/"
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        return "/"
+    prefix_parts = segments[:depth]
+    return "/" + "/".join(prefix_parts)
+
+
+@dataclass
+class SectionFingerprintResult:
+    """Result from section-level fingerprint computation."""
+
+    section_results: dict[str, DomainFingerprintResult] = field(default_factory=dict)
+    sections_analyzed: int = 0
+    sections_with_boilerplate: int = 0
+    total_section_hashes: int = 0
+
+
+def compute_section_fingerprints(
+    pages_with_uris: list[tuple[str, str]],
+    threshold_pct: float = 0.7,
+    min_pages: int = 5,
+    min_block_chars: int = 50,
+    path_depth: int = 1,
+    exclude_hashes: set[str] | None = None,
+    threshold_floor: int = 3,
+) -> SectionFingerprintResult:
+    """Compute boilerplate fingerprints per URL path section.
+
+    Groups pages by URL path prefix, computes fingerprints per section,
+    and filters out hashes already found at the domain level.
+
+    Args:
+        pages_with_uris: List of (content, uri) pairs.
+        threshold_pct: Fraction of section pages a block must appear on.
+        min_pages: Minimum pages per section before analysis runs (gate).
+        min_block_chars: Minimum chars for a block.
+        path_depth: Number of path segments for section grouping.
+        exclude_hashes: Hashes to exclude (e.g. domain-level boilerplate).
+        threshold_floor: Minimum absolute occurrences within a section
+            for a block to be boilerplate. Lower than min_pages because
+            min_pages already gates entry. Default 3.
+
+    Returns:
+        SectionFingerprintResult with per-section results.
+    """
+    if not pages_with_uris:
+        return SectionFingerprintResult()
+
+    exclude = exclude_hashes or set()
+
+    # Group pages by path prefix
+    sections: dict[str, list[str]] = {}
+    for content, uri in pages_with_uris:
+        prefix = extract_path_prefix(uri, depth=path_depth)
+        sections.setdefault(prefix, []).append(content)
+
+    result = SectionFingerprintResult()
+    for prefix, pages in sections.items():
+        if len(pages) < min_pages:
+            continue
+
+        fp = compute_domain_fingerprint(
+            pages,
+            threshold_pct=threshold_pct,
+            min_pages=min_pages,
+            min_block_chars=min_block_chars,
+            threshold_floor=threshold_floor,
+        )
+
+        # Filter out domain-level hashes
+        section_only = [h for h in fp.boilerplate_hashes if h not in exclude]
+        fp_filtered = DomainFingerprintResult(
+            boilerplate_hashes=section_only,
+            pages_analyzed=fp.pages_analyzed,
+            blocks_total=fp.blocks_total,
+            blocks_boilerplate=len(section_only),
+        )
+
+        result.section_results[prefix] = fp_filtered
+        result.sections_analyzed += 1
+        if section_only:
+            result.sections_with_boilerplate += 1
+            result.total_section_hashes += len(section_only)
+
+    return result
 
 
 def strip_boilerplate(
@@ -240,24 +352,51 @@ class DomainDedupService:
                 bytes_removed_total=0,
             )
 
-        # 2. Compute fingerprint
+        # 2. Pass 1: Domain-level fingerprint
         fp = compute_domain_fingerprint(
             pages, threshold_pct=t_pct, min_pages=m_pages, min_block_chars=m_chars
         )
+        domain_hashes = set(fp.boilerplate_hashes)
 
-        # 3. Upsert fingerprint to DB
+        # 3. Pass 2: Section-level fingerprints
+        pages_with_uris = [
+            (s.content, s.uri) for s in sources if s.content and s.uri
+        ]
+        section_fp = compute_section_fingerprints(
+            pages_with_uris,
+            threshold_pct=t_pct,
+            min_pages=m_pages,
+            min_block_chars=m_chars,
+            exclude_hashes=domain_hashes,
+        )
+
+        # Build a lookup: prefix → section hashes
+        section_hash_lookup: dict[str, set[str]] = {}
+        all_section_hashes: set[str] = set()
+        for prefix, sfp in section_fp.section_results.items():
+            if sfp.boilerplate_hashes:
+                h_set = set(sfp.boilerplate_hashes)
+                section_hash_lookup[prefix] = h_set
+                all_section_hashes |= h_set
+
+        # 4. Strip boilerplate from each source using merged hashes
         bytes_removed_total = 0
         pages_cleaned = 0
+        has_any_hashes = bool(domain_hashes or all_section_hashes)
 
-        if fp.boilerplate_hashes:
-            bp_set = set(fp.boilerplate_hashes)
-
-            # 4. Strip boilerplate from each source
+        if has_any_hashes:
             for source in sources:
                 if not source.content:
                     continue
+                # Effective hashes = domain ∪ section(for this source's prefix)
+                effective = set(domain_hashes)
+                if source.uri and section_hash_lookup:
+                    src_prefix = extract_path_prefix(source.uri)
+                    if src_prefix in section_hash_lookup:
+                        effective |= section_hash_lookup[src_prefix]
+
                 cleaned, removed = strip_boilerplate(
-                    source.content, bp_set, min_block_chars=m_chars
+                    source.content, effective, min_block_chars=m_chars
                 )
                 if removed > 0:
                     source.cleaned_content = cleaned
@@ -274,13 +413,17 @@ class DomainDedupService:
                 if source.cleaned_content is not None:
                     source.cleaned_content = None
 
+        # Persist merged hashes (domain ∪ all section hashes)
+        all_hashes = sorted(domain_hashes | all_section_hashes)
+        total_bp_blocks = fp.blocks_boilerplate + section_fp.total_section_hashes
+
         self._bp_repo.upsert(
             project_id=project_id,
             domain=domain,
-            boilerplate_hashes=fp.boilerplate_hashes,
+            boilerplate_hashes=all_hashes,
             pages_analyzed=fp.pages_analyzed,
             blocks_total=fp.blocks_total,
-            blocks_boilerplate=fp.blocks_boilerplate,
+            blocks_boilerplate=total_bp_blocks,
             bytes_removed_avg=avg_removed,
             threshold_pct=t_pct,
             min_pages=m_pages,
@@ -296,8 +439,10 @@ class DomainDedupService:
                 "domain": domain,
                 "pages_analyzed": fp.pages_analyzed,
                 "pages_cleaned": pages_cleaned,
-                "blocks_boilerplate": fp.blocks_boilerplate,
+                "blocks_boilerplate": total_bp_blocks,
                 "bytes_removed": bytes_removed_total,
+                "sections_analyzed": section_fp.sections_analyzed,
+                "sections_with_boilerplate": section_fp.sections_with_boilerplate,
             },
         )
 
@@ -305,8 +450,10 @@ class DomainDedupService:
             domain=domain,
             pages_analyzed=fp.pages_analyzed,
             pages_cleaned=pages_cleaned,
-            blocks_boilerplate=fp.blocks_boilerplate,
+            blocks_boilerplate=total_bp_blocks,
             bytes_removed_total=bytes_removed_total,
+            sections_analyzed=section_fp.sections_analyzed,
+            sections_with_boilerplate=section_fp.sections_with_boilerplate,
         )
 
     def analyze_project(

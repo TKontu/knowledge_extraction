@@ -77,6 +77,8 @@ async def analyze_boilerplate(
                 "pages_cleaned": d.pages_cleaned,
                 "blocks_boilerplate": d.blocks_boilerplate,
                 "bytes_removed_total": d.bytes_removed_total,
+                "sections_analyzed": d.sections_analyzed,
+                "sections_with_boilerplate": d.sections_with_boilerplate,
             }
             for d in result.domain_results
         ],

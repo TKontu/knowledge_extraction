@@ -2,6 +2,8 @@
 
 from services.extraction.domain_dedup import (
     compute_domain_fingerprint,
+    compute_section_fingerprints,
+    extract_path_prefix,
     hash_block,
     split_into_blocks,
     strip_boilerplate,
@@ -185,6 +187,52 @@ class TestComputeDomainFingerprint:
         result = compute_domain_fingerprint(pages, threshold_pct=0.7, min_pages=5)
         assert hash_block(banner) in set(result.boilerplate_hashes)
 
+    def test_threshold_floor_defaults_to_min_pages(self):
+        """Without threshold_floor, min_pages acts as the floor (existing behavior)."""
+        # 5 pages, block on 4/5 (80% > 70%) — but min_pages=5 forces threshold=5
+        block = "Shared navigation block that appears across most pages in section."
+        pages = []
+        for i in range(5):
+            if i < 4:
+                pages.append(f"{block}\n\nUnique content for page {i} with enough text here.")
+            else:
+                pages.append(f"Different page {i} with no shared block but enough text here.")
+
+        result = compute_domain_fingerprint(pages, threshold_pct=0.7, min_pages=5)
+        assert hash_block(block) not in set(result.boilerplate_hashes)  # MISSED: need 5/5
+
+    def test_threshold_floor_overrides_min_pages_floor(self):
+        """With threshold_floor=3, block on 4/5 pages (80%) is detected."""
+        block = "Shared navigation block that appears across most pages in section."
+        pages = []
+        for i in range(5):
+            if i < 4:
+                pages.append(f"{block}\n\nUnique content for page {i} with enough text here.")
+            else:
+                pages.append(f"Different page {i} with no shared block but enough text here.")
+
+        result = compute_domain_fingerprint(
+            pages, threshold_pct=0.7, min_pages=5, threshold_floor=3
+        )
+        assert hash_block(block) in set(result.boilerplate_hashes)  # DETECTED: need 3/5
+
+    def test_threshold_floor_still_respects_pct(self):
+        """threshold_floor doesn't lower below threshold_pct for larger sections."""
+        # 10 pages, block on 5/10 (50% < 70%) — threshold_floor=3 doesn't help
+        block = "Shared navigation block that appears across most pages in section."
+        pages = []
+        for i in range(10):
+            if i < 5:
+                pages.append(f"{block}\n\nUnique content for page {i} with enough text here.")
+            else:
+                pages.append(f"Different page {i} with no shared block but enough text here.")
+
+        result = compute_domain_fingerprint(
+            pages, threshold_pct=0.7, min_pages=5, threshold_floor=3
+        )
+        # threshold = max(3, int(10*0.7)) = max(3, 7) = 7. Need 7/10, only have 5.
+        assert hash_block(block) not in set(result.boilerplate_hashes)
+
     def test_duplicate_block_on_same_page_counts_once(self):
         """A block appearing twice on one page should only count as one page occurrence."""
         dup_block = (
@@ -292,3 +340,294 @@ class TestEndToEnd:
             total_removed += removed
 
         assert total_removed > 0
+
+
+# --- TestExtractPathPrefix ---
+
+
+MOTORS_NAV = (
+    "Browse our motors: AC Motors | DC Motors | Servo Motors | Stepper Motors | "
+    "Brushless Motors | Gear Motors | Linear Motors | Motor Accessories"
+)
+
+PRODUCTS_SIDEBAR = (
+    "Product Categories: Gearboxes | Drives | Controllers | Sensors | "
+    "Couplings | Bearings | Enclosures | Power Supplies | Cables"
+)
+
+
+class TestExtractPathPrefix:
+    def test_standard_url(self):
+        assert extract_path_prefix("https://example.com/motors-for/ac") == "/motors-for"
+
+    def test_root_url(self):
+        assert extract_path_prefix("https://example.com/") == "/"
+
+    def test_no_path(self):
+        assert extract_path_prefix("https://example.com") == "/"
+
+    def test_deeper_depth(self):
+        assert (
+            extract_path_prefix("https://example.com/a/b/c", depth=2) == "/a/b"
+        )
+
+    def test_depth_exceeds_segments(self):
+        assert extract_path_prefix("https://example.com/a", depth=3) == "/a"
+
+    def test_query_params_ignored(self):
+        assert (
+            extract_path_prefix("https://example.com/motors?page=2") == "/motors"
+        )
+
+    def test_trailing_slash(self):
+        assert extract_path_prefix("https://example.com/motors/") == "/motors"
+
+    def test_encoded_path(self):
+        assert (
+            extract_path_prefix("https://example.com/my%20motors/list") == "/my%20motors"
+        )
+
+
+# --- TestComputeSectionFingerprints ---
+
+
+class TestComputeSectionFingerprints:
+    def test_detects_section_specific_boilerplate(self):
+        """Two sections each with their own nav should be detected."""
+        pages_with_uris: list[tuple[str, str]] = []
+        # /motors-for section: 6 pages, all with MOTORS_NAV
+        for i in range(6):
+            content = f"{MOTORS_NAV}\n\nMotor product {i} details with enough text to count as block."
+            pages_with_uris.append((content, f"https://example.com/motors-for/page{i}"))
+        # /products section: 6 pages, all with PRODUCTS_SIDEBAR
+        for i in range(6):
+            content = f"{PRODUCTS_SIDEBAR}\n\nProduct item {i} details with enough text to count as block."
+            pages_with_uris.append((content, f"https://example.com/products/item{i}"))
+
+        result = compute_section_fingerprints(
+            pages_with_uris, threshold_pct=0.7, min_pages=5
+        )
+
+        assert result.sections_analyzed == 2
+        assert result.sections_with_boilerplate == 2
+        # Each section should have its own nav hash
+        motors_hashes = set(result.section_results["/motors-for"].boilerplate_hashes)
+        products_hashes = set(result.section_results["/products"].boilerplate_hashes)
+        assert hash_block(MOTORS_NAV) in motors_hashes
+        assert hash_block(PRODUCTS_SIDEBAR) in products_hashes
+        # No cross-contamination in the fingerprint results
+        assert hash_block(MOTORS_NAV) not in products_hashes
+        assert hash_block(PRODUCTS_SIDEBAR) not in motors_hashes
+
+    def test_skips_sections_below_min_pages(self):
+        """Sections with fewer than min_pages should be skipped."""
+        pages_with_uris: list[tuple[str, str]] = []
+        # Only 3 pages in /small section
+        for i in range(3):
+            content = f"{MOTORS_NAV}\n\nSmall section page {i} with enough text to be a block."
+            pages_with_uris.append((content, f"https://example.com/small/page{i}"))
+        # 6 pages in /large section
+        for i in range(6):
+            content = f"{PRODUCTS_SIDEBAR}\n\nLarge section page {i} with enough text to be a block."
+            pages_with_uris.append((content, f"https://example.com/large/page{i}"))
+
+        result = compute_section_fingerprints(
+            pages_with_uris, threshold_pct=0.7, min_pages=5
+        )
+
+        assert result.sections_analyzed == 1
+        assert "/small" not in result.section_results
+        assert "/large" in result.section_results
+
+    def test_exclude_hashes_filters_domain_level(self):
+        """Domain-level hashes should be excluded from section results."""
+        pages_with_uris: list[tuple[str, str]] = []
+        for i in range(6):
+            content = f"{COOKIE_BANNER}\n\n{MOTORS_NAV}\n\nMotor page {i} unique content is here."
+            pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
+
+        cookie_hash = hash_block(COOKIE_BANNER)
+        result = compute_section_fingerprints(
+            pages_with_uris,
+            threshold_pct=0.7,
+            min_pages=5,
+            exclude_hashes={cookie_hash},
+        )
+
+        assert result.sections_analyzed == 1
+        motors_hashes = set(result.section_results["/motors"].boilerplate_hashes)
+        assert hash_block(MOTORS_NAV) in motors_hashes
+        assert cookie_hash not in motors_hashes
+
+    def test_empty_input(self):
+        result = compute_section_fingerprints([])
+        assert result.sections_analyzed == 0
+        assert result.sections_with_boilerplate == 0
+        assert result.total_section_hashes == 0
+
+    def test_all_pages_in_same_section(self):
+        """All pages under same prefix should form one section."""
+        pages_with_uris: list[tuple[str, str]] = []
+        for i in range(8):
+            content = f"{MOTORS_NAV}\n\nPage {i} with unique motor content and description."
+            pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
+
+        result = compute_section_fingerprints(
+            pages_with_uris, threshold_pct=0.7, min_pages=5
+        )
+
+        assert result.sections_analyzed == 1
+        assert "/motors" in result.section_results
+        assert hash_block(MOTORS_NAV) in set(
+            result.section_results["/motors"].boilerplate_hashes
+        )
+
+    def test_threshold_floor_detects_boilerplate_in_small_section(self):
+        """Section with 5 pages, block on 4/5 (80%) — caught with threshold_floor=3."""
+        pages_with_uris: list[tuple[str, str]] = []
+        for i in range(5):
+            if i < 4:
+                content = f"{MOTORS_NAV}\n\nMotor page {i} with unique content here enough for block."
+            else:
+                content = f"Page {i} without nav but with enough unique content for block."
+            pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
+
+        # Default threshold_floor=3: threshold = max(3, int(5*0.7)) = max(3,3) = 3
+        result = compute_section_fingerprints(
+            pages_with_uris, threshold_pct=0.7, min_pages=5, threshold_floor=3
+        )
+        assert result.sections_with_boilerplate == 1
+        motors_hashes = set(result.section_results["/motors"].boilerplate_hashes)
+        assert hash_block(MOTORS_NAV) in motors_hashes
+
+    def test_threshold_floor_high_value_misses_same_case(self):
+        """Same 4/5 case with threshold_floor=5 (like old behavior) — missed."""
+        pages_with_uris: list[tuple[str, str]] = []
+        for i in range(5):
+            if i < 4:
+                content = f"{MOTORS_NAV}\n\nMotor page {i} with unique content here enough for block."
+            else:
+                content = f"Page {i} without nav but with enough unique content for block."
+            pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
+
+        result = compute_section_fingerprints(
+            pages_with_uris, threshold_pct=0.7, min_pages=5, threshold_floor=5
+        )
+        # threshold = max(5, int(5*0.7)) = 5. Need 5/5, only 4 have it.
+        motors_hashes = set(result.section_results["/motors"].boilerplate_hashes)
+        assert hash_block(MOTORS_NAV) not in motors_hashes
+
+
+# --- Two-Pass End-to-End ---
+
+
+class TestTwoPassEndToEnd:
+    def test_section_nav_missed_at_domain_caught_at_section(self):
+        """Section nav at 60% of domain pages is missed globally but caught per-section."""
+        pages: list[str] = []
+        uris: list[str] = []
+
+        # 6 /motors-for pages with MOTORS_NAV (60% of 10 total)
+        for i in range(6):
+            content = (
+                f"{COOKIE_BANNER}\n\n{MOTORS_NAV}\n\n"
+                f"Motor product {i} specification with detailed technical information."
+            )
+            pages.append(content)
+            uris.append(f"https://hansen-motor.com/motors-for/motor{i}")
+
+        # 4 /about pages without MOTORS_NAV
+        for i in range(4):
+            content = (
+                f"{COOKIE_BANNER}\n\n"
+                f"About page {i} with company history and team information details."
+            )
+            pages.append(content)
+            uris.append(f"https://hansen-motor.com/about/page{i}")
+
+        # Domain-level: COOKIE_BANNER on all 10 → caught. MOTORS_NAV on 6/10 (60%) → missed.
+        domain_fp = compute_domain_fingerprint(
+            pages, threshold_pct=0.7, min_pages=5
+        )
+        domain_hashes = set(domain_fp.boilerplate_hashes)
+        assert hash_block(COOKIE_BANNER) in domain_hashes
+        assert hash_block(MOTORS_NAV) not in domain_hashes  # 60% < 70% threshold
+
+        # Section-level: MOTORS_NAV on 6/6 /motors-for pages → caught
+        pages_with_uris = list(zip(pages, uris, strict=True))
+        section_fp = compute_section_fingerprints(
+            pages_with_uris,
+            threshold_pct=0.7,
+            min_pages=5,
+            exclude_hashes=domain_hashes,
+        )
+
+        # /motors-for has 6 pages ≥ min_pages=5, MOTORS_NAV on 100%
+        assert "/motors-for" in section_fp.section_results
+        motors_hashes = set(section_fp.section_results["/motors-for"].boilerplate_hashes)
+        assert hash_block(MOTORS_NAV) in motors_hashes
+
+        # Now strip /motors-for pages with merged hashes
+        for i in range(6):
+            effective = domain_hashes | motors_hashes
+            cleaned, removed = strip_boilerplate(pages[i], effective)
+            assert COOKIE_BANNER not in cleaned
+            assert MOTORS_NAV not in cleaned
+            assert removed > 0
+
+        # /about pages should NOT have MOTORS_NAV stripped (no cross-contamination)
+        for i in range(6, 10):
+            effective_about = set(domain_hashes)
+            # /about section only had 4 pages, below min_pages, so no section hashes
+            cleaned, removed = strip_boilerplate(pages[i], effective_about)
+            assert COOKIE_BANNER not in cleaned
+            # Unique about content preserved
+            assert "About page" in cleaned
+
+    def test_section_hashes_not_applied_to_other_sections(self):
+        """Verify section hashes from /motors are NOT used to strip /products pages."""
+        pages_with_uris: list[tuple[str, str]] = []
+
+        # /motors section with MOTORS_NAV
+        for i in range(6):
+            content = (
+                f"{MOTORS_NAV}\n\n"
+                f"Motor item {i} technical description with enough detail for block."
+            )
+            pages_with_uris.append(
+                (content, f"https://example.com/motors/item{i}")
+            )
+
+        # /products section with PRODUCTS_SIDEBAR
+        for i in range(6):
+            content = (
+                f"{PRODUCTS_SIDEBAR}\n\n"
+                f"Product listing {i} with detailed specifications and pricing info."
+            )
+            pages_with_uris.append(
+                (content, f"https://example.com/products/item{i}")
+            )
+
+        section_fp = compute_section_fingerprints(
+            pages_with_uris, threshold_pct=0.7, min_pages=5
+        )
+
+        products_hashes = set(section_fp.section_results["/products"].boilerplate_hashes)
+
+        # Strip a /products page with only /products section hashes (not /motors)
+        product_page = (
+            f"{PRODUCTS_SIDEBAR}\n\n"
+            "Product listing 99 with detailed specifications and pricing info."
+        )
+        cleaned, _ = strip_boilerplate(product_page, products_hashes)
+        assert PRODUCTS_SIDEBAR not in cleaned
+
+        # MOTORS_NAV should NOT be stripped from a page that happens to contain it
+        mixed_page = (
+            f"{MOTORS_NAV}\n\n{PRODUCTS_SIDEBAR}\n\n"
+            "Mixed page with both navigations and some unique content here."
+        )
+        cleaned_mixed, _ = strip_boilerplate(mixed_page, products_hashes)
+        # PRODUCTS_SIDEBAR stripped, but MOTORS_NAV preserved (wrong section)
+        assert PRODUCTS_SIDEBAR not in cleaned_mixed
+        assert MOTORS_NAV in cleaned_mixed
