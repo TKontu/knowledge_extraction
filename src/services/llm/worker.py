@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from services.extraction.content_cleaner import strip_structural_junk
+from services.extraction.schema_extractor import EXTRACTION_CONTENT_LIMIT
 from services.llm.json_repair import try_repair_json
 from services.llm.models import LLMRequest, LLMResponse
 
@@ -17,9 +18,6 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 logger = structlog.get_logger(__name__)
-
-# Must match schema_extractor.EXTRACTION_CONTENT_LIMIT
-EXTRACTION_CONTENT_LIMIT = 20000
 
 
 class LLMWorker:

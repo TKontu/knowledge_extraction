@@ -9,7 +9,7 @@ from services.extraction.schema_extractor import (
     EXTRACTION_CONTENT_LIMIT,
     SchemaExtractor,
 )
-from services.llm.worker import EXTRACTION_CONTENT_LIMIT as WORKER_CONTENT_LIMIT
+from services.llm import worker as llm_worker
 
 # Test fixtures for field groups (mimics schema-driven groups)
 MANUFACTURING_GROUP = FieldGroup(
@@ -212,9 +212,9 @@ class TestExtractionContentLimit:
         """EXTRACTION_CONTENT_LIMIT should be 20000."""
         assert EXTRACTION_CONTENT_LIMIT == 20000
 
-    def test_worker_constant_matches(self):
-        """Worker fallback limit must match schema_extractor limit."""
-        assert WORKER_CONTENT_LIMIT == EXTRACTION_CONTENT_LIMIT
+    def test_worker_imports_from_schema_extractor(self):
+        """Worker should use the same constant from schema_extractor."""
+        assert llm_worker.EXTRACTION_CONTENT_LIMIT is EXTRACTION_CONTENT_LIMIT
 
 
 class TestPromptGrounding:

@@ -66,13 +66,11 @@ schema_orchestrator.extract_all_groups()
 
 ## Important (should fix)
 
-- [ ] **EXTRACTION_CONTENT_LIMIT duplicated in two files**
-  `schema_extractor.py:25` and `worker.py:22` both define `EXTRACTION_CONTENT_LIMIT = 20000`. The worker has a comment `# Must match schema_extractor.EXTRACTION_CONTENT_LIMIT` and the test (`test_schema_extractor.py:217`) asserts they're equal — so there's a safety net. But it should be a single import. Currently fragile if someone edits one file without the other.
+- [x] **EXTRACTION_CONTENT_LIMIT duplicated in two files** *(fixed: worker.py now imports from schema_extractor.py)*
 
 ## Minor
 
-- [ ] **embedding.py:97,129 — `extra={}` logging works but is inconsistent with project style**
-  Uses stdlib `logging` with `extra={"original_length": len(text)}`. The rest of the extraction pipeline uses `structlog` with kwargs (`logger.info("event", key=value)`). Not a bug (stdlib `extra` works fine), but inconsistent with how other files log structured data. The `extra` dict may not render in structlog-formatted output depending on configuration.
+- [x] **embedding.py:97,129 — `extra={}` logging works but is inconsistent with project style** *(fixed: switched to structlog with kwargs)*
 
 ## Assessed & Not Issues
 
