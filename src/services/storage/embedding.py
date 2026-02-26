@@ -1,15 +1,15 @@
 """Embedding service for generating text embeddings."""
 
 import asyncio
-import logging
 
 import httpx
+import structlog
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import Settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Safety cap: ~7000 tokens, within bge-m3's 8192 token limit.
 # Prevents HTTP 400 crashes from vLLM when input exceeds model max.
@@ -94,7 +94,7 @@ class EmbeddingService:
             Exception: If API call fails after retries.
         """
         if len(text) > MAX_EMBED_CHARS:
-            logger.debug("embedding_text_truncated", extra={"original_length": len(text)})
+            logger.debug("embedding_text_truncated", original_length=len(text))
             text = text[:MAX_EMBED_CHARS]
 
         async with self._get_semaphore():
@@ -126,7 +126,7 @@ class EmbeddingService:
         truncated = []
         for t in texts:
             if len(t) > MAX_EMBED_CHARS:
-                logger.debug("embedding_text_truncated", extra={"original_length": len(t)})
+                logger.debug("embedding_text_truncated", original_length=len(t))
                 truncated.append(t[:MAX_EMBED_CHARS])
             else:
                 truncated.append(t)
