@@ -171,16 +171,13 @@ class SchemaExtractionOrchestrator:
                 merged = self._merge_chunk_results(chunk_results, group)
                 group_result["data"] = merged
 
-                raw_confidence = merged.pop("confidence", None)
+                raw_confidence = merged.pop("confidence", 0.0)
                 is_empty, populated_ratio = self._is_empty_result(merged, group)
-
-                if raw_confidence is None:
-                    raw_confidence = 0.0 if is_empty else 0.5 * populated_ratio
 
                 if is_empty:
                     group_result["confidence"] = min(raw_confidence, 0.1)
                 else:
-                    group_result["confidence"] = raw_confidence * (0.5 + 0.5 * populated_ratio)
+                    group_result["confidence"] = raw_confidence
 
             return group_result
 

@@ -231,24 +231,21 @@ class TestConfidenceRecalibration:
         data = {"name": "Acme Corp", "city": "Helsinki"}
         is_empty, ratio = orchestrator._is_empty_result(data, group)
         assert is_empty is False
-        # ratio = 2/2 = 1.0, raw_confidence * (0.5 + 0.5 * 1.0) = raw * 1.0
+        # No population scaling — LLM confidence passes through directly
         raw_confidence = 0.85
-        final_conf = raw_confidence * (0.5 + 0.5 * ratio)
+        final_conf = raw_confidence
         assert final_conf == pytest.approx(0.85, abs=0.01)
 
-    def test_none_confidence_handled(self, orchestrator, group):
-        """confidence=None should not cause TypeError."""
-        data = {"name": "Acme"}
-        is_empty, ratio = orchestrator._is_empty_result(data, group)
-        # Simulate None confidence path
-        raw_confidence = None
-        if raw_confidence is None:
-            raw_confidence = 0.0 if is_empty else 0.5 * ratio
-        # Should not raise
+    def test_missing_confidence_defaults_to_zero(self, orchestrator, group):
+        """Missing confidence key in merged dict defaults to 0.0."""
+        # merged.pop("confidence", 0.0) returns 0.0 when key absent
+        merged = {"name": "Acme"}
+        raw_confidence = merged.pop("confidence", 0.0)
+        assert raw_confidence == 0.0
         assert isinstance(raw_confidence, float)
 
-    def test_partial_extraction_reduces_confidence(self, orchestrator):
-        """Partially populated extraction should reduce confidence proportionally."""
+    def test_partial_extraction_confidence_preserved(self, orchestrator):
+        """Focused pages (few fields populated) keep LLM confidence — no penalty."""
         group = FieldGroup(
             name="info",
             description="Info",
@@ -264,9 +261,9 @@ class TestConfidenceRecalibration:
         is_empty, ratio = orchestrator._is_empty_result(data, group)
         assert is_empty is False
         assert ratio == 0.25
-        # 0.8 * (0.5 + 0.5 * 0.25) = 0.8 * 0.625 = 0.5
-        final = 0.8 * (0.5 + 0.5 * ratio)
-        assert final == pytest.approx(0.5, abs=0.01)
+        # No population scaling — raw confidence passes through
+        final = 0.8
+        assert final == pytest.approx(0.8, abs=0.01)
 
 
 class TestBooleanMajorityVote:
