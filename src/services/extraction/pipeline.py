@@ -143,10 +143,15 @@ class ExtractionPipelineService:
         if profile is None:
             profile = DEFAULT_PROFILE
 
-        # Extract facts via orchestrator
+        # Extract facts via orchestrator (prefer domain-deduped content)
+        content = (
+            (source.cleaned_content or source.content)
+            if app_settings.domain_dedup_enabled
+            else source.content
+        )
         result = await self._orchestrator.extract(
             page_id=source_id,
-            markdown=source.content,
+            markdown=content,
             profile=profile,
         )
 
@@ -530,10 +535,15 @@ class SchemaExtractionPipeline:
             )
             return []
 
-        # Run extraction for all field groups (with classification)
+        # Run extraction for all field groups (prefer domain-deduped content)
+        dedup_content = (
+            (source.cleaned_content or source.content)
+            if app_settings.domain_dedup_enabled
+            else source.content
+        )
         results, classification = await self._orchestrator.extract_all_groups(
             source_id=source.id,
-            markdown=source.content,
+            markdown=dedup_content,
             source_context=context_value,
             field_groups=field_groups,
             source_url=source.uri,
