@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -323,11 +323,68 @@ class SourceRepository:
         Returns:
             Number of sources created by the job
         """
-        from sqlalchemy import func
-
         result = self._session.execute(
-            select(func.count()).select_from(Source).where(
-                Source.created_by_job_id == job_id
-            )
+            select(func.count())
+            .select_from(Source)
+            .where(Source.created_by_job_id == job_id)
         )
         return result.scalar() or 0
+
+    def get_domains_for_project(
+        self,
+        project_id: UUID,
+        source_groups: list[str] | None = None,
+    ) -> list[tuple[str, int]]:
+        """Get distinct domains and page counts for a project.
+
+        Queries sources.metadata->>'domain' for sources with content.
+
+        Args:
+            project_id: Project UUID.
+            source_groups: Optional list of source groups to filter by.
+
+        Returns:
+            List of (domain, page_count) tuples, ordered by domain.
+        """
+        domain_col = Source.meta_data["domain"].as_string().label("domain")
+        query = (
+            select(domain_col, func.count().label("page_count"))
+            .where(
+                Source.project_id == project_id,
+                Source.content.isnot(None),
+                Source.meta_data["domain"].as_string().isnot(None),
+            )
+            .group_by(domain_col)
+            .order_by(domain_col)
+        )
+
+        if source_groups:
+            query = query.where(Source.source_group.in_(source_groups))
+
+        result = self._session.execute(query)
+        return [(row.domain, row.page_count) for row in result]
+
+    def get_by_project_and_domain(
+        self,
+        project_id: UUID,
+        domain: str,
+    ) -> builtins.list[Source]:
+        """Get all sources for a project and domain with content.
+
+        Args:
+            project_id: Project UUID.
+            domain: Domain string (from metadata->>'domain').
+
+        Returns:
+            List of Source instances with content, ordered by created_at.
+        """
+        result = self._session.execute(
+            select(Source)
+            .where(
+                Source.project_id == project_id,
+                Source.content.isnot(None),
+                Source.meta_data["domain"].as_string() == domain,
+            )
+            .order_by(Source.created_at.asc())
+        )
+        return list(result.scalars().all())
