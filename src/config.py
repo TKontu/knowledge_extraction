@@ -87,7 +87,7 @@ class Settings(BaseSettings):
         description="LLM model name for extraction",
     )
     rag_embedding_model: str = Field(
-        default="bge-large-en",
+        default="bge-m3",
         description="Embedding model name",
     )
 

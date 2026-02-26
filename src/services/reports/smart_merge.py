@@ -77,10 +77,10 @@ class SmartMergeService:
         Returns:
             MergeResult with synthesized value and provenance.
         """
-        # Filter out low-confidence candidates
+        # Filter out low-confidence and unknown-confidence candidates
         filtered = [
             c for c in candidates
-            if c.confidence is None or c.confidence >= self._min_confidence
+            if c.confidence is not None and c.confidence >= self._min_confidence
         ]
 
         # Get non-null values

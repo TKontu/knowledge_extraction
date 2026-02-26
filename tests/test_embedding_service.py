@@ -331,3 +331,105 @@ class TestEmbeddingServiceConcurrency:
 
         # Should never exceed configured limit
         assert max_concurrent_observed <= 2
+
+
+class TestEmbeddingModelDefault:
+    """Test Phase 0A: bge-m3 is the default embedding model."""
+
+    def test_default_embedding_model_is_bge_m3(self):
+        """Config should default to bge-m3."""
+        settings = Settings()
+        assert settings.rag_embedding_model == "bge-m3"
+
+    def test_embedding_service_uses_bge_m3(self, reset_embedding_service_state):
+        """EmbeddingService should use bge-m3 from default settings."""
+        from services.storage.embedding import EmbeddingService
+
+        settings = Settings()
+        service = EmbeddingService(settings)
+        assert service.model == "bge-m3"
+
+
+class TestEmbeddingTruncation:
+    """Test Phase 0B: truncation safety net prevents API crashes."""
+
+    async def test_embed_truncates_long_text(self, embedding_service):
+        """embed() should truncate text exceeding MAX_EMBED_CHARS."""
+        from services.storage.embedding import MAX_EMBED_CHARS
+
+        long_text = "x" * (MAX_EMBED_CHARS + 5000)
+
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
+        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        await embedding_service.embed(long_text)
+
+        # Verify the API received truncated text
+        call_args = embedding_service.client.embeddings.create.call_args
+        assert len(call_args.kwargs["input"]) == MAX_EMBED_CHARS
+
+    async def test_embed_does_not_truncate_short_text(self, embedding_service):
+        """embed() should pass short text through unchanged."""
+        from services.storage.embedding import MAX_EMBED_CHARS
+
+        short_text = "hello world"
+        assert len(short_text) < MAX_EMBED_CHARS
+
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
+        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        await embedding_service.embed(short_text)
+
+        call_args = embedding_service.client.embeddings.create.call_args
+        assert call_args.kwargs["input"] == short_text
+
+    async def test_embed_batch_truncates_each_item(self, embedding_service):
+        """embed_batch() should truncate each text individually."""
+        from services.storage.embedding import MAX_EMBED_CHARS
+
+        texts = [
+            "short",
+            "y" * (MAX_EMBED_CHARS + 1000),
+            "also short",
+        ]
+
+        mock_response = MagicMock()
+        mock_response.data = [
+            MagicMock(embedding=[0.1] * 1024),
+            MagicMock(embedding=[0.2] * 1024),
+            MagicMock(embedding=[0.3] * 1024),
+        ]
+        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        await embedding_service.embed_batch(texts)
+
+        call_args = embedding_service.client.embeddings.create.call_args
+        sent_texts = call_args.kwargs["input"]
+        assert sent_texts[0] == "short"
+        assert len(sent_texts[1]) == MAX_EMBED_CHARS
+        assert sent_texts[2] == "also short"
+
+    async def test_embed_batch_preserves_short_texts(self, embedding_service):
+        """embed_batch() should not modify texts under the limit."""
+        texts = ["one", "two", "three"]
+
+        mock_response = MagicMock()
+        mock_response.data = [
+            MagicMock(embedding=[0.1] * 3),
+            MagicMock(embedding=[0.2] * 3),
+            MagicMock(embedding=[0.3] * 3),
+        ]
+        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        await embedding_service.embed_batch(texts)
+
+        call_args = embedding_service.client.embeddings.create.call_args
+        assert call_args.kwargs["input"] == ["one", "two", "three"]
+
+    def test_max_embed_chars_value(self):
+        """MAX_EMBED_CHARS should be 28000 (~7000 tokens for bge-m3)."""
+        from services.storage.embedding import MAX_EMBED_CHARS
+
+        assert MAX_EMBED_CHARS == 28000

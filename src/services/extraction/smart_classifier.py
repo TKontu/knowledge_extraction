@@ -12,6 +12,7 @@ import redis.asyncio as aioredis
 import structlog
 
 from config import Settings
+from services.extraction.content_cleaner import clean_markdown_for_embedding
 from services.extraction.field_groups import FieldGroup
 from services.extraction.page_classifier import (
     ClassificationMethod,
@@ -247,20 +248,28 @@ class SmartClassifier:
                 reranker_scores=None,
             )
 
-        # Low confidence: use all groups (conservative)
+        # Low confidence: use dynamic threshold (top 80% of scores, min 2 groups)
         if max_score < low_threshold:
+            sorted_groups = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            top_score = sorted_groups[0][1]
+            cutoff = top_score * 0.8
+            top_groups = [name for name, score in sorted_groups if score >= cutoff]
+            if len(top_groups) < 2:
+                top_groups = [name for name, _ in sorted_groups[:2]]
+
             logger.info(
                 "smart_classifier_low_confidence",
                 url=url,
                 max_score=max_score,
+                top_groups=top_groups,
             )
             return SmartClassificationResult(
                 page_type="general",
-                relevant_groups=[],  # Empty = use all groups
+                relevant_groups=top_groups,
                 skip_extraction=False,
                 confidence=max_score,
                 method=ClassificationMethod.HYBRID,
-                reasoning=f"Low embedding similarity (<{low_threshold}), using all groups",
+                reasoning=f"Low embedding similarity (<{low_threshold}), using {len(top_groups)} groups within 80% of top score",
                 embedding_scores=scores,
                 reranker_scores=None,
             )
@@ -295,8 +304,9 @@ class SmartClassifier:
         group_texts = [self._create_group_text(g) for g in field_groups]
         group_names = [g.name for g in field_groups]
 
-        # Truncate content for reranking at word boundary
-        query = self._truncate_at_word_boundary(content, 2000)
+        # Clean and truncate content for reranking (6000 chars safe with bge-m3)
+        cleaned = clean_markdown_for_embedding(content)
+        query = self._truncate_at_word_boundary(cleaned, 6000)
 
         try:
             rerank_results = await self._embedding_service.rerank(
@@ -346,14 +356,23 @@ class SmartClassifier:
         )
 
         if not confirmed_groups:
-            # No groups above threshold - use all groups (conservative)
+            # No groups above threshold - use dynamic threshold (top 80%, min 2)
+            sorted_reranker = sorted(
+                reranker_scores.items(), key=lambda x: x[1], reverse=True
+            )
+            top_score = sorted_reranker[0][1] if sorted_reranker else 0.0
+            cutoff = top_score * 0.8
+            top_groups = [name for name, score in sorted_reranker if score >= cutoff]
+            if len(top_groups) < 2:
+                top_groups = [name for name, _ in sorted_reranker[:2]]
+
             return SmartClassificationResult(
                 page_type="general",
-                relevant_groups=[],
+                relevant_groups=top_groups,
                 skip_extraction=False,
-                confidence=max(reranker_scores.values()) if reranker_scores else 0.5,
+                confidence=top_score,
                 method=ClassificationMethod.HYBRID,
-                reasoning=f"Reranker scores below threshold ({reranker_threshold}), using all groups",
+                reasoning=f"Reranker scores below threshold ({reranker_threshold}), using {len(top_groups)} groups within 80% of top score",
                 embedding_scores=embedding_scores,
                 reranker_scores=reranker_scores,
             )
@@ -461,11 +480,14 @@ class SmartClassifier:
             group: Field group to represent.
 
         Returns:
-            Text representation combining name, description, and fields.
+            Text representation combining name, description, fields, and prompt_hint.
         """
         lines = [f"{group.name}: {group.description}", "", "Fields:"]
         for field in group.fields:
             lines.append(f"- {field.name}: {field.description}")
+        if group.prompt_hint:
+            lines.append("")
+            lines.append(group.prompt_hint)
         return "\n".join(lines)
 
     def _truncate_at_word_boundary(self, text: str, max_len: int) -> str:
@@ -506,8 +528,9 @@ class SmartClassifier:
         Returns:
             Summary text for embedding (title + truncated content).
         """
-        # Truncate content to ~2000 characters at word boundary
-        truncated_content = self._truncate_at_word_boundary(content, 2000)
+        cleaned = clean_markdown_for_embedding(content)
+        # Truncate content at word boundary (6000 chars safe with bge-m3's 8192 token limit)
+        truncated_content = self._truncate_at_word_boundary(cleaned, 6000)
 
         parts = []
         if title:

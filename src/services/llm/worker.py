@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from services.extraction.content_cleaner import strip_structural_junk
 from services.llm.json_repair import try_repair_json
 from services.llm.models import LLMRequest, LLMResponse
 
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 logger = structlog.get_logger(__name__)
+
+# Must match schema_extractor.EXTRACTION_CONTENT_LIMIT
+EXTRACTION_CONTENT_LIMIT = 20000
 
 
 class LLMWorker:
@@ -402,7 +406,8 @@ class LLMWorker:
             categories = payload.get("categories", [])
             profile_name = payload.get("profile_name", "general")
             system_prompt = f"Extract facts from the content. Categories: {categories}. Profile: {profile_name}"
-            user_prompt = content[:8000]
+            cleaned = strip_structural_junk(content)
+            user_prompt = cleaned[:EXTRACTION_CONTENT_LIMIT]
 
         # Add conciseness hint on retries
         if retry_count > 0:
@@ -459,11 +464,12 @@ class LLMWorker:
             group_desc = field_group.get("description", "")
 
             system_prompt = f"Extract {group_name} information: {group_desc}"
+            cleaned = strip_structural_junk(content)
             # Use generic "Source:" label in fallback mode
             user_prompt = (
-                f"Source: {source_context}\n\nContent:\n{content[:8000]}"
+                f"Source: {source_context}\n\nContent:\n{cleaned[:EXTRACTION_CONTENT_LIMIT]}"
                 if source_context
-                else f"Content:\n{content[:8000]}"
+                else f"Content:\n{cleaned[:EXTRACTION_CONTENT_LIMIT]}"
             )
 
         # Add conciseness hint on retries

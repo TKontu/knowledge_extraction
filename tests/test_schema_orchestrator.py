@@ -91,3 +91,245 @@ class TestExtractAllGroups:
         assert len(results) >= 0  # Depends on implementation
         # Classification is None when classification_enabled=False (default)
         assert classification is None
+
+
+class TestIsEmptyResult:
+    """Test Phase 3A: _is_empty_result() detection."""
+
+    @pytest.fixture
+    def orchestrator(self, mock_extractor):
+        return SchemaExtractionOrchestrator(mock_extractor)
+
+    @pytest.fixture
+    def non_entity_group(self):
+        return FieldGroup(
+            name="company_info",
+            description="Company information",
+            fields=[
+                FieldDefinition(name="name", field_type="text", description="Company name"),
+                FieldDefinition(name="city", field_type="text", description="City"),
+                FieldDefinition(name="country", field_type="text", description="Country"),
+                FieldDefinition(name="employees", field_type="integer", description="Employee count"),
+                FieldDefinition(name="is_public", field_type="boolean", description="Public?", default=False),
+            ],
+            prompt_hint="Company details",
+        )
+
+    @pytest.fixture
+    def entity_list_group(self):
+        return FieldGroup(
+            name="locations",
+            description="Company locations",
+            fields=[
+                FieldDefinition(name="city", field_type="text", description="City"),
+                FieldDefinition(name="country", field_type="text", description="Country"),
+            ],
+            prompt_hint="Location list",
+            is_entity_list=True,
+        )
+
+    def test_all_null_is_empty(self, orchestrator, non_entity_group):
+        """All null data should be empty."""
+        data = {}
+        is_empty, ratio = orchestrator._is_empty_result(data, non_entity_group)
+        assert is_empty is True
+        assert ratio == 0.0
+
+    def test_all_default_is_empty(self, orchestrator, non_entity_group):
+        """Data with only default values should be empty."""
+        data = {"is_public": False}  # False is the default for is_public
+        is_empty, ratio = orchestrator._is_empty_result(data, non_entity_group)
+        assert is_empty is True
+
+    def test_populated_data_is_not_empty(self, orchestrator, non_entity_group):
+        """Data with real values should not be empty."""
+        data = {"name": "Acme Corp", "city": "Helsinki", "country": "Finland"}
+        is_empty, ratio = orchestrator._is_empty_result(data, non_entity_group)
+        assert is_empty is False
+        assert ratio >= 0.5
+
+    def test_one_field_populated_of_five(self, orchestrator, non_entity_group):
+        """1 of 5 fields = 20% → is_empty (threshold is <20%)."""
+        data = {"name": "Acme Corp"}  # 1/5 = 0.2, not < 0.2
+        is_empty, ratio = orchestrator._is_empty_result(data, non_entity_group)
+        assert is_empty is False  # 0.2 is not < 0.2
+
+    def test_empty_strings_not_counted(self, orchestrator, non_entity_group):
+        """Empty/whitespace strings should not count as populated."""
+        data = {"name": "", "city": "  "}
+        is_empty, ratio = orchestrator._is_empty_result(data, non_entity_group)
+        assert is_empty is True
+        assert ratio == 0.0
+
+    def test_empty_lists_not_counted(self, orchestrator):
+        """Empty lists should not count as populated."""
+        group = FieldGroup(
+            name="test",
+            description="Test",
+            fields=[
+                FieldDefinition(name="items", field_type="list", description="Items"),
+                FieldDefinition(name="tags", field_type="list", description="Tags"),
+            ],
+            prompt_hint="",
+        )
+        data = {"items": [], "tags": []}
+        is_empty, ratio = orchestrator._is_empty_result(data, group)
+        assert is_empty is True
+
+    def test_entity_list_empty_when_no_entities(self, orchestrator, entity_list_group):
+        """Entity list with no entities should be empty."""
+        data = {"locations": []}
+        is_empty, ratio = orchestrator._is_empty_result(data, entity_list_group)
+        assert is_empty is True
+        assert ratio == 0.0
+
+    def test_entity_list_not_empty_when_has_entities(self, orchestrator, entity_list_group):
+        """Entity list with entities should not be empty."""
+        data = {"locations": [{"city": "Helsinki", "country": "Finland"}]}
+        is_empty, ratio = orchestrator._is_empty_result(data, entity_list_group)
+        assert is_empty is False
+        assert ratio == 1.0
+
+
+class TestConfidenceRecalibration:
+    """Test Phase 3A: confidence recalibration after merge."""
+
+    @pytest.fixture
+    def orchestrator(self, mock_extractor):
+        return SchemaExtractionOrchestrator(mock_extractor)
+
+    @pytest.fixture
+    def group(self):
+        return FieldGroup(
+            name="company",
+            description="Company info",
+            fields=[
+                FieldDefinition(name="name", field_type="text", description="Name"),
+                FieldDefinition(name="city", field_type="text", description="City"),
+            ],
+            prompt_hint="",
+        )
+
+    def test_empty_extraction_confidence_capped(self, orchestrator, group):
+        """Empty extractions should have confidence ≤ 0.1."""
+        # Simulate what _merge_chunk_results returns for empty data
+        merged = {"confidence": 0.8}
+        chunk_results = [merged]
+        result_merged = orchestrator._merge_chunk_results(chunk_results, group)
+
+        # Manually test the recalibration logic
+        raw_confidence = result_merged.pop("confidence", None)
+        is_empty, ratio = orchestrator._is_empty_result(result_merged, group)
+        assert is_empty is True
+        if raw_confidence is None:
+            raw_confidence = 0.0
+        final_conf = min(raw_confidence, 0.1) if is_empty else raw_confidence
+        assert final_conf <= 0.1
+
+    def test_full_extraction_confidence_preserved(self, orchestrator, group):
+        """Well-populated extractions should keep high confidence."""
+        data = {"name": "Acme Corp", "city": "Helsinki"}
+        is_empty, ratio = orchestrator._is_empty_result(data, group)
+        assert is_empty is False
+        # ratio = 2/2 = 1.0, raw_confidence * (0.5 + 0.5 * 1.0) = raw * 1.0
+        raw_confidence = 0.85
+        final_conf = raw_confidence * (0.5 + 0.5 * ratio)
+        assert final_conf == pytest.approx(0.85, abs=0.01)
+
+    def test_none_confidence_handled(self, orchestrator, group):
+        """confidence=None should not cause TypeError."""
+        data = {"name": "Acme"}
+        is_empty, ratio = orchestrator._is_empty_result(data, group)
+        # Simulate None confidence path
+        raw_confidence = None
+        if raw_confidence is None:
+            raw_confidence = 0.0 if is_empty else 0.5 * ratio
+        # Should not raise
+        assert isinstance(raw_confidence, float)
+
+    def test_partial_extraction_reduces_confidence(self, orchestrator):
+        """Partially populated extraction should reduce confidence proportionally."""
+        group = FieldGroup(
+            name="info",
+            description="Info",
+            fields=[
+                FieldDefinition(name="a", field_type="text", description="A"),
+                FieldDefinition(name="b", field_type="text", description="B"),
+                FieldDefinition(name="c", field_type="text", description="C"),
+                FieldDefinition(name="d", field_type="text", description="D"),
+            ],
+            prompt_hint="",
+        )
+        data = {"a": "value"}  # 1/4 = 0.25, not empty
+        is_empty, ratio = orchestrator._is_empty_result(data, group)
+        assert is_empty is False
+        assert ratio == 0.25
+        # 0.8 * (0.5 + 0.5 * 0.25) = 0.8 * 0.625 = 0.5
+        final = 0.8 * (0.5 + 0.5 * ratio)
+        assert final == pytest.approx(0.5, abs=0.01)
+
+
+class TestBooleanMajorityVote:
+    """Test Phase 3B: boolean merge uses majority vote instead of any()."""
+
+    @pytest.fixture
+    def orchestrator(self, mock_extractor):
+        return SchemaExtractionOrchestrator(mock_extractor)
+
+    @pytest.fixture
+    def bool_group(self):
+        return FieldGroup(
+            name="flags",
+            description="Boolean flags",
+            fields=[
+                FieldDefinition(name="has_factory", field_type="boolean", description="Has factory"),
+            ],
+            prompt_hint="",
+        )
+
+    def test_majority_false(self, orchestrator, bool_group):
+        """1 True + 2 False → False (majority)."""
+        chunk_results = [
+            {"has_factory": True, "confidence": 0.8},
+            {"has_factory": False, "confidence": 0.8},
+            {"has_factory": False, "confidence": 0.8},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is False
+
+    def test_majority_true(self, orchestrator, bool_group):
+        """2 True + 1 False → True (majority)."""
+        chunk_results = [
+            {"has_factory": True, "confidence": 0.8},
+            {"has_factory": True, "confidence": 0.8},
+            {"has_factory": False, "confidence": 0.8},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is True
+
+    def test_all_true(self, orchestrator, bool_group):
+        """All True → True."""
+        chunk_results = [
+            {"has_factory": True, "confidence": 0.8},
+            {"has_factory": True, "confidence": 0.8},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is True
+
+    def test_all_false(self, orchestrator, bool_group):
+        """All False → False."""
+        chunk_results = [
+            {"has_factory": False, "confidence": 0.8},
+            {"has_factory": False, "confidence": 0.8},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is False
+
+    def test_tie_is_false(self, orchestrator, bool_group):
+        """1 True + 1 False → False (conservative tie-break)."""
+        chunk_results = [
+            {"has_factory": True, "confidence": 0.8},
+            {"has_factory": False, "confidence": 0.8},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is False

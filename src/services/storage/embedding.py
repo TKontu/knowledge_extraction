@@ -1,6 +1,7 @@
 """Embedding service for generating text embeddings."""
 
 import asyncio
+import logging
 
 import httpx
 from openai import AsyncOpenAI
@@ -8,9 +9,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import Settings
 
+logger = logging.getLogger(__name__)
+
+# Safety cap: ~7000 tokens, within bge-m3's 8192 token limit.
+# Prevents HTTP 400 crashes from vLLM when input exceeds model max.
+MAX_EMBED_CHARS = 28000
+
 
 class EmbeddingService:
-    """Generate embeddings via BGE-large-en.
+    """Generate embeddings via OpenAI-compatible API (bge-m3).
 
     Provides concurrency-controlled access to embedding and reranking APIs.
     Uses a semaphore to limit concurrent requests to the embedding server.
@@ -66,7 +73,7 @@ class EmbeddingService:
         """Get embedding dimension.
 
         Returns:
-            Embedding dimension (1024 for BGE-large-en).
+            Embedding dimension (1024 for bge-m3).
         """
         return 1024
 
@@ -86,6 +93,10 @@ class EmbeddingService:
         Raises:
             Exception: If API call fails after retries.
         """
+        if len(text) > MAX_EMBED_CHARS:
+            logger.debug("embedding_text_truncated", extra={"original_length": len(text)})
+            text = text[:MAX_EMBED_CHARS]
+
         async with self._get_semaphore():
             response = await self.client.embeddings.create(
                 model=self.model,
@@ -112,10 +123,18 @@ class EmbeddingService:
         if not texts:
             return []
 
+        truncated = []
+        for t in texts:
+            if len(t) > MAX_EMBED_CHARS:
+                logger.debug("embedding_text_truncated", extra={"original_length": len(t)})
+                truncated.append(t[:MAX_EMBED_CHARS])
+            else:
+                truncated.append(t)
+
         async with self._get_semaphore():
             response = await self.client.embeddings.create(
                 model=self.model,
-                input=texts,
+                input=truncated,
             )
             return [item.embedding for item in response.data]
 

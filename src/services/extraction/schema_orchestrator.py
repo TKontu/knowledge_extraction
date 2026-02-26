@@ -170,7 +170,17 @@ class SchemaExtractionOrchestrator:
             if chunk_results:
                 merged = self._merge_chunk_results(chunk_results, group)
                 group_result["data"] = merged
-                group_result["confidence"] = merged.pop("confidence", 0.8)
+
+                raw_confidence = merged.pop("confidence", None)
+                is_empty, populated_ratio = self._is_empty_result(merged, group)
+
+                if raw_confidence is None:
+                    raw_confidence = 0.0 if is_empty else 0.5 * populated_ratio
+
+                if is_empty:
+                    group_result["confidence"] = min(raw_confidence, 0.1)
+                else:
+                    group_result["confidence"] = raw_confidence * (0.5 + 0.5 * populated_ratio)
 
             return group_result
 
@@ -277,7 +287,7 @@ class SchemaExtractionOrchestrator:
         """Merge results from multiple chunks.
 
         Aggregation rules:
-        - boolean: True if ANY chunk says True
+        - boolean: Majority vote (>50% True → True, tie → False)
         - integer/float: Take maximum
         - text/enum: Dedupe and concatenate unique values with "; "
         - list: Merge and dedupe
@@ -301,7 +311,8 @@ class SchemaExtractionOrchestrator:
                 continue
 
             if field.field_type == "boolean":
-                merged[field.name] = any(values)
+                true_count = sum(1 for v in values if v is True)
+                merged[field.name] = true_count > len(values) / 2
             elif field.field_type in ("integer", "float"):
                 merged[field.name] = max(values)
             elif field.field_type == "list":
@@ -335,8 +346,8 @@ class SchemaExtractionOrchestrator:
                 elif unique_texts:
                     merged[field.name] = unique_texts[0]
 
-        # Average confidence
-        confidences = [r.get("confidence", 0.8) for r in chunk_results]
+        # Average confidence (0.5 fallback: conservative when LLM omits confidence)
+        confidences = [r.get("confidence", 0.5) for r in chunk_results]
         merged["confidence"] = sum(confidences) / len(confidences)
 
         return merged
@@ -390,10 +401,55 @@ class SchemaExtractionOrchestrator:
                     # No ID field - include but can't dedupe
                     all_entities.append(entity)
 
-        confidences = [r.get("confidence", 0.8) for r in chunk_results]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.8
+        # 0.5 fallback: conservative when LLM omits confidence
+        confidences = [r.get("confidence", 0.5) for r in chunk_results]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
 
         return {
             entity_key: all_entities,
             "confidence": avg_confidence,
         }
+
+    def _is_empty_result(
+        self, data: dict, group: FieldGroup
+    ) -> tuple[bool, float]:
+        """Check if extraction result is empty or default-only.
+
+        Args:
+            data: Extraction data (confidence already popped).
+            group: Field group definition.
+
+        Returns:
+            Tuple of (is_empty, populated_ratio).
+            is_empty: True if <20% of fields have real values.
+            populated_ratio: Fraction of fields with non-default values (0.0-1.0).
+        """
+        if group.is_entity_list:
+            for key, value in data.items():
+                if key == "confidence":
+                    continue
+                if isinstance(value, list) and len(value) > 0:
+                    return False, 1.0
+            return True, 0.0
+
+        total = 0
+        populated = 0
+        for field_def in group.fields:
+            if field_def.name == "confidence":
+                continue
+            total += 1
+            value = data.get(field_def.name)
+            if value is None:
+                continue
+            if field_def.default is not None and value == field_def.default:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            if isinstance(value, list) and len(value) == 0:
+                continue
+            populated += 1
+
+        if total == 0:
+            return True, 0.0
+        ratio = populated / total
+        return ratio < 0.2, ratio

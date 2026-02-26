@@ -10,6 +10,7 @@ import structlog
 from openai import AsyncOpenAI
 
 from config import Settings
+from services.extraction.content_cleaner import strip_structural_junk
 from services.extraction.field_groups import FieldGroup
 from services.llm.json_repair import try_repair_json
 
@@ -18,6 +19,10 @@ if TYPE_CHECKING:
     from src.services.llm.queue import LLMRequestQueue
 
 logger = structlog.get_logger(__name__)
+
+# Content window for extraction input (~5000 tokens, 23% of Qwen3-30B 32K context).
+# Captures 90% of real pages fully (vs 65% at 8000 chars).
+EXTRACTION_CONTENT_LIMIT = 20000
 
 
 class LLMExtractionError(Exception):
@@ -357,9 +362,17 @@ Fields to extract:
 
 {field_group.prompt_hint}
 
-Output JSON with exactly these fields. Use null for unknown values.
-For boolean fields: default to false. Only return true when the content provides clear supporting evidence.
-If no relevant information is found, return false (not null). When uncertain, prefer false over true.
+RULES:
+- Extract ONLY from the content provided below. Do NOT use outside knowledge.
+- If the content does not contain information for a field, return null.
+- If the content is not relevant to {field_group.description}, return null for ALL fields.
+- For boolean fields, return true ONLY if there is explicit evidence in the content. Default to false.
+- For list fields, return empty list [] if no items found.
+
+Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
+- 0.0 if the content has no relevant information
+- 0.5-0.7 if only partial information found
+- 0.8-1.0 if the content is clearly relevant with good data
 """
 
     def _build_entity_list_system_prompt(self, field_group: FieldGroup) -> str:
@@ -402,11 +415,11 @@ For each {entity_singular} found, extract:
 
 {field_group.prompt_hint}
 
-IMPORTANT LIMITS:
+IMPORTANT RULES:
+- Extract ONLY from the content provided below. Do NOT use outside knowledge.
 - Extract ONLY the most relevant/significant items (max 20 items)
-- For locations: focus on headquarters, manufacturing sites, main offices - NOT delivery areas or coverage lists
-- For products: focus on main product lines, not every variant or option
-- Skip generic lists of cities, countries, or regions that are just coverage/delivery info
+- If this content does not contain any {entity_singular} information, return an empty list.
+- Skip generic lists that are just navigation or coverage info, not actual entities.
 
 Output JSON with structure:
 {{
@@ -416,6 +429,11 @@ Output JSON with structure:
   ],
   "confidence": 0.0-1.0
 }}
+
+Confidence guidance:
+- 0.0 if the content has no relevant {entity_singular} information
+- 0.5-0.7 if only a few items found or items have sparse detail
+- 0.8-1.0 if the content is clearly relevant with well-populated items
 
 Only include items you find clear evidence for. Return empty list if none found.
 Keep output concise - quality over quantity.
@@ -427,17 +445,23 @@ Keep output concise - quality over quantity.
         field_group: FieldGroup,
         source_context: str | None,
     ) -> str:
-        """Build user prompt with content."""
+        """Build user prompt with content.
+
+        Applies Layer 1 content cleaning (structural junk removal) before
+        truncation so more real content fits within the extraction window.
+        """
         context_line = (
             f"{self.context.source_label}: {source_context}\n\n"
             if source_context
             else ""
         )
 
-        return f"""{context_line}Extract {field_group.name} information from this content:
+        cleaned = strip_structural_junk(content)
+
+        return f"""{context_line}Extract {field_group.name} information from ONLY the content below:
 
 ---
-{content[:8000]}
+{cleaned[:EXTRACTION_CONTENT_LIMIT]}
 ---"""
 
     def _apply_defaults(

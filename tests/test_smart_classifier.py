@@ -249,10 +249,10 @@ class TestSmartClassifierHighConfidence:
 class TestSmartClassifierLowConfidence:
     """Test low confidence classification path (similarity < 0.4)."""
 
-    async def test_low_similarity_uses_all_groups(
+    async def test_low_similarity_uses_dynamic_fallback(
         self, smart_classifier, embedding_service, redis_client, field_groups
     ):
-        """Low similarity scores should return empty groups (use all)."""
+        """Low similarity scores should use dynamic fallback (top 80% of scores, min 2)."""
         # Mock embeddings - page doesn't match any group well (all below 0.4 threshold)
         page_embedding = reference_embedding()
         gearbox_embedding = create_embedding_with_similarity(0.2)   # Below 0.4
@@ -274,8 +274,9 @@ class TestSmartClassifierLowConfidence:
         )
 
         assert not result.skip_extraction
-        assert result.relevant_groups == []  # Empty = use all groups
-        assert "using all groups" in result.reasoning.lower()
+        # Dynamic fallback returns top groups, not empty list
+        assert len(result.relevant_groups) >= 2
+        assert "80%" in result.reasoning
 
 
 class TestSmartClassifierMediumConfidence:
@@ -642,16 +643,16 @@ class TestPageSummaryCreation:
         assert "Product content here" in summary
 
     def test_truncates_long_content(self, smart_classifier):
-        """Long content should be truncated to ~2000 chars."""
-        long_content = "x" * 5000
+        """Long content should be truncated to ~6000 chars."""
+        long_content = "x" * 10000
         summary = smart_classifier._create_page_summary(
             url="https://example.com",
             title="Title",
             content=long_content,
         )
 
-        # Should be truncated
-        assert len(summary) < len(long_content) + 200  # Account for title/url
+        # Should be truncated to ~6000 + title/url overhead
+        assert len(summary) < 6200
 
     def test_handles_missing_title(self, smart_classifier):
         """Should handle missing title gracefully."""
@@ -1035,3 +1036,200 @@ class TestResolveSkipPatterns:
         from services.extraction.page_classifier import PageClassifier
 
         assert classifier._rule_classifier._skip_patterns == PageClassifier.DEFAULT_SKIP_PATTERNS
+
+
+class TestPromptHintInGroupText:
+    """Test Phase 1B: prompt_hint included in field group embedding text."""
+
+    def test_includes_prompt_hint_when_present(self, smart_classifier):
+        """Group text should include prompt_hint for better embedding quality."""
+        group = FieldGroup(
+            name="locations",
+            description="Company locations",
+            fields=[
+                FieldDefinition(name="city", field_type="text", description="City name"),
+            ],
+            prompt_hint="manufacturing plants, headquarters, sales offices",
+        )
+        text = smart_classifier._create_group_text(group)
+        assert "manufacturing plants, headquarters, sales offices" in text
+
+    def test_works_without_prompt_hint(self, smart_classifier):
+        """Group text should work when prompt_hint is empty."""
+        group = FieldGroup(
+            name="basic",
+            description="Basic info",
+            fields=[
+                FieldDefinition(name="name", field_type="text", description="Name"),
+            ],
+            prompt_hint="",
+        )
+        text = smart_classifier._create_group_text(group)
+        assert "basic" in text
+        assert "Name" in text
+
+
+class TestClassificationWindow6000:
+    """Test Phase 1C: classification uses 6000-char window."""
+
+    def test_page_summary_truncates_at_6000(self, smart_classifier):
+        """_create_page_summary should truncate at ~6000 chars."""
+        long_content = "a " * 5000  # 10000 chars
+        summary = smart_classifier._create_page_summary(
+            url="https://example.com",
+            title="Title",
+            content=long_content,
+        )
+        # Title + URL prefix ~ 40 chars, content should be ~6000
+        assert len(summary) < 6200
+
+    def test_short_content_not_truncated(self, smart_classifier):
+        """Short content should pass through unchanged."""
+        content = "Short content about products."
+        summary = smart_classifier._create_page_summary(
+            url="https://example.com",
+            title="Title",
+            content=content,
+        )
+        assert "Short content about products." in summary
+
+
+class TestDynamicFallback:
+    """Test Phase 1D: dynamic fallback threshold logic."""
+
+    async def test_uniform_scores_includes_most_groups(
+        self, smart_classifier, embedding_service, redis_client, field_groups
+    ):
+        """Uniform low scores (close together) should include most groups."""
+        page_embedding = reference_embedding()
+        # Scores very close together: 0.38, 0.35, 0.33 — all within 80% of 0.38=0.304
+        gearbox_embedding = create_embedding_with_similarity(0.38)
+        company_embedding = create_embedding_with_similarity(0.35)
+        services_embedding = create_embedding_with_similarity(0.33)
+
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = [
+            gearbox_embedding, company_embedding, services_embedding,
+        ]
+
+        result = await smart_classifier.classify(
+            url="https://example.com/page",
+            title="Page",
+            content="Some general content about various topics and information.",
+            field_groups=field_groups,
+        )
+
+        # All 3 are within 80% of 0.38 (cutoff=0.304), so all should be included
+        assert len(result.relevant_groups) == 3
+
+    async def test_standout_score_returns_fewer_groups(
+        self, smart_classifier, embedding_service, redis_client, field_groups
+    ):
+        """One standout score should include fewer groups."""
+        page_embedding = reference_embedding()
+        # 0.38 standout, others much lower. 80% of 0.38 = 0.304
+        gearbox_embedding = create_embedding_with_similarity(0.38)
+        company_embedding = create_embedding_with_similarity(0.20)  # Below 0.304
+        services_embedding = create_embedding_with_similarity(0.15)  # Below 0.304
+
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = [
+            gearbox_embedding, company_embedding, services_embedding,
+        ]
+
+        result = await smart_classifier.classify(
+            url="https://example.com/gearbox-page",
+            title="Gearbox",
+            content="This page is specifically about gearbox manufacturing equipment.",
+            field_groups=field_groups,
+        )
+
+        # Only gearbox is above 80% cutoff, but min 2 groups enforced
+        assert len(result.relevant_groups) == 2
+        assert "products_gearbox" in result.relevant_groups
+
+    async def test_minimum_two_groups_always_returned(
+        self, smart_classifier, embedding_service, redis_client
+    ):
+        """Dynamic fallback should always return at least 2 groups."""
+        # Only 2 field groups
+        groups = [
+            FieldGroup(
+                name="group_a", description="A", prompt_hint="",
+                fields=[FieldDefinition(name="x", field_type="text", description="X")],
+            ),
+            FieldGroup(
+                name="group_b", description="B", prompt_hint="",
+                fields=[FieldDefinition(name="y", field_type="text", description="Y")],
+            ),
+        ]
+
+        page_embedding = reference_embedding()
+        embedding_a = create_embedding_with_similarity(0.3)
+        embedding_b = create_embedding_with_similarity(0.1)
+
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = [embedding_a, embedding_b]
+
+        result = await smart_classifier.classify(
+            url="https://example.com/page",
+            title="Page",
+            content="Content.",
+            field_groups=groups,
+        )
+
+        assert len(result.relevant_groups) >= 2
+
+    async def test_reranker_fallback_uses_dynamic_threshold(
+        self, smart_classifier, embedding_service, redis_client, field_groups
+    ):
+        """Reranker fallback (no groups above threshold) should use dynamic threshold."""
+        # Medium embedding scores to trigger reranker
+        page_embedding = reference_embedding()
+        embedding_service.embed.return_value = page_embedding
+        embedding_service.embed_batch.return_value = [
+            create_embedding_with_similarity(0.55),
+            create_embedding_with_similarity(0.50),
+            create_embedding_with_similarity(0.45),
+        ]
+
+        # All reranker scores below threshold (0.5)
+        embedding_service.rerank.return_value = [
+            (0, 0.40),  # Below 0.5
+            (1, 0.35),  # Below 0.5
+            (2, 0.30),  # Below 0.5
+        ]
+
+        result = await smart_classifier.classify(
+            url="https://example.com/page",
+            title="Page",
+            content="Some content about general topics and various subjects here.",
+            field_groups=field_groups,
+        )
+
+        # Should use dynamic fallback, not return empty
+        assert len(result.relevant_groups) >= 2
+        assert "80%" in result.reasoning
+
+
+class TestContentCleaningIntegration:
+    """Test Phase 1E: content cleaning used in classification paths."""
+
+    async def test_page_summary_uses_cleaned_content(
+        self, smart_classifier, embedding_service, redis_client, field_groups
+    ):
+        """_create_page_summary should clean content before truncation."""
+        # Content with nav junk that cleaning should remove
+        nav_junk = "[Skip to content](#main)\n![](https://tracking.png)\n"
+        real_content = "# About Our Company\nWe manufacture gearboxes."
+        content = nav_junk + real_content
+
+        summary = smart_classifier._create_page_summary(
+            url="https://example.com",
+            title="About",
+            content=content,
+        )
+
+        assert "Skip to content" not in summary
+        assert "tracking.png" not in summary
+        assert "manufacture" in summary

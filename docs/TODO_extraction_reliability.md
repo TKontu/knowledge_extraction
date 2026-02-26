@@ -1,18 +1,29 @@
 # Extraction Reliability — Implementation Spec
 
-Version: 3.1 (2026-02-08)
+Version: 3.2 (2026-02-25)
+**Implementation status: 2026-02-26 — Phases 0, 1 (quality), 2, 3 DONE. Phase 1A pending.**
 Review: `docs/pipeline_review_extraction_reliability.md`
+Data analysis: `debug/analyze_plan_impact.py`
 
 ## Problem
 
-The small LLM (Qwen3-30B / gemma3-12b-awq) hallucinates when extracting from irrelevant pages. Classification is disabled by default, so all field groups are extracted from all pages. Non-entity-list prompts lack grounding. Empty extractions get 0.8 confidence and pass the merge filter.
+The small LLM (Qwen3-30B / gemma3-12b-awq) hallucinates when extracting from irrelevant pages. Classification is disabled by default, so all field groups are extracted from all pages. Non-entity-list prompts lack grounding. Empty extractions get 0.8 confidence and pass the merge filter. Additionally, `content[:8000]` in the user prompt silently drops content from 35% of pages.
 
-**Case study** (David Brown Santasalo): "Santasalo" listed as a city, Helsinki listed as HQ (real: Jyväskylä), "Kouvola" fabricated. 630 extractions from 90 pages, most hallucinated.
+**Case study** (David Brown Santasalo): "Santasalo" listed as a city, Helsinki listed as HQ (real: Jyväskylä). 630 extractions from 90 pages. Manufacturing "found" on 96% of pages (reality: ~15%). 521 location entries across 233 unique cities (reality: ~20 locations). HQ extracted as "United Kingdom" 31 times, "Finland" 20 times, "Santa Salo, Finland" 3 times, real answer "Jyväskylä, Finland" only 2 times.
 
-**Content quality** (11,582 pages across 278 companies):
-- 45% have nav junk in first 2000 chars (list links, empty-alt images, social icons)
-- Median content start: 1,708 chars — 42% start real content AFTER the 2000-char embedding window
+**Content quality** (12,069 pages across ~290 companies, measured 2026-02-25):
+- Median page: 5,183 chars. P75: 10,461. P90: 20,389.
+- 35% of pages exceed 8,000 chars — the `content[:8000]` user prompt limit
+- For those 35%: only 57% of content captured on average (P10 worst: 22%)
+- 38% have nav-dominated embedding windows (>0.50 link density)
+- 100% of pages are single-chunk with current `chunk_document(max_tokens=8000)` — the merge logic (3B) never fires on real data
 - Firecrawl strips `<header>/<nav>/<footer>` but NOT `<div>`-based nav with custom CSS classes
+
+**Confidence distribution** (84,483 existing extractions):
+- 32.3% at 0.0 (empty entity lists — correct)
+- 58.8% at 0.8 (the default fallback — mixes real + hallucinated)
+- 1.3% between 0.1–0.7
+- The 0.8 bucket is the core problem — Phase 3A targets it directly
 
 **Root causes**:
 1. Classification disabled — all field groups extracted from all pages
@@ -22,44 +33,50 @@ The small LLM (Qwen3-30B / gemma3-12b-awq) hallucinates when extracting from irr
 5. Field group embeddings missing `prompt_hint` vocabulary
 6. Low-confidence fallback returns "all groups" — defeats classification
 7. Nav junk in embedding window — classifier embeds navigation, not content
+8. `content[:8000]` truncation — 35% of pages lose content before LLM sees it
 
 ## Architecture
 
 ```
-[PHASE 0] Model Upgrade
-    ├── 0A: Switch bge-large-en → bge-m3 (8192 tokens, same 1024 dims)
-    └── 0B: Truncation safety net in EmbeddingService
+[PHASE 0] Model Upgrade ✅ DONE
+    ├── 0A: Switch bge-large-en → bge-m3 (8192 tokens, same 1024 dims) ✅
+    └── 0B: Truncation safety net in EmbeddingService ✅
 
 Source Content (Firecrawl markdown — often contaminated with nav junk)
     ↓
-[PHASE 1] Classification Filter (★ highest impact)
-    ├── 1A: Enable classification (4 config booleans → True)
-    ├── 1B: Add prompt_hint to field group embeddings
-    ├── 1C: Expand window 2000 → 6000 chars (requires bge-m3)
-    ├── 1D: Dynamic fallback (top 80% of scores, not "all groups")
-    └── 1E: Content cleaning before embedding (2-layer: pattern strip + line-density)
+[PHASE 1] Classification Filter (★ highest impact) — quality ✅, enablement ⬜
+    ├── 1A: Enable classification (4 config booleans → True) ⬜ PENDING
+    ├── 1B: Add prompt_hint to field group embeddings ✅
+    ├── 1C: Expand window 2000 → 6000 chars (requires bge-m3) ✅
+    ├── 1D: Dynamic fallback (top 80% of scores, not "all groups") ✅
+    └── 1E: Content cleaning before embedding (2-layer: pattern strip + line-density) ✅
     ↓
-[PHASE 2] Strengthened Prompts
-    └── Grounding rules + remove domain-specific lines
+[PHASE 2] Strengthened Prompts + Extraction Window ✅ DONE
+    ├── 2A: Grounding rules + remove domain-specific lines ✅
+    ├── 2B: Expand extraction content window 8K → 20K chars (★ prevents knowledge loss) ✅
+    └── 2C: Apply Layer 1 structural cleaning to extraction input ✅
     ↓
-[PHASE 3] Post-Extraction Fixes
-    ├── 3A: Confidence recalibration (empty → ≤0.1)
-    ├── 3B: Boolean majority vote (not any())
-    └── 3C: Fix confidence=None bypass in merge filter
+[PHASE 3] Post-Extraction Fixes ✅ DONE
+    ├── 3A: Confidence recalibration (empty → ≤0.1) ✅
+    ├── 3B: Boolean majority vote (not any()) — future-proofing, does not fire on current data ✅
+    └── 3C: Fix confidence=None bypass in merge filter ✅
 ```
 
-## Agent Assignment
+## Implementation Approach
 
-Phases 0+1 and 2+3 touch different files — safe to run in parallel.
+Implemented directly (no agents) in risk-minimized incremental order:
+1. Phase 0 (model switch) → 2. Phase 1 quality (1B-1E) → 3. Phase 3 (bug fixes) → 4. Phase 2 (prompts+window) → 5. Phase 1A (enable)
+
+Original agent plan preserved below for reference:
 
 | Agent | Phases | Files |
 |-------|--------|-------|
 | A | 0 + 1 | `config.py`, `embedding.py`, `smart_classifier.py`, `content_cleaner.py` (new), `client.py` |
-| B | 2 + 3 | `schema_extractor.py`, `schema_orchestrator.py`, `smart_merge.py` |
+| B | 2 + 3 | `schema_extractor.py`, `schema_orchestrator.py`, `smart_merge.py`, `content_cleaner.py` (import only) |
 
 ---
 
-## Phase 0: Model & Infrastructure
+## Phase 0: Model & Infrastructure ✅
 
 ### 0A. Switch Embedding Model
 
@@ -86,19 +103,20 @@ Defensive cap before API call — prevents crashes if input is extremely long.
 MAX_EMBED_CHARS = 28000  # ~7000 tokens, within bge-m3's 8192 limit
 
 async def embed(self, text: str) -> list[float]:
-    if len(text) > MAX_EMBED_CHARS:
+    original_length = len(text)
+    if original_length > MAX_EMBED_CHARS:
         text = text[:MAX_EMBED_CHARS]
-        logger.debug("embedding_text_truncated", original_length=len(text))
+        logger.debug("embedding_text_truncated", original_length=original_length)
     # ... existing code
 ```
 
-Also add to `embed_batch()` if it exists.
+Also add to `embed_batch()` — truncate each text in the list before sending.
 
 **Tests**: Long text truncated. Normal text unchanged.
 
 ---
 
-## Phase 1: Enable & Improve Classification
+## Phase 1: Enable & Improve Classification (quality ✅, enablement ⬜)
 
 ### 1A. Enable Classification
 
@@ -215,7 +233,7 @@ if not confirmed_groups:
 
 **The highest-impact change.** 45% of pages have nav junk dominating the embedding window. Without cleaning, the classifier compares navigation text against field groups — garbage in, garbage out.
 
-Applied ONLY in the classification path (before embedding/reranking). The extraction LLM still sees full unmodified content.
+Full cleaning (Layer 1 + Layer 2) applied in the classification path (before embedding/reranking). Layer 1 patterns only (structural junk removal) also applied to extraction LLM input (Phase 2C) — these patterns remove content that is never extractable (tracking pixels, bare nav links, skip-to-content).
 
 **Two-layer approach** (validated on 11,582 real pages):
 1. **Layer 1**: Strip 4 universal structural patterns (language-agnostic, no keywords)
@@ -240,10 +258,11 @@ False positive rate: 0.07% (8 pages out of 11,582).
 **NEW FILE: `src/services/extraction/content_cleaner.py`**:
 
 ```python
-"""Content cleaning for classification embedding.
+"""Content cleaning for embedding and extraction.
 
 Two-layer approach: universal safe patterns + line-density windowing.
-Applied ONLY to classification path, NOT to extraction LLM input.
+- Full cleaning (Layer 1 + 2): classification path (before embedding/reranking)
+- Layer 1 only: extraction LLM input (Phase 2C) — safe structural removal
 
 Design: language-agnostic, template-agnostic, conservative (<1% false positives).
 """
@@ -324,20 +343,33 @@ def find_content_by_line_density(
     return 0
 
 
-def clean_markdown_for_embedding(content: str) -> str:
-    """Clean markdown for embedding. Layer 1 (patterns) + Layer 2 (density)."""
+def strip_structural_junk(content: str) -> str:
+    """Layer 1 only: strip universal structural patterns.
+
+    Safe for extraction input — removes only content that is never extractable
+    (tracking pixels, bare nav links, skip-to-content, bare images).
+    Does NOT apply line-density windowing (Layer 2) to preserve all real content.
+    """
     if not content:
         return content
-
     cleaned = content
     for pattern in UNIVERSAL_PATTERNS:
         cleaned = pattern.sub("", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def clean_markdown_for_embedding(content: str) -> str:
+    """Full clean: Layer 1 (patterns) + Layer 2 (density). For classification only."""
+    if not content:
+        return content
+
+    cleaned = strip_structural_junk(content)
 
     content_offset = find_content_by_line_density(cleaned)
     if content_offset > 0:
         cleaned = cleaned[content_offset:]
 
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 ```
 
@@ -398,11 +430,11 @@ batch_request = {
 
 ---
 
-## Phase 2: Strengthen Extraction Prompts
+## Phase 2: Strengthen Prompts + Extraction Window ✅
+
+### 2A. Strengthen Extraction Prompts
 
 Non-entity-list prompt says only "use null for unknown values." No grounding. Small model fills gaps with world knowledge. The entity-list prompt already has grounding and works better — extend the same pattern.
-
-### Changes
 
 **`src/services/extraction/schema_extractor.py`**
 
@@ -445,26 +477,90 @@ CRITICAL: Extract ONLY from the provided content. Do NOT use outside knowledge.
 If this content does not contain any {entity_singular} information, return an empty list.
 ```
 
-**`_build_user_prompt()` (line 424)**:
-
-```python
-return f"""{context_line}Extract {field_group.name} information from ONLY the content below. If this content does not contain {field_group.name} information, return null/empty values.
-
----
-{content[:8000]}
----"""
-```
-
-### Tests
-
+**Tests** (2A):
 - Non-entity prompt contains "Do NOT use outside knowledge" and "confidence" instruction
 - Entity-list prompt contains "Do NOT use outside knowledge"
 - Entity-list prompt does NOT contain "For locations:" or "For products:"
-- User prompt contains "ONLY the content below"
+
+### 2B. Expand Extraction Content Window (★ prevents knowledge loss)
+
+`_build_user_prompt()` truncates content to `content[:8000]` — 8,000 chars ≈ 2,000 tokens. This silently drops content from **35% of pages**, with average capture at 57% for those pages (P10 worst: 22%).
+
+Qwen3-30B has ~32K token context. System prompt ≈ 500-1500 tokens, response max = 8192 tokens. Available input budget: **~24,000 tokens**. Current utilization: **8% (2,000/24,000)**.
+
+With classification (Phase 1) filtering to relevant field groups, content is already on-topic — longer input is safe.
+
+**Measured impact** (12,069 pages):
+
+| Window | Pages fully captured | Notes |
+|--------|---------------------|-------|
+| content[:8000] | 65% | Current — 35% lose content |
+| content[:16000] | 86% | |
+| content[:20000] | **90%** | Recommended — uses 21% of context budget |
+
+**NOTE**: `chunk_document(max_tokens=8000)` uses `count_tokens = len//4`, meaning max 32K chars per chunk. On real data, **100% of pages are single-chunk** — the chunker never splits. The content[:N] limit is the only content gate. Increasing it captures proportionally more content.
+
+**`src/services/extraction/schema_extractor.py`** — `_build_user_prompt()` (line 424):
+
+```python
+EXTRACTION_CONTENT_LIMIT = 20000  # chars, ~5000 tokens, 21% of Qwen3-30B context budget
+
+def _build_user_prompt(
+    self,
+    content: str,
+    field_group: FieldGroup,
+    source_context: str | None,
+) -> str:
+    """Build user prompt with content."""
+    context_line = (
+        f"{self.context.source_label}: {source_context}\n\n"
+        if source_context
+        else ""
+    )
+
+    return f"""{context_line}Extract {field_group.name} information from ONLY the content below. If this content does not contain {field_group.name} information, return null/empty values.
+
+---
+{content[:EXTRACTION_CONTENT_LIMIT]}
+---"""
+```
+
+Also update the queue-mode worker fallback at `src/services/llm/worker.py:405,464-466` to use the same limit.
+
+**Tests** (2B):
+- User prompt truncates at EXTRACTION_CONTENT_LIMIT (20000), not 8000
+- Content shorter than limit is unchanged
+- Content longer than limit is truncated (no crash)
+
+### 2C. Apply Layer 1 Cleaning to Extraction Input
+
+Phase 1E's Layer 1 patterns (empty-alt images, skip-to-content links, bare nav links, bare images) are safe to remove from extraction input — they are never extractable content. This reclaims ~800 chars (median) of the content window for real content.
+
+Only Layer 1 (pattern stripping) — NOT Layer 2 (line-density windowing). Layer 2 could remove content sections the LLM should see.
+
+**`src/services/extraction/schema_extractor.py`** — `_build_user_prompt()`:
+
+```python
+from services.extraction.content_cleaner import strip_structural_junk
+
+def _build_user_prompt(self, content, field_group, source_context):
+    # ... context_line ...
+    cleaned_content = strip_structural_junk(content)
+    return f"""{context_line}Extract {field_group.name} information from ONLY the content below. If this content does not contain {field_group.name} information, return null/empty values.
+
+---
+{cleaned_content[:EXTRACTION_CONTENT_LIMIT]}
+---"""
+```
+
+**Tests** (2C):
+- Extraction input has bare nav links removed
+- Extraction input retains all paragraph text, headings, described links
+- strip_structural_junk does NOT apply line-density windowing
 
 ---
 
-## Phase 3: Post-Extraction Fixes
+## Phase 3: Post-Extraction Fixes ✅
 
 ### 3A. Confidence Recalibration
 
@@ -540,6 +636,8 @@ if chunk_results:
 
 `_merge_chunk_results()` uses `any()` for booleans (line 304) — one hallucinating chunk poisons the result. Fix: majority vote.
 
+**Data note**: On current data, 100% of pages are single-chunk, so this merge logic never fires. This fix is correct and future-proof — it matters when templates produce longer content, or if `chunk_document` parameters change. The primary anti-hallucination defense for booleans is classification (Phase 1) + grounding (Phase 2A), which prevent the LLM from seeing irrelevant content in the first place.
+
 Note: `_apply_defaults()` converts null booleans → False per-chunk BEFORE merge. This helps: creates `[True, False, False]` instead of `[True]`, so majority vote works correctly.
 
 **`src/services/extraction/schema_orchestrator.py`** — line 303-304:
@@ -573,29 +671,33 @@ filtered = [
 
 ## Key Files
 
-| File | What Changes |
-|------|-------------|
-| `src/config.py:89` | Embedding model → `bge-m3` |
-| `src/config.py:389-434` | 4 classification booleans → True |
-| `src/services/storage/embedding.py:77` | Truncation safety net |
-| `src/services/extraction/content_cleaner.py` | **NEW** — content cleaning |
-| `src/services/extraction/smart_classifier.py:457` | Add prompt_hint to group text |
-| `src/services/extraction/smart_classifier.py:510,299` | Window 2000→6000 + use cleaned content |
-| `src/services/extraction/smart_classifier.py:250-266,348-359` | Dynamic fallback threshold |
-| `src/services/scraper/client.py:174-176,730-733` | `onlyMainContent: True` |
-| `src/services/extraction/schema_extractor.py:336-441` | Grounding rules + remove lines 407-408 |
-| `src/services/extraction/schema_orchestrator.py:152-175` | `_is_empty_result()` + recalibration |
-| `src/services/extraction/schema_orchestrator.py:303-304` | Boolean majority vote |
-| `src/services/reports/smart_merge.py:82-83` | Fix None bypass |
+| File | What Changes | Agent |
+|------|-------------|-------|
+| `src/config.py:89` | Embedding model → `bge-m3` | A |
+| `src/config.py:389-434` | 4 classification booleans → True | A |
+| `src/services/storage/embedding.py:77` | Truncation safety net | A |
+| `src/services/extraction/content_cleaner.py` | **NEW** — `strip_structural_junk()` + `clean_markdown_for_embedding()` | A |
+| `src/services/extraction/smart_classifier.py:457` | Add prompt_hint to group text | A |
+| `src/services/extraction/smart_classifier.py:510,299` | Window 2000→6000 + use cleaned content | A |
+| `src/services/extraction/smart_classifier.py:250-266,348-359` | Dynamic fallback threshold | A |
+| `src/services/scraper/client.py:174-176,730-733` | `onlyMainContent: True` | A |
+| `src/services/extraction/schema_extractor.py:336-441` | 2A: Grounding rules + remove lines 407-408 | B |
+| `src/services/extraction/schema_extractor.py:424-441` | 2B: Content window 8K→20K + 2C: Layer 1 cleaning | B |
+| `src/services/llm/worker.py:405,464-466` | 2B: Align worker content limit to 20K | B |
+| `src/services/extraction/schema_orchestrator.py:152-175` | `_is_empty_result()` + recalibration | B |
+| `src/services/extraction/schema_orchestrator.py:303-304` | Boolean majority vote | B |
+| `src/services/reports/smart_merge.py:82-83` | Fix None bypass | B |
 
 ## Verification
 
-Re-extract David Brown Santasalo after all phases:
+Re-extract David Brown Santasalo after all phases (after Phase 1A is enabled):
 
-1. EmbeddingService uses `bge-m3`. Embedding of 6000 chars succeeds.
-2. `_create_page_summary()` uses cleaned content.
-3. Sources have `page_type` and `relevant_field_groups` populated. Product pages don't get `company_meta`.
-4. Field group embeddings include prompt_hint vocabulary.
-5. Empty extractions have confidence ≤ 0.1, filtered by merge.
-6. Boolean fields reflect majority vote.
-7. No "Santasalo" as city, no "Kouvola." Locations come only from about/sustainability pages.
+1. ✅ EmbeddingService uses `bge-m3`. Embedding of 6000 chars succeeds.
+2. ✅ `_create_page_summary()` uses cleaned content.
+3. ⬜ Sources have `page_type` and `relevant_field_groups` populated. Product pages don't get `company_meta`. (Requires 1A)
+4. ✅ Field group embeddings include prompt_hint vocabulary.
+5. ✅ Empty extractions have confidence ≤ 0.1, filtered by merge.
+6. ✅ Boolean fields reflect majority vote (if multi-chunk content exists).
+7. ⬜ No "Santasalo" as city. HQ consistently "Jyväskylä, Finland." (Requires re-extraction after 1A)
+8. ✅ Pages >8K chars have full content captured (up to 20K) — no silent truncation loss.
+9. ✅ Extraction input has bare nav links stripped (Layer 1) — more useful content in the window.

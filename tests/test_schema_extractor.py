@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from services.extraction.field_groups import FieldDefinition, FieldGroup
-from services.extraction.schema_extractor import SchemaExtractor
+from services.extraction.schema_extractor import (
+    EXTRACTION_CONTENT_LIMIT,
+    SchemaExtractor,
+)
+from services.llm.worker import EXTRACTION_CONTENT_LIMIT as WORKER_CONTENT_LIMIT
 
 # Test fixtures for field groups (mimics schema-driven groups)
 MANUFACTURING_GROUP = FieldGroup(
@@ -199,3 +203,159 @@ class TestSchemaExtractor:
 
         assert result["manufactures_gearboxes"] is True
         assert result["manufactures_motors"] is True
+
+
+class TestExtractionContentLimit:
+    """Test Phase 2B: content window expansion."""
+
+    def test_constant_value(self):
+        """EXTRACTION_CONTENT_LIMIT should be 20000."""
+        assert EXTRACTION_CONTENT_LIMIT == 20000
+
+    def test_worker_constant_matches(self):
+        """Worker fallback limit must match schema_extractor limit."""
+        assert WORKER_CONTENT_LIMIT == EXTRACTION_CONTENT_LIMIT
+
+
+class TestPromptGrounding:
+    """Test Phase 2A: grounding rules in prompts."""
+
+    @pytest.fixture
+    def extractor(self):
+        settings = MagicMock()
+        settings.openai_base_url = "http://localhost:9003/v1"
+        settings.openai_api_key = "test"
+        settings.llm_http_timeout = 60
+        settings.llm_model = "test-model"
+        settings.llm_max_retries = 3
+        settings.llm_base_temperature = 0.1
+        settings.llm_retry_temperature_increment = 0.05
+        settings.llm_retry_backoff_min = 2
+        settings.llm_retry_backoff_max = 30
+        settings.llm_max_tokens = 4096
+        return SchemaExtractor(settings)
+
+    def test_non_entity_prompt_has_grounding(self, extractor):
+        """Non-entity system prompt should contain grounding rules."""
+        prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
+        assert "Do NOT use outside knowledge" in prompt
+        assert "Extract ONLY from the content" in prompt
+
+    def test_non_entity_prompt_has_confidence_guidance(self, extractor):
+        """Non-entity system prompt should instruct confidence scoring."""
+        prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
+        assert '"confidence"' in prompt
+        assert "0.0" in prompt
+        assert "0.8-1.0" in prompt
+
+    def test_non_entity_prompt_has_field_group_relevance_gate(self, extractor):
+        """Non-entity system prompt should gate on content relevance."""
+        prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
+        assert "not relevant to Manufacturing capabilities" in prompt
+        assert "null for ALL fields" in prompt
+
+    def test_non_entity_prompt_includes_prompt_hint(self, extractor):
+        """Non-entity system prompt should include prompt_hint."""
+        prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
+        assert "Look for manufacturing evidence." in prompt
+
+    def test_entity_list_prompt_has_grounding(self, extractor):
+        """Entity-list system prompt should contain grounding rules."""
+        prompt = extractor._build_system_prompt(PRODUCTS_GEARBOX_GROUP)
+        assert "Do NOT use outside knowledge" in prompt
+        assert "Extract ONLY from the content" in prompt
+
+    def test_entity_list_prompt_no_domain_specific_lines(self, extractor):
+        """Entity-list prompt should NOT have domain-specific guidance."""
+        prompt = extractor._build_system_prompt(PRODUCTS_GEARBOX_GROUP)
+        assert "For locations:" not in prompt
+        assert "For products:" not in prompt
+        assert "manufacturing sites" not in prompt
+
+    def test_entity_list_prompt_has_empty_list_guidance(self, extractor):
+        """Entity-list prompt should instruct empty list on no content."""
+        prompt = extractor._build_system_prompt(PRODUCTS_GEARBOX_GROUP)
+        assert "return an empty list" in prompt
+
+    def test_entity_list_prompt_keeps_max_items(self, extractor):
+        """Entity-list prompt should still have max 20 items rule."""
+        prompt = extractor._build_system_prompt(PRODUCTS_GEARBOX_GROUP)
+        assert "max 20 items" in prompt
+
+
+class TestUserPromptCleaning:
+    """Test Phase 2C: content cleaning before extraction."""
+
+    @pytest.fixture
+    def extractor(self):
+        settings = MagicMock()
+        settings.openai_base_url = "http://localhost:9003/v1"
+        settings.openai_api_key = "test"
+        settings.llm_http_timeout = 60
+        settings.llm_model = "test-model"
+        settings.llm_max_retries = 3
+        settings.llm_base_temperature = 0.1
+        settings.llm_retry_temperature_increment = 0.05
+        settings.llm_retry_backoff_min = 2
+        settings.llm_retry_backoff_max = 30
+        settings.llm_max_tokens = 4096
+        return SchemaExtractor(settings)
+
+    def test_user_prompt_strips_structural_junk(self, extractor):
+        """User prompt should have bare nav links removed."""
+        content = "* [Home](/home)\n* [About](/about)\n\n# Real Content\n\nActual data here."
+        prompt = extractor._build_user_prompt(content, MANUFACTURING_GROUP, "Test Co")
+        assert "* [Home](/home)" not in prompt
+        assert "* [About](/about)" not in prompt
+        assert "Real Content" in prompt
+        assert "Actual data here." in prompt
+
+    def test_user_prompt_strips_empty_alt_images(self, extractor):
+        """User prompt should have empty-alt images removed."""
+        content = "![](https://example.com/logo.png)\n\n# Content\n\nReal info."
+        prompt = extractor._build_user_prompt(content, MANUFACTURING_GROUP, None)
+        assert "![](https://example.com/logo.png)" not in prompt
+        assert "Real info." in prompt
+
+    def test_user_prompt_preserves_real_content(self, extractor):
+        """User prompt should preserve all non-junk content."""
+        content = "# Gearbox Products\n\nWe manufacture planetary gearboxes rated at 100kW."
+        prompt = extractor._build_user_prompt(content, MANUFACTURING_GROUP, "Acme Corp")
+        assert "Gearbox Products" in prompt
+        assert "planetary gearboxes" in prompt
+        assert "100kW" in prompt
+
+    def test_user_prompt_truncates_at_limit(self, extractor):
+        """User prompt should truncate cleaned content at EXTRACTION_CONTENT_LIMIT."""
+        # Content longer than limit (no junk, so no cleaning shrinkage)
+        long_content = "x" * 25000
+        prompt = extractor._build_user_prompt(long_content, MANUFACTURING_GROUP, None)
+        # The content between --- markers should be at most EXTRACTION_CONTENT_LIMIT
+        content_section = prompt.split("---")[1]
+        assert len(content_section.strip()) == EXTRACTION_CONTENT_LIMIT
+
+    def test_user_prompt_cleaning_before_truncation(self, extractor):
+        """Cleaning should happen before truncation to reclaim window space."""
+        # 1000 chars of junk + 19500 chars of real content = 20500 total
+        # Without cleaning: truncated at 20000, losing 500 chars of real content
+        # With cleaning: junk removed first, all 19500 chars of real content fit
+        junk = "* [Nav1](/nav1)\n" * 67  # ~1072 chars of bare nav links
+        real = "A" * 19500
+        content = junk + real
+        prompt = extractor._build_user_prompt(content, MANUFACTURING_GROUP, None)
+        # All real content should be present (junk removed, then truncation at 20K)
+        assert "A" * 19500 in prompt
+
+    def test_user_prompt_includes_source_context(self, extractor):
+        """User prompt should include source context when provided."""
+        prompt = extractor._build_user_prompt(
+            "content", MANUFACTURING_GROUP, "Test Company"
+        )
+        assert "Test Company" in prompt
+
+    def test_user_prompt_grounding_language(self, extractor):
+        """User prompt should say 'ONLY the content below'."""
+        prompt = extractor._build_user_prompt(
+            "content", MANUFACTURING_GROUP, None
+        )
+        assert "ONLY the content below" in prompt
