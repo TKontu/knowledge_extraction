@@ -172,7 +172,7 @@ class SchemaExtractionOrchestrator:
                 group_result["data"] = merged
 
                 raw_confidence = merged.pop("confidence", 0.0)
-                is_empty, populated_ratio = self._is_empty_result(merged, group)
+                is_empty, _ = self._is_empty_result(merged, group)
 
                 if is_empty:
                     group_result["confidence"] = min(raw_confidence, 0.1)

@@ -145,7 +145,7 @@ class ExtractionPipelineService:
 
         # Extract facts via orchestrator (prefer domain-deduped content)
         content = (
-            (source.cleaned_content or source.content)
+            (source.cleaned_content if source.cleaned_content is not None else source.content)
             if app_settings.domain_dedup_enabled
             else source.content
         )
@@ -537,7 +537,7 @@ class SchemaExtractionPipeline:
 
         # Run extraction for all field groups (prefer domain-deduped content)
         dedup_content = (
-            (source.cleaned_content or source.content)
+            (source.cleaned_content if source.cleaned_content is not None else source.content)
             if app_settings.domain_dedup_enabled
             else source.content
         )

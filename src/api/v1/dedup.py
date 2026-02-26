@@ -62,7 +62,7 @@ async def analyze_boilerplate(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Boilerplate analysis failed: {e}",
+            detail="Boilerplate analysis failed",
         ) from e
 
     return {
