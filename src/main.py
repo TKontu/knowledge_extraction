@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.v1.crawl import router as crawl_router
+from api.v1.dedup import router as dedup_router
 from api.v1.dlq import router as dlq_router
 from api.v1.entities import router as entities_router
 from api.v1.export import router as export_router
@@ -205,6 +206,7 @@ app.include_router(metrics_router)
 app.include_router(export_router)
 app.include_router(dlq_router)
 app.include_router(sources_router)
+app.include_router(dedup_router)
 
 
 @app.get("/health")

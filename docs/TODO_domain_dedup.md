@@ -1,7 +1,7 @@
 # Domain-Level Boilerplate Deduplication — Implementation Spec
 
-Version: 1.0 (2026-02-26)
-Status: **Planning complete, not yet started**
+Version: 1.1 (2026-02-26)
+Status: **Phases A-E complete, Phase F (enable + validate) pending**
 Depends on: None (independent of `TODO_extraction_reliability.md`)
 
 ## Problem
@@ -55,7 +55,7 @@ Websites repeat content across pages — cookie banners, footers, product carous
 
 ---
 
-## Phase A: Core Algorithm ⬜
+## Phase A: Core Algorithm ✅
 
 **New file: `src/services/extraction/domain_dedup.py`**
 
@@ -155,7 +155,7 @@ TestStripBoilerplate:
 
 ---
 
-## Phase B: Data Model ⬜
+## Phase B: Data Model ✅
 
 ### New table: `domain_boilerplate`
 
@@ -218,7 +218,7 @@ cleaned_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 ---
 
-## Phase C: Repository + Service ⬜
+## Phase C: Repository + Service ✅
 
 ### Repository: `src/services/storage/repositories/domain_boilerplate.py`
 
@@ -269,7 +269,7 @@ def get_domains_for_project(self, project_id: UUID) -> list[tuple[str, int]]:
 
 ---
 
-## Phase D: Config + API + MCP ⬜
+## Phase D: Config + API + MCP ✅
 
 ### Config: `src/config.py`
 
@@ -329,7 +329,7 @@ Register in `src/ke_mcp/tools/__init__.py`. Add client method to `src/ke_mcp/cli
 
 ---
 
-## Phase E: Pipeline Integration ⬜
+## Phase E: Pipeline Integration ✅
 
 **`src/services/extraction/pipeline.py`** — 2-line change
 

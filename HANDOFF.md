@@ -1,88 +1,90 @@
-# Handoff: Extraction Reliability — All Code Complete
+# Handoff: Domain Boilerplate Deduplication — Implementation Complete
 
 Updated: 2026-02-26
 
 ## Completed
 
-### Planning & Analysis
-- **Pipeline review** — traced full extraction pipeline, identified 3 critical gaps + 4 important issues
-  - `docs/pipeline_review_extraction_reliability.md`
-- **Content Quality Audit** — 12,069 real pages, 38% nav-dominated
-- **Plan v3.2** — `docs/TODO_extraction_reliability.md`
-- **Plan review** — `docs/Plan_review.md` (gap analysis)
+### Extraction Reliability (Phases 0-3) — COMMITTED
+- All code committed in `12f8bbd` on `main`
+- 158 tests passing across 7 test files
+- Phase 1A (enable classification) still pending — flip 4 config booleans
 
-### Phase 0: Model & Infrastructure
-- 0A: Embedding model bge-large-en → bge-m3
-- 0B: MAX_EMBED_CHARS=28000 truncation guard
-- 7 new tests
+### Domain Boilerplate Dedup (Phases A-E) — COMMITTED
+Implemented on `feature/domain-boilerplate-dedup` branch in 3 commits:
 
-### Phase 1: Classification Quality (classification NOT yet enabled)
-- 1B: prompt_hint in field group embeddings
-- 1C: Classification window 2000→6000 chars
-- 1D: Dynamic fallback (80% threshold, min 2 groups)
-- 1E: `content_cleaner.py` (Layer 1 patterns + Layer 2 density windowing)
-- 39 new tests
+| Commit | Phases | What |
+|--------|--------|------|
+| `1fd01e7` | A-C | Core algorithm, data model, repository, service |
+| `da070b8` | D | Config, API endpoints, MCP tools, client |
+| `2c34772` | E | Pipeline integration (gated by feature flag) |
 
-### Phase 2: Prompts + Extraction Window
-- 2A: Grounding rules + confidence guidance in both prompt paths
-- 2B: Content window 8K→20K (`EXTRACTION_CONTENT_LIMIT=20000`)
-- 2C: Layer 1 cleaning on extraction input before truncation
-- 17 new tests
+**Phase A** — Core algorithm (`src/services/extraction/domain_dedup.py`):
+- `split_into_blocks()`, `hash_block()`, `compute_domain_fingerprint()`, `strip_boilerplate()`
+- 26 tests in `tests/test_domain_dedup.py`
 
-### Phase 3: Post-Extraction Fixes
-- 3A: `_is_empty_result()` + confidence recalibration
-- 3B: Boolean majority vote (replaces `any()`)
-- 3C: Fixed confidence=None bypass in smart_merge
-- 20 new tests
+**Phase B** — Data model:
+- `DomainBoilerplate` ORM model in `src/orm_models.py`
+- `cleaned_content` column on `Source`
+- Alembic migration `a1b2c3d4e5f6`
 
-### Post-Implementation Review Fixes
-Pipeline review (`docs/pipeline_review_phase0123.md`) found 12 residual issues. Fixed the 4 real ones:
-- **Fix #1**: Updated `_merge_chunk_results` docstring (any() → majority vote)
-- **Fix #3**: Added `strip_structural_junk()` to worker.py fallback paths (both `_extract_facts` and `_extract_field_group`)
-- **Fix #4**: Added confidence calibration guidance to entity-list prompt (0.0/0.5-0.7/0.8-1.0 scale)
-- **Fix #7**: Changed confidence fallback 0.8→0.5 in both `_merge_chunk_results` and `_merge_entity_lists`
+**Phase C** — Repository + service:
+- `DomainBoilerplateRepository` (upsert/get/list/delete)
+- `SourceRepository.get_domains_for_project()` + `get_by_project_and_domain()`
+- `DomainDedupService` (analyze_domain, analyze_project, get_domain_stats)
+
+**Phase D** — Config + API + MCP:
+- 4 config settings: `domain_dedup_enabled`, `threshold_pct`, `min_pages`, `min_block_chars`
+- `POST /api/v1/projects/{id}/analyze-boilerplate` + `GET .../boilerplate-stats`
+- MCP tools: `analyze_boilerplate`, `get_boilerplate_stats`
+- Client methods in `src/ke_mcp/client.py`
+
+**Phase E** — Pipeline integration:
+- 2 locations in `pipeline.py` prefer `cleaned_content` when `domain_dedup_enabled=True`
+- Gated by `domain_dedup_enabled=False` default — zero behavior change
 
 ## In Progress
 
-Nothing — all code changes complete.
+Nothing — all implementation complete.
 
 ## Next Steps
 
-- [ ] **Phase 1A: Enable classification** — flip 4 config booleans to True in `src/config.py`
-- [ ] Re-extract David Brown Santasalo to validate improvements
-- [ ] Commit all changes (nothing committed yet — ~1,124 lines added across 15 files + 5 new files)
+### Domain Boilerplate Dedup — Phase F (Enable + Validate)
+- [ ] Run Alembic migration: `alembic upgrade head`
+- [ ] Run `analyze_boilerplate` on Industrial Drivetrain project (`99a19141-...`)
+- [ ] Inspect stats — expect ~19.5% average content reduction
+- [ ] Spot-check `cleaned_content` for bauergears.com, flender.com
+- [ ] Set `domain_dedup_enabled=True` in config
+- [ ] Re-extract a test domain (e.g., David Brown Santasalo) and compare quality
+- [ ] Merge `feature/domain-boilerplate-dedup` → `main`
 
-## Key Files Modified
+### Extraction Reliability — Phase 1A (pending)
+- [ ] Flip 4 classification config booleans to True in `src/config.py`
+- [ ] Re-extract David Brown Santasalo to validate
+- [ ] Verify: no "Santasalo" as city, HQ = "Jyväskylä, Finland"
 
-| File | Changes |
+## Key Files
+
+| File | Purpose |
 |------|---------|
-| `src/config.py` | bge-m3 default |
-| `src/services/storage/embedding.py` | MAX_EMBED_CHARS truncation guard |
-| `src/services/extraction/content_cleaner.py` | **NEW** — Layer 1 + Layer 2 cleaning |
-| `src/services/extraction/smart_classifier.py` | prompt_hint, 6000 window, dynamic fallback, cleaning integration |
-| `src/services/extraction/schema_extractor.py` | Grounding rules, confidence guidance (both prompts), EXTRACTION_CONTENT_LIMIT=20000, Layer 1 cleaning |
-| `src/services/llm/worker.py` | EXTRACTION_CONTENT_LIMIT=20000, strip_structural_junk in fallback paths |
-| `src/services/extraction/schema_orchestrator.py` | _is_empty_result(), confidence recalibration, majority vote, 0.5 fallback |
-| `src/services/reports/smart_merge.py` | Fixed confidence=None bypass |
-| `.env.example`, `stack.env` | RAG_EMBEDDING_MODEL=bge-m3 |
-
-## Test Coverage
-
-| Test File | Tests | Status |
-|-----------|-------|--------|
-| `test_embedding_service.py` | 24 | Pass |
-| `test_content_cleaner.py` | 27 | Pass |
-| `test_smart_classifier.py` | 53 | Pass |
-| `test_schema_orchestrator.py` | 20 | Pass |
-| `test_smart_merge.py` | 4 | Pass |
-| `test_schema_extractor.py` | 22 | Pass |
-| `test_schema_extractor_queue.py` | 8 | Pass |
-| **Total** | **158** | **All pass** |
+| `src/services/extraction/domain_dedup.py` | Core algorithm + DomainDedupService |
+| `src/services/storage/repositories/domain_boilerplate.py` | DomainBoilerplate repository |
+| `src/services/storage/repositories/source.py` | Added domain query helpers |
+| `src/orm_models.py` | DomainBoilerplate model + Source.cleaned_content |
+| `alembic/versions/20260226_add_domain_boilerplate.py` | Migration `a1b2c3d4e5f6` |
+| `src/api/v1/dedup.py` | REST API endpoints |
+| `src/ke_mcp/tools/dedup.py` | MCP tools |
+| `src/ke_mcp/client.py` | Client methods (analyze_boilerplate, get_boilerplate_stats) |
+| `src/config.py` | 4 domain_dedup_* settings |
+| `src/services/extraction/pipeline.py` | Integration points (lines ~149, ~539) |
+| `tests/test_domain_dedup.py` | 26 tests for core algorithm |
+| `docs/TODO_domain_dedup.md` | Full implementation spec |
 
 ## Context
 
-- All changes are **unstaged** — nothing committed yet
-- Phase 1A (enable classification) is deliberately last — it's the only MEDIUM risk step
-- The 4 config booleans for Phase 1A: `classification_enabled`, `classification_skip_enabled`, `smart_classification_enabled`, `classification_filter_enabled`
-- DBS project ID for verification: `b0cd5830-92b0-4e5e-be07-1e16598e6b78`
-- Pipeline review issues #2, #5, #6, #8-12 were assessed as not worth fixing (dead code guards, theoretical, or low-impact)
+- **Branch**: `feature/domain-boilerplate-dedup` — 3 commits ahead of `main`
+- **Algorithm**: Block-level SHA-256 hashing (whitespace-normalized, lowercased, 16 hex chars)
+- **Threshold**: 70% of pages within a domain (configurable)
+- **Key design**: Original `sources.content` never modified; `cleaned_content` is separate
+- **Feature flag**: `domain_dedup_enabled=False` default — zero pipeline impact until enabled
+- **Migration required**: `alembic upgrade head` before using
+- **DBS project ID**: `b0cd5830-92b0-4e5e-be07-1e16598e6b78` (test), `99a19141-...` (main batch)

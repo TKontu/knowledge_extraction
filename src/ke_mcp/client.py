@@ -388,6 +388,50 @@ class KnowledgeExtractionClient:
         )
 
     # =========================================================================
+    # Domain Boilerplate Deduplication
+    # =========================================================================
+
+    async def analyze_boilerplate(
+        self,
+        project_id: str,
+        source_groups: list[str] | None = None,
+        threshold_pct: float | None = None,
+        min_pages: int | None = None,
+        min_block_chars: int | None = None,
+    ) -> dict[str, Any]:
+        """Analyze domains for boilerplate and clean sources.
+
+        Args:
+            project_id: Project UUID.
+            source_groups: Optional filter by source groups.
+            threshold_pct: Boilerplate threshold (default 0.7).
+            min_pages: Min pages per domain (default 5).
+            min_block_chars: Min block chars (default 50).
+        """
+        params: dict[str, Any] = {}
+        if source_groups:
+            params["source_groups"] = source_groups
+        if threshold_pct is not None:
+            params["threshold_pct"] = threshold_pct
+        if min_pages is not None:
+            params["min_pages"] = min_pages
+        if min_block_chars is not None:
+            params["min_block_chars"] = min_block_chars
+
+        return await self._request(
+            "POST",
+            f"/api/v1/projects/{project_id}/analyze-boilerplate",
+            params=params,
+        )
+
+    async def get_boilerplate_stats(self, project_id: str) -> dict[str, Any]:
+        """Get per-domain boilerplate statistics."""
+        return await self._request(
+            "GET",
+            f"/api/v1/projects/{project_id}/boilerplate-stats",
+        )
+
+    # =========================================================================
     # Report Operations
     # =========================================================================
 

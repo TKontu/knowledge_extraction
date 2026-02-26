@@ -299,6 +299,7 @@ class Source(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cleaned_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     outbound_links: Mapped[list] = mapped_column(JSON, default=list)
@@ -320,7 +321,9 @@ class Source(Base):
     page_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     relevant_field_groups: Mapped[list | None] = mapped_column(JSON, nullable=True)
     classification_method: Mapped[str | None] = mapped_column(Text, nullable=True)
-    classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    classification_confidence: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="sources")
@@ -444,3 +447,42 @@ class ExtractionEntity(Base):
 
     def __repr__(self) -> str:
         return f"<ExtractionEntity(extraction_id={self.extraction_id}, entity_id={self.entity_id}, role={self.role})>"
+
+
+class DomainBoilerplate(Base):
+    """Stores per-domain boilerplate fingerprints for deduplication."""
+
+    __tablename__ = "domain_boilerplate"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "domain", name="uq_domain_boilerplate_project_domain"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    domain: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+
+    boilerplate_hashes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    # Statistics
+    pages_analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    blocks_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    blocks_boilerplate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bytes_removed_avg: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Algorithm parameters (for reproducibility)
+    threshold_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)
+    min_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    min_block_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
