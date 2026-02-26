@@ -385,6 +385,30 @@ class Settings(BaseSettings):
         description="Crawl job stale threshold in seconds (default: 30 minutes)",
     )
 
+    # Domain Boilerplate Deduplication
+    domain_dedup_enabled: bool = Field(
+        default=False,
+        description="Use cleaned_content (domain-deduped) for extraction when available",
+    )
+    domain_dedup_threshold_pct: float = Field(
+        default=0.7,
+        ge=0.1,
+        le=1.0,
+        description="Fraction of pages a block must appear in to be boilerplate",
+    )
+    domain_dedup_min_pages: int = Field(
+        default=5,
+        ge=2,
+        le=100,
+        description="Minimum pages per domain before boilerplate analysis runs",
+    )
+    domain_dedup_min_block_chars: int = Field(
+        default=50,
+        ge=10,
+        le=500,
+        description="Minimum characters for a content block to be considered",
+    )
+
     # Page Classification (extraction optimization)
     classification_enabled: bool = Field(
         default=False,
