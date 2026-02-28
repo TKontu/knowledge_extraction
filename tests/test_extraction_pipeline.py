@@ -1,6 +1,6 @@
 """Tests for ExtractionPipelineService."""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -34,19 +34,19 @@ def mock_entity_extractor():
 @pytest.fixture
 def mock_extraction_repo():
     """Mock ExtractionRepository."""
-    return AsyncMock()
+    return MagicMock()
 
 
 @pytest.fixture
 def mock_source_repo():
     """Mock SourceRepository."""
-    return AsyncMock()
+    return MagicMock()
 
 
 @pytest.fixture
 def mock_project_repo():
     """Mock ProjectRepository."""
-    return AsyncMock()
+    return MagicMock()
 
 
 @pytest.fixture
@@ -169,8 +169,11 @@ class TestProcessSource:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock embedding
-        pipeline_service._embedding_service.embed.return_value = [0.1] * 768
+        # Mock embedding (2 facts = 2 embeddings)
+        pipeline_service._embedding_service.embed_batch.return_value = [
+            [0.1] * 768,
+            [0.1] * 768,
+        ]
 
         result = await pipeline_service.process_source(source_id, project_id)
 
@@ -222,7 +225,7 @@ class TestProcessSource:
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
         # Mock embedding
-        pipeline_service._embedding_service.embed.return_value = [0.1] * 768
+        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
 
         result = await pipeline_service.process_source(source_id, project_id)
 
@@ -306,7 +309,7 @@ class TestProcessSource:
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
         # Mock embedding
-        pipeline_service._embedding_service.embed.return_value = [0.1] * 768
+        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
 
         # Mock entity extractor returns entities
         mock_entities = [Mock(), Mock()]
@@ -399,7 +402,7 @@ class TestProcessSource:
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
         # Mock embedding
-        pipeline_service._embedding_service.embed.return_value = [0.1] * 768
+        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
 
         result = await pipeline_service.process_source(source_id, project_id)
 

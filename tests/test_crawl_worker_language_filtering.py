@@ -85,7 +85,7 @@ class TestCrawlWorkerLanguageFiltering:
     ) -> None:
         """Test that German content is filtered out."""
         # Mock the source repository
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         # Store pages
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
@@ -117,7 +117,7 @@ class TestCrawlWorkerLanguageFiltering:
             },
         }
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
             mock_settings.language_filtering_enabled = True
@@ -145,7 +145,7 @@ class TestCrawlWorkerLanguageFiltering:
             },
         }
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         # Mock language service to timeout
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
@@ -180,7 +180,7 @@ class TestCrawlWorkerLanguageFiltering:
             },
         }
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
             mock_settings.language_filtering_enabled = True
@@ -205,7 +205,7 @@ class TestCrawlWorkerLanguageFiltering:
         # Disable language detection
         sample_job.payload["language_detection_enabled"] = False
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
             mock_settings.language_filtering_enabled = True
@@ -231,7 +231,7 @@ class TestCrawlWorkerLanguageFiltering:
             },
         }
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         # Mock language service to raise exception
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
@@ -265,7 +265,7 @@ class TestCrawlWorkerLanguageFiltering:
             },
         }
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
             mock_settings.language_filtering_enabled = True
@@ -285,7 +285,7 @@ class TestCrawlWorkerLanguageFiltering:
         # Allow both English and German
         sample_job.payload["allowed_languages"] = ["en", "de"]
 
-        crawl_worker.source_repo.upsert = AsyncMock(return_value=(MagicMock(), True))
+        crawl_worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
 
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
             mock_settings.language_filtering_enabled = True

@@ -11,17 +11,55 @@ from sqlalchemy.orm import Session, sessionmaker
 
 
 @pytest.fixture
-def client():
-    """Create test client for FastAPI app."""
-    from src.main import app
+def db():
+    """Create a database session wrapped in a transaction that rolls back.
 
-    return TestClient(app)
+    Every INSERT/UPDATE/DELETE performed during the test is undone after the
+    test completes, so the production database is never modified.
+    """
+    # IMPORTANT: Import without 'src.' prefix so we get the SAME module objects
+    # the FastAPI app uses internally (pythonpath=["src"] in pyproject.toml).
+    # Using 'src.database' would create a separate module and break
+    # app.dependency_overrides since the function objects would differ.
+    from database import engine
+
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+
+    yield session
+
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def client(db):
+    """Create test client that shares the transactional db session.
+
+    Overrides the app's get_db dependency so every request handled by the
+    FastAPI TestClient uses the same rolled-back transaction as the ``db``
+    fixture.  This guarantees zero writes to the production database.
+    """
+    from database import get_db
+    from main import app
+
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass  # Don't close — the db fixture handles rollback
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
 def valid_api_key():
     """Return valid API key from config."""
-    from src.config import settings
+    from config import settings
 
     return settings.api_key
 
@@ -32,28 +70,17 @@ def invalid_api_key():
     return "invalid-key-12345"
 
 
-@pytest.fixture
-def db():
-    """Create a database session for testing."""
-    from src.database import SessionLocal
-
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 @pytest.fixture(scope="session")
 def test_db_engine():
     """Create PostgreSQL database engine for testing.
 
-    Uses the same database as the main app but ensures tests use transactions
-    that can be rolled back.
+    Uses the app's configured database_url (which reads from .env / settings)
+    so tests connect to the same DB as the running deployment.
     """
-    database_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql+psycopg://scristill:scristill@localhost:5432/scristill"
+    from config import settings
+
+    database_url = settings.database_url.replace(
+        "postgresql://", "postgresql+psycopg://"
     )
     engine = create_engine(database_url)
     return engine

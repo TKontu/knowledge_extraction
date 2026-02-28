@@ -89,7 +89,7 @@ class TestContinuousConcurrency:
             results = await orchestrator._extract_chunks_batched(
                 chunks=chunks,
                 group=test_field_group,
-                company_name="test_company",
+                source_context="test_company",
             )
 
         # Verify all chunks processed
@@ -142,7 +142,7 @@ class TestContinuousConcurrency:
             await orchestrator._extract_chunks_batched(
                 chunks=chunks,
                 group=test_field_group,
-                company_name="test_company",
+                source_context="test_company",
             )
 
         # Verify max concurrent never exceeded limit
@@ -180,7 +180,7 @@ class TestContinuousConcurrency:
             results = await orchestrator._extract_chunks_batched(
                 chunks=chunks,
                 group=test_field_group,
-                company_name="test_company",
+                source_context="test_company",
             )
 
         # All 8 chunks should complete
@@ -214,7 +214,7 @@ class TestContinuousConcurrency:
             results = await orchestrator._extract_chunks_batched(
                 chunks=chunks,
                 group=test_field_group,
-                company_name="test_company",
+                source_context="test_company",
             )
 
         # 4 successful + chunk_2 failed (with 3 retries)
@@ -251,7 +251,7 @@ class TestRetryBehavior:
             results = await orchestrator._extract_chunks_batched(
                 chunks=chunks,
                 group=test_field_group,
-                company_name="test_company",
+                source_context="test_company",
             )
 
         # All chunks should succeed (chunk_1 after 3 attempts)

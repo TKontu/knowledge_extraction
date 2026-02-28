@@ -20,7 +20,51 @@ def test_db_session(test_db_engine):
     TestSession = sessionmaker(bind=connection)
     session = TestSession()
 
-    # Insert custom test profile (builtin profiles already exist from migrations)
+    # Seed builtin profiles (may not exist if migration wasn't run)
+    BUILTIN_PROFILES = [
+        {
+            "name": "technical_specs",
+            "categories": ["specs", "hardware", "requirements", "compatibility", "performance"],
+            "prompt_focus": "Hardware specifications, system requirements, supported platforms, performance metrics, compatibility information",
+            "depth": "detailed",
+        },
+        {
+            "name": "api_docs",
+            "categories": ["endpoints", "authentication", "rate_limits", "sdks", "versioning"],
+            "prompt_focus": "API endpoints, authentication methods, rate limits, SDK availability, API versioning, request/response formats",
+            "depth": "detailed",
+        },
+        {
+            "name": "security",
+            "categories": ["certifications", "compliance", "encryption", "audit", "access_control"],
+            "prompt_focus": "Security certifications (SOC2, ISO27001, etc), compliance standards, encryption methods, audit capabilities, access control features",
+            "depth": "comprehensive",
+        },
+        {
+            "name": "pricing",
+            "categories": ["pricing", "tiers", "limits", "features"],
+            "prompt_focus": "Pricing tiers, feature inclusions per tier, usage limits, enterprise options, free tier details",
+            "depth": "detailed",
+        },
+        {
+            "name": "general",
+            "categories": ["general", "features", "technical", "integration"],
+            "prompt_focus": "General technical facts about the product, features, integrations, and capabilities",
+            "depth": "summary",
+        },
+    ]
+    for p in BUILTIN_PROFILES:
+        profile = Profile(
+            name=p["name"],
+            categories=p["categories"],
+            prompt_focus=p["prompt_focus"],
+            depth=p["depth"],
+            is_builtin=True,
+        )
+        session.add(profile)
+    session.flush()
+
+    # Insert custom test profile
     custom_profile = Profile(
         name="custom_test",
         categories=["test_category"],
@@ -30,7 +74,7 @@ def test_db_session(test_db_engine):
         is_builtin=False,
     )
     session.add(custom_profile)
-    session.commit()
+    session.flush()
 
     yield session
 
@@ -139,23 +183,28 @@ class TestProfileRepository:
 
     def test_list_all_returns_empty_list_when_no_profiles(self, test_db_engine):
         """Test listing profiles when database has no profiles."""
-        from orm_models import Base, Profile
+        from orm_models import Profile
         from services.extraction.profiles import ProfileRepository
 
-        # Create session
-        TestSession = sessionmaker(bind=test_db_engine)
+        # Use a transactional session so we don't destroy production profiles
+        connection = test_db_engine.connect()
+        transaction = connection.begin()
+        TestSession = sessionmaker(bind=connection)
         session = TestSession()
 
-        # Delete all profiles (including seeded ones)
-        session.query(Profile).delete()
-        session.commit()
+        try:
+            # Delete all profiles within transaction (will be rolled back)
+            session.query(Profile).delete()
+            session.flush()
 
-        repo = ProfileRepository(session)
-        profiles = repo.list_all()
+            repo = ProfileRepository(session)
+            profiles = repo.list_all()
 
-        assert profiles == []
-
-        session.close()
+            assert profiles == []
+        finally:
+            session.close()
+            transaction.rollback()
+            connection.close()
 
     def test_get_profile_case_sensitive(self, test_db_session: Session):
         """Test that profile names are case-sensitive."""

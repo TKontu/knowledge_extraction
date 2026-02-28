@@ -21,9 +21,9 @@ class TestParallelBatchProcessing:
             "orchestrator": AsyncMock(),
             "deduplicator": AsyncMock(),
             "entity_extractor": AsyncMock(),
-            "extraction_repo": AsyncMock(),
-            "source_repo": AsyncMock(),
-            "project_repo": AsyncMock(),
+            "extraction_repo": MagicMock(),
+            "source_repo": MagicMock(),
+            "project_repo": MagicMock(),
             "qdrant_repo": AsyncMock(),
             "embedding_service": AsyncMock(),
         }
@@ -56,12 +56,12 @@ class TestParallelBatchProcessing:
         mock_source = MagicMock()
         mock_source.content = "Test content"
         mock_source.source_group = "test_company"
-        mock_dependencies["source_repo"].get = AsyncMock(return_value=mock_source)
+        mock_dependencies["source_repo"].get.return_value = mock_source
 
         # Mock project
         mock_project = MagicMock()
         mock_project.entity_types = []
-        mock_dependencies["project_repo"].get = AsyncMock(return_value=mock_project)
+        mock_dependencies["project_repo"].get.return_value = mock_project
 
         # Mock orchestrator to track concurrency
         original_extract = mock_dependencies["orchestrator"].extract
@@ -113,11 +113,11 @@ class TestParallelBatchProcessing:
         mock_source = MagicMock()
         mock_source.content = "Test content"
         mock_source.source_group = "test_company"
-        mock_dependencies["source_repo"].get = AsyncMock(return_value=mock_source)
+        mock_dependencies["source_repo"].get.return_value = mock_source
 
         mock_project = MagicMock()
         mock_project.entity_types = []
-        mock_dependencies["project_repo"].get = AsyncMock(return_value=mock_project)
+        mock_dependencies["project_repo"].get.return_value = mock_project
 
         async def tracking_extract(*args, **kwargs):
             nonlocal max_concurrent, current_concurrent
@@ -163,16 +163,15 @@ class TestParallelBatchProcessing:
         mock_source.content = "Test content"
         mock_source.source_group = "test_company"
 
-        async def tracking_get(source_id):
-            async with lock:
-                processed_ids.append(source_id)
+        def tracking_get(source_id):
+            processed_ids.append(source_id)
             return mock_source
 
         mock_dependencies["source_repo"].get = tracking_get
 
         mock_project = MagicMock()
         mock_project.entity_types = []
-        mock_dependencies["project_repo"].get = AsyncMock(return_value=mock_project)
+        mock_dependencies["project_repo"].get.return_value = mock_project
 
         async def mock_extract(*args, **kwargs):
             result = MagicMock()
@@ -203,7 +202,7 @@ class TestParallelBatchProcessing:
         successful_count = 0
         lock = asyncio.Lock()
 
-        async def conditional_get(source_id):
+        def conditional_get(source_id):
             if source_id == failing_id:
                 return None  # Simulates source not found
             mock_source = MagicMock()
@@ -215,7 +214,7 @@ class TestParallelBatchProcessing:
 
         mock_project = MagicMock()
         mock_project.entity_types = []
-        mock_dependencies["project_repo"].get = AsyncMock(return_value=mock_project)
+        mock_dependencies["project_repo"].get.return_value = mock_project
 
         async def mock_extract(*args, **kwargs):
             nonlocal successful_count

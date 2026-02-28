@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.database import get_db
-from src.main import app
+from database import get_db
+from main import app
 
 
 @pytest.fixture

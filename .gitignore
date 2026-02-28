@@ -72,3 +72,5 @@ input/
 
 .mcp.json.claude/settings.local.json
 .mcp.json
+.gitnexus
+/.claude/skills/gitnexus

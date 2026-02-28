@@ -9,7 +9,7 @@ from uuid import uuid4
 import structlog
 from openai import AsyncOpenAI
 
-from config import Settings
+from config import Settings, settings as global_settings
 from services.extraction.content_cleaner import strip_structural_junk
 from services.extraction.field_groups import FieldGroup
 from services.llm.json_repair import try_repair_json
@@ -355,6 +355,13 @@ class SchemaExtractor:
 
         fields_str = "\n".join(field_specs)
 
+        quoting_instruction = ""
+        if global_settings.extraction_source_quoting_enabled:
+            quoting_instruction = """
+Include a "_quotes" object mapping each non-null field to a brief verbatim excerpt (15-50 chars) from the source that supports the value.
+Example: "_quotes": {"field_name": "exact text from source"}
+"""
+
         return f"""You are extracting {field_group.description} from {self.context.source_type}.
 
 Fields to extract:
@@ -373,7 +380,7 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
 - 0.0 if the content has no relevant information
 - 0.5-0.7 if only partial information found
 - 0.8-1.0 if the content is clearly relevant with good data
-"""
+{quoting_instruction}"""
 
     def _build_entity_list_system_prompt(self, field_group: FieldGroup) -> str:
         """Build system prompt for entity list extraction.
@@ -408,6 +415,13 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
         # Singular form for "each X" phrasing
         entity_singular = field_group.name.rstrip("s")
 
+        quoting_instruction = ""
+        if global_settings.extraction_source_quoting_enabled:
+            quoting_instruction = (
+                '\nFor each entity, include a "_quote" field with a brief verbatim '
+                "excerpt (15-50 chars) from the source that identifies this entity.\n"
+            )
+
         return f"""You are extracting {field_group.description} from {self.context.source_type}.
 
 For each {entity_singular} found, extract:
@@ -437,7 +451,7 @@ Confidence guidance:
 
 Only include items you find clear evidence for. Return empty list if none found.
 Keep output concise - quality over quantity.
-"""
+{quoting_instruction}"""
 
     def _build_user_prompt(
         self,

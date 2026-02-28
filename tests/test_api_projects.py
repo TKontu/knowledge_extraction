@@ -98,7 +98,7 @@ def created_project(db_session):
         is_template=False,
     )
     db_session.add(project)
-    db_session.commit()
+    db_session.flush()
     db_session.refresh(project)
     return project
 
@@ -173,7 +173,7 @@ class TestListProjects:
             is_active=False,
         )
         db_session.add(inactive)
-        db_session.commit()
+        db_session.flush()
 
         response = client.get("/api/v1/projects", headers=auth_headers)
 
@@ -189,7 +189,7 @@ class TestListProjects:
             is_active=False,
         )
         db_session.add(inactive)
-        db_session.commit()
+        db_session.flush()
 
         response = client.get("/api/v1/projects?include_inactive=true", headers=auth_headers)
 
@@ -256,7 +256,7 @@ class TestUpdateProject:
             source_group="test",
         )
         db_session.add(extraction)
-        db_session.commit()
+        db_session.flush()
 
         # Update schema
         update_data = {
@@ -266,7 +266,7 @@ class TestUpdateProject:
             }
         }
         response = client.put(
-            f"/api/v1/projects/{created_project.id}",
+            f"/api/v1/projects/{created_project.id}?force=true",
             json=update_data,
             headers=auth_headers,
         )

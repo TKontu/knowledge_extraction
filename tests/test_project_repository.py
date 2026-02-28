@@ -133,6 +133,9 @@ class TestProjectRepositoryListAll:
         self, project_repo, db_session
     ):
         """Should return only active projects by default."""
+        # Count pre-existing active projects
+        pre_existing = len(project_repo.list_all())
+
         project_repo.create(
             name="active1",
             extraction_schema={"name": "test", "fields": []},
@@ -149,11 +152,14 @@ class TestProjectRepositoryListAll:
         db_session.flush()
 
         projects = project_repo.list_all()
-        assert len(projects) == 2
+        assert len(projects) == pre_existing + 2
         assert all(p.is_active for p in projects)
 
     def test_list_all_with_inactive_returns_all(self, project_repo, db_session):
         """Should return all projects including inactive when specified."""
+        # Count pre-existing projects (active + inactive)
+        pre_existing = len(project_repo.list_all(include_inactive=True))
+
         project_repo.create(
             name="active",
             extraction_schema={"name": "test", "fields": []},
@@ -166,7 +172,7 @@ class TestProjectRepositoryListAll:
         db_session.flush()
 
         projects = project_repo.list_all(include_inactive=True)
-        assert len(projects) == 2
+        assert len(projects) == pre_existing + 2
 
     def test_list_all_returns_sorted_by_name(self, project_repo):
         """Should return projects sorted by name."""
@@ -180,8 +186,13 @@ class TestProjectRepositoryListAll:
         )
 
         projects = project_repo.list_all()
-        assert projects[0].name == "apple"
-        assert projects[1].name == "zebra"
+        names = [p.name for p in projects]
+        # Verify our test projects are present and in sorted order
+        assert "apple" in names
+        assert "zebra" in names
+        apple_idx = names.index("apple")
+        zebra_idx = names.index("zebra")
+        assert apple_idx < zebra_idx
 
 
 class TestProjectRepositoryListTemplates:
@@ -189,6 +200,8 @@ class TestProjectRepositoryListTemplates:
 
     def test_list_templates_returns_only_templates(self, project_repo):
         """Should return only projects marked as templates."""
+        pre_existing = len(project_repo.list_templates())
+
         project_repo.create(
             name="regular",
             extraction_schema={"name": "test", "fields": []},
@@ -205,11 +218,13 @@ class TestProjectRepositoryListTemplates:
         )
 
         templates = project_repo.list_templates()
-        assert len(templates) == 2
+        assert len(templates) == pre_existing + 2
         assert all(t.is_template for t in templates)
 
     def test_list_templates_excludes_inactive(self, project_repo, db_session):
         """Should exclude inactive templates."""
+        pre_existing = len(project_repo.list_templates())
+
         project_repo.create(
             name="active_template",
             extraction_schema={"name": "test", "fields": []},
@@ -224,8 +239,9 @@ class TestProjectRepositoryListTemplates:
         db_session.flush()
 
         templates = project_repo.list_templates()
-        assert len(templates) == 1
-        assert templates[0].name == "active_template"
+        assert len(templates) == pre_existing + 1
+        template_names = [t.name for t in templates]
+        assert "active_template" in template_names
 
 
 class TestProjectRepositoryUpdate:

@@ -15,6 +15,7 @@ from services.extraction.page_classifier import (
     PageClassifier,
 )
 from services.extraction.schema_extractor import SchemaExtractor
+from services.extraction.schema_validator import SchemaValidator
 from services.llm.chunking import chunk_document
 
 if TYPE_CHECKING:
@@ -138,7 +139,11 @@ class SchemaExtractionOrchestrator:
         results = []
 
         # Chunk document for large content
-        chunks = chunk_document(markdown)
+        chunks = chunk_document(
+            markdown,
+            max_tokens=settings.extraction_chunk_max_tokens,
+            overlap_tokens=settings.extraction_chunk_overlap_tokens,
+        )
 
         logger.info(
             "schema_extraction_started",
@@ -169,6 +174,14 @@ class SchemaExtractionOrchestrator:
             # Merge chunk results
             if chunk_results:
                 merged = self._merge_chunk_results(chunk_results, group)
+
+                # Schema-aware validation (before confidence pop)
+                if settings.extraction_validation_enabled:
+                    validator = SchemaValidator(
+                        min_confidence=settings.extraction_validation_min_confidence,
+                    )
+                    merged, _ = validator.validate(merged, group)
+
                 group_result["data"] = merged
 
                 raw_confidence = merged.pop("confidence", 0.0)
@@ -347,6 +360,27 @@ class SchemaExtractionOrchestrator:
         confidences = [r.get("confidence", 0.5) for r in chunk_results]
         merged["confidence"] = sum(confidences) / len(confidences)
 
+        # Merge source quotes: keep quote from highest-confidence chunk per field
+        if settings.extraction_source_quoting_enabled:
+            merged_quotes: dict[str, str] = {}
+            best_conf: dict[str, float] = {}
+            for result in chunk_results:
+                chunk_quotes = result.get("_quotes", {})
+                chunk_conf = result.get("confidence", 0.5)
+                if isinstance(chunk_quotes, dict):
+                    for field_name, quote in chunk_quotes.items():
+                        if field_name not in best_conf or chunk_conf > best_conf[field_name]:
+                            merged_quotes[field_name] = quote
+                            best_conf[field_name] = chunk_conf
+            if merged_quotes:
+                merged["_quotes"] = merged_quotes
+
+        # Detect merge conflicts between chunks
+        if settings.extraction_conflict_detection_enabled and len(chunk_results) > 1:
+            conflicts = self._detect_conflicts(chunk_results, group, merged)
+            if conflicts:
+                merged["_conflicts"] = conflicts
+
         return merged
 
     def _merge_entity_lists(self, chunk_results: list[dict]) -> dict:
@@ -406,6 +440,73 @@ class SchemaExtractionOrchestrator:
             entity_key: all_entities,
             "confidence": avg_confidence,
         }
+
+    def _detect_conflicts(
+        self,
+        chunk_results: list[dict],
+        group: FieldGroup,
+        merged: dict,
+    ) -> dict:
+        """Detect disagreements between chunk results for non-entity fields.
+
+        Args:
+            chunk_results: Raw results from each chunk.
+            group: Field group definition.
+            merged: Already-merged result dict.
+
+        Returns:
+            Dict mapping field names to conflict info, empty if no conflicts.
+        """
+        conflicts: dict = {}
+
+        for field in group.fields:
+            values_with_chunk = [
+                (i, r.get(field.name))
+                for i, r in enumerate(chunk_results)
+                if r.get(field.name) is not None
+            ]
+
+            if len(values_with_chunk) < 2:
+                continue
+
+            values_only = [v for _, v in values_with_chunk]
+
+            has_conflict = False
+            resolution = ""
+
+            if field.field_type == "boolean":
+                unique = set(values_only)
+                if len(unique) > 1:
+                    has_conflict = True
+                    resolution = "majority_vote"
+            elif field.field_type in ("integer", "float"):
+                try:
+                    nums = [float(v) for v in values_only]
+                    max_val = max(abs(n) for n in nums)
+                    if max_val > 0:
+                        spread = (max(nums) - min(nums)) / max_val
+                        if spread > 0.1:
+                            has_conflict = True
+                            resolution = "max"
+                except (TypeError, ValueError):
+                    pass
+            else:  # text, enum
+                unique = set(str(v) for v in values_only)
+                if len(unique) > 1:
+                    has_conflict = True
+                    resolution = "concat"
+
+            if has_conflict:
+                conflicts[field.name] = {
+                    "values": [
+                        {"chunk": idx, "value": val}
+                        for idx, val in values_with_chunk
+                    ],
+                    "resolution": resolution,
+                    "resolved_value": merged.get(field.name),
+                }
+
+        return conflicts
 
     def _is_empty_result(
         self, data: dict, group: FieldGroup

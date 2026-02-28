@@ -5,19 +5,10 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from fastapi.testclient import TestClient
 
-from src.main import app
-from src.services.dlq.service import DLQItem
-
-
-@pytest.fixture
-async def client():
-    """Create test client."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
+from main import app
+from services.dlq.service import DLQItem
 
 
 @pytest.fixture
@@ -41,7 +32,7 @@ def mock_dlq_service():
 @pytest.fixture(autouse=True)
 def override_dlq_service(mock_dlq_service):
     """Override the DLQ service dependency for all tests."""
-    from src.api.dependencies import get_dlq_service
+    from api.dependencies import get_dlq_service
 
     async def override():
         return mock_dlq_service
@@ -51,21 +42,27 @@ def override_dlq_service(mock_dlq_service):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def dlq_client():
+    """Create test client for DLQ tests."""
+    return TestClient(app)
+
+
 class TestDLQAPI:
     """Test DLQ API endpoints."""
 
-    async def test_get_dlq_stats(self, client, mock_dlq_service, auth_headers):
+    def test_get_dlq_stats(self, dlq_client, mock_dlq_service, auth_headers):
         """Test GET /api/v1/dlq/stats."""
         mock_dlq_service.get_dlq_stats.return_value = {"scrape": 5, "extraction": 3}
 
-        response = await client.get("/api/v1/dlq/stats", headers=auth_headers)
+        response = dlq_client.get("/api/v1/dlq/stats", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data["scrape"] == 5
         assert data["extraction"] == 3
 
-    async def test_list_scrape_dlq(self, client, mock_dlq_service, auth_headers):
+    def test_list_scrape_dlq(self, dlq_client, mock_dlq_service, auth_headers):
         """Test GET /api/v1/dlq/scrape."""
         item_id = str(uuid4())
         source_id = str(uuid4())
@@ -83,7 +80,7 @@ class TestDLQAPI:
 
         mock_dlq_service.get_scrape_dlq.return_value = [dlq_item]
 
-        response = await client.get("/api/v1/dlq/scrape", headers=auth_headers)
+        response = dlq_client.get("/api/v1/dlq/scrape", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -93,19 +90,19 @@ class TestDLQAPI:
         assert data[0]["error"] == "Connection timeout"
         assert data[0]["dlq_type"] == "scrape"
 
-    async def test_list_scrape_dlq_with_limit(
-        self, client, mock_dlq_service, auth_headers
+    def test_list_scrape_dlq_with_limit(
+        self, dlq_client, mock_dlq_service, auth_headers
     ):
         """Test GET /api/v1/dlq/scrape with limit parameter."""
         mock_dlq_service.get_scrape_dlq.return_value = []
 
-        response = await client.get("/api/v1/dlq/scrape?limit=50", headers=auth_headers)
+        response = dlq_client.get("/api/v1/dlq/scrape?limit=50", headers=auth_headers)
 
         assert response.status_code == 200
         # Verify the limit was passed to the service
         mock_dlq_service.get_scrape_dlq.assert_called_once_with(limit=50)
 
-    async def test_list_extraction_dlq(self, client, mock_dlq_service, auth_headers):
+    def test_list_extraction_dlq(self, dlq_client, mock_dlq_service, auth_headers):
         """Test GET /api/v1/dlq/extraction."""
         item_id = str(uuid4())
         source_id = str(uuid4())
@@ -124,7 +121,7 @@ class TestDLQAPI:
 
         mock_dlq_service.get_extraction_dlq.return_value = [dlq_item]
 
-        response = await client.get("/api/v1/dlq/extraction", headers=auth_headers)
+        response = dlq_client.get("/api/v1/dlq/extraction", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -134,7 +131,7 @@ class TestDLQAPI:
         assert data[0]["retry_count"] == 2
         assert data[0]["dlq_type"] == "extraction"
 
-    async def test_retry_scrape_item(self, client, mock_dlq_service, auth_headers):
+    def test_retry_scrape_item(self, dlq_client, mock_dlq_service, auth_headers):
         """Test POST /api/v1/dlq/scrape/{item_id}/retry."""
         item_id = str(uuid4())
         source_id = str(uuid4())
@@ -152,7 +149,7 @@ class TestDLQAPI:
 
         mock_dlq_service.pop_scrape_item.return_value = dlq_item
 
-        response = await client.post(
+        response = dlq_client.post(
             f"/api/v1/dlq/scrape/{item_id}/retry", headers=auth_headers
         )
 
@@ -162,14 +159,14 @@ class TestDLQAPI:
         assert data["source_id"] == source_id
         mock_dlq_service.pop_scrape_item.assert_called_once_with(item_id)
 
-    async def test_retry_scrape_item_not_found(
-        self, client, mock_dlq_service, auth_headers
+    def test_retry_scrape_item_not_found(
+        self, dlq_client, mock_dlq_service, auth_headers
     ):
         """Test POST /api/v1/dlq/scrape/{item_id}/retry with non-existent item."""
         item_id = str(uuid4())
         mock_dlq_service.pop_scrape_item.return_value = None
 
-        response = await client.post(
+        response = dlq_client.post(
             f"/api/v1/dlq/scrape/{item_id}/retry", headers=auth_headers
         )
 
@@ -177,7 +174,7 @@ class TestDLQAPI:
         data = response.json()
         assert "not found" in data["detail"].lower()
 
-    async def test_retry_extraction_item(self, client, mock_dlq_service, auth_headers):
+    def test_retry_extraction_item(self, dlq_client, mock_dlq_service, auth_headers):
         """Test POST /api/v1/dlq/extraction/{item_id}/retry."""
         item_id = str(uuid4())
         source_id = str(uuid4())
@@ -195,7 +192,7 @@ class TestDLQAPI:
 
         mock_dlq_service.pop_extraction_item.return_value = dlq_item
 
-        response = await client.post(
+        response = dlq_client.post(
             f"/api/v1/dlq/extraction/{item_id}/retry", headers=auth_headers
         )
 
@@ -205,14 +202,14 @@ class TestDLQAPI:
         assert data["retry_count"] == 1
         mock_dlq_service.pop_extraction_item.assert_called_once_with(item_id)
 
-    async def test_retry_extraction_item_not_found(
-        self, client, mock_dlq_service, auth_headers
+    def test_retry_extraction_item_not_found(
+        self, dlq_client, mock_dlq_service, auth_headers
     ):
         """Test POST /api/v1/dlq/extraction/{item_id}/retry with non-existent item."""
         item_id = str(uuid4())
         mock_dlq_service.pop_extraction_item.return_value = None
 
-        response = await client.post(
+        response = dlq_client.post(
             f"/api/v1/dlq/extraction/{item_id}/retry", headers=auth_headers
         )
 

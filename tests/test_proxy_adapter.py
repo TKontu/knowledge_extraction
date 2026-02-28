@@ -43,7 +43,7 @@ class TestProxyAdapterUnit:
 
     @pytest.mark.asyncio
     async def test_handle_request_flaresolverr_routing(self):
-        """Test that blocked domain routes through FlareSolverr."""
+        """Test that blocked domain routes through FlareSolverr (HTTP only)."""
         adapter = ProxyAdapter(
             flaresolverr_url="http://flaresolverr:8191",
             blocked_domains=["weg.net"],
@@ -52,7 +52,7 @@ class TestProxyAdapterUnit:
 
         # Mock FlareSolverr client
         mock_response = FlareSolverrResponse(
-            url="https://www.weg.net/",
+            url="http://www.weg.net/",
             status=200,
             cookies=[],
             headers={"Content-Type": "text/html"},
@@ -61,9 +61,11 @@ class TestProxyAdapterUnit:
         )
         adapter.flaresolverr_client.solve_request = AsyncMock(return_value=mock_response)
 
-        # Create mock request
+        # Create mock request — must be HTTP (HTTPS blocked domains return 502)
         mock_request = Mock(spec=web.Request)
-        mock_request.path = "/https://www.weg.net/"
+        mock_request.method = "GET"
+        mock_request.path = "/http://www.weg.net/"
+        mock_request.headers = {}
 
         # Handle request
         response = await adapter.handle_request(mock_request)
@@ -72,7 +74,7 @@ class TestProxyAdapterUnit:
         assert response.status == 200
         assert response.text == "<html>Test content</html>"
         adapter.flaresolverr_client.solve_request.assert_called_once_with(
-            "https://www.weg.net/"
+            "http://www.weg.net/"
         )
 
     @pytest.mark.asyncio
@@ -90,13 +92,15 @@ class TestProxyAdapterUnit:
             mock_response = Mock()
             mock_response.content = b"<html>Direct content</html>"
             mock_response.status_code = 200
-            mock_response.headers = {"Content-Type": "text/html"}
+            mock_response.headers = httpx.Headers({"Content-Type": "text/html"})
             mock_client.get.return_value = mock_response
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             # Create mock request
             mock_request = Mock(spec=web.Request)
+            mock_request.method = "GET"
             mock_request.path = "/https://example.com/"
+            mock_request.headers = {}
 
             # Handle request
             response = await adapter.handle_request(mock_request)

@@ -17,25 +17,25 @@ class TestLanguagePatterns:
         """Test generating path-based patterns."""
         patterns = generate_language_exclusion_patterns([LanguageCode.DE])
 
-        assert "*/de/*" in patterns
-        assert "*/de-*" in patterns
-        assert "*-de/*" in patterns
+        assert ".*/de/.*" in patterns
+        assert ".*/de-.*" in patterns
+        assert ".*-de/.*" in patterns
 
     def test_generates_query_patterns(self) -> None:
         """Test generating query parameter patterns."""
         patterns = generate_language_exclusion_patterns([LanguageCode.FI])
 
-        assert "*?*lang=fi*" in patterns
-        assert "*?*language=fi*" in patterns
-        assert "*?*locale=fi*" in patterns
+        assert ".*\\?.*lang=fi.*" in patterns
+        assert ".*\\?.*language=fi.*" in patterns
+        assert ".*\\?.*locale=fi.*" in patterns
 
     def test_generates_patterns_for_multiple_languages(self) -> None:
         """Test generating patterns for multiple languages."""
         patterns = generate_language_exclusion_patterns([LanguageCode.DE, LanguageCode.FI])
 
         # Should have patterns for both languages
-        assert "*/de/*" in patterns
-        assert "*/fi/*" in patterns
+        assert ".*/de/.*" in patterns
+        assert ".*/fi/.*" in patterns
         assert len(patterns) == 12  # 6 patterns per language
 
     def test_excludes_german_urls_with_path(self) -> None:

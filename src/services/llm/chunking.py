@@ -17,6 +17,40 @@ def count_tokens(text: str) -> int:
     return len(text) // 4
 
 
+def _get_tail_text(text: str, target_tokens: int) -> str:
+    """Get paragraph-aligned tail text of approximately target_tokens.
+
+    Takes whole paragraphs from the end of text until the target token
+    budget is reached. Returns at least one paragraph if any exist.
+
+    Args:
+        text: Source text to extract tail from.
+        target_tokens: Approximate token budget for the tail.
+
+    Returns:
+        Tail text containing whole paragraphs.
+    """
+    if not text.strip() or target_tokens <= 0:
+        return ""
+
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        return ""
+
+    # Collect paragraphs from the end
+    collected: list[str] = []
+    total = 0
+    for para in reversed(paragraphs):
+        para_tokens = count_tokens(para)
+        if total + para_tokens > target_tokens and collected:
+            break
+        collected.append(para)
+        total += para_tokens
+
+    collected.reverse()
+    return "\n\n".join(collected)
+
+
 def split_by_headers(markdown: str) -> list[str]:
     """Split markdown on ## headers, keeping header with content.
 
@@ -159,14 +193,17 @@ def split_large_section(section: str, max_tokens: int) -> list[str]:
 
 
 def chunk_document(
-    markdown: str, max_tokens: int = 8000, overlap_tokens: int = 200
+    markdown: str, max_tokens: int = 5000, overlap_tokens: int = 0
 ) -> list[DocumentChunk]:
     """Chunk document semantically, respecting markdown structure.
 
     Args:
         markdown: Markdown text to chunk.
-        max_tokens: Maximum tokens per chunk.
-        overlap_tokens: Token overlap between chunks (not implemented yet).
+        max_tokens: Maximum tokens per chunk (default 5000 = ~20K chars,
+            aligned with EXTRACTION_CONTENT_LIMIT).
+        overlap_tokens: Token overlap between consecutive chunks.
+            When >0, each chunk after the first gets the tail paragraphs
+            of the previous chunk prepended. Set to 0 to disable.
 
     Returns:
         List of DocumentChunk objects.
@@ -220,6 +257,17 @@ def chunk_document(
     # Don't forget last chunk
     if current_chunk:
         chunks.append(current_chunk.strip())
+
+    # Apply overlap: prepend tail of previous chunk to each subsequent chunk
+    if overlap_tokens > 0 and len(chunks) > 1:
+        overlapped: list[str] = [chunks[0]]
+        for i in range(1, len(chunks)):
+            tail = _get_tail_text(chunks[i - 1], overlap_tokens)
+            if tail:
+                overlapped.append(tail + "\n\n" + chunks[i])
+            else:
+                overlapped.append(chunks[i])
+        chunks = overlapped
 
     # Convert to DocumentChunk objects
     total_chunks = len(chunks)

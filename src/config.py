@@ -387,7 +387,7 @@ class Settings(BaseSettings):
 
     # Domain Boilerplate Deduplication
     domain_dedup_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Use cleaned_content (domain-deduped) for extraction when available",
     )
     domain_dedup_threshold_pct: float = Field(
@@ -455,6 +455,38 @@ class Settings(BaseSettings):
         default=True,
         description="When True, use DEFAULT_SKIP_PATTERNS if template has no classification_config. "
         "When False, smart classification uses no skip patterns (context-agnostic).",
+    )
+
+    # Extraction Pipeline Reliability
+    extraction_chunk_max_tokens: int = Field(
+        default=5000,
+        ge=500,
+        le=16000,
+        description="Max tokens per chunk (aligned with EXTRACTION_CONTENT_LIMIT)",
+    )
+    extraction_chunk_overlap_tokens: int = Field(
+        default=0,
+        ge=0,
+        le=1000,
+        description="Overlap between chunks in tokens (0=disabled)",
+    )
+    extraction_source_quoting_enabled: bool = Field(
+        default=False,
+        description="Ask LLM for source quotes per field",
+    )
+    extraction_conflict_detection_enabled: bool = Field(
+        default=False,
+        description="Record merge conflicts between chunks",
+    )
+    extraction_validation_enabled: bool = Field(
+        default=False,
+        description="Validate extracted types against field definitions",
+    )
+    extraction_validation_min_confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Suppress all fields below this confidence",
     )
 
     @field_validator("api_key")

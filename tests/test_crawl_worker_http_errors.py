@@ -28,9 +28,9 @@ class TestHttpErrorFiltering:
     def crawl_worker(self, mock_db, mock_firecrawl_client):
         """Create crawl worker instance."""
         worker = CrawlWorker(db=mock_db, firecrawl_client=mock_firecrawl_client)
-        worker.source_repo = AsyncMock()
-        # Mock get_by_uri to return None (no duplicates)
-        worker.source_repo.get_by_uri = AsyncMock(return_value=None)
+        worker.source_repo = MagicMock()
+        # Mock upsert to return (source_mock, True) meaning "created"
+        worker.source_repo.upsert = MagicMock(return_value=(MagicMock(), True))
         return worker
 
     @pytest.fixture
@@ -46,6 +46,7 @@ class TestHttpErrorFiltering:
                 "company": "TestCo",
                 "max_depth": 2,
                 "limit": 10,
+                "language_detection_enabled": False,
             },
         )
         return job
@@ -78,8 +79,8 @@ class TestHttpErrorFiltering:
 
         # Should only create 1 source (skip the 400 error)
         assert sources_created == 1
-        # Verify source_repo.create called only once (for 200 OK page)
-        assert crawl_worker.source_repo.create.call_count == 1
+        # Verify source_repo.upsert called only once (for 200 OK page)
+        assert crawl_worker.source_repo.upsert.call_count == 1
 
     @pytest.mark.asyncio
     async def test_filters_404_error_pages(self, crawl_worker, test_job):
@@ -97,7 +98,7 @@ class TestHttpErrorFiltering:
         sources_created = await crawl_worker._store_pages(test_job, pages)
 
         assert sources_created == 0
-        crawl_worker.source_repo.create.assert_not_called()
+        crawl_worker.source_repo.upsert.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_filters_500_error_pages(self, crawl_worker, test_job):
@@ -115,7 +116,7 @@ class TestHttpErrorFiltering:
         sources_created = await crawl_worker._store_pages(test_job, pages)
 
         assert sources_created == 0
-        crawl_worker.source_repo.create.assert_not_called()
+        crawl_worker.source_repo.upsert.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_stores_200_success_pages(self, crawl_worker, test_job):
@@ -133,7 +134,7 @@ class TestHttpErrorFiltering:
         sources_created = await crawl_worker._store_pages(test_job, pages)
 
         assert sources_created == 1
-        crawl_worker.source_repo.create.assert_called_once()
+        crawl_worker.source_repo.upsert.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stores_201_created_pages(self, crawl_worker, test_job):
@@ -186,7 +187,7 @@ class TestHttpErrorFiltering:
         sources_created = await crawl_worker._store_pages(test_job, pages)
 
         assert sources_created == 1
-        crawl_worker.source_repo.create.assert_called_once()
+        crawl_worker.source_repo.upsert.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_logs_filtered_error_pages(self, crawl_worker, test_job):
@@ -224,7 +225,7 @@ class TestHttpErrorFiltering:
 
         # Should store: 200, 200, 201 = 3 sources
         assert sources_created == 3
-        assert crawl_worker.source_repo.create.call_count == 3
+        assert crawl_worker.source_repo.upsert.call_count == 3
 
     @pytest.mark.asyncio
     async def test_stores_http_status_in_metadata(self, crawl_worker, test_job):
@@ -242,8 +243,8 @@ class TestHttpErrorFiltering:
 
         await crawl_worker._store_pages(test_job, pages)
 
-        # Check what was passed to create()
-        call_args = crawl_worker.source_repo.create.call_args
+        # Check what was passed to upsert()
+        call_args = crawl_worker.source_repo.upsert.call_args
         meta_data = call_args.kwargs["meta_data"]
 
         # Should include http_status

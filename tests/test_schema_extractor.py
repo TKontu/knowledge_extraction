@@ -147,9 +147,10 @@ class TestSchemaExtractor:
             field_group=PRODUCTS_GEARBOX_GROUP,
         )
 
-        # Should return empty list rather than raising error
-        assert result["products_gearbox"] == []
-        assert result["confidence"] == 0.0
+        # JSON repair now succeeds for truncated entity lists,
+        # so repaired partial data is returned instead of empty list
+        assert isinstance(result["products_gearbox"], list)
+        assert len(result["products_gearbox"]) >= 1
 
     async def test_non_entity_truncation_attempts_repair(self, mock_settings):
         """Test that truncated non-entity extraction attempts JSON repair."""

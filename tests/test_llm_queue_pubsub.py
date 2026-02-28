@@ -15,7 +15,9 @@ from services.llm.worker import LLMWorker
 @pytest.fixture
 async def redis_client():
     """Create Redis client for testing."""
-    redis = Redis(host="localhost", port=6379, db=0, decode_responses=False)
+    from config import settings
+    redis_url = getattr(settings, "redis_url", "redis://192.168.0.136:6379")
+    redis = Redis.from_url(redis_url, db=0, decode_responses=False)
     yield redis
     await redis.aclose()
 

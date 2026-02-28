@@ -2,9 +2,10 @@
 
 import pytest
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 from sqlalchemy.orm import Session
 
-from orm_models import Job
+from orm_models import Job, Project
 
 
 @pytest.fixture
@@ -35,11 +36,24 @@ def mock_settings(monkeypatch):
     return mock
 
 
-def test_scrape_job_not_stale_within_threshold(db: Session):
+@pytest.fixture
+def test_project(db):
+    """Create a test project for FK references."""
+    project = Project(
+        name=f"test_scheduler_{uuid4().hex[:8]}",
+        extraction_schema={"name": "test", "fields": []},
+    )
+    db.add(project)
+    db.flush()
+    return project
+
+
+def test_scrape_job_not_stale_within_threshold(db: Session, test_project):
     """Scrape job running for 3 minutes should NOT be recovered (threshold: 5 min)."""
     # Create a scrape job that started 3 minutes ago
     three_minutes_ago = datetime.now(UTC) - timedelta(minutes=3)
     job = Job(
+        project_id=test_project.id,
         type="scrape",
         status="running",
         payload={"url": "https://example.com"},
@@ -47,13 +61,14 @@ def test_scrape_job_not_stale_within_threshold(db: Session):
         started_at=three_minutes_ago,
     )
     db.add(job)
-    db.commit()
+    db.flush()
 
-    # Query for stale jobs using 5-minute threshold
+    # Query for stale jobs using 5-minute threshold — scope to our test job
     stale_threshold = datetime.now(UTC) - timedelta(minutes=5)
     stale_job = (
         db.query(Job)
         .filter(
+            Job.id == job.id,
             Job.type == "scrape",
             Job.status == "running",
             Job.updated_at < stale_threshold,
@@ -65,11 +80,12 @@ def test_scrape_job_not_stale_within_threshold(db: Session):
     assert stale_job is None
 
 
-def test_scrape_job_stale_after_threshold(db: Session):
+def test_scrape_job_stale_after_threshold(db: Session, test_project):
     """Scrape job running for 6 minutes SHOULD be recovered (threshold: 5 min)."""
     # Create a scrape job that started 6 minutes ago
     six_minutes_ago = datetime.now(UTC) - timedelta(minutes=6)
     job = Job(
+        project_id=test_project.id,
         type="scrape",
         status="running",
         payload={"url": "https://example.com"},
@@ -77,13 +93,14 @@ def test_scrape_job_stale_after_threshold(db: Session):
         started_at=six_minutes_ago,
     )
     db.add(job)
-    db.commit()
+    db.flush()
 
-    # Query for stale jobs using 5-minute threshold
+    # Query for stale jobs using 5-minute threshold — scope to our test job
     stale_threshold = datetime.now(UTC) - timedelta(minutes=5)
     stale_job = (
         db.query(Job)
         .filter(
+            Job.id == job.id,
             Job.type == "scrape",
             Job.status == "running",
             Job.updated_at < stale_threshold,
@@ -96,11 +113,12 @@ def test_scrape_job_stale_after_threshold(db: Session):
     assert stale_job.id == job.id
 
 
-def test_extract_job_not_stale_within_threshold(db: Session):
+def test_extract_job_not_stale_within_threshold(db: Session, test_project):
     """Extract job running for 10 minutes should NOT be recovered (threshold: 15 min)."""
     # Create an extract job that started 10 minutes ago
     ten_minutes_ago = datetime.now(UTC) - timedelta(minutes=10)
     job = Job(
+        project_id=test_project.id,
         type="extract",
         status="running",
         payload={"source_ids": [1, 2, 3]},
@@ -108,13 +126,14 @@ def test_extract_job_not_stale_within_threshold(db: Session):
         started_at=ten_minutes_ago,
     )
     db.add(job)
-    db.commit()
+    db.flush()
 
-    # Query for stale jobs using 15-minute threshold
+    # Query for stale jobs using 15-minute threshold — scope to our test job
     stale_threshold = datetime.now(UTC) - timedelta(minutes=15)
     stale_job = (
         db.query(Job)
         .filter(
+            Job.id == job.id,
             Job.type == "extract",
             Job.status == "running",
             Job.updated_at < stale_threshold,
@@ -126,11 +145,12 @@ def test_extract_job_not_stale_within_threshold(db: Session):
     assert stale_job is None
 
 
-def test_extract_job_stale_after_threshold(db: Session):
+def test_extract_job_stale_after_threshold(db: Session, test_project):
     """Extract job running for 20 minutes SHOULD be recovered (threshold: 15 min)."""
     # Create an extract job that started 20 minutes ago
     twenty_minutes_ago = datetime.now(UTC) - timedelta(minutes=20)
     job = Job(
+        project_id=test_project.id,
         type="extract",
         status="running",
         payload={"source_ids": [1, 2, 3]},
@@ -138,13 +158,14 @@ def test_extract_job_stale_after_threshold(db: Session):
         started_at=twenty_minutes_ago,
     )
     db.add(job)
-    db.commit()
+    db.flush()
 
-    # Query for stale jobs using 15-minute threshold
+    # Query for stale jobs using 15-minute threshold — scope to our test job
     stale_threshold = datetime.now(UTC) - timedelta(minutes=15)
     stale_job = (
         db.query(Job)
         .filter(
+            Job.id == job.id,
             Job.type == "extract",
             Job.status == "running",
             Job.updated_at < stale_threshold,
@@ -157,11 +178,12 @@ def test_extract_job_stale_after_threshold(db: Session):
     assert stale_job.id == job.id
 
 
-def test_crawl_job_longer_threshold(db: Session):
+def test_crawl_job_longer_threshold(db: Session, test_project):
     """Crawl jobs should have a longer threshold (30 min) than scrape (5 min)."""
     # Create a crawl job that's been running for 20 minutes
     twenty_minutes_ago = datetime.now(UTC) - timedelta(minutes=20)
     crawl_job = Job(
+        project_id=test_project.id,
         type="crawl",
         status="running",
         payload={"url": "https://example.com"},
@@ -169,17 +191,18 @@ def test_crawl_job_longer_threshold(db: Session):
         started_at=twenty_minutes_ago,
     )
     db.add(crawl_job)
-    db.commit()
+    db.flush()
 
     # At 20 minutes:
     # - Scrape threshold (5 min): Would be stale
     # - Crawl threshold (30 min): Should NOT be stale
 
-    # Check with scrape threshold (5 min)
+    # Check with scrape threshold (5 min) — scope to our test job
     scrape_threshold = datetime.now(UTC) - timedelta(minutes=5)
     stale_with_scrape_threshold = (
         db.query(Job)
         .filter(
+            Job.id == crawl_job.id,
             Job.type == "crawl",
             Job.status == "running",
             Job.updated_at < scrape_threshold,
@@ -188,11 +211,12 @@ def test_crawl_job_longer_threshold(db: Session):
     )
     assert stale_with_scrape_threshold is not None  # Would be stale with scrape threshold
 
-    # Check with crawl threshold (30 min)
+    # Check with crawl threshold (30 min) — scope to our test job
     crawl_threshold = datetime.now(UTC) - timedelta(minutes=30)
     stale_with_crawl_threshold = (
         db.query(Job)
         .filter(
+            Job.id == crawl_job.id,
             Job.type == "crawl",
             Job.status == "running",
             Job.updated_at < crawl_threshold,
@@ -203,7 +227,7 @@ def test_crawl_job_longer_threshold(db: Session):
 
 
 @pytest.mark.asyncio
-async def test_custom_threshold_from_settings(db: Session, mock_settings):
+async def test_custom_threshold_from_settings(db: Session, test_project, mock_settings):
     """Scheduler should use custom thresholds from settings."""
     from services.scraper.scheduler import JobScheduler
 

@@ -1,9 +1,12 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from orm_models import Job
+
+# Shared project_id for all tests
+TEST_PROJECT_ID = str(uuid4())
 
 
 class TestScrapeEndpoint:
@@ -13,7 +16,7 @@ class TestScrapeEndpoint:
         """Scrape endpoint should require API key."""
         response = client.post(
             "/api/v1/scrape",
-            json={"urls": ["https://example.com"], "company": "Example Inc"},
+            json={"urls": ["https://example.com"], "company": "Example Inc", "project_id": TEST_PROJECT_ID},
         )
         assert response.status_code == 401
 
@@ -27,6 +30,7 @@ class TestScrapeEndpoint:
             json={
                 "urls": ["https://example.com/docs"],
                 "company": "Example Inc",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         assert response.status_code == 202
@@ -45,6 +49,7 @@ class TestScrapeEndpoint:
             json={
                 "urls": ["https://example.com"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         assert response.status_code == 202
@@ -65,6 +70,7 @@ class TestScrapeEndpoint:
             json={
                 "urls": ["https://example.com"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
                 "profile": "api_docs",
             },
         )
@@ -79,7 +85,7 @@ class TestScrapeEndpoint:
         response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
-            json={"company": "TestCo"},
+            json={"company": "TestCo", "project_id": TEST_PROJECT_ID},
         )
         assert response.status_code == 422
 
@@ -90,7 +96,7 @@ class TestScrapeEndpoint:
         response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
-            json={"urls": ["https://example.com"]},
+            json={"urls": ["https://example.com"], "project_id": TEST_PROJECT_ID},
         )
         assert response.status_code == 422
 
@@ -104,6 +110,7 @@ class TestScrapeEndpoint:
             json={
                 "urls": "https://example.com",  # String instead of list
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         assert response.status_code == 422
@@ -118,6 +125,7 @@ class TestScrapeEndpoint:
             json={
                 "urls": [],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         assert response.status_code == 422
@@ -136,6 +144,7 @@ class TestScrapeEndpoint:
                     "https://example.com/guides",
                 ],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         assert response.status_code == 202
@@ -154,6 +163,7 @@ class TestScrapeEndpoint:
             json={
                 "urls": ["https://example.com"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
                 "profile": "technical_specs",
             },
         )
@@ -200,22 +210,25 @@ class TestGetJobStatus:
         )
         assert response.status_code == 422
 
-    def test_get_job_status_returns_queued_status(
-        self, client: TestClient, valid_api_key: str
-    ):
-        """Should return job with queued status."""
-        # First create a job
-        create_response = client.post(
+    def _create_scrape_job(self, client, valid_api_key):
+        """Helper to create a scrape job and return the response."""
+        return client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
             json={
                 "urls": ["https://example.com"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
+
+    def test_get_job_status_returns_queued_status(
+        self, client: TestClient, valid_api_key: str
+    ):
+        """Should return job with queued status."""
+        create_response = self._create_scrape_job(client, valid_api_key)
         job_id = create_response.json()["job_id"]
 
-        # Then get its status
         response = client.get(
             f"/api/v1/scrape/{job_id}",
             headers={"X-API-Key": valid_api_key},
@@ -229,19 +242,18 @@ class TestGetJobStatus:
         self, client: TestClient, valid_api_key: str
     ):
         """Should return job with all required fields."""
-        # Create a job
         create_response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
             json={
                 "urls": ["https://example.com/docs", "https://example.com/api"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
                 "profile": "api_docs",
             },
         )
         job_id = create_response.json()["job_id"]
 
-        # Get job status
         response = client.get(
             f"/api/v1/scrape/{job_id}",
             headers={"X-API-Key": valid_api_key},
@@ -249,7 +261,6 @@ class TestGetJobStatus:
         assert response.status_code == 200
         data = response.json()
 
-        # Check all required fields
         assert "job_id" in data
         assert "status" in data
         assert "company" in data
@@ -257,7 +268,6 @@ class TestGetJobStatus:
         assert "profile" in data
         assert "created_at" in data
 
-        # Check values
         assert data["job_id"] == job_id
         assert data["company"] == "TestCo"
         assert data["url_count"] == 2
@@ -267,43 +277,24 @@ class TestGetJobStatus:
         self, client: TestClient, valid_api_key: str
     ):
         """Should handle different job statuses correctly."""
-        # Create a job
-        create_response = client.post(
-            "/api/v1/scrape",
-            headers={"X-API-Key": valid_api_key},
-            json={
-                "urls": ["https://example.com"],
-                "company": "TestCo",
-            },
-        )
+        create_response = self._create_scrape_job(client, valid_api_key)
         job_id = create_response.json()["job_id"]
 
-        # Get status
         response = client.get(
             f"/api/v1/scrape/{job_id}",
             headers={"X-API-Key": valid_api_key},
         )
         assert response.status_code == 200
         data = response.json()
-        # For stub, should return queued status
         assert data["status"] in ["queued", "running", "completed", "failed"]
 
     def test_get_job_status_with_no_profile(
         self, client: TestClient, valid_api_key: str
     ):
         """Should handle jobs without profile."""
-        # Create a job without profile
-        create_response = client.post(
-            "/api/v1/scrape",
-            headers={"X-API-Key": valid_api_key},
-            json={
-                "urls": ["https://example.com"],
-                "company": "TestCo",
-            },
-        )
+        create_response = self._create_scrape_job(client, valid_api_key)
         job_id = create_response.json()["job_id"]
 
-        # Get status
         response = client.get(
             f"/api/v1/scrape/{job_id}",
             headers={"X-API-Key": valid_api_key},
@@ -320,20 +311,19 @@ class TestJobPersistence:
         self, client: TestClient, valid_api_key: str, db: Session
     ):
         """Creating a job should persist it to the database."""
-        # Create a job via API
         response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
             json={
                 "urls": ["https://example.com/docs"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
                 "profile": "api_docs",
             },
         )
         assert response.status_code == 202
         job_id = response.json()["job_id"]
 
-        # Verify job exists in database
         db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
         assert db_job is not None
         assert str(db_job.id) == job_id
@@ -348,18 +338,17 @@ class TestJobPersistence:
         self, client: TestClient, valid_api_key: str, db: Session
     ):
         """Getting job status should read from the database."""
-        # Create a job via API
         create_response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
             json={
                 "urls": ["https://example.com/api", "https://example.com/docs"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         job_id = create_response.json()["job_id"]
 
-        # Get job status via API
         get_response = client.get(
             f"/api/v1/scrape/{job_id}",
             headers={"X-API-Key": valid_api_key},
@@ -367,7 +356,6 @@ class TestJobPersistence:
         assert get_response.status_code == 200
         data = get_response.json()
 
-        # Verify data matches what's in database
         db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
         assert db_job is not None
         assert data["job_id"] == str(db_job.id)
@@ -379,19 +367,18 @@ class TestJobPersistence:
         self, client: TestClient, valid_api_key: str, db: Session
     ):
         """Job should persist and be retrievable multiple times."""
-        # Create a job
         create_response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
             json={
                 "urls": ["https://example.com"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
                 "profile": "technical_specs",
             },
         )
         job_id = create_response.json()["job_id"]
 
-        # Get the job multiple times
         for _ in range(3):
             response = client.get(
                 f"/api/v1/scrape/{job_id}",
@@ -403,7 +390,6 @@ class TestJobPersistence:
             assert data["company"] == "TestCo"
             assert data["profile"] == "technical_specs"
 
-        # Verify only one job exists in database
         db_jobs = db.query(Job).filter(Job.id == UUID(job_id)).all()
         assert len(db_jobs) == 1
 
@@ -411,7 +397,6 @@ class TestJobPersistence:
         self, client: TestClient, valid_api_key: str, db: Session
     ):
         """Multiple jobs should be stored independently in database."""
-        # Create multiple jobs
         job_ids = []
         for i in range(3):
             response = client.post(
@@ -420,12 +405,12 @@ class TestJobPersistence:
                 json={
                     "urls": [f"https://example{i}.com"],
                     "company": f"Company{i}",
+                    "project_id": TEST_PROJECT_ID,
                 },
             )
             assert response.status_code == 202
             job_ids.append(response.json()["job_id"])
 
-        # Verify all jobs exist in database
         for i, job_id in enumerate(job_ids):
             db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
             assert db_job is not None
@@ -447,26 +432,23 @@ class TestJobPersistence:
         self, client: TestClient, valid_api_key: str, db: Session
     ):
         """Job should include created_at timestamp from database."""
-        # Create a job
         response = client.post(
             "/api/v1/scrape",
             headers={"X-API-Key": valid_api_key},
             json={
                 "urls": ["https://example.com"],
                 "company": "TestCo",
+                "project_id": TEST_PROJECT_ID,
             },
         )
         job_id = response.json()["job_id"]
 
-        # Get job status
         get_response = client.get(
             f"/api/v1/scrape/{job_id}",
             headers={"X-API-Key": valid_api_key},
         )
         data = get_response.json()
 
-        # Verify created_at matches database
         db_job = db.query(Job).filter(Job.id == UUID(job_id)).first()
         assert "created_at" in data
-        # Both should be ISO format timestamps
         assert data["created_at"] == db_job.created_at.isoformat()

@@ -29,7 +29,7 @@ class TestScraperWorker:
     @pytest.fixture
     def mock_source_repo(self):
         """Mock SourceRepository."""
-        repo = AsyncMock()
+        repo = Mock()
         # Mock create to return a Source-like object
         repo.create.return_value = Mock(id=uuid4())
         return repo
@@ -37,7 +37,7 @@ class TestScraperWorker:
     @pytest.fixture
     def mock_project_repo(self):
         """Mock ProjectRepository."""
-        repo = AsyncMock()
+        repo = Mock()
         # Mock get_default_project to return a project with ID
         default_project = Mock(id=uuid4())
         repo.get_default_project.return_value = default_project
@@ -160,7 +160,7 @@ class TestScraperWorker:
         assert call_kwargs["source_type"] == "web"
         assert call_kwargs["title"] == "Example Page"
         assert call_kwargs["content"] == "# Example Page\n\nTest content"
-        assert call_kwargs["status"] == "completed"
+        assert call_kwargs["status"] == "pending"
         assert "domain" in call_kwargs["meta_data"]
         assert call_kwargs["meta_data"]["domain"] == "example.com"
 
@@ -426,14 +426,14 @@ class TestScraperWorkerWithRateLimiting:
     @pytest.fixture
     def mock_source_repo(self):
         """Mock SourceRepository."""
-        repo = AsyncMock()
+        repo = Mock()
         repo.create.return_value = Mock(id=uuid4())
         return repo
 
     @pytest.fixture
     def mock_project_repo(self):
         """Mock ProjectRepository."""
-        repo = AsyncMock()
+        repo = Mock()
         default_project = Mock(id=uuid4())
         repo.get_default_project.return_value = default_project
         return repo
@@ -448,6 +448,8 @@ class TestScraperWorkerWithRateLimiting:
         )
         worker.source_repo = mock_source_repo
         worker.project_repo = mock_project_repo
+        worker.job_repo = Mock()
+        worker.job_repo.is_cancellation_requested.return_value = False
         return worker
 
     @pytest.mark.asyncio
@@ -600,6 +602,8 @@ class TestScraperWorkerWithRateLimiting:
         worker = ScraperWorker(db=db_session, firecrawl_client=firecrawl_client)
         worker.source_repo = mock_source_repo
         worker.project_repo = mock_project_repo
+        worker.job_repo = Mock()
+        worker.job_repo.is_cancellation_requested.return_value = False
 
         job = Job(
             id=uuid4(),

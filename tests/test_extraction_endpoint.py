@@ -23,17 +23,10 @@ def test_project(db: Session):
         },
     )
     db.add(project)
-    db.commit()
+    db.flush()
     db.refresh(project)
 
     yield project
-
-    # Cleanup after test
-    try:
-        db.delete(project)
-        db.commit()
-    except Exception:
-        db.rollback()
 
 
 @pytest.fixture
@@ -46,11 +39,12 @@ def test_sources(db: Session, test_project: Project):
             source_type="web",
             uri=f"https://example.com/doc{i}_{uuid4().hex[:8]}",  # Unique URIs
             source_group="TestCo",
+            content=f"Sample content for doc {i}",
             status="pending" if i < 2 else "completed",
         )
         db.add(source)
         sources.append(source)
-    db.commit()
+    db.flush()
     for source in sources:
         db.refresh(source)
     return sources
@@ -184,21 +178,16 @@ class TestCreateExtractionJob:
             extraction_schema={"name": "test", "fields": []},
         )
         db.add(other_project)
-        db.commit()
+        db.flush()
         db.refresh(other_project)
 
-        try:
-            # Try to extract source from other project
-            response = client.post(
-                f"/api/v1/projects/{other_project.id}/extract",
-                headers={"X-API-Key": valid_api_key},
-                json={"source_ids": [str(test_sources[0].id)]},
-            )
-            assert response.status_code == 400
-        finally:
-            # Cleanup
-            db.delete(other_project)
-            db.commit()
+        # Try to extract source from other project
+        response = client.post(
+            f"/api/v1/projects/{other_project.id}/extract",
+            headers={"X-API-Key": valid_api_key},
+            json={"source_ids": [str(test_sources[0].id)]},
+        )
+        assert response.status_code == 400
 
     def test_extract_endpoint_accepts_optional_profile(
         self, client: TestClient, valid_api_key: str, test_project: Project
@@ -399,7 +388,7 @@ class TestListExtractions:
             confidence=0.95,
         )
         db.add(extraction)
-        db.commit()
+        db.flush()
         db.refresh(extraction)
 
         response = client.get(
@@ -448,7 +437,7 @@ class TestListExtractions:
                 source_group="TestCo",
             )
             db.add(extraction)
-        db.commit()
+        db.flush()
 
         # Filter by first source
         response = client.get(
@@ -487,7 +476,7 @@ class TestListExtractions:
             source_group="GroupB",
         )
         db.add_all([extraction1, extraction2])
-        db.commit()
+        db.flush()
 
         response = client.get(
             f"/api/v1/projects/{test_project.id}/extractions?source_group=GroupA",
@@ -520,7 +509,7 @@ class TestListExtractions:
                 confidence=conf,
             )
             db.add(extraction)
-        db.commit()
+        db.flush()
 
         response = client.get(
             f"/api/v1/projects/{test_project.id}/extractions?min_confidence=0.8",
@@ -553,7 +542,7 @@ class TestListExtractions:
                 source_group="TestCo",
             )
             db.add(extraction)
-        db.commit()
+        db.flush()
 
         # Get first page
         response = client.get(

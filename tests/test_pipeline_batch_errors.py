@@ -33,18 +33,18 @@ class TestBatchErrorHandling:
     @pytest.fixture
     def mock_extraction_repo(self):
         """Create mock extraction repository."""
-        return AsyncMock()
+        return MagicMock()
 
     @pytest.fixture
     def mock_source_repo(self):
         """Create mock source repository."""
-        repo = AsyncMock()
+        repo = MagicMock()
         return repo
 
     @pytest.fixture
     def mock_project_repo(self):
         """Create mock project repository."""
-        return AsyncMock()
+        return MagicMock()
 
     @pytest.fixture
     def mock_qdrant_repo(self):
@@ -100,7 +100,7 @@ class TestBatchErrorHandling:
         # First source succeeds, second raises exception, third succeeds
         call_count = [0]
 
-        async def mock_get(source_id):
+        def mock_get(source_id):
             idx = call_count[0]
             call_count[0] += 1
             if idx == 1:  # Second source fails
@@ -111,7 +111,7 @@ class TestBatchErrorHandling:
 
         # Mock project repo
         with patch.object(pipeline_service, "_project_repo") as mock_proj:
-            mock_proj.get = AsyncMock(return_value=MagicMock(entity_types=[]))
+            mock_proj.get.return_value = MagicMock(entity_types=[])
 
             # Mock orchestrator to return empty facts
             with patch.object(pipeline_service, "_orchestrator") as mock_orch:
@@ -176,19 +176,23 @@ class TestBatchErrorHandling:
 class TestSchemaExtractionBatchErrors:
     """Test SchemaExtractionPipeline batch error handling."""
 
-    def test_gather_has_return_exceptions_in_extract_project(self):
-        """Verify asyncio.gather uses return_exceptions in extract_project.
+    def test_extract_project_handles_errors_in_coroutines(self):
+        """Verify extract_project handles errors within extract_with_limit.
 
-        This is a code inspection test that verifies the fix is in place.
+        extract_with_limit wraps each source extraction in try/except,
+        returning (0, False) on failure, so asyncio.gather doesn't need
+        return_exceptions=True.
         """
         import inspect
         from services.extraction.pipeline import SchemaExtractionPipeline
 
         source = inspect.getsource(SchemaExtractionPipeline.extract_project)
 
-        # Verify asyncio.gather has return_exceptions=True
-        assert "return_exceptions=True" in source or "return_exceptions" in source, \
-            "extract_project should use asyncio.gather with return_exceptions=True"
+        # Verify error handling exists within the coroutine (extract_with_limit)
+        assert "extract_with_limit" in source, \
+            "extract_project should use extract_with_limit wrapper"
+        assert "except Exception" in source, \
+            "extract_project should handle exceptions within extract_with_limit"
 
 
 class TestExtractionPipelineBatchErrors:

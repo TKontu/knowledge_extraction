@@ -116,6 +116,7 @@ class TestProxyAdapter(AioHTTPTestCase):
         request = Mock(spec=web.Request)
         request.method = "CONNECT"
         request.path = "/blocked.weg.net:443"
+        request.headers = {}
 
         # Patch handle_connect to verify it's called
         with patch.object(
@@ -208,6 +209,8 @@ class TestProxyAdapter(AioHTTPTestCase):
     @pytest.mark.asyncio
     async def test_handle_request_allows_https_to_non_blocked_domain(self):
         """Test handle_request allows HTTPS to non-blocked domains (direct passthrough)."""
+        import httpx as httpx_mod
+
         # Mock httpx.AsyncClient
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -217,7 +220,7 @@ class TestProxyAdapter(AioHTTPTestCase):
             mock_http_response = Mock()
             mock_http_response.content = b"<html>Non-blocked</html>"
             mock_http_response.status_code = 200
-            mock_http_response.headers = {"Content-Type": "text/html"}
+            mock_http_response.headers = httpx_mod.Headers({"Content-Type": "text/html"})
             mock_client.get.return_value = mock_http_response
 
             # Request HTTPS to non-blocked domain

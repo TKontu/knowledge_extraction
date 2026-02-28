@@ -27,17 +27,10 @@ def test_project(db: Session):
         },
     )
     db.add(project)
-    db.commit()
+    db.flush()
     db.refresh(project)
 
-    yield project
-
-    # Cleanup
-    try:
-        db.delete(project)
-        db.commit()
-    except Exception:
-        db.rollback()
+    return project
 
 
 @pytest.fixture
@@ -54,7 +47,7 @@ def test_sources(db: Session, test_project: Project):
         )
         db.add(source)
         sources.append(source)
-    db.commit()
+    db.flush()
     for source in sources:
         db.refresh(source)
     return sources
@@ -75,7 +68,7 @@ def test_extractions(db: Session, test_project: Project, test_sources: list[Sour
         )
         db.add(extraction)
         extractions.append(extraction)
-    db.commit()
+    db.flush()
     for extraction in extractions:
         db.refresh(extraction)
     return extractions
@@ -85,7 +78,7 @@ class TestSearchEndpoint:
     """Tests for POST /api/v1/projects/{project_id}/search."""
 
     @patch("api.v1.search.SearchService")
-    async def test_search_returns_results(
+    def test_search_returns_results(
         self,
         mock_search_service_class,
         client: TestClient,
@@ -160,7 +153,7 @@ class TestSearchEndpoint:
         assert "detail" in data
 
     @patch("api.v1.search.SearchService")
-    async def test_search_with_source_group_filter(
+    def test_search_with_source_group_filter(
         self,
         mock_search_service_class,
         client: TestClient,
@@ -203,7 +196,7 @@ class TestSearchEndpoint:
         assert call_kwargs["source_groups"] == ["CompanyA"]
 
     @patch("api.v1.search.SearchService")
-    async def test_search_with_jsonb_filters(
+    def test_search_with_jsonb_filters(
         self,
         mock_search_service_class,
         client: TestClient,
@@ -245,7 +238,7 @@ class TestSearchEndpoint:
         assert call_kwargs["jsonb_filters"] == {"category": "pricing"}
 
     @patch("api.v1.search.SearchService")
-    async def test_search_empty_results(
+    def test_search_empty_results(
         self,
         mock_search_service_class,
         client: TestClient,
@@ -270,7 +263,7 @@ class TestSearchEndpoint:
         assert data["query"] == "no matches"
 
     @patch("api.v1.search.SearchService")
-    async def test_search_respects_limit(
+    def test_search_respects_limit(
         self,
         mock_search_service_class,
         client: TestClient,
@@ -354,7 +347,7 @@ class TestSearchEndpoint:
         assert response.status_code == 422
 
     @patch("api.v1.search.SearchService")
-    async def test_search_response_includes_all_fields(
+    def test_search_response_includes_all_fields(
         self,
         mock_search_service_class,
         client: TestClient,
@@ -408,7 +401,7 @@ class TestSearchEndpoint:
         assert result["confidence"] == 0.88
 
     @patch("api.v1.search.SearchService")
-    async def test_search_with_null_confidence(
+    def test_search_with_null_confidence(
         self,
         mock_search_service_class,
         client: TestClient,

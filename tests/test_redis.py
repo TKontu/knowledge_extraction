@@ -36,9 +36,10 @@ class TestRedisConnection:
     @patch("redis_client.redis_client.ping")
     def test_redis_connectivity_check_failure(self, mock_ping):
         """Redis connectivity check should return False when connection fails."""
+        import redis as redis_lib
         from redis_client import check_redis_connection
 
-        mock_ping.side_effect = Exception("Connection failed")
+        mock_ping.side_effect = redis_lib.ConnectionError("Connection failed")
 
         result = check_redis_connection()
         assert result is False

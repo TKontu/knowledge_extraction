@@ -25,10 +25,12 @@ async def test_queue_uses_async_redis():
     """Queue operations should work with async Redis."""
     import redis.asyncio as aioredis
 
+    from config import settings
     from services.llm.queue import LLMRequestQueue
 
-    # Create async Redis client
-    async_redis = aioredis.from_url("redis://localhost", decode_responses=True)
+    # Create async Redis client using configured URL
+    redis_url = getattr(settings, "redis_url", "redis://192.168.0.136:6379")
+    async_redis = aioredis.from_url(redis_url, decode_responses=True)
 
     try:
         queue = LLMRequestQueue(redis=async_redis)

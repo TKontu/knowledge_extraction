@@ -193,6 +193,14 @@ class TestLLMClientQueueMode:
         """Test that LLMClient uses direct LLM calls when no queue provided."""
         from services.llm.client import LLMClient
 
+        # Set required numeric settings for direct mode retry logic
+        mock_settings.llm_max_retries = 1
+        mock_settings.llm_base_temperature = 0.1
+        mock_settings.llm_retry_temperature_increment = 0.1
+        mock_settings.llm_retry_backoff_min = 1.0
+        mock_settings.llm_retry_backoff_max = 5.0
+        mock_settings.llm_max_tokens = 4096
+
         # No queue provided - should use direct mode
         client = LLMClient(mock_settings, llm_queue=None)
 
@@ -369,6 +377,14 @@ class TestLLMClientExtractEntities:
     async def test_extract_entities_direct_mode(self, mock_settings):
         """Test entity extraction in direct mode (no queue)."""
         from services.llm.client import LLMClient
+
+        # Set required numeric settings for direct mode retry logic
+        mock_settings.llm_max_retries = 1
+        mock_settings.llm_base_temperature = 0.1
+        mock_settings.llm_retry_temperature_increment = 0.1
+        mock_settings.llm_retry_backoff_min = 1.0
+        mock_settings.llm_retry_backoff_max = 5.0
+        mock_settings.llm_max_tokens = 4096
 
         client = LLMClient(mock_settings, llm_queue=None)
 

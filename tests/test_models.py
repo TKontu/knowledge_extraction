@@ -15,22 +15,20 @@ from models import (
 class TestReportRequest:
     """Test ReportRequest validation."""
 
-    def test_report_request_validates_source_groups(self):
-        """Test that source_groups must have at least one item."""
-        # Valid case
+    def test_report_request_accepts_source_groups(self):
+        """Test that source_groups accepts a list."""
         request = ReportRequest(
             type=ReportType.SINGLE,
             source_groups=["company-a"],
         )
         assert request.source_groups == ["company-a"]
 
-        # Invalid case - empty list
-        with pytest.raises(ValidationError) as exc_info:
-            ReportRequest(
-                type=ReportType.SINGLE,
-                source_groups=[],
-            )
-        assert "source_groups" in str(exc_info.value)
+    def test_report_request_source_groups_optional(self):
+        """Test that source_groups defaults to None (all groups)."""
+        request = ReportRequest(
+            type=ReportType.SINGLE,
+        )
+        assert request.source_groups is None
 
     def test_report_request_comparison_needs_multiple(self):
         """Test that comparison reports require at least 2 source_groups."""
@@ -96,68 +94,48 @@ class TestReportRequest:
             )
 
     def test_report_request_group_by_default(self):
-        """Test group_by defaults to source_group."""
+        """Test group_by defaults to 'source'."""
         request = ReportRequest(
             type=ReportType.TABLE,
             source_groups=["company-a"],
         )
-        assert request.group_by == "source_group"
+        assert request.group_by == "source"
 
-    def test_report_request_group_by_extraction_allowed_for_table(self):
-        """Test group_by='extraction' is allowed for table reports."""
+    def test_report_request_group_by_domain_allowed_for_table(self):
+        """Test group_by='domain' is allowed for table reports."""
         request = ReportRequest(
             type=ReportType.TABLE,
             source_groups=["company-a"],
-            group_by="extraction",
+            group_by="domain",
         )
-        assert request.group_by == "extraction"
+        assert request.group_by == "domain"
 
-    def test_report_request_group_by_extraction_allowed_for_schema_table(self):
-        """Test group_by='extraction' is allowed for schema_table reports."""
-        request = ReportRequest(
-            type=ReportType.SCHEMA_TABLE,
-            source_groups=["company-a"],
-            group_by="extraction",
-        )
-        assert request.group_by == "extraction"
-
-    def test_report_request_group_by_extraction_rejected_for_single(self):
-        """Test group_by='extraction' is rejected for single reports."""
-        with pytest.raises(ValidationError) as exc_info:
-            ReportRequest(
-                type=ReportType.SINGLE,
-                source_groups=["company-a"],
-                group_by="extraction",
-            )
-        assert "only applies to table" in str(exc_info.value)
-
-    def test_report_request_group_by_extraction_rejected_for_comparison(self):
-        """Test group_by='extraction' is rejected for comparison reports."""
-        with pytest.raises(ValidationError) as exc_info:
-            ReportRequest(
-                type=ReportType.COMPARISON,
-                source_groups=["company-a", "company-b"],
-                group_by="extraction",
-            )
-        assert "only applies to table" in str(exc_info.value)
-
-    def test_report_request_group_by_source_group_allowed_for_all(self):
-        """Test group_by='source_group' is allowed for all report types."""
+    def test_report_request_group_by_source_allowed_for_all(self):
+        """Test group_by='source' is allowed for all report types."""
         # Single
         request = ReportRequest(
             type=ReportType.SINGLE,
             source_groups=["company-a"],
-            group_by="source_group",
+            group_by="source",
         )
-        assert request.group_by == "source_group"
+        assert request.group_by == "source"
 
-        # Comparison
+        # Table
         request = ReportRequest(
-            type=ReportType.COMPARISON,
-            source_groups=["company-a", "company-b"],
-            group_by="source_group",
+            type=ReportType.TABLE,
+            source_groups=["company-a"],
+            group_by="source",
         )
-        assert request.group_by == "source_group"
+        assert request.group_by == "source"
+
+    def test_report_request_group_by_invalid_value_rejected(self):
+        """Test that invalid group_by values are rejected."""
+        with pytest.raises(ValidationError):
+            ReportRequest(
+                type=ReportType.TABLE,
+                source_groups=["company-a"],
+                group_by="invalid_value",
+            )
 
 
 class TestReportResponse:

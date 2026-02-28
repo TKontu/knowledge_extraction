@@ -220,9 +220,8 @@ def _balance_brackets(text: str) -> str:
 
     Handles truncation like: {"items": [1, 2
     """
-    # Track bracket depth (ignore brackets inside strings)
-    brace_depth = 0  # {}
-    bracket_depth = 0  # []
+    # Track bracket stack in order (ignore brackets inside strings)
+    stack: list[str] = []
     in_string = False
     escaped = False
 
@@ -242,22 +241,17 @@ def _balance_brackets(text: str) -> str:
         if in_string:
             continue
 
-        if char == "{":
-            brace_depth += 1
-        elif char == "}":
-            brace_depth -= 1
-        elif char == "[":
-            bracket_depth += 1
-        elif char == "]":
-            bracket_depth -= 1
+        if char in ("{", "["):
+            stack.append(char)
+        elif char == "}" and stack and stack[-1] == "{":
+            stack.pop()
+        elif char == "]" and stack and stack[-1] == "[":
+            stack.pop()
 
-    # Add missing closers
+    # Close unclosed openers in reverse order
     result = text
-    # Add brackets first (inner), then braces (outer)
-    if bracket_depth > 0:
-        result += "]" * bracket_depth
-    if brace_depth > 0:
-        result += "}" * brace_depth
+    for opener in reversed(stack):
+        result += "}" if opener == "{" else "]"
 
     return result
 

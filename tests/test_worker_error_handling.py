@@ -132,7 +132,14 @@ class TestScraperWorkerErrorHandling:
     @pytest.fixture
     def scraper_worker(self, db_session, firecrawl_client):
         """Create ScraperWorker instance."""
-        return ScraperWorker(db=db_session, firecrawl_client=firecrawl_client)
+        worker = ScraperWorker(db=db_session, firecrawl_client=firecrawl_client)
+        # Replace repositories with mocks to avoid DB access
+        worker.source_repo = MagicMock()
+        worker.project_repo = MagicMock()
+        worker.project_repo.get_default_project.return_value = MagicMock(id=uuid4())
+        worker.job_repo = MagicMock()
+        worker.job_repo.is_cancellation_requested.return_value = False
+        return worker
 
     @pytest.fixture
     def scrape_job(self):
@@ -152,19 +159,20 @@ class TestScraperWorkerErrorHandling:
     async def test_exception_includes_error_type_in_job_error(
         self, scraper_worker, scrape_job, firecrawl_client
     ):
-        """Test that job.error includes the error type."""
-        # Arrange: Firecrawl client raises ConnectionError
-        firecrawl_client.scrape_urls.side_effect = ConnectionError("Network failed")
+        """Test that job.error includes the error type for unretryable exceptions."""
+        # Arrange: Use TypeError (not in retryable list) so it propagates to
+        # the outer except block instead of being caught by retry logic
+        firecrawl_client.scrape.side_effect = TypeError("Bad argument")
 
         # Act: Process job
         await scraper_worker.process_job(scrape_job)
 
         # Assert: job.error should include error type
         assert scrape_job.status == "failed"
-        assert "ConnectionError" in scrape_job.error, (
-            f"Expected error to include 'ConnectionError', got: {scrape_job.error}"
+        assert "TypeError" in scrape_job.error, (
+            f"Expected error to include 'TypeError', got: {scrape_job.error}"
         )
-        assert "Network failed" in scrape_job.error
+        assert "Bad argument" in scrape_job.error
 
     @pytest.mark.asyncio
     async def test_exception_logs_with_exc_info(
@@ -193,6 +201,11 @@ class TestExtractionWorkerErrorHandling:
         session = MagicMock()
         session.commit = MagicMock()
         session.rollback = MagicMock()
+        # Mock query for _has_extraction_schema
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = None  # No project found = no schema
+        session.query.return_value = mock_query
         return session
 
     @pytest.fixture
@@ -203,7 +216,10 @@ class TestExtractionWorkerErrorHandling:
     @pytest.fixture
     def extraction_worker(self, db_session, pipeline_service):
         """Create ExtractionWorker instance."""
-        return ExtractionWorker(db=db_session, pipeline_service=pipeline_service)
+        worker = ExtractionWorker(db=db_session, pipeline_service=pipeline_service)
+        worker.job_repo = MagicMock()
+        worker.job_repo.is_cancellation_requested.return_value = False
+        return worker
 
     @pytest.fixture
     def extract_job(self):
@@ -224,7 +240,7 @@ class TestExtractionWorkerErrorHandling:
     ):
         """Test that job.error includes the error type."""
         # Arrange: Pipeline service raises KeyError
-        pipeline_service.extract_from_sources.side_effect = KeyError("missing_key")
+        pipeline_service.process_project_pending.side_effect = KeyError("missing_key")
 
         # Act: Process job
         await extraction_worker.process_job(extract_job)
@@ -242,7 +258,7 @@ class TestExtractionWorkerErrorHandling:
     ):
         """Test that exceptions are logged with exc_info=True."""
         # Arrange
-        pipeline_service.extract_from_sources.side_effect = ValueError("Invalid data")
+        pipeline_service.process_project_pending.side_effect = ValueError("Invalid data")
 
         # Act: Process job with log capture
         with patch("services.extraction.worker.logger") as mock_logger:
@@ -259,7 +275,7 @@ class TestExtractionWorkerErrorHandling:
     ):
         """Test that logs include error_type field."""
         # Arrange
-        pipeline_service.extract_from_sources.side_effect = OSError("File not found")
+        pipeline_service.process_project_pending.side_effect = OSError("File not found")
 
         # Act: Process job with log capture
         with patch("services.extraction.worker.logger") as mock_logger:
