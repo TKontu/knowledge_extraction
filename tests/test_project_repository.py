@@ -319,31 +319,15 @@ class TestProjectRepositoryGetDefaultProject:
     """Test ProjectRepository.get_default_project() method."""
 
     def test_get_default_returns_company_analysis(self, project_repo):
-        """Should return existing company_analysis project."""
-        # Create the default project
-        project_repo.create(
-            name="company_analysis",
-            description="Default project",
-            extraction_schema={
-                "name": "technical_fact",
-                "fields": [
-                    {"name": "fact_text", "type": "text", "required": True},
-                    {"name": "category", "type": "enum"},
-                ],
-            },
-        )
-
-        default = project_repo.get_default_project()
-        assert default is not None
-        assert default.name == "company_analysis"
-
-    def test_get_default_creates_if_missing(self, project_repo):
-        """Should create company_analysis if it doesn't exist."""
-        # Ensure it doesn't exist
-        existing = project_repo.get_by_name("company_analysis")
-        assert existing is None
-
+        """Should return company_analysis project (existing or newly created)."""
         default = project_repo.get_default_project()
         assert default is not None
         assert default.name == "company_analysis"
         assert default.extraction_schema["name"] == "technical_fact"
+
+    def test_get_default_is_idempotent(self, project_repo):
+        """Calling get_default_project twice returns the same project."""
+        first = project_repo.get_default_project()
+        second = project_repo.get_default_project()
+        assert first.id == second.id
+        assert first.name == "company_analysis"

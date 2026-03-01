@@ -2,16 +2,14 @@
 
 import os
 
-# Set test API key before imports
-os.environ.setdefault("API_KEY", "test-api-key-for-pytest-minimum-16-chars")
-
 from fastapi.testclient import TestClient
 
+from config import settings
 from main import app
 
 # Create client with auth header
 client = TestClient(app)
-AUTH_HEADERS = {"X-API-Key": "test-api-key-for-pytest-minimum-16-chars"}
+AUTH_HEADERS = {"X-API-Key": settings.api_key}
 
 
 class TestListTemplates:

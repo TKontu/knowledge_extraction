@@ -1,4 +1,10 @@
 import os
+from dotenv import load_dotenv
+
+# Load .env BEFORE any imports that read settings or check env vars.
+# This ensures skip markers (e.g., KE_API_BASE_URL) see the values at
+# collection time, and pydantic-settings picks up all config.
+load_dotenv(override=False)
 
 # Set test API key before any imports that load settings
 # This must be at the very top to avoid validation errors
