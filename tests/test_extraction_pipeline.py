@@ -1085,7 +1085,7 @@ class TestExtractProjectSkipExtracted:
     @pytest.fixture
     def schema_pipeline(self, mock_schema_orchestrator, mock_db_session):
         """Create SchemaExtractionPipeline with mocks."""
-        from src.services.extraction.pipeline import SchemaExtractionPipeline
+        from services.extraction.pipeline import SchemaExtractionPipeline
 
         return SchemaExtractionPipeline(
             orchestrator=mock_schema_orchestrator,

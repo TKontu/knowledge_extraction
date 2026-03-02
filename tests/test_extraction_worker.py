@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from src.services.extraction.worker import ExtractionWorker, SchemaExtractionResult
+from services.extraction.worker import ExtractionWorker, SchemaExtractionResult
 from orm_models import Job, Project
 
 

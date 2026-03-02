@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.camoufox.config import CamoufoxSettings
-from src.services.camoufox.scraper import CamoufoxScraper
+from services.camoufox.config import CamoufoxSettings
+from services.camoufox.scraper import CamoufoxScraper
 
 
 class TestBrowserRecycling:
@@ -175,7 +175,7 @@ class TestBrowserRecycling:
         mock_new_camoufox.start = AsyncMock(return_value=mock_new_browser)
 
         with patch(
-            "src.services.camoufox.scraper.AsyncCamoufox",
+            "services.camoufox.scraper.AsyncCamoufox",
             return_value=mock_new_camoufox,
         ):
             result = await scraper._restart_browser(0)
@@ -203,7 +203,7 @@ class TestBrowserRecycling:
 
         # Mock AsyncCamoufox to raise exception
         with patch(
-            "src.services.camoufox.scraper.AsyncCamoufox",
+            "services.camoufox.scraper.AsyncCamoufox",
             side_effect=Exception("Browser start failed"),
         ):
             result = await scraper._restart_browser(0)
@@ -224,7 +224,7 @@ class TestBrowserRecycling:
         mock_camoufox.start = AsyncMock(return_value=mock_browser)
 
         with patch(
-            "src.services.camoufox.scraper.AsyncCamoufox",
+            "services.camoufox.scraper.AsyncCamoufox",
             return_value=mock_camoufox,
         ):
             await scraper.start()

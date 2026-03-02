@@ -10,8 +10,8 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
-from src.services.extraction.field_groups import FieldGroup, FieldDefinition
+from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+from services.extraction.field_groups import FieldGroup, FieldDefinition
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ class TestContinuousConcurrency:
         chunks = [Mock(content=f"chunk_{i}") for i in range(6)]
 
         # Patch settings to use concurrency of 2
-        with patch("src.services.extraction.schema_orchestrator.settings") as mock_settings:
+        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
             mock_settings.extraction_max_concurrent_chunks = 2
             mock_settings.llm_retry_backoff_min = 1
             mock_settings.llm_retry_backoff_max = 2
@@ -134,7 +134,7 @@ class TestContinuousConcurrency:
         chunks = [Mock(content=f"chunk_{i}") for i in range(10)]
 
         # Set max concurrent to 3
-        with patch("src.services.extraction.schema_orchestrator.settings") as mock_settings:
+        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
             mock_settings.extraction_max_concurrent_chunks = 3
             mock_settings.llm_retry_backoff_min = 1
             mock_settings.llm_retry_backoff_max = 2
@@ -172,7 +172,7 @@ class TestContinuousConcurrency:
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(8)]
 
-        with patch("src.services.extraction.schema_orchestrator.settings") as mock_settings:
+        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
             mock_settings.extraction_max_concurrent_chunks = 4
             mock_settings.llm_retry_backoff_min = 1
             mock_settings.llm_retry_backoff_max = 2
@@ -206,7 +206,7 @@ class TestContinuousConcurrency:
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(5)]
 
-        with patch("src.services.extraction.schema_orchestrator.settings") as mock_settings:
+        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
             mock_settings.extraction_max_concurrent_chunks = 2
             mock_settings.llm_retry_backoff_min = 0.01  # Fast retry for test
             mock_settings.llm_retry_backoff_max = 0.02
@@ -249,7 +249,7 @@ class TestRetryBehavior:
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(3)]
 
-        with patch("src.services.extraction.schema_orchestrator.settings") as mock_settings:
+        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
             mock_settings.extraction_max_concurrent_chunks = 2
             mock_settings.llm_retry_backoff_min = 0.01
             mock_settings.llm_retry_backoff_max = 0.02

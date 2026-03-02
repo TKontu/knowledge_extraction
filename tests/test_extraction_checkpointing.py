@@ -7,8 +7,8 @@ from uuid import uuid4
 import pytest
 
 from orm_models import Job, Project
-from src.services.extraction.pipeline import CheckpointCallback, SchemaExtractionPipeline
-from src.services.extraction.worker import ExtractionWorker, SchemaExtractionResult
+from services.extraction.pipeline import CheckpointCallback, SchemaExtractionPipeline
+from services.extraction.worker import ExtractionWorker, SchemaExtractionResult
 
 
 @pytest.fixture
@@ -314,7 +314,7 @@ class TestSchemaExtractionPipelineCheckpointing:
 
         # Run extraction with checkpoint callback
         with patch(
-            "src.services.extraction.pipeline.SchemaAdapter"
+            "services.extraction.pipeline.SchemaAdapter"
         ) as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
@@ -352,7 +352,7 @@ class TestSchemaExtractionPipelineCheckpointing:
         self._setup_db_mock(mock_db, mock_project, sources)
 
         with patch(
-            "src.services.extraction.pipeline.SchemaAdapter"
+            "services.extraction.pipeline.SchemaAdapter"
         ) as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
@@ -385,7 +385,7 @@ class TestSchemaExtractionPipelineCheckpointing:
         self._setup_db_mock(mock_db, mock_project, sources)
 
         with patch(
-            "src.services.extraction.pipeline.SchemaAdapter"
+            "services.extraction.pipeline.SchemaAdapter"
         ) as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
@@ -441,7 +441,7 @@ class TestSchemaExtractionPipelineCheckpointing:
         mock_field_group.name = "test"
 
         with patch(
-            "src.services.extraction.pipeline.SchemaAdapter"
+            "services.extraction.pipeline.SchemaAdapter"
         ) as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)

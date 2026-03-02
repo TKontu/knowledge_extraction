@@ -47,7 +47,7 @@ class TestSchedulerLLMQueueWiring:
         # - EntityExtractor should receive LLMClient with queue
 
         from services.llm.client import LLMClient
-        from src.services.llm.queue import LLMRequestQueue
+        from services.llm.queue import LLMRequestQueue
 
         mock_queue = MagicMock(spec=LLMRequestQueue)
 
@@ -76,7 +76,7 @@ class TestSchedulerLLMQueueWiring:
     async def test_extraction_worker_uses_queued_llm_client(self, mock_settings):
         """Test that extraction worker flow uses LLMClient with queue."""
         from services.llm.client import LLMClient
-        from src.services.llm.queue import LLMRequestQueue
+        from services.llm.queue import LLMRequestQueue
         from services.knowledge.extractor import EntityExtractor
 
         mock_queue = MagicMock(spec=LLMRequestQueue)
@@ -107,8 +107,8 @@ class TestSchedulerQueueInitialization:
 
         # This is more of an integration test pattern
         # For unit testing, we verify the components work together
-        from src.services.llm.queue import LLMRequestQueue
-        from src.services.llm.worker import LLMWorker
+        from services.llm.queue import LLMRequestQueue
+        from services.llm.worker import LLMWorker
 
         # Verify classes exist and can be instantiated
         mock_redis = AsyncMock()

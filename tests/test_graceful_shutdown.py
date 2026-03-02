@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.shutdown import ShutdownManager, get_shutdown_manager
+from shutdown import ShutdownManager, get_shutdown_manager
 
 
 class TestShutdownManager:
@@ -83,10 +83,10 @@ class TestHealthEndpointShutdown:
     def test_health_returns_503_during_shutdown(self):
         """Test that health endpoint returns 503 when shutting down."""
         from unittest.mock import patch
-        from src.main import health_check
+        from main import health_check
 
         # Mock the shutdown manager to return shutting_down=True
-        with patch("src.main.get_shutdown_manager") as mock_get_shutdown:
+        with patch("main.get_shutdown_manager") as mock_get_shutdown:
             mock_shutdown = type("ShutdownManager", (), {"is_shutting_down": True})()
             mock_get_shutdown.return_value = mock_shutdown
 

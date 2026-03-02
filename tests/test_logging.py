@@ -13,16 +13,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from src.config import Settings
+from config import Settings
 
 
 class TestLoggingConfiguration:
     """Tests for structlog configuration."""
 
-    @patch("src.logging_config.get_settings")
+    @patch("logging_config.get_settings")
     def test_configure_logging_json_format(self, mock_get_settings):
         """Test that JSON format is configured correctly."""
-        from src.logging_config import configure_logging
+        from logging_config import configure_logging
 
         mock_settings = Mock(spec=Settings)
         mock_settings.log_format = "json"
@@ -35,10 +35,10 @@ class TestLoggingConfiguration:
         logger = structlog.get_logger("test")
         assert logger is not None
 
-    @patch("src.logging_config.get_settings")
+    @patch("logging_config.get_settings")
     def test_configure_logging_console_format(self, mock_get_settings):
         """Test that console format is configured correctly."""
-        from src.logging_config import configure_logging
+        from logging_config import configure_logging
 
         mock_settings = Mock(spec=Settings)
         mock_settings.log_format = "console"
@@ -51,10 +51,10 @@ class TestLoggingConfiguration:
         logger = structlog.get_logger("test")
         assert logger is not None
 
-    @patch("src.logging_config.get_settings")
+    @patch("logging_config.get_settings")
     def test_configure_logging_respects_log_level(self, mock_get_settings):
         """Test that log level is respected."""
-        from src.logging_config import configure_logging
+        from logging_config import configure_logging
 
         mock_settings = Mock(spec=Settings)
         mock_settings.log_format = "json"
@@ -112,7 +112,7 @@ class TestRequestIDMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_generates_request_id(self, mock_app):
         """Test middleware generates a request ID when none provided."""
-        from src.middleware.request_id import RequestIDMiddleware
+        from middleware.request_id import RequestIDMiddleware
 
         middleware = RequestIDMiddleware(mock_app)
 
@@ -150,7 +150,7 @@ class TestRequestIDMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_uses_client_request_id(self, mock_app):
         """Test middleware uses client-provided request ID."""
-        from src.middleware.request_id import RequestIDMiddleware
+        from middleware.request_id import RequestIDMiddleware
 
         middleware = RequestIDMiddleware(mock_app)
         client_request_id = "client-provided-id"
@@ -182,7 +182,7 @@ class TestRequestIDMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_adds_response_header(self, mock_app):
         """Test middleware adds X-Request-ID to response headers."""
-        from src.middleware.request_id import RequestIDMiddleware
+        from middleware.request_id import RequestIDMiddleware
 
         middleware = RequestIDMiddleware(mock_app)
 
@@ -213,7 +213,7 @@ class TestRequestIDMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_binds_to_structlog_context(self):
         """Test middleware binds request ID to structlog context."""
-        from src.middleware.request_id import RequestIDMiddleware
+        from middleware.request_id import RequestIDMiddleware
 
         called = False
         captured_context = {}
@@ -264,6 +264,11 @@ class TestRequestLoggingMiddleware:
     @pytest.fixture
     def configure_structlog_for_tests(self):
         """Configure structlog to work with caplog."""
+        import middleware.request_logging as rl_mod
+
+        # Reset any cached loggers from earlier tests (e.g. TestLoggingConfiguration
+        # which calls configure_logging() and caches loggers with WriteLoggerFactory)
+        structlog.reset_defaults()
         # Configure structlog to use stdlib logging for tests
         structlog.configure(
             processors=[
@@ -273,13 +278,15 @@ class TestRequestLoggingMiddleware:
             wrapper_class=structlog.stdlib.BoundLogger,
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
+            cache_logger_on_first_use=False,
         )
+        # Rebind the module-level logger so it uses the new config
+        rl_mod.logger = structlog.get_logger(rl_mod.__name__)
 
     @pytest.mark.asyncio
     async def test_middleware_logs_request(self, mock_app, caplog, configure_structlog_for_tests):
         """Test middleware logs incoming requests."""
-        from src.middleware.request_logging import RequestLoggingMiddleware
+        from middleware.request_logging import RequestLoggingMiddleware
 
         middleware = RequestLoggingMiddleware(mock_app)
 
@@ -307,7 +314,7 @@ class TestRequestLoggingMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_logs_response_with_duration(self, mock_app, caplog, configure_structlog_for_tests):
         """Test middleware logs response with duration."""
-        from src.middleware.request_logging import RequestLoggingMiddleware
+        from middleware.request_logging import RequestLoggingMiddleware
 
         middleware = RequestLoggingMiddleware(mock_app)
 
@@ -335,7 +342,7 @@ class TestRequestLoggingMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_skips_health_endpoint(self, mock_app, caplog):
         """Test middleware skips logging /health endpoint."""
-        from src.middleware.request_logging import RequestLoggingMiddleware
+        from middleware.request_logging import RequestLoggingMiddleware
 
         middleware = RequestLoggingMiddleware(mock_app)
 

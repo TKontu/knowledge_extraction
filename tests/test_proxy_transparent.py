@@ -5,8 +5,8 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-from src.services.proxy.flaresolverr_adapter import ProxyAdapter
-from src.services.proxy.flaresolverr_client import FlareSolverrResponse
+from services.proxy.flaresolverr_adapter import ProxyAdapter
+from services.proxy.flaresolverr_client import FlareSolverrResponse
 
 
 class TestProxyAdapter(AioHTTPTestCase):

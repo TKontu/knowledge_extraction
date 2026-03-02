@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from src.services.storage.deduplication import (
+from services.storage.deduplication import (
     ExtractionDeduplicator,
     DeduplicationResult,
 )
@@ -73,7 +73,7 @@ class TestCheckDuplicate:
         qdrant_repo: MagicMock,
     ) -> None:
         """Test that similar extraction is detected as duplicate."""
-        from src.services.storage.qdrant.repository import SearchResult
+        from services.storage.qdrant.repository import SearchResult
 
         project_id = uuid4()
         source_group = "test-group"
@@ -138,7 +138,7 @@ class TestCheckDuplicate:
         qdrant_repo: MagicMock,
     ) -> None:
         """Test similarity below threshold is not marked as duplicate."""
-        from src.services.storage.qdrant.repository import SearchResult
+        from services.storage.qdrant.repository import SearchResult
 
         project_id = uuid4()
         source_group = "test-group"
@@ -168,7 +168,7 @@ class TestCheckDuplicate:
         qdrant_repo: MagicMock,
     ) -> None:
         """Test similarity exactly at threshold is marked as duplicate."""
-        from src.services.storage.qdrant.repository import SearchResult
+        from services.storage.qdrant.repository import SearchResult
 
         project_id = uuid4()
         source_group = "test-group"
@@ -243,7 +243,7 @@ class TestCheckDuplicate:
         qdrant_repo: MagicMock,
     ) -> None:
         """Test that only the best match is returned."""
-        from src.services.storage.qdrant.repository import SearchResult
+        from services.storage.qdrant.repository import SearchResult
 
         project_id = uuid4()
         source_group = "test-group"
@@ -398,7 +398,7 @@ class TestCheckExtractionData:
         qdrant_repo: MagicMock,
     ) -> None:
         """Test that check_extraction_data uses check_duplicate internally."""
-        from src.services.storage.qdrant.repository import SearchResult
+        from services.storage.qdrant.repository import SearchResult
 
         project_id = uuid4()
         source_group = "test-group"

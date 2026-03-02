@@ -4,7 +4,7 @@ import pytest
 import httpx
 from unittest.mock import AsyncMock, Mock
 
-from src.services.proxy.flaresolverr_client import (
+from services.proxy.flaresolverr_client import (
     FlareSolverrClient,
     FlareSolverrResponse,
     FlareSolverrError,

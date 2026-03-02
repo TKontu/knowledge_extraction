@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.services.metrics.collector import SystemMetrics
-from src.services.metrics.prometheus import format_prometheus
+from services.metrics.collector import SystemMetrics
+from services.metrics.prometheus import format_prometheus
 
 
 class TestPrometheusFormatter:

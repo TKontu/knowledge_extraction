@@ -12,8 +12,8 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.services.camoufox.models import ScrapeRequest
-from src.services.camoufox.config import CamoufoxSettings
+from services.camoufox.models import ScrapeRequest
+from services.camoufox.config import CamoufoxSettings
 
 
 def make_test_config(browser_count: int = 3, max_concurrent_pages: int = 6):
@@ -58,12 +58,12 @@ class TestBrowserPoolCreation:
     @pytest.mark.asyncio
     async def test_pool_creates_multiple_browsers(self):
         """Test that pool creates the configured number of browsers."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3)
         scraper = CamoufoxScraper(config=config)
 
-        with patch("src.services.camoufox.scraper.AsyncCamoufox") as mock_camoufox:
+        with patch("services.camoufox.scraper.AsyncCamoufox") as mock_camoufox:
             mock_browser = AsyncMock()
             mock_camoufox_instance = MagicMock()
             mock_camoufox_instance.start = AsyncMock(return_value=mock_browser)
@@ -80,12 +80,12 @@ class TestBrowserPoolCreation:
     @pytest.mark.asyncio
     async def test_pool_tracks_all_browsers(self):
         """Test that pool tracks all browser instances."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3)
         scraper = CamoufoxScraper(config=config)
 
-        with patch("src.services.camoufox.scraper.AsyncCamoufox") as mock_camoufox:
+        with patch("services.camoufox.scraper.AsyncCamoufox") as mock_camoufox:
             mock_browsers = [AsyncMock() for _ in range(3)]
             call_count = 0
 
@@ -113,7 +113,7 @@ class TestBrowserPoolDistribution:
     @pytest.fixture
     def mock_browser_pool(self):
         """Create a scraper with mocked browser pool."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3, max_concurrent_pages=6)
         scraper = CamoufoxScraper(config=config)
@@ -199,7 +199,7 @@ class TestBrowserPoolConcurrency:
     @pytest.mark.asyncio
     async def test_max_concurrent_pages_per_browser(self):
         """Test that config supports both browser_count and max_concurrent_pages."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=2, max_concurrent_pages=4)
         scraper = CamoufoxScraper(config=config)
@@ -213,7 +213,7 @@ class TestBrowserPoolConcurrency:
     @pytest.mark.asyncio
     async def test_semaphore_limits_total_concurrency(self):
         """Test that semaphore limits total concurrent requests."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3, max_concurrent_pages=6)
         scraper = CamoufoxScraper(config=config)
@@ -229,7 +229,7 @@ class TestBrowserPoolShutdown:
     @pytest.mark.asyncio
     async def test_stop_closes_all_browsers(self):
         """Test that stop() cleans up all camoufox instances."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3)
         scraper = CamoufoxScraper(config=config)
@@ -257,7 +257,7 @@ class TestBrowserPoolShutdown:
     @pytest.mark.asyncio
     async def test_stop_waits_for_active_pages(self):
         """Test that stop() waits for active pages before closing."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=2)
         scraper = CamoufoxScraper(config=config)
@@ -286,7 +286,7 @@ class TestBrowserPoolResilience:
     @pytest.mark.asyncio
     async def test_single_browser_failure_doesnt_crash_pool(self):
         """Test that one browser failing doesn't crash the pool."""
-        from src.services.camoufox.scraper import CamoufoxScraper
+        from services.camoufox.scraper import CamoufoxScraper
 
         config = make_test_config(browser_count=3, max_concurrent_pages=6)
         scraper = CamoufoxScraper(config=config)

@@ -12,8 +12,8 @@ import structlog
 from camoufox.async_api import AsyncCamoufox
 from playwright.async_api import Browser, BrowserContext, Page, Response
 
-from src.services.camoufox.config import CamoufoxSettings, settings
-from src.services.camoufox.models import ScrapeRequest
+from services.camoufox.config import CamoufoxSettings, settings
+from services.camoufox.models import ScrapeRequest
 
 logger = structlog.get_logger(__name__)
 

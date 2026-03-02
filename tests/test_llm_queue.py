@@ -17,7 +17,7 @@ class TestLLMRequestModel:
 
     def test_llm_request_has_required_fields(self):
         """Test that LLMRequest has all required fields."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-123",
@@ -37,7 +37,7 @@ class TestLLMRequestModel:
 
     def test_llm_request_serializes_to_json(self):
         """Test that LLMRequest can be serialized to JSON."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-123",
@@ -58,7 +58,7 @@ class TestLLMRequestModel:
 
     def test_llm_request_deserializes_from_json(self):
         """Test that LLMRequest can be deserialized from JSON."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         original = LLMRequest(
             request_id="test-456",
@@ -79,7 +79,7 @@ class TestLLMRequestModel:
 
     def test_llm_request_validates_request_type(self):
         """Test that LLMRequest validates request_type."""
-        from src.services.llm.models import LLMRequest, InvalidRequestTypeError
+        from services.llm.models import LLMRequest, InvalidRequestTypeError
 
         with pytest.raises(InvalidRequestTypeError):
             LLMRequest(
@@ -93,7 +93,7 @@ class TestLLMRequestModel:
 
     def test_llm_request_is_expired(self):
         """Test that LLMRequest can check if it's expired."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         # Expired request
         expired = LLMRequest(
@@ -123,7 +123,7 @@ class TestLLMResponseModel:
 
     def test_llm_response_has_required_fields(self):
         """Test that LLMResponse has all required fields."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         response = LLMResponse(
             request_id="test-123",
@@ -142,7 +142,7 @@ class TestLLMResponseModel:
 
     def test_llm_response_serializes_to_json(self):
         """Test that LLMResponse can be serialized to JSON."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         response = LLMResponse(
             request_id="test-123",
@@ -160,7 +160,7 @@ class TestLLMResponseModel:
 
     def test_llm_response_deserializes_from_json(self):
         """Test that LLMResponse can be deserialized from JSON."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         original = LLMResponse(
             request_id="test-789",
@@ -180,7 +180,7 @@ class TestLLMResponseModel:
 
     def test_llm_response_validates_status(self):
         """Test that LLMResponse validates status values."""
-        from src.services.llm.models import LLMResponse, InvalidStatusError
+        from services.llm.models import LLMResponse, InvalidStatusError
 
         with pytest.raises(InvalidStatusError):
             LLMResponse(
@@ -221,7 +221,7 @@ class TestLLMRequestQueue:
     @pytest.fixture
     def queue(self, mock_redis):
         """Create LLMRequestQueue with mock Redis."""
-        from src.services.llm.queue import LLMRequestQueue
+        from services.llm.queue import LLMRequestQueue
 
         return LLMRequestQueue(
             redis=mock_redis,
@@ -233,7 +233,7 @@ class TestLLMRequestQueue:
     @pytest.mark.asyncio
     async def test_submit_adds_request_to_stream(self, queue, mock_redis):
         """Test that submit adds request to Redis stream."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-submit",
@@ -256,7 +256,7 @@ class TestLLMRequestQueue:
     @pytest.mark.asyncio
     async def test_submit_rejects_when_queue_full(self, queue, mock_redis):
         """Test that submit raises error when queue is full."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
         from exceptions import QueueFullError
 
         # Simulate full queue
@@ -328,7 +328,7 @@ class TestLLMRequestQueue:
     @pytest.mark.asyncio
     async def test_wait_for_result_returns_response(self, queue, mock_redis):
         """Test that wait_for_result returns response when available."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         # Mock response available immediately
         response = LLMResponse(
@@ -350,7 +350,7 @@ class TestLLMRequestQueue:
     @pytest.mark.asyncio
     async def test_wait_for_result_polls_until_available(self, queue, mock_redis):
         """Test that wait_for_result polls until response is available."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         # First two calls return None, third returns response
         call_count = 0
@@ -379,7 +379,7 @@ class TestLLMRequestQueue:
     @pytest.mark.asyncio
     async def test_wait_for_result_times_out(self, queue, mock_redis):
         """Test that wait_for_result raises TimeoutError."""
-        from src.services.llm.queue import RequestTimeoutError
+        from services.llm.queue import RequestTimeoutError
 
         # Never return a response
         mock_redis.get = AsyncMock(return_value=None)
@@ -413,7 +413,7 @@ class TestWaitForResultCleanup:
     @pytest.fixture
     def queue(self, mock_redis):
         """Create LLMRequestQueue with mock Redis."""
-        from src.services.llm.queue import LLMRequestQueue
+        from services.llm.queue import LLMRequestQueue
 
         return LLMRequestQueue(
             redis=mock_redis,
@@ -426,7 +426,7 @@ class TestWaitForResultCleanup:
     @pytest.mark.asyncio
     async def test_wait_for_result_deletes_response_key_after_read(self, queue, mock_redis):
         """Test that wait_for_result deletes the response key after reading."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         response = LLMResponse(
             request_id="test-cleanup",
@@ -446,7 +446,7 @@ class TestWaitForResultCleanup:
     @pytest.mark.asyncio
     async def test_wait_for_result_deletes_key_on_error_response(self, queue, mock_redis):
         """Test that wait_for_result deletes key even when response has error status."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         response = LLMResponse(
             request_id="test-error",
@@ -466,7 +466,7 @@ class TestWaitForResultCleanup:
     @pytest.mark.asyncio
     async def test_wait_for_result_no_delete_on_timeout(self, queue, mock_redis):
         """Test that wait_for_result does NOT delete key when timeout occurs."""
-        from src.services.llm.queue import RequestTimeoutError
+        from services.llm.queue import RequestTimeoutError
 
         mock_redis.get = AsyncMock(return_value=None)
 
@@ -479,7 +479,7 @@ class TestWaitForResultCleanup:
     @pytest.mark.asyncio
     async def test_wait_for_result_cleanup_failure_does_not_affect_return(self, queue, mock_redis):
         """Test that delete failure does not affect the returned response."""
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         response = LLMResponse(
             request_id="test-delete-fail",
@@ -530,7 +530,7 @@ class TestLLMWorker:
     @pytest.fixture
     def worker(self, mock_redis, mock_llm_client):
         """Create LLMWorker with mocks."""
-        from src.services.llm.worker import LLMWorker
+        from services.llm.worker import LLMWorker
 
         return LLMWorker(
             redis=mock_redis,
@@ -567,7 +567,7 @@ class TestLLMWorker:
     @pytest.mark.asyncio
     async def test_worker_processes_request(self, worker, mock_redis, mock_llm_client):
         """Test that worker processes a request and stores response."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-process",
@@ -605,7 +605,7 @@ class TestLLMWorker:
     @pytest.mark.asyncio
     async def test_worker_skips_expired_requests(self, worker, mock_redis, mock_llm_client):
         """Test that worker skips expired requests."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         # Expired request
         request = LLMRequest(
@@ -669,7 +669,7 @@ class TestLLMWorker:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that worker processes multiple requests in parallel."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         # Track concurrent executions
         max_concurrent = 0

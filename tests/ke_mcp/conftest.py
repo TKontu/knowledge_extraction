@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.ke_mcp.client import KnowledgeExtractionClient
-from src.ke_mcp.config import MCPSettings
+from ke_mcp.client import KnowledgeExtractionClient
+from ke_mcp.config import MCPSettings
 
 
 @pytest.fixture

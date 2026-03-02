@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from src.ke_mcp.client import APIError, KnowledgeExtractionClient
-from src.ke_mcp.config import MCPSettings
+from ke_mcp.client import APIError, KnowledgeExtractionClient
+from ke_mcp.config import MCPSettings
 
 
 @pytest.mark.asyncio

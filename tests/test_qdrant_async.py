@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.storage.qdrant.repository import (
+from services.storage.qdrant.repository import (
     EmbeddingItem,
     QdrantRepository,
 )

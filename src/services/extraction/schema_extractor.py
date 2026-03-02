@@ -19,7 +19,7 @@ from services.llm.json_repair import try_repair_json
 
 if TYPE_CHECKING:
     from services.extraction.schema_adapter import ExtractionContext
-    from src.services.llm.queue import LLMRequestQueue
+    from services.llm.queue import LLMRequestQueue
 
 logger = structlog.get_logger(__name__)
 

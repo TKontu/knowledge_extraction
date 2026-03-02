@@ -43,7 +43,7 @@ class TestDeadLetterQueue:
     @pytest.fixture
     def worker(self, mock_redis, mock_llm_client):
         """Create LLMWorker with mocks."""
-        from src.services.llm.worker import LLMWorker
+        from services.llm.worker import LLMWorker
 
         return LLMWorker(
             redis=mock_redis,
@@ -57,7 +57,7 @@ class TestDeadLetterQueue:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that requests move to DLQ after exhausting retries."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         # Create a request that has already been retried twice (retry_count=2)
         # Next failure should move it to DLQ
@@ -92,7 +92,7 @@ class TestDeadLetterQueue:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that requests are requeued if retries remain."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         # Request with no retries yet
         request = LLMRequest(
@@ -130,7 +130,7 @@ class TestDeadLetterQueue:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that DLQ entry contains full error context."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-context",
@@ -222,7 +222,7 @@ class TestDeadLetterQueue:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that error response is still sent to caller when moving to DLQ."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-error-response",

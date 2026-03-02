@@ -5,7 +5,7 @@ import sys
 
 import structlog
 
-from src.config import Settings, settings
+from config import Settings, settings
 
 
 def get_settings() -> Settings:

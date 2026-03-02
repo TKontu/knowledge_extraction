@@ -14,14 +14,14 @@ import uvicorn
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 
-from src.services.camoufox.config import settings
-from src.services.camoufox.models import (
+from services.camoufox.config import settings
+from services.camoufox.models import (
     HealthResponse,
     ScrapeErrorResponse,
     ScrapeRequest,
     ScrapeSuccessResponse,
 )
-from src.services.camoufox.scraper import scraper
+from services.camoufox.scraper import scraper
 
 
 ALLOWED_URL_SCHEMES = {"http", "https"}

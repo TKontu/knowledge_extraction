@@ -15,8 +15,8 @@ with Camoufox's C++-level header injection.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.services.camoufox.models import ScrapeRequest
-from src.services.camoufox.scraper import CamoufoxScraper, STANDARD_BROWSER_HEADERS
+from services.camoufox.models import ScrapeRequest
+from services.camoufox.scraper import CamoufoxScraper, STANDARD_BROWSER_HEADERS
 
 
 class TestCamoufoxBrowserHeaders:

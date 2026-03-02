@@ -31,7 +31,7 @@ class TestParallelBatchProcessing:
     @pytest.fixture
     def pipeline_service(self, mock_dependencies):
         """Create pipeline service with mocks."""
-        from src.services.extraction.pipeline import ExtractionPipelineService
+        from services.extraction.pipeline import ExtractionPipelineService
 
         return ExtractionPipelineService(**mock_dependencies)
 
@@ -243,7 +243,7 @@ class TestSchemaExtractionPipelineParallel:
     @pytest.mark.asyncio
     async def test_extract_project_runs_sources_concurrently(self):
         """Test that extract_project processes multiple sources concurrently."""
-        from src.services.extraction.pipeline import SchemaExtractionPipeline
+        from services.extraction.pipeline import SchemaExtractionPipeline
 
         mock_orchestrator = AsyncMock()
         mock_db = MagicMock()

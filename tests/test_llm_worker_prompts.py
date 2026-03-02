@@ -40,7 +40,7 @@ class TestLLMWorkerPromptsFromPayload:
     @pytest.fixture
     def worker(self, mock_redis, mock_llm_client):
         """Create LLMWorker with mocks."""
-        from src.services.llm.worker import LLMWorker
+        from services.llm.worker import LLMWorker
 
         return LLMWorker(
             redis=mock_redis,
@@ -56,7 +56,7 @@ class TestLLMWorkerPromptsFromPayload:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that extract_facts uses system_prompt and user_prompt from payload."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         custom_system_prompt = "You are a custom fact extractor. Categories: tech, science."
         custom_user_prompt = "Extract facts from this custom content:\n---\nTest content\n---"
@@ -100,7 +100,7 @@ class TestLLMWorkerPromptsFromPayload:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that extract_entities uses system_prompt and user_prompt from payload."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         mock_llm_client.chat.completions.create = AsyncMock(
             return_value=MagicMock(
@@ -150,7 +150,7 @@ class TestLLMWorkerPromptsFromPayload:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that extract_field_group uses prompts from payload when available."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         custom_system_prompt = "You are extracting manufacturing info."
         custom_user_prompt = "Company: TestCo\n\nExtract manufacturing info:\n---\nContent\n---"
@@ -194,7 +194,7 @@ class TestLLMWorkerPromptsFromPayload:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test backward compatibility: falls back to internal prompt building."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         # Request without prompts in payload (old format)
         request = LLMRequest(
@@ -257,7 +257,7 @@ class TestLLMWorkerModelFromPayload:
 
     @pytest.fixture
     def worker(self, mock_redis, mock_llm_client):
-        from src.services.llm.worker import LLMWorker
+        from services.llm.worker import LLMWorker
 
         return LLMWorker(
             redis=mock_redis,
@@ -272,7 +272,7 @@ class TestLLMWorkerModelFromPayload:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that worker uses model from payload when specified."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-model",
@@ -306,7 +306,7 @@ class TestLLMWorkerModelFromPayload:
         self, worker, mock_redis, mock_llm_client
     ):
         """Test that worker uses default model when not in payload."""
-        from src.services.llm.models import LLMRequest
+        from services.llm.models import LLMRequest
 
         request = LLMRequest(
             request_id="test-default-model",

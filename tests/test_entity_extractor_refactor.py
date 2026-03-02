@@ -327,7 +327,7 @@ class TestEntityExtractorWithQueueMode:
         """Test EntityExtractor works when LLMClient is in queue mode."""
         from services.knowledge.extractor import EntityExtractor
         from services.llm.client import LLMClient
-        from src.services.llm.models import LLMResponse
+        from services.llm.models import LLMResponse
 
         # Configure queue response
         mock_queue.wait_for_result.return_value = LLMResponse(

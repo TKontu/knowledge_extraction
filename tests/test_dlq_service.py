@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.dlq.service import (
+from services.dlq.service import (
     EXTRACTION_DLQ_KEY,
     SCRAPE_DLQ_KEY,
     DLQService,
