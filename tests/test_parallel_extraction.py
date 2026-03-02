@@ -17,6 +17,12 @@ class TestParallelBatchProcessing:
     @pytest.fixture
     def mock_dependencies(self):
         """Create mock dependencies for ExtractionPipelineService."""
+        from services.extraction.embedding_pipeline import EmbeddingResult
+
+        mock_embedding = AsyncMock()
+        mock_embedding.embed_facts.return_value = EmbeddingResult(
+            embedded_count=0, errors=[]
+        )
         return {
             "orchestrator": AsyncMock(),
             "deduplicator": AsyncMock(),
@@ -24,8 +30,7 @@ class TestParallelBatchProcessing:
             "extraction_repo": MagicMock(),
             "source_repo": MagicMock(),
             "project_repo": MagicMock(),
-            "qdrant_repo": AsyncMock(),
-            "embedding_service": AsyncMock(),
+            "extraction_embedding": mock_embedding,
         }
 
     @pytest.fixture

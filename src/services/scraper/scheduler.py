@@ -17,6 +17,8 @@ from orm_models import Job
 from qdrant_connection import qdrant_client
 from redis_client import get_async_redis, redis_client
 from services.extraction.extractor import ExtractionOrchestrator
+from services.extraction.backpressure import BackpressureManager
+from services.extraction.embedding_pipeline import ExtractionEmbeddingService
 from services.extraction.pipeline import ExtractionPipelineService
 from services.extraction.profiles import ProfileRepository
 from services.extraction.worker import ExtractionWorker
@@ -123,6 +125,9 @@ class JobScheduler:
         # Initialize cached stateless services for extraction pipeline
         self._embedding_service = EmbeddingService(settings)
         self._qdrant_repo = QdrantRepository(qdrant_client)
+        self._extraction_embedding = ExtractionEmbeddingService(
+            self._embedding_service, self._qdrant_repo
+        )
         self._deduplicator = ExtractionDeduplicator(
             embedding_service=self._embedding_service,
             qdrant_repo=self._qdrant_repo,
@@ -205,7 +210,9 @@ class JobScheduler:
                     # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
-                        .filter(Job.type == JobType.SCRAPE, Job.status == JobStatus.QUEUED)
+                        .filter(
+                            Job.type == JobType.SCRAPE, Job.status == JobStatus.QUEUED
+                        )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .with_for_update(skip_locked=True)
                         .first()
@@ -322,7 +329,9 @@ class JobScheduler:
                                     job_type=JobType.CRAWL,
                                     runtime_seconds=runtime.total_seconds(),
                                     updated_at=str(job.updated_at),
-                                    threshold_seconds=thresholds["crawl"].total_seconds(),
+                                    threshold_seconds=thresholds[
+                                        "crawl"
+                                    ].total_seconds(),
                                 )
 
                     if job:
@@ -365,7 +374,9 @@ class JobScheduler:
                     # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
-                        .filter(Job.type == JobType.EXTRACT, Job.status == JobStatus.QUEUED)
+                        .filter(
+                            Job.type == JobType.EXTRACT, Job.status == JobStatus.QUEUED
+                        )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .with_for_update(skip_locked=True)
                         .first()
@@ -399,11 +410,11 @@ class JobScheduler:
 
                     if job:
                         # Build pipeline: cached stateless services + fresh per-job deps
-                        llm_queue = self._llm_queue if settings.llm_queue_enabled else None
-                        llm_client = LLMClient(settings, llm_queue=llm_queue)
-                        orchestrator = ExtractionOrchestrator(
-                            llm_client=llm_client
+                        llm_queue = (
+                            self._llm_queue if settings.llm_queue_enabled else None
                         )
+                        llm_client = LLMClient(settings, llm_queue=llm_queue)
+                        orchestrator = ExtractionOrchestrator(llm_client=llm_client)
                         entity_extractor = EntityExtractor(
                             llm_client=llm_client,
                             entity_repo=EntityRepository(db),
@@ -415,9 +426,9 @@ class JobScheduler:
                             extraction_repo=ExtractionRepository(db),
                             source_repo=SourceRepository(db),
                             project_repo=ProjectRepository(db),
-                            qdrant_repo=self._qdrant_repo,
-                            embedding_service=self._embedding_service,
+                            extraction_embedding=self._extraction_embedding,
                             profile_repo=ProfileRepository(db),
+                            backpressure=BackpressureManager(llm_queue=llm_queue),
                         )
 
                         # Process the job

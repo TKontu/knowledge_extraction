@@ -6,6 +6,11 @@ from uuid import uuid4
 import pytest
 
 from exceptions import QueueFullError
+from services.extraction.backpressure import BackpressureManager
+from services.extraction.embedding_pipeline import (
+    EmbeddingResult,
+    ExtractionEmbeddingService,
+)
 from services.extraction.pipeline import (
     BatchPipelineResult,
     ExtractionPipelineService,
@@ -50,15 +55,12 @@ def mock_project_repo():
 
 
 @pytest.fixture
-def mock_qdrant_repo():
-    """Mock QdrantRepository."""
-    return AsyncMock()
-
-
-@pytest.fixture
-def mock_embedding_service():
-    """Mock EmbeddingService."""
-    return AsyncMock()
+def mock_extraction_embedding():
+    """Mock ExtractionEmbeddingService."""
+    svc = AsyncMock(spec=ExtractionEmbeddingService)
+    # Default: successful embedding
+    svc.embed_facts.return_value = EmbeddingResult(embedded_count=0, errors=[])
+    return svc
 
 
 @pytest.fixture
@@ -69,8 +71,7 @@ def pipeline_service(
     mock_extraction_repo,
     mock_source_repo,
     mock_project_repo,
-    mock_qdrant_repo,
-    mock_embedding_service,
+    mock_extraction_embedding,
 ):
     """Create ExtractionPipelineService with all mocked dependencies."""
     # Mock project with entity types
@@ -88,8 +89,7 @@ def pipeline_service(
         extraction_repo=mock_extraction_repo,
         source_repo=mock_source_repo,
         project_repo=mock_project_repo,
-        qdrant_repo=mock_qdrant_repo,
-        embedding_service=mock_embedding_service,
+        extraction_embedding=mock_extraction_embedding,
     )
 
 
@@ -105,8 +105,8 @@ class TestExtractionPipelineServiceInit:
         assert hasattr(pipeline_service, "_extraction_repo")
         assert hasattr(pipeline_service, "_source_repo")
         assert hasattr(pipeline_service, "_project_repo")
-        assert hasattr(pipeline_service, "_qdrant_repo")
-        assert hasattr(pipeline_service, "_embedding_service")
+        assert hasattr(pipeline_service, "_extraction_embedding")
+        assert hasattr(pipeline_service, "_backpressure")
 
 
 class TestProcessSource:
@@ -169,11 +169,10 @@ class TestProcessSource:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock embedding (2 facts = 2 embeddings)
-        pipeline_service._embedding_service.embed_batch.return_value = [
-            [0.1] * 768,
-            [0.1] * 768,
-        ]
+        # Mock embedding service returns success
+        pipeline_service._extraction_embedding.embed_facts.return_value = (
+            EmbeddingResult(embedded_count=2, errors=[])
+        )
 
         result = await pipeline_service.process_source(source_id, project_id)
 
@@ -224,16 +223,13 @@ class TestProcessSource:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
-
         result = await pipeline_service.process_source(source_id, project_id)
 
         assert result.extractions_deduplicated == 1
         assert result.extractions_created == 1
 
     async def test_process_source_stores_embeddings(self, pipeline_service):
-        """Embeddings stored in Qdrant."""
+        """Embeddings delegated to ExtractionEmbeddingService."""
         source_id = uuid4()
         project_id = uuid4()
 
@@ -263,19 +259,10 @@ class TestProcessSource:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock batch embedding (now using batch method)
-        test_embedding = [0.1] * 768
-        pipeline_service._embedding_service.embed_batch.return_value = [test_embedding]
-
         result = await pipeline_service.process_source(source_id, project_id)
 
-        # Verify batch embedding was generated
-        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
-            ["Test fact"]
-        )
-
-        # Verify embedding was stored in Qdrant using batch method
-        pipeline_service._qdrant_repo.upsert_batch.assert_called_once()
+        # Verify embed_facts was called on the embedding service
+        pipeline_service._extraction_embedding.embed_facts.assert_called_once()
 
     async def test_process_source_extracts_entities(self, pipeline_service):
         """EntityExtractor called for each extraction."""
@@ -307,9 +294,6 @@ class TestProcessSource:
         mock_extraction = Mock()
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
-
-        # Mock embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
 
         # Mock entity extractor returns entities
         mock_entities = [Mock(), Mock()]
@@ -401,9 +385,6 @@ class TestProcessSource:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
-
         result = await pipeline_service.process_source(source_id, project_id)
 
         # Should have 1 error but still process the second fact
@@ -492,12 +473,6 @@ class TestProcessBatch:
         mock_extraction = Mock()
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
-
-        # Mock batch embedding (2 facts per source)
-        pipeline_service._embedding_service.embed_batch.return_value = [
-            [0.1] * 768,
-            [0.2] * 768,
-        ]
 
         result = await pipeline_service.process_batch(source_ids, project_id)
 
@@ -638,8 +613,7 @@ class TestPipelineBackpressure:
         mock_extraction_repo,
         mock_source_repo,
         mock_project_repo,
-        mock_qdrant_repo,
-        mock_embedding_service,
+        mock_extraction_embedding,
         mock_llm_queue,
     ):
         """Create pipeline service with mocked LLM queue."""
@@ -656,9 +630,8 @@ class TestPipelineBackpressure:
             extraction_repo=mock_extraction_repo,
             source_repo=mock_source_repo,
             project_repo=mock_project_repo,
-            qdrant_repo=mock_qdrant_repo,
-            embedding_service=mock_embedding_service,
-            llm_queue=mock_llm_queue,
+            extraction_embedding=mock_extraction_embedding,
+            backpressure=BackpressureManager(llm_queue=mock_llm_queue, wait_base=0.001),
         )
         return service
 
@@ -815,10 +788,10 @@ class TestPipelineBackpressure:
 
 
 class TestBatchEmbedding:
-    """Tests for batch embedding functionality."""
+    """Tests for batch embedding delegation to ExtractionEmbeddingService."""
 
-    async def test_uses_embed_batch_for_multiple_facts(self, pipeline_service):
-        """Should call embed_batch instead of embed when processing multiple facts."""
+    async def test_embed_facts_called_for_multiple_facts(self, pipeline_service):
+        """Should call embed_facts on the embedding service for multiple facts."""
         source_id = uuid4()
         project_id = uuid4()
 
@@ -851,88 +824,18 @@ class TestBatchEmbedding:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock batch embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [
-            [0.1] * 768,
-            [0.2] * 768,
-            [0.3] * 768,
-        ]
-
         result = await pipeline_service.process_source(source_id, project_id)
 
-        # Verify embed_batch was called once with all fact texts
-        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
-            ["Fact 0", "Fact 1", "Fact 2"]
+        # Verify embed_facts was called once with all fact-extraction pairs
+        pipeline_service._extraction_embedding.embed_facts.assert_called_once()
+        call_kwargs = (
+            pipeline_service._extraction_embedding.embed_facts.call_args.kwargs
         )
-
-        # Verify embed was NOT called
-        pipeline_service._embedding_service.embed.assert_not_called()
+        assert len(call_kwargs["fact_extractions"]) == 3
 
         assert result.extractions_created == 3
 
-    async def test_uses_upsert_batch_for_multiple_facts(self, pipeline_service):
-        """Should call upsert_batch instead of upsert when processing multiple facts."""
-        source_id = uuid4()
-        project_id = uuid4()
-
-        # Mock source
-        mock_source = Mock()
-        mock_source.content = "Test content"
-        mock_source.source_group = "test-group"
-        pipeline_service._source_repo.get.return_value = mock_source
-
-        # Mock orchestrator returns 2 facts
-        mock_fact1 = Mock()
-        mock_fact1.fact = "Fact 1"
-        mock_fact1.category = "cat1"
-        mock_fact1.confidence = 0.9
-
-        mock_fact2 = Mock()
-        mock_fact2.fact = "Fact 2"
-        mock_fact2.category = "cat2"
-        mock_fact2.confidence = 0.8
-
-        mock_result = Mock()
-        mock_result.facts = [mock_fact1, mock_fact2]
-        pipeline_service._orchestrator.extract.return_value = mock_result
-
-        # Mock deduplicator - no duplicates
-        mock_dedup = Mock()
-        mock_dedup.is_duplicate = False
-        pipeline_service._deduplicator.check_duplicate.return_value = mock_dedup
-
-        # Mock extraction creation - return different IDs
-        extraction_id_1 = uuid4()
-        extraction_id_2 = uuid4()
-
-        def create_side_effect(*args, **kwargs):
-            mock_ext = Mock()
-            # Return different ID based on call count
-            if pipeline_service._extraction_repo.create.call_count == 0:
-                mock_ext.id = extraction_id_1
-            else:
-                mock_ext.id = extraction_id_2
-            return mock_ext
-
-        pipeline_service._extraction_repo.create.side_effect = create_side_effect
-
-        # Mock batch embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [
-            [0.1] * 768,
-            [0.2] * 768,
-        ]
-
-        result = await pipeline_service.process_source(source_id, project_id)
-
-        # Verify upsert_batch was called once
-        pipeline_service._qdrant_repo.upsert_batch.assert_called_once()
-
-        # Verify upsert was NOT called
-        pipeline_service._qdrant_repo.upsert.assert_not_called()
-
-        assert result.extractions_created == 2
-
-    async def test_batch_works_with_single_fact(self, pipeline_service):
+    async def test_embed_facts_called_with_single_fact(self, pipeline_service):
         """Should work correctly with a single fact (batch of 1)."""
         source_id = uuid4()
         project_id = uuid4()
@@ -963,21 +866,15 @@ class TestBatchEmbedding:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock batch embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [[0.1] * 768]
-
         result = await pipeline_service.process_source(source_id, project_id)
 
-        # Verify batch methods were called with single item
-        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
-            ["Single fact"]
-        )
-        pipeline_service._qdrant_repo.upsert_batch.assert_called_once()
+        # Verify embed_facts was called with single item
+        pipeline_service._extraction_embedding.embed_facts.assert_called_once()
 
         assert result.extractions_created == 1
 
-    async def test_batch_not_called_when_no_facts(self, pipeline_service):
-        """Should not call batch methods when there are no facts to process."""
+    async def test_embed_not_called_when_no_facts(self, pipeline_service):
+        """Should not call embed_facts when there are no facts to process."""
         source_id = uuid4()
         project_id = uuid4()
 
@@ -994,14 +891,13 @@ class TestBatchEmbedding:
 
         result = await pipeline_service.process_source(source_id, project_id)
 
-        # Verify batch methods were not called
-        pipeline_service._embedding_service.embed_batch.assert_not_called()
-        pipeline_service._qdrant_repo.upsert_batch.assert_not_called()
+        # Verify embed_facts was not called
+        pipeline_service._extraction_embedding.embed_facts.assert_not_called()
 
         assert result.extractions_created == 0
 
-    async def test_batch_excludes_duplicates(self, pipeline_service):
-        """Should only batch non-duplicate facts."""
+    async def test_embed_excludes_duplicates(self, pipeline_service):
+        """Should only embed non-duplicate facts."""
         source_id = uuid4()
         project_id = uuid4()
 
@@ -1047,18 +943,14 @@ class TestBatchEmbedding:
         mock_extraction.id = uuid4()
         pipeline_service._extraction_repo.create.return_value = mock_extraction
 
-        # Mock batch embedding
-        pipeline_service._embedding_service.embed_batch.return_value = [
-            [0.1] * 768,
-            [0.3] * 768,
-        ]
-
         result = await pipeline_service.process_source(source_id, project_id)
 
-        # Verify batch was called with only non-duplicate facts
-        pipeline_service._embedding_service.embed_batch.assert_called_once_with(
-            ["Fact 1", "Fact 3"]
+        # Verify embed_facts was called with only non-duplicate facts
+        pipeline_service._extraction_embedding.embed_facts.assert_called_once()
+        call_kwargs = (
+            pipeline_service._extraction_embedding.embed_facts.call_args.kwargs
         )
+        assert len(call_kwargs["fact_extractions"]) == 2
 
         assert result.extractions_created == 2
         assert result.extractions_deduplicated == 1

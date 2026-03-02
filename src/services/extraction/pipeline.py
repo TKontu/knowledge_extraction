@@ -3,26 +3,17 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
 from config import settings as app_settings
 from constants import SourceStatus
-from exceptions import QueueFullError
 from models import ExtractionProfile
 from services.alerting import get_alert_service
-
-if TYPE_CHECKING:
-    from services.llm.queue import LLMRequestQueue
-
-
-# Backpressure constants
-BACKPRESSURE_WAIT_BASE = 2.0  # Base wait time in seconds
-MAX_BACKPRESSURE_RETRIES = 10  # Max retries before raising QueueFullError
-
-
+from services.extraction.backpressure import BackpressureManager
+from services.extraction.content_selector import get_extraction_content
+from services.extraction.embedding_pipeline import ExtractionEmbeddingService
 from services.extraction.extractor import ExtractionOrchestrator
 from services.extraction.profiles import ProfileRepository
 from services.extraction.schema_adapter import SchemaAdapter
@@ -30,8 +21,6 @@ from services.knowledge.extractor import EntityExtractor
 from services.projects.repository import ProjectRepository
 from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 from services.storage.deduplication import ExtractionDeduplicator
-from services.storage.embedding import EmbeddingService
-from services.storage.qdrant.repository import EmbeddingItem, QdrantRepository
 from services.storage.repositories.extraction import ExtractionRepository
 from services.storage.repositories.source import SourceRepository
 
@@ -85,10 +74,9 @@ class ExtractionPipelineService:
         extraction_repo: ExtractionRepository,
         source_repo: SourceRepository,
         project_repo: ProjectRepository,
-        qdrant_repo: QdrantRepository,
-        embedding_service: EmbeddingService,
+        extraction_embedding: ExtractionEmbeddingService,
         profile_repo: ProfileRepository | None = None,
-        llm_queue: "LLMRequestQueue | None" = None,
+        backpressure: BackpressureManager | None = None,
     ):
         """Initialize pipeline with all dependencies."""
         self._orchestrator = orchestrator
@@ -97,10 +85,9 @@ class ExtractionPipelineService:
         self._extraction_repo = extraction_repo
         self._source_repo = source_repo
         self._project_repo = project_repo
-        self._qdrant_repo = qdrant_repo
-        self._embedding_service = embedding_service
+        self._extraction_embedding = extraction_embedding
         self._profile_repo = profile_repo
-        self._llm_queue = llm_queue
+        self._backpressure = backpressure or BackpressureManager()
 
     async def process_source(
         self,
@@ -137,11 +124,7 @@ class ExtractionPipelineService:
             profile = DEFAULT_PROFILE
 
         # Extract facts via orchestrator (prefer domain-deduped content)
-        content = (
-            (source.cleaned_content if source.cleaned_content is not None else source.content)
-            if app_settings.domain_dedup_enabled
-            else source.content
-        )
+        content = get_extraction_content(source)
         result = await self._orchestrator.extract(
             page_id=source_id,
             markdown=content,
@@ -185,48 +168,18 @@ class ExtractionPipelineService:
                 errors.append(f"Error processing fact: {str(e)}")
                 logger.error("fact_processing_failed", error=str(e), fact=fact.fact)
 
-        # Phase 2: Batch embed and upsert
+        # Phase 2: Batch embed and upsert via embedding service
         embeddings_succeeded = False
         if facts_to_embed:
-            try:
-                # Batch embed all facts at once
-                embeddings = await self._embedding_service.embed_batch(facts_to_embed)
+            embed_result = await self._extraction_embedding.embed_facts(
+                fact_extractions=fact_extractions,
+                project_id=project_id,
+                source_group=source.source_group,
+                extraction_repo=self._extraction_repo,
+            )
 
-                # Phase 3: Batch upsert to Qdrant
-                items = [
-                    EmbeddingItem(
-                        extraction_id=extraction.id,
-                        embedding=embedding,
-                        payload={
-                            "project_id": str(project_id),
-                            "source_group": source.source_group,
-                            "extraction_type": fact.category,
-                        },
-                    )
-                    for (fact, extraction), embedding in zip(
-                        fact_extractions, embeddings, strict=True
-                    )
-                ]
-                await self._qdrant_repo.upsert_batch(items)
-
-                # Phase 3b: Update extraction records with embedding_id
-                # This tracks which extractions have embeddings in Qdrant
-                extraction_ids = [extraction.id for _, extraction in fact_extractions]
-                self._extraction_repo.update_embedding_ids_batch(extraction_ids)
-
-                embeddings_succeeded = True
-
-            except Exception as e:
-                errors.append(f"Error batch embedding: {str(e)}")
-                logger.error(
-                    "batch_embedding_failed",
-                    error=str(e),
-                    extractions_affected=len(fact_extractions),
-                    source_id=str(source_id),
-                )
-                # Skip entity extraction - extractions exist but aren't searchable
-                # entities_extracted will remain False, signaling incomplete processing
-
+            if embed_result.errors:
+                errors.extend(embed_result.errors)
                 # Alert on partial failure (PG succeeded, Qdrant failed)
                 try:
                     alert_service = get_alert_service()
@@ -234,14 +187,15 @@ class ExtractionPipelineService:
                         project_id=project_id,
                         source_id=source_id,
                         extractions_affected=len(fact_extractions),
-                        error=str(e),
+                        error=embed_result.errors[0],
                     )
                 except Exception as alert_err:
-                    # Don't let alerting failure break the pipeline
                     logger.warning(
                         "alert_delivery_failed",
                         error=str(alert_err),
                     )
+            else:
+                embeddings_succeeded = True
 
         # Phase 4: Entity extraction (only if embeddings succeeded)
         if not embeddings_succeeded and fact_extractions:
@@ -298,39 +252,6 @@ class ExtractionPipelineService:
             errors=errors,
         )
 
-    async def _wait_for_queue_capacity(self) -> None:
-        """Wait for LLM queue to have capacity.
-
-        Uses exponential backoff to poll queue status.
-
-        Raises:
-            QueueFullError: If queue remains full after max retries.
-        """
-        if self._llm_queue is None:
-            return
-
-        for attempt in range(MAX_BACKPRESSURE_RETRIES):
-            status = await self._llm_queue.get_backpressure_status()
-
-            if not status.get("should_wait", False):
-                return
-
-            wait_time = BACKPRESSURE_WAIT_BASE * (1.5**attempt)
-            logger.info(
-                "pipeline_backpressure_wait",
-                attempt=attempt + 1,
-                max_retries=MAX_BACKPRESSURE_RETRIES,
-                wait_seconds=wait_time,
-                queue_depth=status.get("queue_depth"),
-                pressure=status.get("pressure"),
-            )
-            await asyncio.sleep(wait_time)
-
-        # All retries exhausted
-        raise QueueFullError(
-            f"LLM queue persistently full after {MAX_BACKPRESSURE_RETRIES} retries"
-        )
-
     async def process_batch(
         self,
         source_ids: list[UUID],
@@ -359,7 +280,7 @@ class ExtractionPipelineService:
             QueueFullError: If LLM queue is persistently full.
         """
         # Check backpressure before starting
-        await self._wait_for_queue_capacity()
+        await self._backpressure.wait_for_capacity()
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -385,7 +306,7 @@ class ExtractionPipelineService:
 
                 # Check backpressure between chunks
                 if i > 0:
-                    await self._wait_for_queue_capacity()
+                    await self._backpressure.wait_for_capacity()
 
                 chunk_results = await asyncio.gather(
                     *[process_with_limit(sid) for sid in chunk],
@@ -485,97 +406,11 @@ class SchemaExtractionPipeline:
         self,
         orchestrator,  # SchemaExtractionOrchestrator
         db_session,
-        embedding_service: EmbeddingService | None = None,
-        qdrant_repo: QdrantRepository | None = None,
+        extraction_embedding: ExtractionEmbeddingService | None = None,
     ):
         self._orchestrator = orchestrator
         self._db = db_session
-        self._embedding_service = embedding_service
-        self._qdrant_repo = qdrant_repo
-
-    @staticmethod
-    def _extraction_to_text(extraction) -> str:
-        """Convert extraction data to embeddable text.
-
-        Args:
-            extraction: Extraction ORM object.
-
-        Returns:
-            Text representation for embedding.
-        """
-        parts = []
-        if extraction.extraction_type:
-            parts.append(f"Type: {extraction.extraction_type}")
-        if extraction.data:
-            for key, value in extraction.data.items():
-                if key.startswith("_") or key == "confidence":
-                    continue
-                if value is not None:
-                    if isinstance(value, list):
-                        # For entity lists, summarize items
-                        for item in value[:20]:
-                            if isinstance(item, dict):
-                                item_parts = [
-                                    f"{k}: {v}"
-                                    for k, v in item.items()
-                                    if not str(k).startswith("_") and v is not None
-                                ]
-                                parts.append("; ".join(item_parts))
-                            else:
-                                parts.append(str(item))
-                    else:
-                        parts.append(f"{key}: {value}")
-        return "\n".join(parts)
-
-    async def _embed_extractions(self, extractions: list) -> int:
-        """Generate embeddings for extractions and upsert to Qdrant.
-
-        Args:
-            extractions: List of Extraction ORM objects (must have .id set via flush).
-
-        Returns:
-            Number of extractions successfully embedded.
-        """
-        if not self._embedding_service or not self._qdrant_repo:
-            return 0
-        if not extractions:
-            return 0
-
-        texts = [self._extraction_to_text(e) for e in extractions]
-        # Filter out empty texts
-        valid = [(e, t) for e, t in zip(extractions, texts) if t.strip()]
-        if not valid:
-            return 0
-
-        try:
-            embeddings = await self._embedding_service.embed_batch(
-                [t for _, t in valid]
-            )
-
-            items = [
-                EmbeddingItem(
-                    extraction_id=extraction.id,
-                    embedding=embedding,
-                    payload={
-                        "project_id": str(extraction.project_id),
-                        "source_id": str(extraction.source_id),
-                        "source_group": extraction.source_group or "",
-                        "extraction_type": extraction.extraction_type or "",
-                    },
-                )
-                for (extraction, _), embedding in zip(valid, embeddings, strict=True)
-            ]
-
-            await self._qdrant_repo.upsert_batch(items)
-            return len(items)
-
-        except Exception as e:
-            logger.warning(
-                "schema_extraction_embedding_failed",
-                error=str(e),
-                extraction_count=len(valid),
-            )
-            return 0
+        self._extraction_embedding = extraction_embedding
 
     async def extract_source(
         self,
@@ -618,11 +453,7 @@ class SchemaExtractionPipeline:
             return []
 
         # Run extraction for all field groups (prefer domain-deduped content)
-        dedup_content = (
-            (source.cleaned_content if source.cleaned_content is not None else source.content)
-            if app_settings.domain_dedup_enabled
-            else source.content
-        )
+        dedup_content = get_extraction_content(source)
         results, classification = await self._orchestrator.extract_all_groups(
             source_id=source.id,
             markdown=dedup_content,
@@ -785,8 +616,7 @@ class SchemaExtractionPipeline:
         # Track whether embedding is available for this run
         embed_enabled = (
             app_settings.schema_extraction_embedding_enabled
-            and self._embedding_service is not None
-            and self._qdrant_repo is not None
+            and self._extraction_embedding is not None
         )
 
         # Collect extractions per source for batch embedding
@@ -870,7 +700,9 @@ class SchemaExtractionPipeline:
 
             # Embed extractions from this chunk (after flush, before commit)
             if embed_enabled and chunk_extractions:
-                embedded = await self._embed_extractions(chunk_extractions)
+                embedded = await self._extraction_embedding.embed_and_upsert(
+                    chunk_extractions
+                )
                 total_embedded += embedded
 
             # Call checkpoint callback to update job payload before commit

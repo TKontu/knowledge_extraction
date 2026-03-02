@@ -365,8 +365,10 @@ async def extract_schema(
             classification_config=classification_config,
         )
 
-    orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)
-    pipeline = SchemaExtractionPipeline(orchestrator, db)
+    orchestrator = SchemaExtractionOrchestrator(
+        extractor, smart_classifier=smart_classifier
+    )
+    pipeline = SchemaExtractionPipeline(orchestrator, db, extraction_embedding=None)
 
     # Run extraction
     result = await pipeline.extract_project(
@@ -382,10 +384,14 @@ async def extract_schema(
     return result
 
 
-@router.post("/projects/{project_id}/extractions/recover", status_code=status.HTTP_200_OK)
+@router.post(
+    "/projects/{project_id}/extractions/recover", status_code=status.HTTP_200_OK
+)
 async def recover_orphaned_extractions(
     project_id: str,
-    max_batches: int = Query(default=10, le=100, description="Maximum batches to process"),
+    max_batches: int = Query(
+        default=10, le=100, description="Maximum batches to process"
+    ),
     db: Session = Depends(get_db),
 ) -> RecoverySummaryResponse:
     """

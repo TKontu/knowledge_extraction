@@ -111,9 +111,7 @@ class ExtractionWorker:
             Callback function that persists checkpoint state.
         """
 
-        def callback(
-            processed_ids: list[str], extractions: int, entities: int
-        ) -> None:
+        def callback(processed_ids: list[str], extractions: int, entities: int) -> None:
             checkpoint = {
                 "processed_source_ids": processed_ids,
                 "last_checkpoint_at": datetime.now(UTC).isoformat(),
@@ -209,24 +207,28 @@ class ExtractionWorker:
                 classification_config=classification_config,
             )
 
-        orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)
+        orchestrator = SchemaExtractionOrchestrator(
+            extractor, smart_classifier=smart_classifier
+        )
 
         # Inject embedding dependencies if schema embedding is enabled
-        embedding_service_for_pipeline = None
-        qdrant_repo = None
+        extraction_embedding = None
         if self.settings.schema_extraction_embedding_enabled:
             from qdrant_client import QdrantClient
+            from services.extraction.embedding_pipeline import (
+                ExtractionEmbeddingService,
+            )
             from services.storage.qdrant.repository import QdrantRepository
 
-            embedding_service_for_pipeline = EmbeddingService(self.settings)
-            qdrant_client = QdrantClient(url=self.settings.qdrant_url)
-            qdrant_repo = QdrantRepository(qdrant_client)
+            extraction_embedding = ExtractionEmbeddingService(
+                EmbeddingService(self.settings),
+                QdrantRepository(QdrantClient(url=self.settings.qdrant_url)),
+            )
 
         return SchemaExtractionPipeline(
             orchestrator,
             self.db,
-            embedding_service=embedding_service_for_pipeline,
-            qdrant_repo=qdrant_repo,
+            extraction_embedding=extraction_embedding,
         )
 
     async def _process_with_schema_pipeline(
@@ -354,7 +356,9 @@ class ExtractionWorker:
 
                 result = await self._process_with_schema_pipeline(
                     project_id=project_id,
-                    source_ids=[UUID(sid) for sid in source_ids] if source_ids else None,
+                    source_ids=[UUID(sid) for sid in source_ids]
+                    if source_ids
+                    else None,
                     force=force,
                     cancellation_check=check_cancellation,
                     project=project,
@@ -416,7 +420,10 @@ class ExtractionWorker:
                 return
 
             # Update job with results
-            if result.sources_failed > 0 and result.sources_processed == result.sources_failed:
+            if (
+                result.sources_failed > 0
+                and result.sources_processed == result.sources_failed
+            ):
                 # All sources failed - mark job as failed
                 job.status = JobStatus.FAILED
                 job.error = f"All {result.sources_failed} sources failed to process"

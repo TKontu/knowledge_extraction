@@ -47,14 +47,13 @@ class TestBatchErrorHandling:
         return MagicMock()
 
     @pytest.fixture
-    def mock_qdrant_repo(self):
-        """Create mock Qdrant repository."""
-        return AsyncMock()
+    def mock_extraction_embedding(self):
+        """Create mock ExtractionEmbeddingService."""
+        from services.extraction.embedding_pipeline import EmbeddingResult
 
-    @pytest.fixture
-    def mock_embedding_service(self):
-        """Create mock embedding service."""
-        return AsyncMock()
+        svc = AsyncMock()
+        svc.embed_facts.return_value = EmbeddingResult(embedded_count=0, errors=[])
+        return svc
 
     @pytest.fixture
     def pipeline_service(
@@ -65,8 +64,7 @@ class TestBatchErrorHandling:
         mock_extraction_repo,
         mock_source_repo,
         mock_project_repo,
-        mock_qdrant_repo,
-        mock_embedding_service,
+        mock_extraction_embedding,
     ):
         """Create pipeline service with mocked dependencies."""
         return ExtractionPipelineService(
@@ -76,8 +74,7 @@ class TestBatchErrorHandling:
             extraction_repo=mock_extraction_repo,
             source_repo=mock_source_repo,
             project_repo=mock_project_repo,
-            qdrant_repo=mock_qdrant_repo,
-            embedding_service=mock_embedding_service,
+            extraction_embedding=mock_extraction_embedding,
         )
 
     @pytest.mark.asyncio
