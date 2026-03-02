@@ -1,7 +1,7 @@
 # Domain-Level Boilerplate Deduplication — Implementation Spec
 
 Version: 1.1 (2026-02-26)
-Status: **Phases A-E complete, Phase F (enable + validate) pending**
+Status: **Phases A-E complete and deployed on `main`. `domain_dedup_enabled=True` set in config defaults. Phase F validation on real data pending.**
 Depends on: None (independent of `TODO_extraction_reliability.md`)
 
 ## Problem

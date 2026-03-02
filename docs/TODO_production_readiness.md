@@ -86,4 +86,7 @@ Before deploying to production:
 - [x] Structured logging setup
 - [x] 50+ tests for report functionality
 - [x] Queue mode tests for LLM client (497 lines)
-- [x] Exception hierarchy (AppError → TransientError/PermanentError, FastAPI handler, 59 tests) - 2026-03-02
+- [x] Exception hierarchy (AppError → TransientError/PermanentError, FastAPI handler, 40+ tests) - 2026-03-02
+- [x] Fix dual import paths (standardize `from src.X` → `from X`) - 2026-03-02
+- [x] Enable Phase 1A extraction reliability features (chunk overlap, source quoting, conflict detection, schema validation, confidence gating) - 2026-03-02
+- [x] Domain boilerplate dedup (Phases A-E, section-aware two-pass) - 2026-02-27

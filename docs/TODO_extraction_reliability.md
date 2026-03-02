@@ -1,7 +1,7 @@
 # Extraction Reliability — Implementation Spec
 
 Version: 3.2 (2026-02-25)
-**Implementation status: 2026-02-26 — Phases 0, 1 (quality), 2, 3 DONE. Phase 1A pending.**
+**Implementation status: 2026-03-03 — Phases 0, 1 (quality), 2, 3 DONE. Phase 1A features enabled (commit `89b4284`). Classification booleans already True in config defaults. Validation on real data pending.**
 Review: `docs/pipeline_review_extraction_reliability.md`
 Data analysis: `debug/analyze_plan_impact.py`
 
@@ -118,7 +118,7 @@ Also add to `embed_batch()` — truncate each text in the list before sending.
 
 ## Phase 1: Enable & Improve Classification (quality ✅, enablement ⬜)
 
-### 1A. Enable Classification
+### 1A. Enable Classification ⬜ PENDING
 
 The `SmartClassifier` and `PageClassifier` already exist. They use embeddings (not LLM) — reliable and cheap. Just needs to be turned on.
 
@@ -134,6 +134,8 @@ The `SmartClassifier` and `PageClassifier` already exist. They use embeddings (n
 No other code changes — wiring in `schema_orchestrator.py:87-136` and `pipeline.py:543-548` already handles classification when enabled.
 
 **Tests**: Default settings have all 4 flags True. Classification invoked when URL provided.
+
+**Note:** The Phase 1A *extraction reliability features* (chunk overlap, source quoting, conflict detection, schema validation, confidence gating) were enabled in commit `89b4284` (2026-03-02). This classification enablement is a separate step.
 
 ### 1B. Improve Field Group Embedding Quality
 
