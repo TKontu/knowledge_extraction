@@ -379,7 +379,7 @@ class TestLLMRequestQueue:
     @pytest.mark.asyncio
     async def test_wait_for_result_times_out(self, queue, mock_redis):
         """Test that wait_for_result raises TimeoutError."""
-        from services.llm.queue import RequestTimeoutError
+        from exceptions import RequestTimeoutError
 
         # Never return a response
         mock_redis.get = AsyncMock(return_value=None)
@@ -466,7 +466,7 @@ class TestWaitForResultCleanup:
     @pytest.mark.asyncio
     async def test_wait_for_result_no_delete_on_timeout(self, queue, mock_redis):
         """Test that wait_for_result does NOT delete key when timeout occurs."""
-        from services.llm.queue import RequestTimeoutError
+        from exceptions import RequestTimeoutError
 
         mock_redis.get = AsyncMock(return_value=None)
 

@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
+from exceptions import AppError
+
 logger = structlog.get_logger(__name__)
 
 # Default user agent for crawling (customizable)
@@ -115,10 +117,13 @@ class BatchScrapeResult:
     error: str | None = None
 
 
-class ScrapeError(Exception):
-    """Exception raised when scraping fails."""
+class ScrapeError(AppError):
+    """Exception raised when scraping fails.
 
-    pass
+    Ambiguous retryability: rate limit = retryable, invalid URL = not.
+    """
+
+    code = "SCRAPE_FAILED"
 
 
 class FirecrawlClient:

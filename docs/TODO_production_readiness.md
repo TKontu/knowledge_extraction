@@ -86,3 +86,4 @@ Before deploying to production:
 - [x] Structured logging setup
 - [x] 50+ tests for report functionality
 - [x] Queue mode tests for LLM client (497 lines)
+- [x] Exception hierarchy (AppError → TransientError/PermanentError, FastAPI handler, 59 tests) - 2026-03-02

@@ -6,13 +6,15 @@ from pathlib import Path
 
 import structlog
 
+from exceptions import PermanentError
+
 logger = structlog.get_logger(__name__)
 
 
-class PDFConversionError(Exception):
+class PDFConversionError(PermanentError):
     """Raised when PDF conversion fails."""
 
-    pass
+    code = "PDF_CONVERSION_FAILED"
 
 
 class PDFConverter:

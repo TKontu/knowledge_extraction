@@ -6,19 +6,13 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from exceptions import QueueFullError
+from exceptions import QueueFullError, RequestTimeoutError
 from services.llm.models import LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 logger = structlog.get_logger(__name__)
-
-
-class RequestTimeoutError(Exception):
-    """Raised when waiting for result times out."""
-
-    pass
 
 
 class LLMRequestQueue:

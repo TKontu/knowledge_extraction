@@ -66,38 +66,24 @@ ExtractionCoordinator (thin orchestrator)
 
 Each service is independently testable and replaceable. The coordinator's only job is sequencing.
 
-### 3.2 Fragmented Exception Handling (Severity: HIGH)
+### ~~3.2 Fragmented Exception Handling (Severity: HIGH)~~ ✅ DONE (2026-03-02)
 
-**Problem**: 11+ custom exception types scattered across modules with no inheritance hierarchy. `ScrapeError`, `RateLimitExceeded`, `TemplateLoadError`, `QueueFullError`, `PDFConversionError`, etc. are all independent classes.
+**Resolved**: Exception hierarchy established in `src/exceptions.py`. All 10 custom exceptions now inherit from `AppError` with two-level classification: `TransientError` (retryable) and `PermanentError` (fail-fast). Ambiguous exceptions (`LLMExtractionError`, `ScrapeError`) sit at `AppError` level with per-instance `is_retryable` flag. FastAPI safety-net handler added in `main.py`. 59 tests in `tests/test_exception_hierarchy.py`.
 
-**Impact**:
-- Cannot write catch-all handlers for error categories
-- No way to distinguish "recoverable" from "fatal" errors
-- Inconsistent error propagation patterns
-
-**Viable Alternative**: Establish a hierarchy:
-
-```python
-class AppError(Exception):
-    """Base for all application errors"""
-
-class TransientError(AppError):
-    """Retryable errors (network, timeout, queue full)"""
-
-class PermanentError(AppError):
-    """Non-retryable (invalid schema, auth failure)"""
-
-class ExternalServiceError(TransientError):
-    """Firecrawl, LLM, Qdrant failures"""
+```
+AppError(Exception)               — base, code + is_retryable + details
+├── TransientError(AppError)      — is_retryable=True
+│   ├── QueueFullError            ├── RequestTimeoutError
+│   ├── FlareSolverrError         └── RateLimitExceeded
+├── PermanentError(AppError)      — is_retryable=False
+│   ├── TemplateLoadError         └── PDFConversionError
+├── LLMExtractionError(AppError)  — ambiguous
+└── ScrapeError(AppError)         — ambiguous
 ```
 
-### 3.3 Dual Import Paths (Severity: MEDIUM-HIGH)
+### ~~3.3 Dual Import Paths (Severity: MEDIUM-HIGH)~~ ✅ DONE (2026-03-02)
 
-**Problem**: `pythonpath = ["src"]` in `pyproject.toml` allows `from exceptions import X` (runtime) and `from src.exceptions import X` (tests). Python treats these as separate module objects, breaking `isinstance()` and `pytest.raises()`.
-
-**Impact**: 103 occurrences of `from src.` in test files. Some tests may silently pass when they should fail because exception classes don't match across import boundaries.
-
-**Fix**: Standardize all imports to one pattern. Since production code uses bare imports, update tests to match.
+**Resolved**: All `from src.X` imports standardized to `from X` across 6 source files + 29 test files, including mock.patch strings. Commit `d567f96`.
 
 ---
 
@@ -343,7 +329,7 @@ For a system of this complexity, a more modular architecture would improve maint
 |-----------|-------------|-------|
 | **Functionality** | 4.5 | Comprehensive feature set, well-designed API |
 | **Code Organization** | 3.0 | Good module structure, but pipeline classes too large |
-| **Error Handling** | 2.5 | Works but fragmented, no hierarchy |
+| **Error Handling** | 3.5 | Hierarchy established, TransientError/PermanentError classification, FastAPI handler |
 | **Testability** | 3.0 | Good test patterns, but dual import issue + heavy mocking |
 | **Configuration** | 4.0 | Well-typed, centralized, but sprawling |
 | **Observability** | 4.0 | Structured logging, metrics, job tracking |
@@ -357,8 +343,8 @@ For a system of this complexity, a more modular architecture would improve maint
 
 ### Immediate (no architectural change)
 
-1. **Fix dual import paths** - Mechanical find/replace, high impact on test reliability
-2. **Establish exception hierarchy** - Group existing exceptions under a base class
+1. ~~**Fix dual import paths**~~ ✅ DONE (2026-03-02, commit `d567f96`)
+2. ~~**Establish exception hierarchy**~~ ✅ DONE (2026-03-02)
 3. **Enable Phase 1A features** - They're built and tested; activate or remove
 4. **Document classification decision tree** - Operators need to understand page routing
 

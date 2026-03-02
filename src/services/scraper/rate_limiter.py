@@ -4,10 +4,11 @@ import asyncio
 import random
 import time
 from dataclasses import dataclass
-from datetime import datetime, date, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta
 
 import redis
+
+from exceptions import TransientError
 
 
 @dataclass
@@ -25,7 +26,7 @@ class RateLimitConfig:
     daily_limit: int = 500
 
 
-class RateLimitExceeded(Exception):
+class RateLimitExceeded(TransientError):
     """Exception raised when rate limit is exceeded.
 
     Attributes:
@@ -33,6 +34,8 @@ class RateLimitExceeded(Exception):
         limit: The daily limit that was exceeded.
         reset_in: Seconds until the limit resets.
     """
+
+    code = "RATE_LIMIT_EXCEEDED"
 
     def __init__(self, domain: str, limit: int, reset_in: int) -> None:
         """Initialize RateLimitExceeded exception.

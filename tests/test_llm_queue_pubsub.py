@@ -111,7 +111,7 @@ class TestPubSubNotification:
         request_id = "test-req-timeout"
 
         # Don't publish anything - should timeout
-        from services.llm.queue import RequestTimeoutError
+        from exceptions import RequestTimeoutError
 
         with pytest.raises(RequestTimeoutError) as exc_info:
             await llm_queue.wait_for_result(request_id, timeout=1.0)

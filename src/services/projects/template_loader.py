@@ -6,6 +6,7 @@ from typing import Any
 import structlog
 import yaml
 
+from exceptions import PermanentError
 from services.extraction.schema_adapter import (
     ClassificationConfig,
     CrawlConfig,
@@ -15,8 +16,10 @@ from services.extraction.schema_adapter import (
 logger = structlog.get_logger(__name__)
 
 
-class TemplateLoadError(Exception):
+class TemplateLoadError(PermanentError):
     """Exception raised when template loading fails."""
+
+    code = "TEMPLATE_LOAD_FAILED"
 
     def __init__(self, template_name: str, errors: list[str]) -> None:
         """Initialize TemplateLoadError.

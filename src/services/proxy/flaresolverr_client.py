@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import httpx
 import structlog
 
+from exceptions import TransientError
+
 logger = structlog.get_logger(__name__)
 
 
@@ -21,10 +23,10 @@ class FlareSolverrResponse:
     user_agent: str
 
 
-class FlareSolverrError(Exception):
+class FlareSolverrError(TransientError):
     """Error from FlareSolverr API."""
 
-    pass
+    code = "FLARESOLVERR_FAILED"
 
 
 class FlareSolverrClient:

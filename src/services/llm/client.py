@@ -152,8 +152,7 @@ class LLMClient:
         )
 
         # Submit and wait (handle queue errors)
-        from exceptions import QueueFullError
-        from services.llm.queue import RequestTimeoutError
+        from exceptions import QueueFullError, RequestTimeoutError
 
         try:
             await self.llm_queue.submit(request)
@@ -451,8 +450,7 @@ Rules:
         )
 
         # Submit and wait (handle queue errors)
-        from exceptions import QueueFullError
-        from services.llm.queue import RequestTimeoutError
+        from exceptions import QueueFullError, RequestTimeoutError
 
         try:
             await self.llm_queue.submit(request)
@@ -700,7 +698,6 @@ Guidelines:
         temperature: float | None = None,
     ) -> dict:
         """Direct LLM completion with retry logic."""
-        import json
 
         max_retries = self.settings.llm_max_retries
         base_temp = temperature or self.settings.llm_base_temperature
@@ -746,9 +743,8 @@ Guidelines:
         temperature: float | None = None,
     ) -> dict:
         """Queue-based LLM completion."""
-        from exceptions import QueueFullError
+        from exceptions import QueueFullError, RequestTimeoutError
         from services.llm.models import LLMRequest
-        from services.llm.queue import RequestTimeoutError
 
         request = LLMRequest(
             request_id=str(uuid4()),

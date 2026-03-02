@@ -8,8 +8,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from constants import APP_VERSION
-
 from api.v1.crawl import router as crawl_router
 from api.v1.dedup import router as dedup_router
 from api.v1.dlq import router as dlq_router
@@ -24,7 +22,9 @@ from api.v1.scrape import router as scrape_router
 from api.v1.search import router as search_router
 from api.v1.sources import router as sources_router
 from config import settings
+from constants import APP_VERSION
 from database import check_database_connection
+from exceptions import AppError, PermanentError, TransientError
 from logging_config import configure_logging
 from middleware.auth import APIKeyMiddleware
 from middleware.https import HTTPSRedirectMiddleware
@@ -209,6 +209,21 @@ app.include_router(export_router)
 app.include_router(dlq_router)
 app.include_router(sources_router)
 app.include_router(dedup_router)
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request, exc: AppError) -> JSONResponse:
+    """Safety-net handler for unhandled AppError subclasses."""
+    if isinstance(exc, TransientError):
+        status_code = 503
+    elif isinstance(exc, PermanentError):
+        status_code = 400
+    else:
+        status_code = 500
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": exc.code, "message": exc.message}},
+    )
 
 
 @app.get("/health")
