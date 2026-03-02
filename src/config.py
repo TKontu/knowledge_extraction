@@ -499,25 +499,25 @@ class Settings(BaseSettings):
         description="Max tokens per chunk for chunked extraction",
     )
     extraction_chunk_overlap_tokens: int = Field(
-        default=0,
+        default=200,
         ge=0,
         le=1000,
         description="Overlap between chunks in tokens (0=disabled)",
     )
     extraction_source_quoting_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Ask LLM for source quotes per field",
     )
     extraction_conflict_detection_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Record merge conflicts between chunks",
     )
     extraction_validation_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Validate extracted types against field definitions",
     )
     extraction_validation_min_confidence: float = Field(
-        default=0.0,
+        default=0.3,
         ge=0.0,
         le=1.0,
         description="Suppress all fields below this confidence",
