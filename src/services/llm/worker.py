@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from constants import LLM_RETRY_HINT
 from services.extraction.content_cleaner import strip_structural_junk
 from services.extraction.schema_extractor import EXTRACTION_CONTENT_LIMIT
 from services.llm.json_repair import try_repair_json
@@ -57,6 +58,7 @@ class LLMWorker:
         max_tokens: int = 4096,
         base_temperature: float = 0.1,
         temperature_increment: float = 0.05,
+        response_ttl: int = 300,
     ):
         """Initialize LLM worker.
 
@@ -74,6 +76,7 @@ class LLMWorker:
             max_tokens: Maximum tokens for LLM response (prevents endless generation).
             base_temperature: Base temperature for LLM requests.
             temperature_increment: Temperature increase per retry attempt.
+            response_ttl: TTL in seconds for response storage in Redis.
         """
         self.redis = redis
         self.llm_client = llm_client
@@ -85,6 +88,7 @@ class LLMWorker:
         self.max_tokens = max_tokens
         self.base_temperature = base_temperature
         self.temperature_increment = temperature_increment
+        self.response_ttl = response_ttl
 
         # Adaptive concurrency
         self.concurrency = initial_concurrency
@@ -312,7 +316,7 @@ class LLMWorker:
             response_key = f"llm:response:{request.request_id}"
             await self.redis.setex(
                 response_key,
-                300,  # 5 minute TTL
+                self.response_ttl,
                 response.to_json(),
             )
 
@@ -409,7 +413,7 @@ class LLMWorker:
 
         # Add conciseness hint on retries
         if retry_count > 0:
-            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+            system_prompt += LLM_RETRY_HINT
 
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
@@ -472,7 +476,7 @@ class LLMWorker:
 
         # Add conciseness hint on retries
         if retry_count > 0:
-            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+            system_prompt += LLM_RETRY_HINT
 
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
@@ -550,7 +554,7 @@ class LLMWorker:
 
         # Add conciseness hint on retries
         if retry_count > 0:
-            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+            system_prompt += LLM_RETRY_HINT
 
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
@@ -594,7 +598,7 @@ class LLMWorker:
 
         # Add conciseness hint on retries
         if retry_count > 0:
-            system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+            system_prompt += LLM_RETRY_HINT
 
         # Use model from payload if provided, otherwise use worker's default
         model = payload.get("model", self.model)
@@ -715,7 +719,7 @@ class LLMWorker:
             response_key = f"llm:response:{request.request_id}"
             await self.redis.setex(
                 response_key,
-                300,  # 5 minute TTL
+                self.response_ttl,
                 response.to_json(),
             )
 

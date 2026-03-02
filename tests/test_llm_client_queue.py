@@ -140,7 +140,8 @@ class TestLLMClientQueueMode:
     async def test_handles_queue_error_response(self, mock_settings, mock_queue):
         """Test that error responses from queue are handled."""
         from services.llm.models import LLMResponse
-        from services.llm.client import LLMClient, LLMExtractionError
+        from exceptions import LLMExtractionError
+        from services.llm.client import LLMClient
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -166,7 +167,8 @@ class TestLLMClientQueueMode:
     async def test_handles_queue_timeout_response(self, mock_settings, mock_queue):
         """Test that timeout responses from queue are handled."""
         from services.llm.models import LLMResponse
-        from services.llm.client import LLMClient, LLMExtractionError
+        from exceptions import LLMExtractionError
+        from services.llm.client import LLMClient
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",
@@ -416,7 +418,8 @@ class TestLLMClientExtractEntities:
     async def test_extract_entities_handles_error(self, mock_settings, mock_queue):
         """Test that entity extraction handles errors."""
         from services.llm.models import LLMResponse
-        from services.llm.client import LLMClient, LLMExtractionError
+        from exceptions import LLMExtractionError
+        from services.llm.client import LLMClient
 
         mock_queue.wait_for_result.return_value = LLMResponse(
             request_id="test-id",

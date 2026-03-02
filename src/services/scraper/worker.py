@@ -7,6 +7,7 @@ import httpx
 import structlog
 from sqlalchemy.orm import Session
 
+from constants import JobStatus, SourceStatus
 from orm_models import Job
 from services.projects.repository import ProjectRepository
 from services.scraper.client import FirecrawlClient
@@ -82,7 +83,7 @@ class ScraperWorker:
         logger.info("job_processing_started", job_id=str(job.id), job_type=job.type)
         try:
             # Update job status to running
-            job.status = "running"
+            job.status = JobStatus.RUNNING
             job.started_at = datetime.now(UTC)
             self.db.commit()
 
@@ -139,7 +140,7 @@ class ScraperWorker:
                                 "domain": result.domain,
                                 **result.metadata,
                             },
-                            status="pending",  # Ready for extraction
+                            status=SourceStatus.PENDING,  # Ready for extraction
                             created_by_job_id=job.id,
                         )
                         sources_scraped += 1
@@ -168,7 +169,7 @@ class ScraperWorker:
             # Update job with results
             if sources_scraped == 0 and sources_failed > 0:
                 # All URLs failed - mark job as failed
-                job.status = "failed"
+                job.status = JobStatus.FAILED
                 if rate_limited > 0:
                     job.error = f"All {sources_failed} URLs failed ({rate_limited} rate limited)"
                 else:
@@ -177,7 +178,7 @@ class ScraperWorker:
                     "job_processing_failed", job_id=str(job.id), error=job.error
                 )
             else:
-                job.status = "completed"
+                job.status = JobStatus.COMPLETED
                 logger.info(
                     "job_processing_completed",
                     job_id=str(job.id),
@@ -196,7 +197,7 @@ class ScraperWorker:
 
         except RateLimitExceeded as e:
             # Handle rate limit exceeded at job level
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"Rate limit exceeded: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
@@ -210,7 +211,7 @@ class ScraperWorker:
         except Exception as e:
             # Handle unexpected errors
             self.db.rollback()  # Rollback any partial changes
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"{type(e).__name__}: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()

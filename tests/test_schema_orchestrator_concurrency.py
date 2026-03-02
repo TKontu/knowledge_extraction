@@ -217,29 +217,35 @@ class TestContinuousConcurrency:
                 source_context="test_company",
             )
 
-        # 4 successful + chunk_2 failed (with 3 retries)
-        assert len(results) == 4  # chunk_2 failed after retries
-        # Verify retries happened for the failing chunk
-        assert call_count >= 7  # 4 success + 3 retries for chunk_2
+        # 4 successful + chunk_2 failed (no outer retry — inner retry is
+        # in extract_field_group → _extract_direct, which the mock bypasses)
+        assert len(results) == 4  # chunk_2 excluded (returned None)
+        # 5 calls total: 4 success + 1 failure (no outer retry loop)
+        assert call_count == 5
 
 
 class TestRetryBehavior:
     """Tests for retry behavior within concurrency control."""
 
-    async def test_retry_within_semaphore(
+    async def test_failing_chunk_returns_none_without_blocking(
         self, orchestrator, mock_schema_extractor, test_field_group
     ):
-        """Retries should happen within the same semaphore slot."""
+        """Failing chunk returns None; no outer retry (inner retry is in _extract_direct).
+
+        The orchestrator's extract_chunk_with_semaphore catches exceptions
+        and returns None. Retries are handled by the inner _extract_direct
+        loop inside extract_field_group, which the mock bypasses here.
+        """
         attempt_counts = {}
 
-        async def retry_extraction(content, **kwargs):
+        async def failing_extraction(content, **kwargs):
             chunk_id = content
             attempt_counts[chunk_id] = attempt_counts.get(chunk_id, 0) + 1
-            if chunk_id == "chunk_1" and attempt_counts[chunk_id] < 3:
-                raise Exception("Temporary failure")
+            if chunk_id == "chunk_1":
+                raise Exception("Persistent failure")
             return {"test_field": f"result_{content}"}
 
-        mock_schema_extractor.extract_field_group.side_effect = retry_extraction
+        mock_schema_extractor.extract_field_group.side_effect = failing_extraction
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(3)]
 
@@ -254,6 +260,6 @@ class TestRetryBehavior:
                 source_context="test_company",
             )
 
-        # All chunks should succeed (chunk_1 after 3 attempts)
-        assert len(results) == 3
-        assert attempt_counts["chunk_1"] == 3  # 2 failures + 1 success
+        # chunk_0 and chunk_2 succeed; chunk_1 fails and is excluded
+        assert len(results) == 2
+        assert attempt_counts["chunk_1"] == 1  # Single attempt, no outer retry

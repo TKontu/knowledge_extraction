@@ -8,6 +8,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy.orm import Session
 
+from constants import JobStatus
 from orm_models import Job, Project
 from services.extraction.pipeline import (
     CheckpointCallback,
@@ -209,7 +210,24 @@ class ExtractionWorker:
             )
 
         orchestrator = SchemaExtractionOrchestrator(extractor, smart_classifier=smart_classifier)
-        return SchemaExtractionPipeline(orchestrator, self.db)
+
+        # Inject embedding dependencies if schema embedding is enabled
+        embedding_service_for_pipeline = None
+        qdrant_repo = None
+        if self.settings.schema_extraction_embedding_enabled:
+            from qdrant_client import QdrantClient
+            from services.storage.qdrant.repository import QdrantRepository
+
+            embedding_service_for_pipeline = EmbeddingService(self.settings)
+            qdrant_client = QdrantClient(url=self.settings.qdrant_url)
+            qdrant_repo = QdrantRepository(qdrant_client)
+
+        return SchemaExtractionPipeline(
+            orchestrator,
+            self.db,
+            embedding_service=embedding_service_for_pipeline,
+            qdrant_repo=qdrant_repo,
+        )
 
     async def _process_with_schema_pipeline(
         self,
@@ -297,7 +315,7 @@ class ExtractionWorker:
                 return
 
             # Update job status to running
-            job.status = "running"
+            job.status = JobStatus.RUNNING
             job.started_at = datetime.now(UTC)
             self.db.commit()
 
@@ -400,7 +418,7 @@ class ExtractionWorker:
             # Update job with results
             if result.sources_failed > 0 and result.sources_processed == result.sources_failed:
                 # All sources failed - mark job as failed
-                job.status = "failed"
+                job.status = JobStatus.FAILED
                 job.error = f"All {result.sources_failed} sources failed to process"
                 logger.error(
                     "extraction_job_failed",
@@ -408,7 +426,7 @@ class ExtractionWorker:
                     error=job.error,
                 )
             else:
-                job.status = "completed"
+                job.status = JobStatus.COMPLETED
                 logger.info(
                     "extraction_job_completed",
                     job_id=str(job.id),
@@ -430,7 +448,7 @@ class ExtractionWorker:
         except Exception as e:
             # Handle unexpected errors
             self.db.rollback()  # Rollback any partial changes
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"{type(e).__name__}: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()

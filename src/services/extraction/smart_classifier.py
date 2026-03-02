@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -20,6 +19,7 @@ from services.extraction.page_classifier import (
     PageClassifier,
 )
 from services.storage.embedding import EmbeddingService
+from utils import cosine_similarity
 
 if TYPE_CHECKING:
     from services.extraction.schema_adapter import ClassificationConfig
@@ -205,7 +205,7 @@ class SmartClassifier:
         scores: dict[str, float] = {}
         for group in field_groups:
             if group.name in group_embeddings:
-                similarity = self._cosine_similarity(
+                similarity = cosine_similarity(
                     page_embedding, group_embeddings[group.name]
                 )
                 scores[group.name] = similarity
@@ -541,32 +541,15 @@ class SmartClassifier:
 
         return "\n".join(parts)
 
-    def _cosine_similarity(
-        self,
-        vec_a: list[float],
-        vec_b: list[float],
-    ) -> float:
-        """Calculate cosine similarity between two vectors.
-
-        Args:
-            vec_a: First vector.
-            vec_b: Second vector.
-
-        Returns:
-            Cosine similarity score (-1.0 to 1.0). For normalized embeddings
-            from models like BGE, values typically range from 0.0 to 1.0.
-        """
-        if len(vec_a) != len(vec_b):
-            return 0.0
-
-        dot_product = sum(a * b for a, b in zip(vec_a, vec_b))
-        magnitude_a = math.sqrt(sum(a * a for a in vec_a))
-        magnitude_b = math.sqrt(sum(b * b for b in vec_b))
-
-        if magnitude_a == 0 or magnitude_b == 0:
-            return 0.0
-
-        return dot_product / (magnitude_a * magnitude_b)
+    # Page type inference patterns: type → keywords to match in group names
+    _PAGE_TYPE_PATTERNS: dict[str, list[str]] = {
+        "product": ["product", "catalog", "equipment", "motor", "model"],
+        "service": ["service", "solution", "offering"],
+        "about": ["company", "about", "overview", "history"],
+        "contact": ["contact", "location", "office"],
+        "technical": ["specification", "technical", "engineering", "fleet"],
+        "pricing": ["pricing", "price", "cost", "plan"],
+    }
 
     def _infer_page_type(self, groups: list[str]) -> str:
         """Infer page type from matched groups.
@@ -580,16 +563,10 @@ class SmartClassifier:
         if not groups:
             return "general"
 
-        # Check for common patterns in group names
         for group in groups:
             group_lower = group.lower()
-            if "product" in group_lower:
-                return "product"
-            if "service" in group_lower:
-                return "service"
-            if "company" in group_lower or "about" in group_lower:
-                return "about"
-            if "contact" in group_lower:
-                return "contact"
+            for page_type, keywords in self._PAGE_TYPE_PATTERNS.items():
+                if any(kw in group_lower for kw in keywords):
+                    return page_type
 
         return "general"

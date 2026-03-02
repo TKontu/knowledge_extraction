@@ -54,8 +54,8 @@ class TestNumericConflict:
         assert "_conflicts" in merged
         assert "employees" in merged["_conflicts"]
         conflict = merged["_conflicts"]["employees"]
-        assert conflict["resolution"] == "max"
-        assert conflict["resolved_value"] == 200
+        assert conflict["resolution"] == "highest_confidence"
+        assert conflict["resolved_value"] == 100  # chunk with confidence 0.8
         assert len(conflict["values"]) == 2
 
     def test_numeric_no_conflict_within_10pct(self, orchestrator, mixed_group):
@@ -121,7 +121,7 @@ class TestTextConflict:
 
         assert "_conflicts" in merged
         assert "name" in merged["_conflicts"]
-        assert merged["_conflicts"]["name"]["resolution"] == "concat"
+        assert merged["_conflicts"]["name"]["resolution"] == "highest_confidence"
 
     def test_identical_text_no_conflict(self, orchestrator, mixed_group):
         chunk_results = [

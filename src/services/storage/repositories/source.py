@@ -97,6 +97,22 @@ class SourceRepository:
         result = self._session.execute(select(Source).where(Source.id == source_id))
         return result.scalar_one_or_none()
 
+    def get_batch(self, source_ids: list[UUID]) -> builtins.list[Source]:
+        """Get multiple sources by IDs in a single query.
+
+        Args:
+            source_ids: List of source UUIDs.
+
+        Returns:
+            List of found Source instances (may be shorter than input).
+        """
+        if not source_ids:
+            return []
+        result = self._session.execute(
+            select(Source).where(Source.id.in_(source_ids))
+        )
+        return list(result.scalars().all())
+
     def get_by_uri(self, project_id: UUID, uri: str) -> Source | None:
         """Get source by URI within a project.
 

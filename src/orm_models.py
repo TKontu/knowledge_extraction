@@ -5,6 +5,8 @@ from datetime import UTC, date, datetime
 from typing import Optional
 from uuid import uuid4
 
+from constants import JobStatus, SourceStatus
+
 from sqlalchemy import (
     ARRAY,
     JSON,
@@ -71,7 +73,7 @@ class Job(Base):
         UUID, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     type: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, default="queued")
+    status: Mapped[str] = mapped_column(Text, default=JobStatus.QUEUED)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -304,7 +306,7 @@ class Source(Base):
     meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     outbound_links: Mapped[list] = mapped_column(JSON, default=list)
 
-    status: Mapped[str] = mapped_column(Text, default="pending")
+    status: Mapped[str] = mapped_column(Text, default=SourceStatus.PENDING)
     fetched_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

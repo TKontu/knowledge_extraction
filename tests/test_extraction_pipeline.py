@@ -5,11 +5,11 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.extraction.pipeline import (
+from exceptions import QueueFullError
+from services.extraction.pipeline import (
     BatchPipelineResult,
     ExtractionPipelineService,
     PipelineResult,
-    QueueFullError,
 )
 
 
@@ -1108,16 +1108,17 @@ class TestExtractProjectSkipExtracted:
             "extraction_schema"
         ]
 
-        # Setup mock query chain for both Project and Source
+        # Mock execute() for ProjectRepository.get() (returns project)
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_project
+        mock_db_session.execute.return_value = mock_result
+
+        # Setup mock query chain for Source query (still uses db.query())
         mock_query = Mock()
         mock_filter = Mock()
-        mock_first = Mock()
         mock_query.filter.return_value = mock_filter
-        mock_filter.first.return_value = mock_project
         mock_filter.filter.return_value = mock_filter
         mock_filter.all.return_value = []
-
-        # query() will be called twice: once for Project, once for Source
         mock_db_session.query.return_value = mock_query
 
         await schema_pipeline.extract_project(project_id, skip_extracted=True)
@@ -1144,11 +1145,15 @@ class TestExtractProjectSkipExtracted:
             "extraction_schema"
         ]
 
-        # Setup mock query chain for both Project and Source
+        # Mock execute() for ProjectRepository.get() (returns project)
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = mock_project
+        mock_db_session.execute.return_value = mock_result
+
+        # Setup mock query chain for Source query (still uses db.query())
         mock_query = Mock()
         mock_filter = Mock()
         mock_query.filter.return_value = mock_filter
-        mock_filter.first.return_value = mock_project
         mock_filter.filter.return_value = mock_filter
         mock_filter.all.return_value = []
         mock_db_session.query.return_value = mock_query
@@ -1156,5 +1161,4 @@ class TestExtractProjectSkipExtracted:
         await schema_pipeline.extract_project(project_id, skip_extracted=False)
 
         # Verify query was executed (includes extracted sources)
-        # query() is called twice: once for Project, once for Source
-        assert mock_db_session.query.call_count >= 1
+        assert mock_db_session.execute.call_count >= 1

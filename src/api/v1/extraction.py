@@ -6,6 +6,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from constants import JobStatus, JobType, SourceStatus
 from database import get_db
 from models import (
     ExtractionListResponse,
@@ -76,29 +77,31 @@ async def create_extraction_job(
                 detail="Invalid source_id format. Must be valid UUIDs.",
             )
 
-        # Verify sources belong to project
+        # Verify sources exist and belong to project (single batch query)
         source_repo = SourceRepository(db)
-        for source_uuid in source_uuids:
-            source = source_repo.get(source_uuid)
-            if source is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Source {source_uuid} not found",
-                )
-            if source.project_id != project_uuid:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Source {source_uuid} does not belong to project {project_id}",
-                )
+        sources = source_repo.get_batch(source_uuids)
+        found_ids = {s.id for s in sources}
+        missing = [sid for sid in source_uuids if sid not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Sources not found: {[str(m) for m in missing[:5]]}",
+            )
+        wrong_project = [s for s in sources if s.project_id != project_uuid]
+        if wrong_project:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Source {wrong_project[0].id} does not belong to project {project_id}",
+            )
         source_count = len(source_uuids)
     else:
         # Count sources that will be processed based on force flag
         # Worker processes: "ready" + "pending", and "extracted" if force=True
         from orm_models import Source
 
-        allowed_statuses = ["ready", "pending"]
+        allowed_statuses = [SourceStatus.READY, SourceStatus.PENDING]
         if request.force:
-            allowed_statuses.append("extracted")
+            allowed_statuses.append(SourceStatus.EXTRACTED)
 
         source_count = (
             db.query(Source)
@@ -124,8 +127,8 @@ async def create_extraction_job(
     # Create Job ORM instance
     job = Job(
         id=job_id,
-        type="extract",
-        status="queued",
+        type=JobType.EXTRACT,
+        status=JobStatus.QUEUED,
         payload={
             "project_id": project_id,
             "source_ids": request.source_ids,
@@ -222,15 +225,10 @@ async def list_extractions(
         min_confidence=min_confidence,
     )
 
-    # Query extractions
+    # Query extractions with DB-level pagination
     extraction_repo = ExtractionRepository(db)
-    all_extractions = extraction_repo.list(filters)
-
-    # Get total count
-    total = len(all_extractions)
-
-    # Apply pagination
-    paginated_extractions = all_extractions[offset : offset + limit]
+    total = extraction_repo.count(filters)
+    paginated_extractions = extraction_repo.list(filters, limit=limit, offset=offset)
 
     # Convert to response format
     extractions_data = []
@@ -338,9 +336,9 @@ async def extract_schema(
         async_redis = await get_async_redis()
         llm_queue = LLMRequestQueue(
             redis=async_redis,
-            stream_key="llm:requests",
-            max_queue_depth=1000,
-            backpressure_threshold=500,
+            stream_key=settings.llm_queue_stream_key,
+            max_queue_depth=settings.llm_queue_max_depth,
+            backpressure_threshold=settings.llm_queue_backpressure_threshold,
         )
 
     # Create extraction pipeline

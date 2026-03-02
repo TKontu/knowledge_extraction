@@ -9,17 +9,13 @@ from uuid import UUID
 import structlog
 
 from config import settings as app_settings
+from constants import SourceStatus
+from exceptions import QueueFullError
 from models import ExtractionProfile
 from services.alerting import get_alert_service
 
 if TYPE_CHECKING:
     from services.llm.queue import LLMRequestQueue
-
-
-class QueueFullError(Exception):
-    """Raised when LLM queue is persistently full and cannot accept new requests."""
-
-    pass
 
 
 # Backpressure constants
@@ -63,7 +59,6 @@ class PipelineResult:
     extractions_created: int
     extractions_deduplicated: int
     entities_extracted: int
-    entities_deduplicated: int
     errors: list[str] = field(default_factory=list)
 
 
@@ -118,7 +113,6 @@ class ExtractionPipelineService:
         extractions_created = 0
         extractions_deduplicated = 0
         entities_extracted = 0
-        entities_deduplicated = 0
 
         # Fetch source
         source = self._source_repo.get(source_id)
@@ -128,7 +122,6 @@ class ExtractionPipelineService:
                 extractions_created=0,
                 extractions_deduplicated=0,
                 entities_extracted=0,
-                entities_deduplicated=0,
                 errors=["Source not found or empty"],
             )
 
@@ -291,15 +284,17 @@ class ExtractionPipelineService:
                     exc_info=True,
                 )
 
-        # Update source status
-        self._source_repo.update_status(source_id, "extracted")
+        # Update source status — PARTIAL if errors occurred
+        if errors:
+            self._source_repo.update_status(source_id, SourceStatus.PARTIAL)
+        else:
+            self._source_repo.update_status(source_id, SourceStatus.EXTRACTED)
 
         return PipelineResult(
             source_id=source_id,
             extractions_created=extractions_created,
             extractions_deduplicated=extractions_deduplicated,
             entities_extracted=entities_extracted,
-            entities_deduplicated=entities_deduplicated,
             errors=errors,
         )
 
@@ -428,7 +423,6 @@ class ExtractionPipelineService:
                         extractions_created=0,
                         extractions_deduplicated=0,
                         entities_extracted=0,
-                        entities_deduplicated=0,
                         errors=[f"Processing failed: {str(result)}"],
                     )
                 )
@@ -469,7 +463,7 @@ class ExtractionPipelineService:
         """
         # Query for pending sources
         pending_sources = self._source_repo.get_by_project_and_status(
-            project_id, "pending"
+            project_id, SourceStatus.PENDING
         )
 
         # Extract source IDs
@@ -491,9 +485,97 @@ class SchemaExtractionPipeline:
         self,
         orchestrator,  # SchemaExtractionOrchestrator
         db_session,
+        embedding_service: EmbeddingService | None = None,
+        qdrant_repo: QdrantRepository | None = None,
     ):
         self._orchestrator = orchestrator
         self._db = db_session
+        self._embedding_service = embedding_service
+        self._qdrant_repo = qdrant_repo
+
+    @staticmethod
+    def _extraction_to_text(extraction) -> str:
+        """Convert extraction data to embeddable text.
+
+        Args:
+            extraction: Extraction ORM object.
+
+        Returns:
+            Text representation for embedding.
+        """
+        parts = []
+        if extraction.extraction_type:
+            parts.append(f"Type: {extraction.extraction_type}")
+        if extraction.data:
+            for key, value in extraction.data.items():
+                if key.startswith("_") or key == "confidence":
+                    continue
+                if value is not None:
+                    if isinstance(value, list):
+                        # For entity lists, summarize items
+                        for item in value[:20]:
+                            if isinstance(item, dict):
+                                item_parts = [
+                                    f"{k}: {v}"
+                                    for k, v in item.items()
+                                    if not str(k).startswith("_") and v is not None
+                                ]
+                                parts.append("; ".join(item_parts))
+                            else:
+                                parts.append(str(item))
+                    else:
+                        parts.append(f"{key}: {value}")
+        return "\n".join(parts)
+
+    async def _embed_extractions(self, extractions: list) -> int:
+        """Generate embeddings for extractions and upsert to Qdrant.
+
+        Args:
+            extractions: List of Extraction ORM objects (must have .id set via flush).
+
+        Returns:
+            Number of extractions successfully embedded.
+        """
+        if not self._embedding_service or not self._qdrant_repo:
+            return 0
+        if not extractions:
+            return 0
+
+        texts = [self._extraction_to_text(e) for e in extractions]
+        # Filter out empty texts
+        valid = [(e, t) for e, t in zip(extractions, texts) if t.strip()]
+        if not valid:
+            return 0
+
+        try:
+            embeddings = await self._embedding_service.embed_batch(
+                [t for _, t in valid]
+            )
+
+            items = [
+                EmbeddingItem(
+                    extraction_id=extraction.id,
+                    embedding=embedding,
+                    payload={
+                        "project_id": str(extraction.project_id),
+                        "source_id": str(extraction.source_id),
+                        "source_group": extraction.source_group or "",
+                        "extraction_type": extraction.extraction_type or "",
+                    },
+                )
+                for (extraction, _), embedding in zip(valid, embeddings, strict=True)
+            ]
+
+            await self._qdrant_repo.upsert_batch(items)
+            return len(items)
+
+        except Exception as e:
+            logger.warning(
+                "schema_extraction_embedding_failed",
+                error=str(e),
+                extraction_count=len(valid),
+            )
+            return 0
 
     async def extract_source(
         self,
@@ -603,10 +685,11 @@ class SchemaExtractionPipeline:
         Returns:
             Summary dict with extraction counts including sources_failed.
         """
-        from orm_models import Project, Source
+        from orm_models import Source
 
         # Load project to get extraction_schema
-        project = self._db.query(Project).filter(Project.id == project_id).first()
+        project_repo = ProjectRepository(self._db)
+        project = project_repo.get(project_id)
         if not project:
             logger.error("project_not_found", project_id=str(project_id))
             return {"error": "Project not found", "project_id": str(project_id)}
@@ -651,9 +734,9 @@ class SchemaExtractionPipeline:
             )
         else:
             # Build list of allowed statuses based on skip_extracted flag
-            allowed_statuses = ["ready", "pending"]
+            allowed_statuses = [SourceStatus.READY, SourceStatus.PENDING]
             if not skip_extracted:
-                allowed_statuses.append("extracted")
+                allowed_statuses.append(SourceStatus.EXTRACTED)
 
             # Include sources that are ready (and optionally extracted)
             query = self._db.query(Source).filter(
@@ -699,6 +782,16 @@ class SchemaExtractionPipeline:
         semaphore = asyncio.Semaphore(app_settings.extraction_max_concurrent_sources)
         chunk_size = 20  # Check cancellation every 20 sources
 
+        # Track whether embedding is available for this run
+        embed_enabled = (
+            app_settings.schema_extraction_embedding_enabled
+            and self._embedding_service is not None
+            and self._qdrant_repo is not None
+        )
+
+        # Collect extractions per source for batch embedding
+        chunk_extractions: list = []  # Extraction ORM objects from current chunk
+
         async def extract_with_limit(source) -> tuple[int, bool]:
             """Extract source and return (extraction_count, success)."""
             async with semaphore:
@@ -711,9 +804,12 @@ class SchemaExtractionPipeline:
                     )
                     # Update source status based on classification result
                     if source.page_type == "skip":
-                        source.status = "skipped"
+                        source.status = SourceStatus.SKIPPED
                     else:
-                        source.status = "extracted"
+                        source.status = SourceStatus.EXTRACTED
+                    # Collect for batch embedding
+                    if embed_enabled:
+                        chunk_extractions.extend(extractions)
                     return len(extractions), True
                 except Exception as e:
                     logger.error(
@@ -727,6 +823,7 @@ class SchemaExtractionPipeline:
         # Process in chunks to allow cancellation checks and batch commits
         all_results = []
         all_processed_ids: list[str] = []
+        total_embedded = 0
         cancelled = False
         chunk_idx = 0
 
@@ -751,6 +848,9 @@ class SchemaExtractionPipeline:
                     chunk_idx += 1
                     continue
 
+            # Reset chunk extraction collector
+            chunk_extractions.clear()
+
             chunk_results = await asyncio.gather(
                 *[extract_with_limit(s) for s in chunk],
             )
@@ -765,6 +865,14 @@ class SchemaExtractionPipeline:
             ]
             all_processed_ids.extend(chunk_processed_ids)
 
+            # Flush to ensure extraction IDs are assigned before embedding
+            self._db.flush()
+
+            # Embed extractions from this chunk (after flush, before commit)
+            if embed_enabled and chunk_extractions:
+                embedded = await self._embed_extractions(chunk_extractions)
+                total_embedded += embedded
+
             # Call checkpoint callback to update job payload before commit
             if checkpoint_callback:
                 total_extractions_so_far = sum(count for count, _ in all_results)
@@ -777,6 +885,7 @@ class SchemaExtractionPipeline:
                 chunk=chunk_idx + 1,
                 chunk_sources=len(chunk),
                 total_processed=len(all_processed_ids),
+                embedded=total_embedded if embed_enabled else None,
             )
 
             chunk_idx += 1

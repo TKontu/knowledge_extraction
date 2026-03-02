@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from constants import APP_VERSION
+
 from api.v1.crawl import router as crawl_router
 from api.v1.dedup import router as dedup_router
 from api.v1.dlq import router as dlq_router
@@ -87,7 +89,7 @@ async def lifespan(app: FastAPI):
     # Startup: Start the background job scheduler
     import os
 
-    app_version = os.getenv("APP_VERSION", "v1.3.1")
+    app_version = os.getenv("APP_VERSION", APP_VERSION)
     git_commit = os.getenv("GIT_COMMIT", "unknown")
     logger.info(
         "application_startup",
@@ -163,7 +165,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Scristill Pipeline API",
     description="Knowledge extraction and report generation pipeline",
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -260,7 +262,7 @@ async def health_check() -> JSONResponse:
         content={
             "status": "ok",
             "service": "scristill-pipeline",
-            "version": os.getenv("APP_VERSION", "v1.3.1"),
+            "version": os.getenv("APP_VERSION", APP_VERSION),
             "commit": os.getenv("GIT_COMMIT", "unknown"),
             "timestamp": datetime.now(UTC).isoformat(),
             "log_level": settings.log_level,
@@ -284,7 +286,7 @@ async def root() -> dict[str, str]:
 
     return {
         "service": "Scristill Pipeline API",
-        "version": os.getenv("APP_VERSION", "v1.3.1"),
+        "version": os.getenv("APP_VERSION", APP_VERSION),
         "commit": os.getenv("GIT_COMMIT", "unknown"),
         "docs": "/docs",
         "health": "/health",

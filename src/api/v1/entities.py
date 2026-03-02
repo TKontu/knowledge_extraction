@@ -1,6 +1,5 @@
 """Entity query API endpoints."""
 
-from collections import Counter
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -49,13 +48,10 @@ async def list_entities(
         entity_type=entity_type,
     )
 
-    # Get entities
+    # Get entities with DB-level pagination
     entity_repo = EntityRepository(db)
-    all_entities = entity_repo.list(filters)
-
-    # Apply pagination
-    total = len(all_entities)
-    paginated_entities = all_entities[offset : offset + limit]
+    total = entity_repo.count(filters)
+    paginated_entities = entity_repo.list(filters, limit=limit, offset=offset)
 
     # Convert to response models
     entity_responses = [
@@ -105,22 +101,19 @@ async def get_entity_types(
         source_group=source_group,
     )
 
-    # Get entities
+    # Count by type at DB level
     entity_repo = EntityRepository(db)
-    entities = entity_repo.list(filters)
-
-    # Count by type
-    type_counts = Counter(e.entity_type for e in entities)
+    type_counts = entity_repo.count_by_type(filters)
 
     # Convert to response
     type_count_list = [
         EntityTypeCount(entity_type=entity_type, count=count)
-        for entity_type, count in type_counts.items()
+        for entity_type, count in type_counts
     ]
 
     return EntityTypesResponse(
         types=type_count_list,
-        total_entities=len(entities),
+        total_entities=sum(count for _, count in type_counts),
     )
 
 
@@ -141,15 +134,10 @@ async def get_source_groups_by_entity(
         entity_type=entity_type,
     )
 
-    # Get entities of this type
+    # Find matching entities at DB level
     entity_repo = EntityRepository(db)
-    entities = entity_repo.list(filters)
-
-    # Normalize search value for case-insensitive matching
     search_normalized = value.lower().strip()
-
-    # Filter by normalized value and collect source_groups
-    matching = [e for e in entities if e.normalized_value == search_normalized]
+    matching = entity_repo.find_by_normalized_value(filters, search_normalized)
     source_groups = list(set(e.source_group for e in matching))
 
     return {

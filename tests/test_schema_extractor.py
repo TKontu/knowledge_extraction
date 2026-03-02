@@ -70,6 +70,7 @@ class TestSchemaExtractor:
         settings.llm_retry_backoff_min = 2
         settings.llm_retry_backoff_max = 30
         settings.llm_max_tokens = 4096
+        settings.extraction_content_limit = 20000
         return settings
 
     async def test_extract_manufacturing_booleans(self, mock_settings):
@@ -300,6 +301,7 @@ class TestUserPromptCleaning:
         settings.llm_retry_backoff_min = 2
         settings.llm_retry_backoff_max = 30
         settings.llm_max_tokens = 4096
+        settings.extraction_content_limit = 20000
         return SchemaExtractor(settings)
 
     def test_user_prompt_strips_structural_junk(self, extractor):

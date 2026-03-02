@@ -152,7 +152,6 @@ class TestBatchErrorHandling:
                 extractions_created=1,
                 extractions_deduplicated=0,
                 entities_extracted=0,
-                entities_deduplicated=0,
                 errors=[],
             )
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from constants import JobStatus
 from orm_models import Entity, Extraction, Job, Source
 
 
@@ -157,7 +158,7 @@ class MetricsCollector:
                 func.max(duration_expr),
             )
             .where(
-                Job.status == "completed",
+                Job.status == JobStatus.COMPLETED,
                 Job.started_at.isnot(None),
                 Job.completed_at.isnot(None),
             )

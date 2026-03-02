@@ -48,9 +48,15 @@ class SchemaValidator:
                 "issue": "confidence_below_threshold",
                 "detail": f"confidence {confidence} < threshold {self.min_confidence}",
             })
-            # Set all field values to None
-            for field in group.fields:
-                cleaned[field.name] = None
+            if group.is_entity_list:
+                # Preserve entity list key as empty list (not individual fields)
+                for key, value in data.items():
+                    if key not in _METADATA_KEYS and isinstance(value, list):
+                        cleaned[key] = []
+                        break
+            else:
+                for field in group.fields:
+                    cleaned[field.name] = None
             cleaned["_validation"] = violations
             return cleaned, violations
 

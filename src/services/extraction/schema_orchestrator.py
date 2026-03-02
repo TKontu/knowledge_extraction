@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+import hashlib
+import json
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import structlog
@@ -139,10 +141,14 @@ class SchemaExtractionOrchestrator:
         results = []
 
         # Chunk document for large content
+        # Reduce max_tokens by overlap so chunk + prepended overlap fits
+        # within EXTRACTION_CONTENT_LIMIT (both are ~4 chars/token aligned)
+        overlap = settings.extraction_chunk_overlap_tokens
+        effective_max = settings.extraction_chunk_max_tokens - overlap
         chunks = chunk_document(
             markdown,
-            max_tokens=settings.extraction_chunk_max_tokens,
-            overlap_tokens=settings.extraction_chunk_overlap_tokens,
+            max_tokens=effective_max,
+            overlap_tokens=overlap,
         )
 
         logger.info(
@@ -229,41 +235,28 @@ class SchemaExtractionOrchestrator:
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def extract_chunk_with_semaphore(
-            chunk, chunk_idx: int, max_retries: int = 3
+            chunk, chunk_idx: int
         ) -> dict | None:
-            """Extract from a single chunk with semaphore-controlled concurrency."""
+            """Extract from a single chunk with semaphore-controlled concurrency.
+
+            No retry here — extract_field_group → _extract_direct already
+            retries with backoff and temperature variation (llm_max_retries).
+            """
             async with semaphore:
-                for attempt in range(max_retries):
-                    try:
-                        result = await self._extractor.extract_field_group(
-                            content=chunk.content,
-                            field_group=group,
-                            source_context=source_context,
-                        )
-                        return result
-                    except Exception as e:
-                        if attempt < max_retries - 1:
-                            backoff = min(
-                                settings.llm_retry_backoff_max,
-                                settings.llm_retry_backoff_min * (2**attempt),
-                            )
-                            logger.warning(
-                                "chunk_extraction_retry",
-                                group=group.name,
-                                chunk_idx=chunk_idx,
-                                attempt=attempt + 1,
-                                backoff=backoff,
-                                error=str(e),
-                            )
-                            await asyncio.sleep(backoff)
-                        else:
-                            logger.error(
-                                "chunk_extraction_failed",
-                                group=group.name,
-                                chunk_idx=chunk_idx,
-                                error=str(e),
-                            )
-                            return None
+                try:
+                    return await self._extractor.extract_field_group(
+                        content=chunk.content,
+                        field_group=group,
+                        source_context=source_context,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "chunk_extraction_failed",
+                        group=group.name,
+                        chunk_idx=chunk_idx,
+                        error=str(e),
+                    )
+                    return None
 
         logger.debug(
             "processing_chunks_continuous",
@@ -291,17 +284,67 @@ class SchemaExtractionOrchestrator:
 
         return chunk_results
 
+    def _pick_highest_confidence(
+        self, field_name: str, chunk_results: list[dict]
+    ) -> Any:
+        """Pick value from the chunk with highest confidence.
+
+        Args:
+            field_name: Name of the field to pick.
+            chunk_results: Results from each chunk.
+
+        Returns:
+            Value from highest-confidence chunk, or None.
+        """
+        best_val = None
+        best_conf = -1.0
+        for r in chunk_results:
+            v = r.get(field_name)
+            if v is not None:
+                c = r.get("confidence", 0.5)
+                if c > best_conf:
+                    best_conf = c
+                    best_val = v
+        return best_val
+
+    def _get_merge_strategy(self, field: "FieldDefinition") -> str:
+        """Resolve merge strategy for a field.
+
+        Priority: explicit field.merge_strategy > type-based default.
+
+        Args:
+            field: Field definition.
+
+        Returns:
+            Merge strategy string.
+        """
+        if field.merge_strategy:
+            return field.merge_strategy
+
+        # Type-based defaults
+        if field.field_type == "boolean":
+            return "majority_vote"
+        elif field.field_type in ("integer", "float"):
+            return "highest_confidence"
+        elif field.field_type == "list":
+            return "merge_dedupe"
+        elif field.field_type == "enum":
+            return "highest_confidence"
+        else:  # text
+            return "highest_confidence"
+
     def _merge_chunk_results(
         self, chunk_results: list[dict], group: FieldGroup
     ) -> dict:
         """Merge results from multiple chunks.
 
-        Aggregation rules:
-        - boolean: Majority vote (>50% True → True, tie → False)
-        - integer/float: Take maximum
-        - text/enum: Dedupe and concatenate unique values with "; "
-        - list: Merge and dedupe
-        - entity_list: Merge all, dedupe by ID fields
+        Strategy resolution per field (explicit override > type default):
+        - boolean: majority_vote
+        - integer/float: highest_confidence
+        - enum: highest_confidence
+        - text: highest_confidence
+        - list: merge_dedupe (flatten + deduplicate)
+        - entity_list: merge all, dedupe by ID fields
         """
         if not chunk_results:
             return {}
@@ -320,12 +363,24 @@ class SchemaExtractionOrchestrator:
             if not values:
                 continue
 
-            if field.field_type == "boolean":
+            strategy = self._get_merge_strategy(field)
+
+            if strategy == "majority_vote":
                 true_count = sum(1 for v in values if v is True)
                 merged[field.name] = true_count > len(values) / 2
-            elif field.field_type in ("integer", "float"):
+            elif strategy == "max":
                 merged[field.name] = max(values)
-            elif field.field_type == "list":
+            elif strategy == "min":
+                merged[field.name] = min(values)
+            elif strategy == "concat":
+                unique_texts = list(
+                    dict.fromkeys(str(v) for v in values if v is not None)
+                )
+                if len(unique_texts) > 1:
+                    merged[field.name] = "; ".join(unique_texts)
+                elif unique_texts:
+                    merged[field.name] = unique_texts[0]
+            elif strategy == "merge_dedupe":
                 flat = []
                 for v in values:
                     if isinstance(v, list):
@@ -334,8 +389,6 @@ class SchemaExtractionOrchestrator:
                         flat.append(v)
                 # Dedupe - handle both hashable (strings) and unhashable (dicts)
                 if flat and isinstance(flat[0], dict):
-                    # For list of dicts, dedupe by JSON string representation
-                    import json
                     seen = set()
                     unique = []
                     for item in flat:
@@ -346,15 +399,10 @@ class SchemaExtractionOrchestrator:
                     merged[field.name] = unique
                 else:
                     merged[field.name] = list(dict.fromkeys(flat))
-            else:  # text, enum
-                # Dedupe and concatenate unique values to preserve information
-                unique_texts = list(
-                    dict.fromkeys(str(v) for v in values if v is not None)
-                )
-                if len(unique_texts) > 1:
-                    merged[field.name] = "; ".join(unique_texts)
-                elif unique_texts:
-                    merged[field.name] = unique_texts[0]
+            else:  # highest_confidence (default for numeric, text, enum)
+                val = self._pick_highest_confidence(field.name, chunk_results)
+                if val is not None:
+                    merged[field.name] = val
 
         # Average confidence (0.5 fallback: conservative when LLM omits confidence)
         confidences = [r.get("confidence", 0.5) for r in chunk_results]
@@ -429,8 +477,13 @@ class SchemaExtractionOrchestrator:
                     seen_ids.add(entity_id)
                     all_entities.append(entity)
                 elif not entity_id:
-                    # No ID field - include but can't dedupe
-                    all_entities.append(entity)
+                    # No ID field - dedupe by content hash
+                    entity_hash = hashlib.md5(
+                        json.dumps(entity, sort_keys=True).encode()
+                    ).hexdigest()
+                    if entity_hash not in seen_ids:
+                        seen_ids.add(entity_hash)
+                        all_entities.append(entity)
 
         # 0.5 fallback: conservative when LLM omits confidence
         confidences = [r.get("confidence", 0.5) for r in chunk_results]
@@ -472,13 +525,12 @@ class SchemaExtractionOrchestrator:
             values_only = [v for _, v in values_with_chunk]
 
             has_conflict = False
-            resolution = ""
+            strategy = self._get_merge_strategy(field)
 
             if field.field_type == "boolean":
                 unique = set(values_only)
                 if len(unique) > 1:
                     has_conflict = True
-                    resolution = "majority_vote"
             elif field.field_type in ("integer", "float"):
                 try:
                     nums = [float(v) for v in values_only]
@@ -487,14 +539,12 @@ class SchemaExtractionOrchestrator:
                         spread = (max(nums) - min(nums)) / max_val
                         if spread > 0.1:
                             has_conflict = True
-                            resolution = "max"
                 except (TypeError, ValueError):
                     pass
             else:  # text, enum
                 unique = set(str(v) for v in values_only)
                 if len(unique) > 1:
                     has_conflict = True
-                    resolution = "concat"
 
             if has_conflict:
                 conflicts[field.name] = {
@@ -502,7 +552,7 @@ class SchemaExtractionOrchestrator:
                         {"chunk": idx, "value": val}
                         for idx, val in values_with_chunk
                     ],
-                    "resolution": resolution,
+                    "resolution": strategy,
                     "resolved_value": merged.get(field.name),
                 }
 
@@ -523,8 +573,10 @@ class SchemaExtractionOrchestrator:
             populated_ratio: Fraction of fields with non-default values (0.0-1.0).
         """
         if group.is_entity_list:
+            # Skip metadata keys — only check actual entity list data
+            skip_keys = {"confidence", "_quotes", "_conflicts", "_validation"}
             for key, value in data.items():
-                if key == "confidence":
+                if key in skip_keys:
                     continue
                 if isinstance(value, list) and len(value) > 0:
                     return False, 1.0

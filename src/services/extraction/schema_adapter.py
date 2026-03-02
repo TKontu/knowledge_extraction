@@ -344,6 +344,25 @@ class SchemaAdapter:
                             f"field_groups[{i}]['fields'][{j}] is required but missing 'default'"
                         )
 
+                # Validate merge_strategy if provided
+                if "merge_strategy" in field:
+                    from services.extraction.field_groups import VALID_MERGE_STRATEGIES
+
+                    if field["merge_strategy"] not in VALID_MERGE_STRATEGIES:
+                        errors.append(
+                            f"field_groups[{i}]['fields'][{j}] has invalid merge_strategy: "
+                            f"'{field['merge_strategy']}'. Valid: {sorted(VALID_MERGE_STRATEGIES)}"
+                        )
+
+            # Validate max_items if provided
+            if "max_items" in fg:
+                max_items = fg["max_items"]
+                if not isinstance(max_items, int) or max_items < 1 or max_items > 200:
+                    errors.append(
+                        f"field_groups[{i}] max_items must be an integer between 1 and 200, "
+                        f"got: {max_items}"
+                    )
+
         return ValidationResult(
             is_valid=len(errors) == 0,
             errors=errors,
@@ -395,6 +414,7 @@ class SchemaAdapter:
                         required=f_def.get("required", False),
                         default=f_def.get("default"),
                         enum_values=f_def.get("enum_values"),
+                        merge_strategy=f_def.get("merge_strategy"),
                     )
                 )
 
@@ -406,6 +426,7 @@ class SchemaAdapter:
                     prompt_hint=fg_def.get("prompt_hint")
                     or self.generate_prompt_hint(fg_def),
                     is_entity_list=fg_def.get("is_entity_list", False),
+                    max_items=fg_def.get("max_items"),
                 )
             )
 
@@ -432,7 +453,7 @@ class SchemaAdapter:
 
         if is_entity_list:
             # Entity lists need guidance on finding multiple items
-            entity_singular = name.rstrip("s") if name.endswith("s") else name
+            entity_singular = name.removesuffix("s")
             hints.append(f"Look for all {name} mentioned in the content.")
             hints.append(f"Each {entity_singular} should be a separate item in the list.")
         else:

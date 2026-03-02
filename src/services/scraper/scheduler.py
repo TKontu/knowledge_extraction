@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 logger = structlog.get_logger(__name__)
 
 from config import settings
+from constants import JobStatus, JobType
 from database import SessionLocal
 from orm_models import Job
 from qdrant_connection import qdrant_client
@@ -47,9 +48,9 @@ def get_stale_thresholds() -> dict[str, timedelta]:
         Dictionary mapping job types to their stale thresholds.
     """
     return {
-        "scrape": timedelta(seconds=settings.job_stale_threshold_scrape),
-        "extract": timedelta(seconds=settings.job_stale_threshold_extract),
-        "crawl": timedelta(seconds=settings.job_stale_threshold_crawl),
+        JobType.SCRAPE: timedelta(seconds=settings.job_stale_threshold_scrape),
+        JobType.EXTRACT: timedelta(seconds=settings.job_stale_threshold_extract),
+        JobType.CRAWL: timedelta(seconds=settings.job_stale_threshold_crawl),
         "default": timedelta(seconds=600),  # 10 minutes default
     }
 
@@ -87,6 +88,10 @@ class JobScheduler:
         self._llm_worker: LLMWorker | None = None
         self._llm_worker_task: asyncio.Task | None = None
         self._async_redis = None  # Async Redis client for LLM queue
+        # Cached stateless services (reused across extraction jobs)
+        self._embedding_service: EmbeddingService | None = None
+        self._qdrant_repo: QdrantRepository | None = None
+        self._deduplicator: ExtractionDeduplicator | None = None
 
     async def start(self) -> None:
         """Start the background scheduler.
@@ -115,13 +120,21 @@ class JobScheduler:
             max_delay=settings.scrape_retry_max_delay,
         )
 
+        # Initialize cached stateless services for extraction pipeline
+        self._embedding_service = EmbeddingService(settings)
+        self._qdrant_repo = QdrantRepository(qdrant_client)
+        self._deduplicator = ExtractionDeduplicator(
+            embedding_service=self._embedding_service,
+            qdrant_repo=self._qdrant_repo,
+        )
+
         # Initialize LLM request queue and worker with async Redis
         self._async_redis = await get_async_redis()
         self._llm_queue = LLMRequestQueue(
             redis=self._async_redis,
-            stream_key="llm:requests",
-            max_queue_depth=1000,
-            backpressure_threshold=500,
+            stream_key=settings.llm_queue_stream_key,
+            max_queue_depth=settings.llm_queue_max_depth,
+            backpressure_threshold=settings.llm_queue_backpressure_threshold,
         )
         llm_client = AsyncOpenAI(
             base_url=settings.openai_base_url,
@@ -132,11 +145,13 @@ class JobScheduler:
             redis=self._async_redis,
             llm_client=llm_client,
             worker_id=f"llm-worker-{uuid4().hex[:8]}",
-            stream_key="llm:requests",
+            stream_key=settings.llm_queue_stream_key,
             initial_concurrency=settings.llm_worker_concurrency,
             max_concurrency=settings.llm_worker_max_concurrency,
             min_concurrency=settings.llm_worker_min_concurrency,
             model=settings.llm_model,
+            max_tokens=settings.llm_max_tokens,
+            response_ttl=settings.llm_response_ttl,
         )
         await self._llm_worker.initialize()
         self._llm_worker_task = asyncio.create_task(self._llm_worker.start())
@@ -190,7 +205,7 @@ class JobScheduler:
                     # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
-                        .filter(Job.type == "scrape", Job.status == "queued")
+                        .filter(Job.type == JobType.SCRAPE, Job.status == JobStatus.QUEUED)
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .with_for_update(skip_locked=True)
                         .first()
@@ -203,8 +218,8 @@ class JobScheduler:
                         job = (
                             db.query(Job)
                             .filter(
-                                Job.type == "scrape",
-                                Job.status == "running",
+                                Job.type == JobType.SCRAPE,
+                                Job.status == JobStatus.RUNNING,
                                 Job.updated_at < stale_threshold,
                             )
                             .order_by(Job.priority.desc(), Job.created_at.asc())
@@ -216,7 +231,7 @@ class JobScheduler:
                             logger.warning(
                                 "scrape_recovering_stale_job",
                                 job_id=str(job.id),
-                                job_type="scrape",
+                                job_type=JobType.SCRAPE,
                                 runtime_seconds=runtime.total_seconds(),
                                 updated_at=str(job.updated_at),
                                 threshold_seconds=thresholds["scrape"].total_seconds(),
@@ -269,8 +284,8 @@ class JobScheduler:
                     job = (
                         db.query(Job)
                         .filter(
-                            Job.type == "crawl",
-                            Job.status == "queued",
+                            Job.type == JobType.CRAWL,
+                            Job.status == JobStatus.QUEUED,
                         )
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .with_for_update(skip_locked=True)
@@ -286,8 +301,8 @@ class JobScheduler:
                         job = (
                             db.query(Job)
                             .filter(
-                                Job.type == "crawl",
-                                Job.status == "running",
+                                Job.type == JobType.CRAWL,
+                                Job.status == JobStatus.RUNNING,
                                 Job.updated_at < poll_threshold,
                             )
                             .order_by(Job.updated_at.asc())  # Poll oldest first
@@ -304,7 +319,7 @@ class JobScheduler:
                                 logger.warning(
                                     "crawl_recovering_stale_job",
                                     job_id=str(job.id),
-                                    job_type="crawl",
+                                    job_type=JobType.CRAWL,
                                     runtime_seconds=runtime.total_seconds(),
                                     updated_at=str(job.updated_at),
                                     threshold_seconds=thresholds["crawl"].total_seconds(),
@@ -350,7 +365,7 @@ class JobScheduler:
                     # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
-                        .filter(Job.type == "extract", Job.status == "queued")
+                        .filter(Job.type == JobType.EXTRACT, Job.status == JobStatus.QUEUED)
                         .order_by(Job.priority.desc(), Job.created_at.asc())
                         .with_for_update(skip_locked=True)
                         .first()
@@ -363,8 +378,8 @@ class JobScheduler:
                         job = (
                             db.query(Job)
                             .filter(
-                                Job.type == "extract",
-                                Job.status == "running",
+                                Job.type == JobType.EXTRACT,
+                                Job.status == JobStatus.RUNNING,
                                 Job.updated_at < stale_threshold,
                             )
                             .order_by(Job.priority.desc(), Job.created_at.asc())
@@ -376,25 +391,18 @@ class JobScheduler:
                             logger.warning(
                                 "extract_recovering_stale_job",
                                 job_id=str(job.id),
-                                job_type="extract",
+                                job_type=JobType.EXTRACT,
                                 runtime_seconds=runtime.total_seconds(),
                                 updated_at=str(job.updated_at),
                                 threshold_seconds=thresholds["extract"].total_seconds(),
                             )
 
                     if job:
-                        # Initialize pipeline service with all dependencies
-                        # Pass LLM queue to LLMClient when queue mode is enabled
+                        # Build pipeline: cached stateless services + fresh per-job deps
                         llm_queue = self._llm_queue if settings.llm_queue_enabled else None
                         llm_client = LLMClient(settings, llm_queue=llm_queue)
                         orchestrator = ExtractionOrchestrator(
                             llm_client=llm_client
-                        )
-                        embedding_service = EmbeddingService(settings)
-                        qdrant_repo = QdrantRepository(qdrant_client)
-                        deduplicator = ExtractionDeduplicator(
-                            embedding_service=embedding_service,
-                            qdrant_repo=qdrant_repo,
                         )
                         entity_extractor = EntityExtractor(
                             llm_client=llm_client,
@@ -402,13 +410,13 @@ class JobScheduler:
                         )
                         pipeline_service = ExtractionPipelineService(
                             orchestrator=orchestrator,
-                            deduplicator=deduplicator,
+                            deduplicator=self._deduplicator,
                             entity_extractor=entity_extractor,
                             extraction_repo=ExtractionRepository(db),
                             source_repo=SourceRepository(db),
                             project_repo=ProjectRepository(db),
-                            qdrant_repo=qdrant_repo,
-                            embedding_service=embedding_service,
+                            qdrant_repo=self._qdrant_repo,
+                            embedding_service=self._embedding_service,
                             profile_repo=ProfileRepository(db),
                         )
 

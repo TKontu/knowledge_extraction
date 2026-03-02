@@ -6,18 +6,13 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from exceptions import QueueFullError
 from services.llm.models import LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 logger = structlog.get_logger(__name__)
-
-
-class QueueFullError(Exception):
-    """Raised when queue is at maximum capacity."""
-
-    pass
 
 
 class RequestTimeoutError(Exception):

@@ -415,31 +415,39 @@ class TestUrlRelevanceFilterHelpers:
         url_text = url_filter._create_url_text(url_info)
         assert url_text is None
 
-    def test_cosine_similarity_identical_vectors(self, url_filter):
+    def test_cosine_similarity_identical_vectors(self):
         """Test cosine similarity of identical vectors is 1.0."""
+        from utils import cosine_similarity
+
         vec = reference_embedding()
-        similarity = url_filter._cosine_similarity(vec, vec)
+        similarity = cosine_similarity(vec, vec)
         assert abs(similarity - 1.0) < 0.0001
 
-    def test_cosine_similarity_orthogonal_vectors(self, url_filter):
+    def test_cosine_similarity_orthogonal_vectors(self):
         """Test cosine similarity of orthogonal vectors is 0.0."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 0.0, 0.0, 0.0]
         vec_b = [0.0, 1.0, 0.0, 0.0]
-        similarity = url_filter._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert abs(similarity) < 0.0001
 
-    def test_cosine_similarity_different_lengths(self, url_filter):
+    def test_cosine_similarity_different_lengths(self):
         """Test cosine similarity returns 0.0 for different length vectors."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 0.0, 0.0]
         vec_b = [1.0, 0.0]
-        similarity = url_filter._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert similarity == 0.0
 
-    def test_cosine_similarity_zero_vector(self, url_filter):
+    def test_cosine_similarity_zero_vector(self):
         """Test cosine similarity with zero vector returns 0.0."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 0.0, 0.0]
         vec_b = [0.0, 0.0, 0.0]
-        similarity = url_filter._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert similarity == 0.0
 
 

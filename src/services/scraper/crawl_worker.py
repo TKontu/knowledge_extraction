@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from config import settings
+from constants import JobStatus, SourceStatus
 from orm_models import Job
 from services.scraper.client import FirecrawlClient
 from services.storage.embedding import EmbeddingService
@@ -116,7 +117,7 @@ class CrawlWorker:
                 # Store Firecrawl job ID (must flag_modified for JSON column)
                 job.payload["firecrawl_job_id"] = firecrawl_job_id
                 flag_modified(job, "payload")
-                job.status = "running"
+                job.status = JobStatus.RUNNING
                 # Only set started_at if not already set (e.g., from smart crawl fallback)
                 if not job.started_at:
                     job.started_at = datetime.now(UTC)
@@ -166,7 +167,7 @@ class CrawlWorker:
                 return  # Continue polling
 
             if status.status == "failed":
-                job.status = "failed"
+                job.status = JobStatus.FAILED
                 job.error = status.error or "Crawl failed"
                 job.completed_at = datetime.now(UTC)
                 self.db.commit()
@@ -195,7 +196,7 @@ class CrawlWorker:
                 # Step 3: Store all pages as sources
                 sources_created = await self._store_pages(job, status.pages)
 
-                job.status = "completed"
+                job.status = JobStatus.COMPLETED
                 job.completed_at = datetime.now(UTC)
                 job.result = {
                     "pages_total": status.total,
@@ -235,7 +236,7 @@ class CrawlWorker:
                     job_id=str(job.id),
                     status=status.status,
                 )
-                job.status = "failed"
+                job.status = JobStatus.FAILED
                 job.error = f"Unexpected crawl status: {status.status}"
                 job.completed_at = datetime.now(UTC)
                 self.db.commit()
@@ -243,7 +244,7 @@ class CrawlWorker:
         except Exception as e:
             # Rollback any failed transaction before updating job status
             self.db.rollback()
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"{type(e).__name__}: {str(e)}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
@@ -361,7 +362,7 @@ class CrawlWorker:
                 title=metadata.get("title", ""),
                 content=markdown,
                 meta_data={"domain": domain, "http_status": status_code, **metadata},
-                status="pending",
+                status=SourceStatus.PENDING,
                 created_by_job_id=job.id,
             )
             if created:
@@ -426,7 +427,7 @@ class CrawlWorker:
                 job_id=str(job.id),
                 phase=phase,
             )
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"Invalid smart crawl phase: {phase}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
@@ -458,7 +459,7 @@ class CrawlWorker:
         )
 
         # Mark job as running
-        job.status = "running"
+        job.status = JobStatus.RUNNING
         job.started_at = datetime.now(UTC)
         job.result = {"phase": "map", "status": "discovering_urls"}
         self.db.commit()
@@ -474,7 +475,7 @@ class CrawlWorker:
             )
 
             if not map_result.success:
-                job.status = "failed"
+                job.status = JobStatus.FAILED
                 job.error = f"Map failed: {map_result.error}"
                 job.completed_at = datetime.now(UTC)
                 self.db.commit()
@@ -516,7 +517,7 @@ class CrawlWorker:
                 payload.pop("smart_crawl_phase", None)
                 payload.pop("mapped_urls", None)
                 flag_modified(job, "payload")
-                job.status = "queued"  # Reset to queued for immediate pickup
+                job.status = JobStatus.QUEUED  # Reset to queued for immediate pickup
                 job.result = {
                     "phase": "fallback",
                     "smart_crawl_urls_found": map_result.total,
@@ -536,7 +537,7 @@ class CrawlWorker:
                 error=str(e),
                 exc_info=True,
             )
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"Map phase error: {e}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
@@ -557,7 +558,7 @@ class CrawlWorker:
                 job_id=str(job.id),
             )
             # Complete with 0 sources
-            job.status = "completed"
+            job.status = JobStatus.COMPLETED
             job.completed_at = datetime.now(UTC)
             job.result = {
                 "phase": "filter",
@@ -702,7 +703,7 @@ class CrawlWorker:
                 error=str(e),
                 exc_info=True,
             )
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"Filter phase error: {e}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()
@@ -723,7 +724,7 @@ class CrawlWorker:
                 job_id=str(job.id),
             )
             # Complete with 0 sources
-            job.status = "completed"
+            job.status = JobStatus.COMPLETED
             job.completed_at = datetime.now(UTC)
             job.result = {
                 "phase": "scrape",
@@ -794,7 +795,7 @@ class CrawlWorker:
                 return  # Continue polling
 
             if status.status == "failed":
-                job.status = "failed"
+                job.status = JobStatus.FAILED
                 job.error = f"Batch scrape failed: {status.error}"
                 job.completed_at = datetime.now(UTC)
                 self.db.commit()
@@ -819,7 +820,7 @@ class CrawlWorker:
                 # Store pages as sources
                 sources_created = await self._store_pages(job, status.pages)
 
-                job.status = "completed"
+                job.status = JobStatus.COMPLETED
                 job.completed_at = datetime.now(UTC)
                 job.result = {
                     "phase": "completed",
@@ -849,7 +850,7 @@ class CrawlWorker:
                 error=str(e),
                 exc_info=True,
             )
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error = f"Scrape phase error: {e}"
             job.completed_at = datetime.now(UTC)
             self.db.commit()

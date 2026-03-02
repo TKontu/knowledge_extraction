@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from services.llm.client import LLMClient, LLMExtractionError
+from exceptions import LLMExtractionError
+from services.llm.client import LLMClient
 from services.reports.synthesis import ReportSynthesizer, SynthesisResult
 
 

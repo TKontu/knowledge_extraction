@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config import settings
+from constants import JobStatus, JobType
 from database import get_db
 from models import CrawlRequest, CrawlResponse, CrawlStatusResponse
 from orm_models import Job
@@ -102,8 +103,8 @@ async def create_crawl_job(
 
     job = Job(
         id=job_id,
-        type="crawl",
-        status="queued",
+        type=JobType.CRAWL,
+        status=JobStatus.QUEUED,
         payload=payload,
     )
 

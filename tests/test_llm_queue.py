@@ -257,7 +257,7 @@ class TestLLMRequestQueue:
     async def test_submit_rejects_when_queue_full(self, queue, mock_redis):
         """Test that submit raises error when queue is full."""
         from src.services.llm.models import LLMRequest
-        from src.services.llm.queue import QueueFullError
+        from exceptions import QueueFullError
 
         # Simulate full queue
         mock_redis.xlen = AsyncMock(return_value=1000)

@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_dlq_service, get_qdrant_repository
+from constants import JobStatus
 from database import get_db
 from models import (
     JobCancelResponse,
@@ -232,7 +233,7 @@ async def cleanup_job(
         )
 
     # Only allow cleanup of terminal states
-    if job.status in ("queued", "running", "cancelling"):
+    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot cleanup job with status '{job.status}'. Cancel first.",
@@ -293,8 +294,8 @@ async def delete_job(
         )
 
     # Don't allow deleting active jobs without cleanup
-    if job.status in ("queued", "running", "cancelling") and not cleanup:
-        if job.status == "cancelling":
+    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING) and not cleanup:
+        if job.status == JobStatus.CANCELLING:
             detail = "Job is cancelling. Wait for 'cancelled' or use cleanup=true."
         else:
             detail = "Cannot delete active job. Use cleanup=true or cancel first."

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
+from sqlalchemy import func, select, and_
 from orm_models import Entity, ExtractionEntity, Extraction
 
 
@@ -162,18 +162,9 @@ class EntityRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    def list(self, filters: EntityFilters) -> list[Entity]:
-        """List entities with optional filtering.
-
-        Args:
-            filters: EntityFilters instance with filter criteria
-
-        Returns:
-            List of Entity instances matching filters, sorted by value
-        """
-        query = select(Entity)
-
-        # Build filter conditions
+    @staticmethod
+    def _build_conditions(filters: EntityFilters) -> list:
+        """Build SQLAlchemy filter conditions from EntityFilters."""
         conditions = []
         if filters.project_id is not None:
             conditions.append(Entity.project_id == filters.project_id)
@@ -181,13 +172,93 @@ class EntityRepository:
             conditions.append(Entity.source_group == filters.source_group)
         if filters.entity_type is not None:
             conditions.append(Entity.entity_type == filters.entity_type)
+        return conditions
 
+    def count(self, filters: EntityFilters) -> int:
+        """Count entities matching filters.
+
+        Args:
+            filters: EntityFilters instance with filter criteria
+
+        Returns:
+            Number of matching entities
+        """
+        query = select(func.count(Entity.id))
+        conditions = self._build_conditions(filters)
+        if conditions:
+            query = query.where(and_(*conditions))
+        result = self._session.execute(query)
+        return result.scalar_one()
+
+    def count_by_type(self, filters: EntityFilters) -> list[tuple[str, int]]:
+        """Count entities grouped by type.
+
+        Args:
+            filters: EntityFilters instance with filter criteria
+
+        Returns:
+            List of (entity_type, count) tuples
+        """
+        query = select(Entity.entity_type, func.count(Entity.id))
+        conditions = self._build_conditions(filters)
+        if conditions:
+            query = query.where(and_(*conditions))
+        query = query.group_by(Entity.entity_type)
+        result = self._session.execute(query)
+        return list(result.all())
+
+    def list(
+        self,
+        filters: EntityFilters,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Entity]:
+        """List entities with optional filtering.
+
+        Args:
+            filters: EntityFilters instance with filter criteria
+            limit: Maximum number of results to return (None for no limit)
+            offset: Number of results to skip
+
+        Returns:
+            List of Entity instances matching filters, sorted by value
+        """
+        query = select(Entity)
+
+        conditions = self._build_conditions(filters)
         if conditions:
             query = query.where(and_(*conditions))
 
         # Sort by value for consistent ordering
         query = query.order_by(Entity.value)
 
+        # Apply pagination
+        if offset > 0:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = self._session.execute(query)
+        return list(result.scalars().all())
+
+    def find_by_normalized_value(
+        self,
+        filters: EntityFilters,
+        normalized_value: str,
+    ) -> list[Entity]:
+        """Find entities matching a normalized value.
+
+        Args:
+            filters: EntityFilters instance with filter criteria
+            normalized_value: Normalized value to match (case-insensitive)
+
+        Returns:
+            List of matching Entity instances
+        """
+        query = select(Entity)
+        conditions = self._build_conditions(filters)
+        conditions.append(Entity.normalized_value == normalized_value)
+        query = query.where(and_(*conditions))
         result = self._session.execute(query)
         return list(result.scalars().all())
 

@@ -9,7 +9,10 @@ from uuid import uuid4
 import structlog
 from openai import AsyncOpenAI
 
-from config import Settings, settings as global_settings
+from config import Settings
+from config import settings as global_settings
+from constants import LLM_RETRY_HINT
+from exceptions import LLMExtractionError
 from services.extraction.content_cleaner import strip_structural_junk
 from services.extraction.field_groups import FieldGroup
 from services.llm.json_repair import try_repair_json
@@ -20,15 +23,8 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Content window for extraction input (~5000 tokens, 23% of Qwen3-30B 32K context).
-# Captures 90% of real pages fully (vs 65% at 8000 chars).
-EXTRACTION_CONTENT_LIMIT = 20000
-
-
-class LLMExtractionError(Exception):
-    """Raised when LLM extraction fails."""
-
-    pass
+# Backward-compatible alias — new code should use settings.extraction_content_limit
+EXTRACTION_CONTENT_LIMIT = global_settings.extraction_content_limit
 
 
 class SchemaExtractor:
@@ -227,7 +223,7 @@ class SchemaExtractor:
             # Build prompts (add conciseness hint on retries)
             system_prompt = self._build_system_prompt(field_group)
             if attempt > 1:
-                system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+                system_prompt += LLM_RETRY_HINT
 
             user_prompt = self._build_user_prompt(content, field_group, source_context)
 
@@ -390,14 +386,15 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
         """
         field_specs = []
         id_field = None
+        # Use context entity_id_fields for ID field detection
+        id_field_names = self.context.entity_id_fields if self.context else (
+            "product_name", "entity_id", "name", "id"
+        )
         for f in field_group.fields:
             spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'
             field_specs.append(spec)
             # Find the ID field for the example
-            if (
-                f.name in ("product_name", "entity_id", "name", "id")
-                and id_field is None
-            ):
+            if f.name in id_field_names and id_field is None:
                 id_field = f.name
 
         fields_str = "\n".join(field_specs)
@@ -413,7 +410,7 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
             example_fields = f'"{first_field}": "...", ...'
 
         # Singular form for "each X" phrasing
-        entity_singular = field_group.name.rstrip("s")
+        entity_singular = field_group.name.removesuffix("s")
 
         quoting_instruction = ""
         if global_settings.extraction_source_quoting_enabled:
@@ -421,6 +418,8 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
                 '\nFor each entity, include a "_quote" field with a brief verbatim '
                 "excerpt (15-50 chars) from the source that identifies this entity.\n"
             )
+
+        max_items = field_group.max_items or 20
 
         return f"""You are extracting {field_group.description} from {self.context.source_type}.
 
@@ -431,7 +430,7 @@ For each {entity_singular} found, extract:
 
 IMPORTANT RULES:
 - Extract ONLY from the content provided below. Do NOT use outside knowledge.
-- Extract ONLY the most relevant/significant items (max 20 items)
+- Extract ONLY the most relevant/significant items (max {max_items} items)
 - If this content does not contain any {entity_singular} information, return an empty list.
 - Skip generic lists that are just navigation or coverage info, not actual entities.
 
@@ -471,11 +470,12 @@ Keep output concise - quality over quantity.
         )
 
         cleaned = strip_structural_junk(content)
+        limit = self.settings.extraction_content_limit
 
         return f"""{context_line}Extract {field_group.name} information from ONLY the content below:
 
 ---
-{cleaned[:EXTRACTION_CONTENT_LIMIT]}
+{cleaned[:limit]}
 ---"""
 
     def _apply_defaults(

@@ -341,7 +341,7 @@ class TestLLMClientComplete:
         self, llm_client: LLMClient
     ) -> None:
         """Test complete() raises LLMExtractionError after all retries exhausted."""
-        from services.llm.client import LLMExtractionError
+        from exceptions import LLMExtractionError
 
         with patch.object(
             llm_client.client.chat.completions,

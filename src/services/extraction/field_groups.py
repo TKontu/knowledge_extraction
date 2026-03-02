@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 from typing import Any
 
+# Valid merge strategies for field definitions
+VALID_MERGE_STRATEGIES = frozenset(
+    {"highest_confidence", "max", "min", "concat", "majority_vote"}
+)
+
 
 @dataclass
 class FieldDefinition:
@@ -14,6 +19,7 @@ class FieldDefinition:
     required: bool = False
     default: Any = None
     enum_values: list[str] | None = None
+    merge_strategy: str | None = None  # Override type-based merge default
 
 
 @dataclass
@@ -25,3 +31,4 @@ class FieldGroup:
     fields: list[FieldDefinition]
     prompt_hint: str  # Additional context for LLM
     is_entity_list: bool = False  # True for product groups
+    max_items: int | None = None  # Max entities per chunk (entity lists only)

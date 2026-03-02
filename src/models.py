@@ -8,6 +8,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from constants import JobStatus
+
 
 class RecoverySummaryResponse(BaseModel):
     """Response for embedding recovery endpoint."""
@@ -73,7 +75,7 @@ class ScrapeResponse(BaseModel):
         description="Unique job identifier",
     )
     status: str = Field(
-        default="queued",
+        default=JobStatus.QUEUED,
         description="Job status",
     )
     url_count: int = Field(
@@ -98,7 +100,7 @@ class ScrapeResponse(BaseModel):
         """Create a response from a scrape request."""
         return ScrapeResponse(
             job_id=str(uuid4()),
-            status="queued",
+            status=JobStatus.QUEUED,
             url_count=len(request.urls),
             company=request.company,
             profile=request.profile,
@@ -183,7 +185,7 @@ class CrawlResponse(BaseModel):
     """Response body for crawl endpoint."""
 
     job_id: str
-    status: str = "queued"
+    status: str = JobStatus.QUEUED
     url: str
     max_depth: int
     limit: int

@@ -74,6 +74,7 @@ class TestSchemaExtractorQueueMode:
         settings.llm_retry_backoff_min = 2
         settings.llm_retry_backoff_max = 30
         settings.llm_max_tokens = 4096
+        settings.extraction_content_limit = 20000
         return settings
 
     @pytest.fixture
@@ -187,10 +188,8 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_handles_queue_error_response(self, mock_settings, mock_queue):
         """Test that error responses from queue are handled."""
-        from services.extraction.schema_extractor import (
-            LLMExtractionError,
-            SchemaExtractor,
-        )
+        from exceptions import LLMExtractionError
+        from services.extraction.schema_extractor import SchemaExtractor
         from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(
@@ -216,10 +215,8 @@ class TestSchemaExtractorQueueMode:
     @pytest.mark.asyncio
     async def test_handles_queue_timeout_response(self, mock_settings, mock_queue):
         """Test that timeout responses from queue are handled."""
-        from services.extraction.schema_extractor import (
-            LLMExtractionError,
-            SchemaExtractor,
-        )
+        from exceptions import LLMExtractionError
+        from services.extraction.schema_extractor import SchemaExtractor
         from services.llm.models import LLMResponse
 
         mock_queue.wait_for_result.return_value = LLMResponse(

@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from constants import JobStatus
 from orm_models import Job
 
 
@@ -51,10 +52,10 @@ class JobRepository:
             return None
 
         # Only queued or running jobs can be cancelled
-        if job.status not in ("queued", "running"):
+        if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
             return None
 
-        job.status = "cancelling"
+        job.status = JobStatus.CANCELLING
         job.cancellation_requested_at = datetime.now(UTC)
         self._session.flush()
         return job
@@ -74,7 +75,7 @@ class JobRepository:
         if not job:
             return None
 
-        job.status = "cancelled"
+        job.status = JobStatus.CANCELLED
         job.completed_at = datetime.now(UTC)
         self._session.flush()
         return job
@@ -109,4 +110,4 @@ class JobRepository:
             True if job status is 'cancelling', False otherwise
         """
         job = self.get(job_id)
-        return job is not None and job.status == "cancelling"
+        return job is not None and job.status == JobStatus.CANCELLING

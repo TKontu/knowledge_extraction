@@ -555,40 +555,54 @@ class TestSmartClassifierErrorHandling:
 
 
 class TestCosineSimilarity:
-    """Test cosine similarity calculation."""
+    """Test cosine similarity used by SmartClassifier (now in utils.py).
 
-    def test_identical_vectors_similarity_one(self, smart_classifier):
+    Comprehensive tests live in tests/test_utils.py. These tests verify
+    the integration — that SmartClassifier correctly uses the shared function.
+    """
+
+    def test_identical_vectors_similarity_one(self):
         """Identical vectors should have similarity of 1.0."""
+        from utils import cosine_similarity
+
         vec = [1.0, 2.0, 3.0]
-        similarity = smart_classifier._cosine_similarity(vec, vec)
+        similarity = cosine_similarity(vec, vec)
         assert math.isclose(similarity, 1.0, rel_tol=1e-9)
 
-    def test_orthogonal_vectors_similarity_zero(self, smart_classifier):
+    def test_orthogonal_vectors_similarity_zero(self):
         """Orthogonal vectors should have similarity of 0.0."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 0.0, 0.0]
         vec_b = [0.0, 1.0, 0.0]
-        similarity = smart_classifier._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert math.isclose(similarity, 0.0, rel_tol=1e-9)
 
-    def test_opposite_vectors_similarity_negative(self, smart_classifier):
+    def test_opposite_vectors_similarity_negative(self):
         """Opposite vectors should have similarity of -1.0."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 0.0]
         vec_b = [-1.0, 0.0]
-        similarity = smart_classifier._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert math.isclose(similarity, -1.0, rel_tol=1e-9)
 
-    def test_different_length_vectors_returns_zero(self, smart_classifier):
+    def test_different_length_vectors_returns_zero(self):
         """Vectors of different lengths should return 0.0."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 2.0, 3.0]
         vec_b = [1.0, 2.0]
-        similarity = smart_classifier._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert similarity == 0.0
 
-    def test_zero_vector_returns_zero(self, smart_classifier):
+    def test_zero_vector_returns_zero(self):
         """Zero vector should return 0.0 similarity."""
+        from utils import cosine_similarity
+
         vec_a = [1.0, 2.0, 3.0]
         vec_b = [0.0, 0.0, 0.0]
-        similarity = smart_classifier._cosine_similarity(vec_a, vec_b)
+        similarity = cosine_similarity(vec_a, vec_b)
         assert similarity == 0.0
 
 

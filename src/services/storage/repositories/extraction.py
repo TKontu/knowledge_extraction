@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from orm_models import Extraction
@@ -144,6 +144,47 @@ class ExtractionRepository:
         )
         return list(result.scalars().all())
 
+    @staticmethod
+    def _build_conditions(filters: ExtractionFilters) -> list:
+        """Build SQLAlchemy filter conditions from ExtractionFilters.
+
+        Args:
+            filters: ExtractionFilters instance with filter criteria
+
+        Returns:
+            List of SQLAlchemy filter conditions
+        """
+        conditions = []
+        if filters.project_id is not None:
+            conditions.append(Extraction.project_id == filters.project_id)
+        if filters.source_id is not None:
+            conditions.append(Extraction.source_id == filters.source_id)
+        if filters.extraction_type is not None:
+            conditions.append(Extraction.extraction_type == filters.extraction_type)
+        if filters.source_group is not None:
+            conditions.append(Extraction.source_group == filters.source_group)
+        if filters.min_confidence is not None:
+            conditions.append(Extraction.confidence >= filters.min_confidence)
+        if filters.max_confidence is not None:
+            conditions.append(Extraction.confidence <= filters.max_confidence)
+        return conditions
+
+    def count(self, filters: ExtractionFilters) -> int:
+        """Count extractions matching filters.
+
+        Args:
+            filters: ExtractionFilters instance with filter criteria
+
+        Returns:
+            Number of matching extractions
+        """
+        query = select(func.count(Extraction.id))
+        conditions = self._build_conditions(filters)
+        if conditions:
+            query = query.where(and_(*conditions))
+        result = self._session.execute(query)
+        return result.scalar_one()
+
     def list(
         self,
         filters: ExtractionFilters,
@@ -170,21 +211,7 @@ class ExtractionRepository:
         if include_source:
             query = query.options(joinedload(Extraction.source))
 
-        # Build filter conditions
-        conditions = []
-        if filters.project_id is not None:
-            conditions.append(Extraction.project_id == filters.project_id)
-        if filters.source_id is not None:
-            conditions.append(Extraction.source_id == filters.source_id)
-        if filters.extraction_type is not None:
-            conditions.append(Extraction.extraction_type == filters.extraction_type)
-        if filters.source_group is not None:
-            conditions.append(Extraction.source_group == filters.source_group)
-        if filters.min_confidence is not None:
-            conditions.append(Extraction.confidence >= filters.min_confidence)
-        if filters.max_confidence is not None:
-            conditions.append(Extraction.confidence <= filters.max_confidence)
-
+        conditions = self._build_conditions(filters)
         if conditions:
             query = query.where(and_(*conditions))
 

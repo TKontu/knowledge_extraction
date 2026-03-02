@@ -6,7 +6,10 @@ from models import DocumentChunk
 
 
 def count_tokens(text: str) -> int:
-    """Approximate token count (4 chars ≈ 1 token for English).
+    """Approximate token count, CJK-aware.
+
+    English/Latin: ~4 chars per token.
+    CJK characters: ~1.5 chars per token (conservative).
 
     Args:
         text: Input text to count tokens for.
@@ -14,21 +17,36 @@ def count_tokens(text: str) -> int:
     Returns:
         Approximate number of tokens.
     """
-    return len(text) // 4
+    cjk_count = 0
+    for ch in text:
+        cp = ord(ch)
+        if (
+            0x4E00 <= cp <= 0x9FFF      # CJK Unified Ideographs
+            or 0x3400 <= cp <= 0x4DBF   # CJK Extension A
+            or 0xF900 <= cp <= 0xFAFF   # CJK Compatibility
+            or 0x3040 <= cp <= 0x309F   # Hiragana
+            or 0x30A0 <= cp <= 0x30FF   # Katakana
+            or 0xAC00 <= cp <= 0xD7AF   # Hangul
+        ):
+            cjk_count += 1
+
+    non_cjk_count = len(text) - cjk_count
+    return (non_cjk_count // 4) + int(cjk_count / 1.5)
 
 
 def _get_tail_text(text: str, target_tokens: int) -> str:
     """Get paragraph-aligned tail text of approximately target_tokens.
 
     Takes whole paragraphs from the end of text until the target token
-    budget is reached. Returns at least one paragraph if any exist.
+    budget is reached. Hard-caps output to target_tokens even if a single
+    paragraph is larger.
 
     Args:
         text: Source text to extract tail from.
         target_tokens: Approximate token budget for the tail.
 
     Returns:
-        Tail text containing whole paragraphs.
+        Tail text within the token budget.
     """
     if not text.strip() or target_tokens <= 0:
         return ""
@@ -36,6 +54,8 @@ def _get_tail_text(text: str, target_tokens: int) -> str:
     paragraphs = [p for p in text.split("\n\n") if p.strip()]
     if not paragraphs:
         return ""
+
+    max_chars = target_tokens * 4  # 4 chars ≈ 1 token
 
     # Collect paragraphs from the end
     collected: list[str] = []
@@ -48,29 +68,34 @@ def _get_tail_text(text: str, target_tokens: int) -> str:
         total += para_tokens
 
     collected.reverse()
-    return "\n\n".join(collected)
+    result = "\n\n".join(collected)
+
+    # Hard-cap: if a single large paragraph exceeded the budget,
+    # take only the last max_chars characters
+    if len(result) > max_chars:
+        result = result[-max_chars:]
+
+    return result
 
 
 def split_by_headers(markdown: str) -> list[str]:
-    """Split markdown on ## headers, keeping header with content.
+    """Split markdown on H2+ headers, keeping header with content.
+
+    Splits on any header level >= 2 (##, ###, ####, etc.).
+    H1 (#) is excluded as it's typically the page title.
 
     Args:
         markdown: Markdown text to split.
 
     Returns:
-        List of sections, each starting with a ## header or content before first header.
+        List of sections, each starting with a header or content before first header.
     """
-    # Split before ## headers (not # or ###)
-    pattern = r"(?=^## )"
+    # Split before any header level >= 2
+    pattern = r"(?=^#{2,} )"
     sections = re.split(pattern, markdown, flags=re.MULTILINE)
 
     # Filter empty sections and strip whitespace
     sections = [s.strip() for s in sections if s.strip()]
-
-    # If first section doesn't start with ##, combine it with the next section
-    if len(sections) > 1 and not sections[0].startswith("## "):
-        sections[0] = sections[0] + "\n\n" + sections[1]
-        sections.pop(1)
 
     return sections
 

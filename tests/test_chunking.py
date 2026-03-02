@@ -68,13 +68,13 @@ Nested content.
 ## Section 2
 Content 2."""
         result = split_by_headers(markdown)
-        # Should split on ## headers, combining content before first ## with first section
-        assert len(result) == 2
-        # First section includes content before first ##
+        # Should split on H2+ headers (##, ###, etc.)
+        # Preamble ("# Title") stays as its own section
+        assert len(result) == 4
         assert "# Title" in result[0]
-        assert "## Section 1" in result[0]
-        assert "### Subsection 1.1" in result[0]
-        assert result[1].startswith("## Section 2")
+        assert result[1].startswith("## Section 1")
+        assert result[2].startswith("### Subsection 1.1")
+        assert result[3].startswith("## Section 2")
 
     def test_empty_sections(self) -> None:
         markdown = """## Section 1
@@ -93,10 +93,10 @@ The API provides several endpoints.
 ### Authentication
 Use Bearer tokens."""
         result = split_by_headers(markdown)
-        assert len(result) == 1
-        # Should include the header in the content
+        # Splits on both ## and ### now
+        assert len(result) == 2
         assert "## API Reference" in result[0]
-        assert "### Authentication" in result[0]
+        assert result[1].startswith("### Authentication")
 
 
 class TestChunkDocument:

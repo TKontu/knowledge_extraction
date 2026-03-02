@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 import structlog
 
-from services.llm.client import LLMClient, LLMExtractionError
+from exceptions import LLMExtractionError
+from services.llm.client import LLMClient
 
 logger = structlog.get_logger(__name__)
 

@@ -10,6 +10,8 @@ import structlog
 from openai import AsyncOpenAI
 
 from config import Settings
+from constants import LLM_RETRY_HINT
+from exceptions import LLMExtractionError
 from models import ExtractedFact
 from services.llm.json_repair import try_repair_json
 
@@ -17,12 +19,6 @@ if TYPE_CHECKING:
     from src.services.llm.queue import LLMRequestQueue
 
 logger = structlog.get_logger(__name__)
-
-
-class LLMExtractionError(Exception):
-    """Raised when LLM extraction fails."""
-
-    pass
 
 
 class LLMClient:
@@ -156,7 +152,8 @@ class LLMClient:
         )
 
         # Submit and wait (handle queue errors)
-        from services.llm.queue import QueueFullError, RequestTimeoutError
+        from exceptions import QueueFullError
+        from services.llm.queue import RequestTimeoutError
 
         try:
             await self.llm_queue.submit(request)
@@ -230,7 +227,7 @@ class LLMClient:
             # Build prompts (add conciseness hint on retries)
             system_prompt = self._build_system_prompt(categories)
             if attempt > 1:
-                system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+                system_prompt += LLM_RETRY_HINT
 
             user_prompt = self._build_user_prompt(content)
 
@@ -454,7 +451,8 @@ Rules:
         )
 
         # Submit and wait (handle queue errors)
-        from services.llm.queue import QueueFullError, RequestTimeoutError
+        from exceptions import QueueFullError
+        from services.llm.queue import RequestTimeoutError
 
         try:
             await self.llm_queue.submit(request)
@@ -531,7 +529,7 @@ Rules:
             )
             system_prompt = prompts["system"]
             if attempt > 1:
-                system_prompt += "\n\nIMPORTANT: Be concise. Output valid JSON only."
+                system_prompt += LLM_RETRY_HINT
 
             logger.info(
                 "entity_extraction_started",
@@ -748,8 +746,9 @@ Guidelines:
         temperature: float | None = None,
     ) -> dict:
         """Queue-based LLM completion."""
+        from exceptions import QueueFullError
         from services.llm.models import LLMRequest
-        from services.llm.queue import QueueFullError, RequestTimeoutError
+        from services.llm.queue import RequestTimeoutError
 
         request = LLMRequest(
             request_id=str(uuid4()),

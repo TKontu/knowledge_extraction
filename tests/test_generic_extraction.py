@@ -279,6 +279,7 @@ class TestSchemaExtractorWithContext:
                 openai_base_url = "http://test"
                 openai_api_key = "test"
                 llm_http_timeout = 30
+                extraction_content_limit = 20000
 
             # Custom context
             context = ExtractionContext(
@@ -304,6 +305,7 @@ class TestSchemaExtractorWithContext:
                 openai_base_url = "http://test"
                 openai_api_key = "test"
                 llm_http_timeout = 30
+                extraction_content_limit = 20000
 
             extractor = SchemaExtractor(MockSettings(), llm_queue=None)
             return extractor, FieldGroup, FieldDefinition

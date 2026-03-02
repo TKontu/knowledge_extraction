@@ -137,6 +137,12 @@ class Settings(BaseSettings):
         description="Max concurrent embedding/rerank requests to embedding server",
     )
 
+    # Schema extraction embedding (enables search_knowledge for schema pipeline)
+    schema_extraction_embedding_enabled: bool = Field(
+        default=True,
+        description="Generate embeddings for schema pipeline extractions (enables semantic search)",
+    )
+
     # LLM Worker Queue Settings
     llm_worker_concurrency: int = Field(
         default=10,
@@ -157,6 +163,28 @@ class Settings(BaseSettings):
     llm_queue_enabled: bool = Field(
         default=False,
         description="Enable Redis-based LLM request queue for batching and adaptive concurrency",
+    )
+    llm_queue_stream_key: str = Field(
+        default="llm:requests",
+        description="Redis stream key for LLM request queue",
+    )
+    llm_queue_max_depth: int = Field(
+        default=1000,
+        ge=10,
+        le=10000,
+        description="Maximum queue depth before rejecting requests",
+    )
+    llm_queue_backpressure_threshold: int = Field(
+        default=500,
+        ge=5,
+        le=5000,
+        description="Queue depth that triggers backpressure signaling",
+    )
+    llm_response_ttl: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="TTL in seconds for LLM response storage in Redis (must be >= llm_request_timeout)",
     )
 
     # Scraping Configuration
@@ -458,11 +486,17 @@ class Settings(BaseSettings):
     )
 
     # Extraction Pipeline Reliability
+    extraction_content_limit: int = Field(
+        default=20000,
+        ge=1000,
+        le=100000,
+        description="Max characters of source content sent to LLM per extraction call",
+    )
     extraction_chunk_max_tokens: int = Field(
         default=5000,
         ge=500,
         le=16000,
-        description="Max tokens per chunk (aligned with EXTRACTION_CONTENT_LIMIT)",
+        description="Max tokens per chunk for chunked extraction",
     )
     extraction_chunk_overlap_tokens: int = Field(
         default=0,
@@ -537,6 +571,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"classification_embedding_high_threshold ({high}) must be greater than "
                 f"classification_embedding_low_threshold ({low})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_chunk_config(self) -> "Settings":
+        """Validate chunk overlap is less than chunk max tokens."""
+        if self.extraction_chunk_overlap_tokens >= self.extraction_chunk_max_tokens:
+            raise ValueError(
+                f"extraction_chunk_overlap_tokens ({self.extraction_chunk_overlap_tokens}) "
+                f"must be less than extraction_chunk_max_tokens "
+                f"({self.extraction_chunk_max_tokens})"
             )
         return self
 

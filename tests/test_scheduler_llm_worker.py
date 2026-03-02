@@ -52,7 +52,10 @@ class TestSchedulerLLMWorkerStartup:
              patch("services.scraper.scheduler.FirecrawlClient", return_value=mock_firecrawl_client), \
              patch("services.scraper.scheduler.LLMRequestQueue") as MockQueue, \
              patch("services.scraper.scheduler.LLMWorker") as MockWorker, \
-             patch("services.scraper.scheduler.AsyncOpenAI"):
+             patch("services.scraper.scheduler.AsyncOpenAI"), \
+             patch("services.scraper.scheduler.EmbeddingService"), \
+             patch("services.scraper.scheduler.QdrantRepository"), \
+             patch("services.scraper.scheduler.ExtractionDeduplicator"):
 
             # Setup mocks - use AsyncMock for async methods
             mock_worker_instance = AsyncMock()
@@ -83,7 +86,10 @@ class TestSchedulerLLMWorkerStartup:
              patch("services.scraper.scheduler.FirecrawlClient", return_value=mock_firecrawl_client), \
              patch("services.scraper.scheduler.LLMRequestQueue") as MockQueue, \
              patch("services.scraper.scheduler.LLMWorker") as MockWorker, \
-             patch("services.scraper.scheduler.AsyncOpenAI"):
+             patch("services.scraper.scheduler.AsyncOpenAI"), \
+             patch("services.scraper.scheduler.EmbeddingService"), \
+             patch("services.scraper.scheduler.QdrantRepository"), \
+             patch("services.scraper.scheduler.ExtractionDeduplicator"):
 
             # Setup mocks
             mock_worker_instance = AsyncMock()
@@ -111,7 +117,10 @@ class TestSchedulerLLMWorkerStartup:
              patch("services.scraper.scheduler.FirecrawlClient", return_value=mock_firecrawl_client), \
              patch("services.scraper.scheduler.LLMRequestQueue") as MockQueue, \
              patch("services.scraper.scheduler.LLMWorker") as MockWorker, \
-             patch("services.scraper.scheduler.AsyncOpenAI"):
+             patch("services.scraper.scheduler.AsyncOpenAI"), \
+             patch("services.scraper.scheduler.EmbeddingService"), \
+             patch("services.scraper.scheduler.QdrantRepository"), \
+             patch("services.scraper.scheduler.ExtractionDeduplicator"):
 
             # Setup mocks
             mock_worker_instance = AsyncMock()
@@ -138,7 +147,10 @@ class TestSchedulerLLMWorkerStartup:
              patch("services.scraper.scheduler.FirecrawlClient", return_value=mock_firecrawl_client), \
              patch("services.scraper.scheduler.LLMRequestQueue") as MockQueue, \
              patch("services.scraper.scheduler.LLMWorker") as MockWorker, \
-             patch("services.scraper.scheduler.AsyncOpenAI"):
+             patch("services.scraper.scheduler.AsyncOpenAI"), \
+             patch("services.scraper.scheduler.EmbeddingService"), \
+             patch("services.scraper.scheduler.QdrantRepository"), \
+             patch("services.scraper.scheduler.ExtractionDeduplicator"):
 
             mock_queue_instance = MagicMock()
             MockQueue.return_value = mock_queue_instance
@@ -168,7 +180,10 @@ class TestSchedulerLLMWorkerStartup:
              patch("services.scraper.scheduler.FirecrawlClient", return_value=mock_firecrawl_client), \
              patch("services.scraper.scheduler.LLMRequestQueue") as MockQueue, \
              patch("services.scraper.scheduler.LLMWorker") as MockWorker, \
-             patch("services.scraper.scheduler.AsyncOpenAI"):
+             patch("services.scraper.scheduler.AsyncOpenAI"), \
+             patch("services.scraper.scheduler.EmbeddingService"), \
+             patch("services.scraper.scheduler.QdrantRepository"), \
+             patch("services.scraper.scheduler.ExtractionDeduplicator"):
 
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
@@ -230,7 +245,10 @@ class TestSchedulerLLMWorkerLifecycle:
              patch("services.scraper.scheduler.FirecrawlClient", return_value=mock_firecrawl_client), \
              patch("services.scraper.scheduler.LLMRequestQueue") as MockQueue, \
              patch("services.scraper.scheduler.LLMWorker") as MockWorker, \
-             patch("services.scraper.scheduler.AsyncOpenAI"):
+             patch("services.scraper.scheduler.AsyncOpenAI"), \
+             patch("services.scraper.scheduler.EmbeddingService"), \
+             patch("services.scraper.scheduler.QdrantRepository"), \
+             patch("services.scraper.scheduler.ExtractionDeduplicator"):
 
             # Setup worker mock
             mock_worker_instance = AsyncMock()

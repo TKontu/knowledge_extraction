@@ -4,7 +4,6 @@ Filters URLs by semantic relevance to extraction context (field_groups).
 Uses the same embedding approach as SmartClassifier but for URL metadata.
 """
 
-import math
 from dataclasses import dataclass
 
 import structlog
@@ -12,6 +11,7 @@ import structlog
 from config import Settings
 from services.extraction.field_groups import FieldGroup
 from services.storage.embedding import EmbeddingService
+from utils import cosine_similarity
 
 logger = structlog.get_logger(__name__)
 
@@ -184,7 +184,7 @@ class UrlRelevanceFilter:
 
         # Process URLs that had embeddings
         for url_info, url_embedding in zip(valid_urls, url_embeddings, strict=True):
-            similarity = self._cosine_similarity(context_embedding, url_embedding)
+            similarity = cosine_similarity(context_embedding, url_embedding)
             is_relevant = similarity >= threshold
 
             filtered_url = FilteredUrl(
@@ -316,29 +316,3 @@ class UrlRelevanceFilter:
             return None
 
         return "\n".join(parts)
-
-    def _cosine_similarity(
-        self,
-        vec_a: list[float],
-        vec_b: list[float],
-    ) -> float:
-        """Calculate cosine similarity between two vectors.
-
-        Args:
-            vec_a: First vector.
-            vec_b: Second vector.
-
-        Returns:
-            Cosine similarity score (0.0 to 1.0 for normalized embeddings).
-        """
-        if len(vec_a) != len(vec_b):
-            return 0.0
-
-        dot_product = sum(a * b for a, b in zip(vec_a, vec_b, strict=True))
-        magnitude_a = math.sqrt(sum(a * a for a in vec_a))
-        magnitude_b = math.sqrt(sum(b * b for b in vec_b))
-
-        if magnitude_a == 0 or magnitude_b == 0:
-            return 0.0
-
-        return dot_product / (magnitude_a * magnitude_b)
