@@ -120,8 +120,8 @@ class TestQuoteMerge:
             },
         ]
         with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction_source_quoting_enabled = True
-            s.extraction_conflict_detection_enabled = False
+            s.extraction.source_quoting_enabled = True
+            s.extraction.conflict_detection_enabled = False
             merged = orchestrator._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
         assert merged.get("_quotes", {}).get("manufactures_gearboxes") == "we produce gearboxes"
 
@@ -132,8 +132,8 @@ class TestQuoteMerge:
             {"manufactures_gearboxes": True, "confidence": 0.7},
         ]
         with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction_source_quoting_enabled = True
-            s.extraction_conflict_detection_enabled = False
+            s.extraction.source_quoting_enabled = True
+            s.extraction.conflict_detection_enabled = False
             merged = orchestrator._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
         # No error, and no _quotes key (since none were provided)
         assert "_quotes" not in merged
@@ -148,7 +148,7 @@ class TestQuoteMerge:
             },
         ]
         with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction_source_quoting_enabled = False
-            s.extraction_conflict_detection_enabled = False
+            s.extraction.source_quoting_enabled = False
+            s.extraction.conflict_detection_enabled = False
             merged = orchestrator._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
         assert "_quotes" not in merged

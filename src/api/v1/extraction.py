@@ -332,27 +332,27 @@ async def extract_schema(
 
     # Create LLM queue if enabled (requires async Redis client)
     llm_queue = None
-    if settings.llm_queue_enabled:
+    if settings.llm_queue.enabled:
         async_redis = await get_async_redis()
         llm_queue = LLMRequestQueue(
             redis=async_redis,
-            stream_key=settings.llm_queue_stream_key,
-            max_queue_depth=settings.llm_queue_max_depth,
-            backpressure_threshold=settings.llm_queue_backpressure_threshold,
+            stream_key=settings.llm_queue.stream_key,
+            max_queue_depth=settings.llm_queue.max_depth,
+            backpressure_threshold=settings.llm_queue.backpressure_threshold,
         )
 
     # Create extraction pipeline
     extractor = SchemaExtractor(
         settings.llm,
         llm_queue=llm_queue,
-        content_limit=settings.extraction_content_limit,
-        source_quoting=settings.extraction_source_quoting_enabled,
-        request_timeout=settings.llm_request_timeout,
+        content_limit=settings.extraction.content_limit,
+        source_quoting=settings.extraction.source_quoting_enabled,
+        request_timeout=settings.llm_queue.request_timeout,
     )
 
     # Create smart classifier if enabled
     smart_classifier = None
-    if settings.smart_classification_enabled:
+    if settings.classification.smart_enabled:
         from services.extraction.schema_adapter import ClassificationConfig
 
         # Extract classification_config from project's extraction_schema

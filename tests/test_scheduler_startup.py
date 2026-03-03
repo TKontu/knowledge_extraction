@@ -41,9 +41,9 @@ class TestCleanupStaleJobsUnit:
             patch("services.scraper.scheduler.SessionLocal") as mock_session_local,
             patch("services.scraper.scheduler.get_shutdown_manager") as mock_sm,
         ):
-            mock_settings.scheduler_cleanup_stale_on_startup = False
-            mock_settings.scheduler_startup_stagger_seconds = 0.0
-            mock_settings.max_concurrent_crawls = 1
+            mock_settings.scheduler.cleanup_stale_on_startup = False
+            mock_settings.scheduler.startup_stagger_seconds = 0.0
+            mock_settings.crawl.max_concurrent_crawls = 1
 
             # Make shutdown manager signal shutdown immediately to prevent loops
             shutdown = MagicMock()
@@ -72,9 +72,9 @@ class TestCleanupStaleJobsUnit:
             patch("services.scraper.scheduler.SessionLocal", return_value=mock_db),
             patch("services.scraper.scheduler.get_shutdown_manager") as mock_sm,
         ):
-            mock_settings.scheduler_cleanup_stale_on_startup = True
-            mock_settings.scheduler_startup_stagger_seconds = 0.0
-            mock_settings.max_concurrent_crawls = 1
+            mock_settings.scheduler.cleanup_stale_on_startup = True
+            mock_settings.scheduler.startup_stagger_seconds = 0.0
+            mock_settings.crawl.max_concurrent_crawls = 1
 
             shutdown = MagicMock()
             shutdown.is_shutting_down = True
@@ -121,9 +121,9 @@ class TestWorkerStagger:
             patch("services.scraper.scheduler.get_shutdown_manager") as mock_sm,
             patch("services.scraper.scheduler.SessionLocal"),
         ):
-            mock_settings.scheduler_cleanup_stale_on_startup = False
-            mock_settings.scheduler_startup_stagger_seconds = 0.5
-            mock_settings.max_concurrent_crawls = 2
+            mock_settings.scheduler.cleanup_stale_on_startup = False
+            mock_settings.scheduler.startup_stagger_seconds = 0.5
+            mock_settings.crawl.max_concurrent_crawls = 2
 
             shutdown = MagicMock()
             shutdown.is_shutting_down = True
@@ -156,9 +156,9 @@ class TestWorkerStagger:
             patch("services.scraper.scheduler.get_shutdown_manager") as mock_sm,
             patch("services.scraper.scheduler.SessionLocal"),
         ):
-            mock_settings.scheduler_cleanup_stale_on_startup = False
-            mock_settings.scheduler_startup_stagger_seconds = 0.0
-            mock_settings.max_concurrent_crawls = 2
+            mock_settings.scheduler.cleanup_stale_on_startup = False
+            mock_settings.scheduler.startup_stagger_seconds = 0.0
+            mock_settings.crawl.max_concurrent_crawls = 2
 
             shutdown = MagicMock()
             shutdown.is_shutting_down = True

@@ -47,13 +47,13 @@ class ServiceContainer:
         """Create and initialize all services."""
         self._firecrawl_client = FirecrawlClient(
             base_url=settings.firecrawl_url,
-            timeout=settings.scrape_timeout,
+            timeout=settings.scraping.timeout,
         )
 
         rate_limit_config = RateLimitConfig(
-            delay_min=settings.scrape_delay_min,
-            delay_max=settings.scrape_delay_max,
-            daily_limit=settings.scrape_daily_limit_per_domain,
+            delay_min=settings.scraping.delay_min,
+            delay_max=settings.scraping.delay_max,
+            daily_limit=settings.scraping.daily_limit_per_domain,
         )
         self._rate_limiter = DomainRateLimiter(
             redis_client=redis_client,
@@ -61,9 +61,9 @@ class ServiceContainer:
         )
 
         self._retry_config = RetryConfig(
-            max_retries=settings.scrape_retry_max_attempts,
-            base_delay=settings.scrape_retry_base_delay,
-            max_delay=settings.scrape_retry_max_delay,
+            max_retries=settings.scraping.retry_max_attempts,
+            base_delay=settings.scraping.retry_base_delay,
+            max_delay=settings.scraping.retry_max_delay,
         )
 
         # Cached stateless services for extraction pipeline
@@ -85,26 +85,26 @@ class ServiceContainer:
         self._async_redis = await get_async_redis()
         self._llm_queue = LLMRequestQueue(
             redis=self._async_redis,
-            stream_key=settings.llm_queue_stream_key,
-            max_queue_depth=settings.llm_queue_max_depth,
-            backpressure_threshold=settings.llm_queue_backpressure_threshold,
+            stream_key=settings.llm_queue.stream_key,
+            max_queue_depth=settings.llm_queue.max_depth,
+            backpressure_threshold=settings.llm_queue.backpressure_threshold,
         )
         llm_client = AsyncOpenAI(
-            base_url=settings.openai_base_url,
-            api_key=settings.openai_api_key,
-            timeout=settings.llm_http_timeout,
+            base_url=settings.llm.base_url,
+            api_key=settings.llm.api_key,
+            timeout=settings.llm.http_timeout,
         )
         self._llm_worker = LLMWorker(
             redis=self._async_redis,
             llm_client=llm_client,
             worker_id=f"llm-worker-{uuid4().hex[:8]}",
-            stream_key=settings.llm_queue_stream_key,
-            initial_concurrency=settings.llm_worker_concurrency,
-            max_concurrency=settings.llm_worker_max_concurrency,
-            min_concurrency=settings.llm_worker_min_concurrency,
-            model=settings.llm_model,
-            max_tokens=settings.llm_max_tokens,
-            response_ttl=settings.llm_response_ttl,
+            stream_key=settings.llm_queue.stream_key,
+            initial_concurrency=settings.llm_queue.worker_concurrency,
+            max_concurrency=settings.llm_queue.worker_max_concurrency,
+            min_concurrency=settings.llm_queue.worker_min_concurrency,
+            model=settings.llm.model,
+            max_tokens=settings.llm.max_tokens,
+            response_ttl=settings.llm_queue.response_ttl,
         )
         await self._llm_worker.initialize()
         import asyncio

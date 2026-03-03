@@ -17,7 +17,7 @@ class TestGetExtractionContent:
         with patch(
             "services.extraction.content_selector.app_settings"
         ) as mock_settings:
-            mock_settings.domain_dedup_enabled = False
+            mock_settings.extraction.domain_dedup_enabled = False
             result = get_extraction_content(source)
 
         assert result == "raw content"
@@ -31,7 +31,7 @@ class TestGetExtractionContent:
         with patch(
             "services.extraction.content_selector.app_settings"
         ) as mock_settings:
-            mock_settings.domain_dedup_enabled = True
+            mock_settings.extraction.domain_dedup_enabled = True
             result = get_extraction_content(source)
 
         assert result == "cleaned content"
@@ -45,7 +45,7 @@ class TestGetExtractionContent:
         with patch(
             "services.extraction.content_selector.app_settings"
         ) as mock_settings:
-            mock_settings.domain_dedup_enabled = True
+            mock_settings.extraction.domain_dedup_enabled = True
             result = get_extraction_content(source)
 
         assert result == "raw content"

@@ -610,7 +610,7 @@ class SchemaExtractionPipeline:
 
         # Process sources in parallel with cancellation support
         # Use chunked processing to allow cancellation checks between batches
-        semaphore = asyncio.Semaphore(app_settings.extraction_max_concurrent_sources)
+        semaphore = asyncio.Semaphore(app_settings.extraction.max_concurrent_sources)
         chunk_size = 20  # Check cancellation every 20 sources
 
         # Track whether embedding is available for this run

@@ -37,9 +37,9 @@ class TestServiceContainerLLMWorkerStartup:
         settings.llm_queue_stream_key = "llm:requests"
         settings.llm_queue_max_depth = 1000
         settings.llm_queue_backpressure_threshold = 500
-        settings.llm_worker_concurrency = 10
-        settings.llm_worker_max_concurrency = 50
-        settings.llm_worker_min_concurrency = 5
+        settings.llm_queue.worker_concurrency = 10
+        settings.llm_queue.worker_max_concurrency = 50
+        settings.llm_queue.worker_min_concurrency = 5
         return settings
 
     @pytest.fixture
@@ -236,9 +236,9 @@ class TestServiceContainerLLMWorkerLifecycle:
         settings.llm_queue_stream_key = "llm:requests"
         settings.llm_queue_max_depth = 1000
         settings.llm_queue_backpressure_threshold = 500
-        settings.llm_worker_concurrency = 10
-        settings.llm_worker_max_concurrency = 50
-        settings.llm_worker_min_concurrency = 5
+        settings.llm_queue.worker_concurrency = 10
+        settings.llm_queue.worker_max_concurrency = 50
+        settings.llm_queue.worker_min_concurrency = 5
         return settings
 
     @pytest.fixture

@@ -12,7 +12,7 @@ def get_extraction_content(source) -> str:
     Returns:
         The appropriate content string for extraction.
     """
-    if app_settings.domain_dedup_enabled:
+    if app_settings.extraction.domain_dedup_enabled:
         return (
             source.cleaned_content
             if source.cleaned_content is not None

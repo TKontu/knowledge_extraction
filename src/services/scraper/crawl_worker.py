@@ -100,7 +100,7 @@ class CrawlWorker:
             if not firecrawl_job_id:
                 # Use configured timeout (convert seconds to milliseconds)
                 # Default 60s, but FlareSolverr may need more for anti-bot bypass
-                scrape_timeout_ms = settings.scrape_timeout * 1000
+                scrape_timeout_ms = settings.scraping.timeout * 1000
 
                 firecrawl_job_id = await self.client.start_crawl(
                     url=payload["url"],
@@ -110,8 +110,8 @@ class CrawlWorker:
                     exclude_paths=payload.get("exclude_paths"),
                     allow_backward_links=payload.get("allow_backward_links", False),
                     scrape_timeout=scrape_timeout_ms,
-                    delay_ms=settings.crawl_delay_ms,
-                    max_concurrency=settings.crawl_max_concurrency,
+                    delay_ms=settings.crawl.delay_ms,
+                    max_concurrency=settings.crawl.max_concurrency,
                 )
 
                 # Store Firecrawl job ID (must flag_modified for JSON column)

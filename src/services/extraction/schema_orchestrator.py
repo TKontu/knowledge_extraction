@@ -41,7 +41,7 @@ class SchemaExtractionOrchestrator:
             schema_extractor: Extractor for field groups.
             context: Extraction context configuration.
             smart_classifier: Optional smart classifier for embedding-based
-                classification. When provided and settings.smart_classification_enabled
+                classification. When provided and settings.classification.smart_enabled
                 is True, uses semantic similarity for field group selection.
         """
         from services.extraction.schema_adapter import ExtractionContext
@@ -87,9 +87,9 @@ class SchemaExtractionOrchestrator:
             return [], None
 
         # Classify page if URL is available and classification is enabled
-        if source_url and settings.classification_enabled:
+        if source_url and settings.classification.enabled:
             # Use smart classifier if available and enabled
-            if self._smart_classifier and settings.smart_classification_enabled:
+            if self._smart_classifier and settings.classification.smart_enabled:
                 classification = await self._smart_classifier.classify(
                     url=source_url,
                     title=source_title,
@@ -116,7 +116,7 @@ class SchemaExtractionOrchestrator:
             )
 
             # Only skip if both classification says skip AND skip is enabled
-            if classification.skip_extraction and settings.classification_skip_enabled:
+            if classification.skip_extraction and settings.classification.skip_enabled:
                 logger.info(
                     "skipping_extraction",
                     source_id=str(source_id),
@@ -143,8 +143,8 @@ class SchemaExtractionOrchestrator:
         # Chunk document for large content
         # Reduce max_tokens by overlap so chunk + prepended overlap fits
         # within EXTRACTION_CONTENT_LIMIT (both are ~4 chars/token aligned)
-        overlap = settings.extraction_chunk_overlap_tokens
-        effective_max = settings.extraction_chunk_max_tokens - overlap
+        overlap = settings.extraction.chunk_overlap_tokens
+        effective_max = settings.extraction.chunk_max_tokens - overlap
         chunks = chunk_document(
             markdown,
             max_tokens=effective_max,
@@ -182,9 +182,9 @@ class SchemaExtractionOrchestrator:
                 merged = self._merge_chunk_results(chunk_results, group)
 
                 # Schema-aware validation (before confidence pop)
-                if settings.extraction_validation_enabled:
+                if settings.extraction.validation_enabled:
                     validator = SchemaValidator(
-                        min_confidence=settings.extraction_validation_min_confidence,
+                        min_confidence=settings.extraction.validation_min_confidence,
                     )
                     merged, _ = validator.validate(merged, group)
 
@@ -231,7 +231,7 @@ class SchemaExtractionOrchestrator:
         Returns:
             List of extraction results from successful chunks.
         """
-        max_concurrent = settings.extraction_max_concurrent_chunks
+        max_concurrent = settings.extraction.max_concurrent_chunks
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def extract_chunk_with_semaphore(
@@ -409,7 +409,7 @@ class SchemaExtractionOrchestrator:
         merged["confidence"] = sum(confidences) / len(confidences)
 
         # Merge source quotes: keep quote from highest-confidence chunk per field
-        if settings.extraction_source_quoting_enabled:
+        if settings.extraction.source_quoting_enabled:
             merged_quotes: dict[str, str] = {}
             best_conf: dict[str, float] = {}
             for result in chunk_results:
@@ -424,7 +424,7 @@ class SchemaExtractionOrchestrator:
                 merged["_quotes"] = merged_quotes
 
         # Detect merge conflicts between chunks
-        if settings.extraction_conflict_detection_enabled and len(chunk_results) > 1:
+        if settings.extraction.conflict_detection_enabled and len(chunk_results) > 1:
             conflicts = self._detect_conflicts(chunk_results, group, merged)
             if conflicts:
                 merged["_conflicts"] = conflicts

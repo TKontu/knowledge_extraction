@@ -38,9 +38,9 @@ def get_stale_thresholds() -> dict[str, timedelta]:
         Dictionary mapping job types to their stale thresholds.
     """
     return {
-        JobType.SCRAPE: timedelta(seconds=settings.job_stale_threshold_scrape),
-        JobType.EXTRACT: timedelta(seconds=settings.job_stale_threshold_extract),
-        JobType.CRAWL: timedelta(seconds=settings.job_stale_threshold_crawl),
+        JobType.SCRAPE: timedelta(seconds=settings.scheduler.stale_threshold_scrape),
+        JobType.EXTRACT: timedelta(seconds=settings.scheduler.stale_threshold_extract),
+        JobType.CRAWL: timedelta(seconds=settings.scheduler.stale_threshold_crawl),
         "default": timedelta(seconds=600),  # 10 minutes default
     }
 
@@ -82,18 +82,18 @@ class JobScheduler:
         self._running = True
 
         # Startup resilience: cleanup stale jobs from previous instance
-        if settings.scheduler_cleanup_stale_on_startup:
+        if settings.scheduler.cleanup_stale_on_startup:
             await self._cleanup_stale_jobs()
 
         # Startup resilience: stagger worker creation
-        stagger = settings.scheduler_startup_stagger_seconds
+        stagger = settings.scheduler.startup_stagger_seconds
 
         self._scrape_task = asyncio.create_task(self._run_scrape_worker())
         if stagger > 0:
             await asyncio.sleep(stagger)
 
         # Spawn multiple crawl workers for multi-domain parallelism
-        num_crawl_workers = settings.max_concurrent_crawls
+        num_crawl_workers = settings.crawl.max_concurrent_crawls
         for i in range(num_crawl_workers):
             self._crawl_tasks.append(
                 asyncio.create_task(self._run_single_crawl_worker(worker_id=i))
@@ -258,7 +258,7 @@ class JobScheduler:
                     # If no queued jobs, try to get a running job that needs polling
                     if not job:
                         poll_threshold = datetime.now(UTC) - timedelta(
-                            seconds=settings.crawl_poll_interval
+                            seconds=settings.crawl.poll_interval
                         )
                         job = (
                             db.query(Job)
@@ -362,7 +362,7 @@ class JobScheduler:
                         # Build pipeline: cached stateless services + fresh per-job deps
                         llm_queue = (
                             self._services.llm_queue
-                            if settings.llm_queue_enabled
+                            if settings.llm_queue.enabled
                             else None
                         )
                         llm_client = LLMClient(
