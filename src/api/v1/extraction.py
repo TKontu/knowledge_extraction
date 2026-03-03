@@ -361,7 +361,7 @@ async def extract_schema(
         smart_classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=async_redis,
-            settings=settings,
+            app_config=settings.classification,
             classification_config=classification_config,
         )
 

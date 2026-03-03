@@ -203,7 +203,7 @@ class ExtractionWorker:
             smart_classifier = SmartClassifier(
                 embedding_service=embedding_service,
                 redis_client=async_redis,
-                settings=self.settings,
+                app_config=self.settings.classification,
                 classification_config=classification_config,
             )
 

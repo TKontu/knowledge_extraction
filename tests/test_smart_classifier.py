@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from config import Settings
+from config import ClassificationConfig as AppClassificationConfig
 from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.page_classifier import ClassificationMethod
 from services.extraction.schema_adapter import ClassificationConfig
@@ -56,18 +56,20 @@ def reference_embedding(dim: int = 1024) -> list[float]:
 
 
 @pytest.fixture
-def settings():
-    """Create test settings."""
-    settings = MagicMock(spec=Settings)
-    settings.smart_classification_enabled = True
-    settings.reranker_model = "bge-reranker-v2-m3"
-    settings.classification_embedding_high_threshold = 0.75
-    settings.classification_embedding_low_threshold = 0.4
-    settings.classification_reranker_threshold = 0.5
-    settings.classification_cache_ttl = 86400
-    # Use default skip patterns for backward compatibility in tests
-    settings.classification_use_default_skip_patterns = True
-    return settings
+def app_config():
+    """Create test AppClassificationConfig."""
+    return AppClassificationConfig(
+        enabled=True,
+        skip_enabled=True,
+        smart_enabled=True,
+        reranker_model="bge-reranker-v2-m3",
+        embedding_high_threshold=0.75,
+        embedding_low_threshold=0.4,
+        reranker_threshold=0.5,
+        cache_ttl=86400,
+        # Use default skip patterns for backward compatibility in tests
+        use_default_skip_patterns=True,
+    )
 
 
 @pytest.fixture
@@ -133,12 +135,12 @@ def field_groups():
 
 
 @pytest.fixture
-def smart_classifier(embedding_service, redis_client, settings):
+def smart_classifier(embedding_service, redis_client, app_config):
     """Create SmartClassifier instance."""
     return SmartClassifier(
         embedding_service=embedding_service,
         redis_client=redis_client,
-        settings=settings,
+        app_config=app_config,
     )
 
 
@@ -216,7 +218,7 @@ class TestSmartClassifierHighConfidence:
         assert "High embedding similarity" in result.reasoning
 
     async def test_high_confidence_includes_all_matching_groups(
-        self, smart_classifier, embedding_service, redis_client, field_groups, settings
+        self, smart_classifier, embedding_service, redis_client, field_groups, app_config
     ):
         """All groups above high threshold should be included."""
         # Mock embeddings with controlled cosine similarities
@@ -283,7 +285,7 @@ class TestSmartClassifierMediumConfidence:
     """Test medium confidence classification path (reranker fallback)."""
 
     async def test_medium_confidence_uses_reranker(
-        self, smart_classifier, embedding_service, redis_client, field_groups, settings
+        self, smart_classifier, embedding_service, redis_client, field_groups, app_config
     ):
         """Medium similarity should trigger reranker for confirmation."""
         # Mock embeddings - moderate similarity (between 0.4 and 0.75)
@@ -321,7 +323,7 @@ class TestSmartClassifierMediumConfidence:
         assert "company_info" not in result.relevant_groups
 
     async def test_reranker_confirms_multiple_groups(
-        self, smart_classifier, embedding_service, redis_client, field_groups, settings
+        self, smart_classifier, embedding_service, redis_client, field_groups, app_config
     ):
         """Reranker should confirm all groups above threshold."""
         # All embeddings in medium range (0.4 to 0.75) to trigger reranker
@@ -493,13 +495,17 @@ class TestSmartClassifierDisabled:
         self, embedding_service, redis_client, field_groups
     ):
         """When disabled, should fall back to rule-based classification."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=False,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
         )
 
         result = await classifier.classify(
@@ -740,8 +746,12 @@ class TestClassificationConfigIntegration:
         self, embedding_service, redis_client, field_groups
     ):
         """Custom skip patterns should override default patterns."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         # Custom config that only skips /custom-skip/
         classification_config = ClassificationConfig(skip_patterns=[r"/custom-skip/"])
@@ -749,7 +759,7 @@ class TestClassificationConfigIntegration:
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -775,11 +785,12 @@ class TestClassificationConfigIntegration:
         self, embedding_service, redis_client, field_groups
     ):
         """Empty skip patterns list disables all URL-based skipping."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_embedding_high_threshold = 0.75
-        settings.classification_embedding_low_threshold = 0.4
-        settings.classification_cache_ttl = 86400
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         # Explicitly empty patterns = no skipping
         classification_config = ClassificationConfig(skip_patterns=[])
@@ -787,7 +798,7 @@ class TestClassificationConfigIntegration:
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -815,12 +826,12 @@ class TestClassificationConfigIntegration:
         self, embedding_service, redis_client, field_groups
     ):
         """Null patterns with smart classification enabled uses no skip patterns."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = False
-        settings.classification_embedding_high_threshold = 0.75
-        settings.classification_embedding_low_threshold = 0.4
-        settings.classification_cache_ttl = 86400
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=False,
+        )
 
         # None patterns = context-agnostic (no skipping when smart enabled)
         classification_config = ClassificationConfig(skip_patterns=None)
@@ -828,7 +839,7 @@ class TestClassificationConfigIntegration:
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -856,8 +867,12 @@ class TestClassificationConfigIntegration:
         self, embedding_service, redis_client, field_groups
     ):
         """Null patterns without smart classification uses default patterns."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=False,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         # None patterns = use defaults when smart classification disabled
         classification_config = ClassificationConfig(skip_patterns=None)
@@ -865,7 +880,7 @@ class TestClassificationConfigIntegration:
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -882,9 +897,12 @@ class TestClassificationConfigIntegration:
         self, embedding_service, redis_client, field_groups
     ):
         """classification_use_default_skip_patterns setting forces defaults."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = True  # Force defaults
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         # None patterns with override = use defaults
         classification_config = ClassificationConfig(skip_patterns=None)
@@ -892,7 +910,7 @@ class TestClassificationConfigIntegration:
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -909,12 +927,12 @@ class TestClassificationConfigIntegration:
         self, embedding_service, redis_client, field_groups
     ):
         """Explicit patterns in config override global setting."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = True  # Would force defaults
-        settings.classification_embedding_high_threshold = 0.75
-        settings.classification_embedding_low_threshold = 0.4
-        settings.classification_cache_ttl = 86400
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         # Explicit empty patterns should override global setting
         classification_config = ClassificationConfig(skip_patterns=[])
@@ -922,7 +940,7 @@ class TestClassificationConfigIntegration:
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -952,15 +970,18 @@ class TestResolveSkipPatterns:
 
     def test_explicit_empty_list(self, embedding_service, redis_client):
         """Explicit empty list returns empty list."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=False,
+        )
 
         classification_config = ClassificationConfig(skip_patterns=[])
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -968,16 +989,19 @@ class TestResolveSkipPatterns:
 
     def test_explicit_custom_patterns(self, embedding_service, redis_client):
         """Explicit custom patterns are used."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=False,
+        )
 
         custom = [r"/my-pattern/"]
         classification_config = ClassificationConfig(skip_patterns=custom)
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -985,15 +1009,18 @@ class TestResolveSkipPatterns:
 
     def test_none_with_smart_enabled_uses_empty(self, embedding_service, redis_client):
         """None patterns with smart classification uses empty list."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=False,
+        )
 
         classification_config = ClassificationConfig(skip_patterns=None)
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -1001,14 +1028,18 @@ class TestResolveSkipPatterns:
 
     def test_none_with_smart_disabled_uses_defaults(self, embedding_service, redis_client):
         """None patterns without smart classification uses defaults."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=False,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         classification_config = ClassificationConfig(skip_patterns=None)
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 
@@ -1019,15 +1050,18 @@ class TestResolveSkipPatterns:
 
     def test_no_config_with_smart_enabled_uses_empty(self, embedding_service, redis_client):
         """No config with smart classification uses empty list (context-agnostic)."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = False
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=False,
+        )
 
         # No classification_config provided
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=None,
         )
 
@@ -1035,15 +1069,18 @@ class TestResolveSkipPatterns:
 
     def test_global_override_forces_defaults(self, embedding_service, redis_client):
         """Global override setting forces default patterns."""
-        settings = MagicMock(spec=Settings)
-        settings.smart_classification_enabled = True
-        settings.classification_use_default_skip_patterns = True  # Override
+        app_config = AppClassificationConfig(
+            enabled=True, skip_enabled=True, smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4, reranker_threshold=0.5,
+            cache_ttl=86400, use_default_skip_patterns=True,
+        )
 
         classification_config = ClassificationConfig(skip_patterns=None)
         classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=redis_client,
-            settings=settings,
+            app_config=app_config,
             classification_config=classification_config,
         )
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import redis.asyncio as aioredis
 import structlog
 
-from config import Settings
+from config import ClassificationConfig as AppClassificationConfig
 from services.extraction.content_cleaner import clean_markdown_for_embedding
 from services.extraction.field_groups import FieldGroup
 from services.extraction.page_classifier import (
@@ -53,7 +53,7 @@ class SmartClassifier:
         self,
         embedding_service: EmbeddingService,
         redis_client: aioredis.Redis,
-        settings: Settings,
+        app_config: AppClassificationConfig,
         classification_config: ClassificationConfig | None = None,
     ):
         """Initialize SmartClassifier.
@@ -61,13 +61,13 @@ class SmartClassifier:
         Args:
             embedding_service: Service for generating embeddings.
             redis_client: Async Redis client for caching.
-            settings: Application settings.
+            app_config: App-level classification settings (thresholds, models).
             classification_config: Optional classification configuration from template.
                 Controls skip patterns for context-agnostic extraction.
         """
         self._embedding_service = embedding_service
         self._redis = redis_client
-        self._settings = settings
+        self._app_config = app_config
         self._classification_config = classification_config
 
         # Resolve skip patterns based on config and settings
@@ -98,11 +98,11 @@ class SmartClassifier:
             return self._classification_config.skip_patterns
 
         # Check global override setting
-        if getattr(self._settings, "classification_use_default_skip_patterns", False):
+        if self._app_config.use_default_skip_patterns:
             return None  # Use DEFAULT_SKIP_PATTERNS
 
         # Smart classification default: context-agnostic (no skip patterns)
-        if self._settings.smart_classification_enabled:
+        if self._app_config.smart_enabled:
             return []  # Empty list = no skip patterns
 
         # Fallback: use DEFAULT_SKIP_PATTERNS (backward compatible)
@@ -137,7 +137,7 @@ class SmartClassifier:
             return rule_result
 
         # If smart classification is disabled, fall back to rule-based
-        if not self._settings.smart_classification_enabled:
+        if not self._app_config.smart_enabled:
             return rule_result
 
         # Step 2: Try embedding-based classification
@@ -221,8 +221,8 @@ class SmartClassifier:
             )
 
         # Determine classification based on scores
-        high_threshold = self._settings.classification_embedding_high_threshold
-        low_threshold = self._settings.classification_embedding_low_threshold
+        high_threshold = self._app_config.embedding_high_threshold
+        low_threshold = self._app_config.embedding_low_threshold
 
         max_score = max(scores.values())
         high_confidence_groups = [
@@ -312,7 +312,7 @@ class SmartClassifier:
             rerank_results = await self._embedding_service.rerank(
                 query=query,
                 documents=group_texts,
-                model=self._settings.reranker_model,
+                model=self._app_config.reranker_model,
             )
         except Exception as e:
             logger.warning(
@@ -321,7 +321,7 @@ class SmartClassifier:
                 error=str(e),
             )
             # Fall back to medium-confidence groups based on embedding scores
-            threshold = self._settings.classification_embedding_low_threshold
+            threshold = self._app_config.embedding_low_threshold
             medium_groups = [
                 name for name, score in embedding_scores.items() if score >= threshold
             ]
@@ -343,7 +343,7 @@ class SmartClassifier:
                 reranker_scores[group_names[idx]] = score
 
         # Select groups above reranker threshold
-        reranker_threshold = self._settings.classification_reranker_threshold
+        reranker_threshold = self._app_config.reranker_threshold
         confirmed_groups = [
             name for name, score in reranker_scores.items() if score >= reranker_threshold
         ]
@@ -446,7 +446,7 @@ class SmartClassifier:
                 try:
                     await self._redis.setex(
                         cache_key,
-                        self._settings.classification_cache_ttl,
+                        self._app_config.cache_ttl,
                         json.dumps(embedding),
                     )
                 except Exception as e:
