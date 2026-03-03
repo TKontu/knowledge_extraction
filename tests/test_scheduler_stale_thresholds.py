@@ -229,13 +229,13 @@ def test_crawl_job_longer_threshold(db: Session, test_project):
 @pytest.mark.asyncio
 async def test_custom_threshold_from_settings(db: Session, test_project, mock_settings):
     """Scheduler should use custom thresholds from settings."""
+    from unittest.mock import MagicMock
     from services.scraper.scheduler import JobScheduler
 
-    # Create scheduler with custom settings
-    scheduler = JobScheduler(poll_interval=5)
+    mock_container = MagicMock()
+    scheduler = JobScheduler(services=mock_container, poll_interval=5)
 
     # Verify scheduler has access to custom settings
-    # This will be implemented when we add settings support to scheduler
     assert mock_settings.job_stale_threshold_scrape == 300
     assert mock_settings.job_stale_threshold_extract == 900
     assert mock_settings.job_stale_threshold_crawl == 1800

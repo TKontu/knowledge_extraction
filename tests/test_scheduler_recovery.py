@@ -13,6 +13,19 @@ class TestScrapeWorkerStaleRecovery:
     """Test that scrape worker recovers stale 'running' jobs."""
 
     @pytest.fixture
+    def mock_container(self):
+        """Create a mock ServiceContainer."""
+        container = MagicMock()
+        container.firecrawl_client = MagicMock()
+        container.rate_limiter = MagicMock()
+        container.retry_config = MagicMock()
+        container.llm_queue = MagicMock()
+        container.deduplicator = MagicMock()
+        container.extraction_embedding = MagicMock()
+        container.embedding_service = MagicMock()
+        return container
+
+    @pytest.fixture
     def mock_db_session(self):
         """Create a mock database session factory."""
         mock_session = MagicMock()
@@ -42,12 +55,12 @@ class TestScrapeWorkerStaleRecovery:
 
     @pytest.mark.asyncio
     async def test_scrape_worker_picks_up_stale_running_job(
-        self, mock_db_session, stale_running_job
+        self, mock_container, mock_db_session, stale_running_job
     ):
         """Verify scheduler picks up stale 'running' scrape jobs."""
         from services.scraper.scheduler import JobScheduler
 
-        scheduler = JobScheduler(poll_interval=5)
+        scheduler = JobScheduler(services=mock_container, poll_interval=5)
         scheduler._running = True
 
         # First query (queued) returns None, second query (stale running) returns the job
@@ -71,19 +84,12 @@ class TestScrapeWorkerStaleRecovery:
         with patch("services.scraper.scheduler.SessionLocal", return_value=mock_db_session):
             # Track what filters were applied
             filters_applied = []
-            original_filter = mock_db_session.filter
 
             def track_filter(*args):
                 filters_applied.append(args)
                 return mock_db_session
 
             mock_db_session.filter.side_effect = track_filter
-
-            # Verify the query structure includes both queued and stale running checks
-            # This is a structural test - we need the code to query for stale jobs
-
-            # For this test, we just verify the scheduler calls the right queries
-            # The actual implementation test is in the integration tests
 
 
 class TestExtractWorkerStaleRecovery:

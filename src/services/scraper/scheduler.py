@@ -2,10 +2,8 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 
 import structlog
-from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
 logger = structlog.get_logger(__name__)
@@ -14,27 +12,17 @@ from config import settings
 from constants import JobStatus, JobType
 from database import SessionLocal
 from orm_models import Job
-from qdrant_connection import qdrant_client
-from redis_client import get_async_redis, redis_client
-from services.extraction.extractor import ExtractionOrchestrator
 from services.extraction.backpressure import BackpressureManager
-from services.extraction.embedding_pipeline import ExtractionEmbeddingService
+from services.extraction.extractor import ExtractionOrchestrator
 from services.extraction.pipeline import ExtractionPipelineService
 from services.extraction.profiles import ProfileRepository
 from services.extraction.worker import ExtractionWorker
 from services.knowledge.extractor import EntityExtractor
 from services.llm.client import LLMClient
-from services.llm.queue import LLMRequestQueue
-from services.llm.worker import LLMWorker
 from services.projects.repository import ProjectRepository
-from services.scraper.client import FirecrawlClient
 from services.scraper.crawl_worker import CrawlWorker
-from services.scraper.rate_limiter import DomainRateLimiter, RateLimitConfig
-from services.scraper.retry import RetryConfig
+from services.scraper.service_container import ServiceContainer
 from services.scraper.worker import ScraperWorker
-from services.storage.deduplication import ExtractionDeduplicator
-from services.storage.embedding import EmbeddingService
-from services.storage.qdrant.repository import QdrantRepository
 from services.storage.repositories.entity import EntityRepository
 from services.storage.repositories.extraction import ExtractionRepository
 from services.storage.repositories.source import SourceRepository
@@ -61,122 +49,67 @@ class JobScheduler:
     """Background scheduler for processing queued jobs.
 
     Periodically checks for queued scrape jobs and processes them
-    using the ScraperWorker.
+    using the ScraperWorker. Receives a ServiceContainer for access
+    to app-lifetime services.
 
     Args:
+        services: Container holding initialized services.
         poll_interval: Seconds between database polls for new jobs.
 
     Example:
-        scheduler = JobScheduler(poll_interval=5)
-        await scheduler.start()  # Runs until stopped
-        await scheduler.stop()   # Graceful shutdown
+        container = ServiceContainer()
+        await container.start()
+        scheduler = JobScheduler(services=container, poll_interval=5)
+        await scheduler.start()
+        await scheduler.stop()
+        await container.stop()
     """
 
-    def __init__(self, poll_interval: int = 5) -> None:
-        """Initialize JobScheduler.
-
-        Args:
-            poll_interval: Seconds to wait between polling for jobs (default: 5).
-        """
+    def __init__(self, services: ServiceContainer, poll_interval: int = 5) -> None:
+        self._services = services
         self.poll_interval = poll_interval
         self._running = False
         self._scrape_task: asyncio.Task | None = None
         self._extract_task: asyncio.Task | None = None
         self._crawl_tasks: list[asyncio.Task] = []
-        self._firecrawl_client: FirecrawlClient | None = None
-        self._rate_limiter: DomainRateLimiter | None = None
-        self._retry_config: RetryConfig | None = None
-        self._llm_queue: LLMRequestQueue | None = None
-        self._llm_worker: LLMWorker | None = None
-        self._llm_worker_task: asyncio.Task | None = None
-        self._async_redis = None  # Async Redis client for LLM queue
-        # Cached stateless services (reused across extraction jobs)
-        self._embedding_service: EmbeddingService | None = None
-        self._qdrant_repo: QdrantRepository | None = None
-        self._deduplicator: ExtractionDeduplicator | None = None
 
     async def start(self) -> None:
         """Start the background scheduler.
 
-        Begins polling for queued jobs and processing them.
+        Performs startup cleanup of stale jobs, then starts worker loops
+        with a configurable stagger delay between each.
         """
         self._running = True
-        self._firecrawl_client = FirecrawlClient(
-            base_url=settings.firecrawl_url,
-            timeout=settings.scrape_timeout,
-        )
-        # Initialize rate limiter
-        rate_limit_config = RateLimitConfig(
-            delay_min=settings.scrape_delay_min,
-            delay_max=settings.scrape_delay_max,
-            daily_limit=settings.scrape_daily_limit_per_domain,
-        )
-        self._rate_limiter = DomainRateLimiter(
-            redis_client=redis_client,
-            config=rate_limit_config,
-        )
-        # Initialize retry config
-        self._retry_config = RetryConfig(
-            max_retries=settings.scrape_retry_max_attempts,
-            base_delay=settings.scrape_retry_base_delay,
-            max_delay=settings.scrape_retry_max_delay,
-        )
 
-        # Initialize cached stateless services for extraction pipeline
-        self._embedding_service = EmbeddingService(settings)
-        self._qdrant_repo = QdrantRepository(qdrant_client)
-        self._extraction_embedding = ExtractionEmbeddingService(
-            self._embedding_service, self._qdrant_repo
-        )
-        self._deduplicator = ExtractionDeduplicator(
-            embedding_service=self._embedding_service,
-            qdrant_repo=self._qdrant_repo,
-        )
+        # Startup resilience: cleanup stale jobs from previous instance
+        if settings.scheduler_cleanup_stale_on_startup:
+            await self._cleanup_stale_jobs()
 
-        # Initialize LLM request queue and worker with async Redis
-        self._async_redis = await get_async_redis()
-        self._llm_queue = LLMRequestQueue(
-            redis=self._async_redis,
-            stream_key=settings.llm_queue_stream_key,
-            max_queue_depth=settings.llm_queue_max_depth,
-            backpressure_threshold=settings.llm_queue_backpressure_threshold,
-        )
-        llm_client = AsyncOpenAI(
-            base_url=settings.openai_base_url,
-            api_key=settings.openai_api_key,
-            timeout=settings.llm_http_timeout,
-        )
-        self._llm_worker = LLMWorker(
-            redis=self._async_redis,
-            llm_client=llm_client,
-            worker_id=f"llm-worker-{uuid4().hex[:8]}",
-            stream_key=settings.llm_queue_stream_key,
-            initial_concurrency=settings.llm_worker_concurrency,
-            max_concurrency=settings.llm_worker_max_concurrency,
-            min_concurrency=settings.llm_worker_min_concurrency,
-            model=settings.llm_model,
-            max_tokens=settings.llm_max_tokens,
-            response_ttl=settings.llm_response_ttl,
-        )
-        await self._llm_worker.initialize()
-        self._llm_worker_task = asyncio.create_task(self._llm_worker.start())
+        # Startup resilience: stagger worker creation
+        stagger = settings.scheduler_startup_stagger_seconds
 
-        # Start scrape, crawl, and extract workers concurrently
         self._scrape_task = asyncio.create_task(self._run_scrape_worker())
+        if stagger > 0:
+            await asyncio.sleep(stagger)
 
         # Spawn multiple crawl workers for multi-domain parallelism
         num_crawl_workers = settings.max_concurrent_crawls
-        self._crawl_tasks = [
-            asyncio.create_task(self._run_single_crawl_worker(worker_id=i))
-            for i in range(num_crawl_workers)
-        ]
+        for i in range(num_crawl_workers):
+            self._crawl_tasks.append(
+                asyncio.create_task(self._run_single_crawl_worker(worker_id=i))
+            )
+            if stagger > 0:
+                await asyncio.sleep(stagger)
 
+        if stagger > 0:
+            await asyncio.sleep(stagger)
         self._extract_task = asyncio.create_task(self._run_extract_worker())
 
     async def stop(self) -> None:
         """Stop the background scheduler gracefully.
 
-        Waits for current job to finish, then shuts down.
+        Waits for worker loops to finish. Does NOT stop services —
+        the ServiceContainer handles that.
         """
         self._running = False
         if self._scrape_task:
@@ -185,14 +118,48 @@ class JobScheduler:
             await asyncio.gather(*self._crawl_tasks, return_exceptions=True)
         if self._extract_task:
             await self._extract_task
-        if self._llm_worker:
-            await self._llm_worker.stop()
-        if self._llm_worker_task:
-            await self._llm_worker_task
-        if self._firecrawl_client:
-            await self._firecrawl_client.close()
-        if self._async_redis:
-            await self._async_redis.close()
+
+    async def _cleanup_stale_jobs(self) -> dict[str, int]:
+        """Mark running/cancelling jobs as failed on startup.
+
+        At startup, no jobs can be legitimately running since the process
+        just started. Any jobs in running/cancelling state are leftovers
+        from a crashed previous instance.
+        """
+        db = SessionLocal()
+        try:
+            now = datetime.now(UTC)
+            counts: dict[str, int] = {}
+            for status in (JobStatus.RUNNING, JobStatus.CANCELLING):
+                stale = (
+                    db.query(Job)
+                    .filter(Job.status == status)
+                    .with_for_update(skip_locked=True)
+                    .all()
+                )
+                for job in stale:
+                    job.status = JobStatus.FAILED
+                    job.error = (
+                        f"Server restart: was {status} when previous instance stopped"
+                    )
+                    job.completed_at = now
+                    logger.warning(
+                        "startup_cleanup_stale_job",
+                        job_id=str(job.id),
+                        job_type=job.type,
+                        previous_status=status,
+                    )
+                counts[status] = len(stale)
+            db.commit()
+            total = sum(counts.values())
+            logger.info("scheduler_startup_cleanup", total=total, **counts)
+            return counts
+        except Exception as e:
+            db.rollback()
+            logger.error("startup_cleanup_failed", error=str(e))
+            return {}
+        finally:
+            db.close()
 
     async def _run_scrape_worker(self) -> None:
         """Main loop for processing scrape jobs.
@@ -206,8 +173,6 @@ class JobScheduler:
                 db: Session = SessionLocal()
                 try:
                     # Atomically claim a job using SELECT FOR UPDATE SKIP LOCKED
-                    # This prevents race conditions where multiple workers grab the same job
-                    # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
                         .filter(
@@ -245,24 +210,20 @@ class JobScheduler:
                             )
 
                     if job:
-                        # Process the job with rate limiting
-                        # The worker will handle status transitions within its own transaction
                         worker = ScraperWorker(
                             db=db,
-                            firecrawl_client=self._firecrawl_client,
-                            rate_limiter=self._rate_limiter,
-                            retry_config=self._retry_config,
+                            firecrawl_client=self._services.firecrawl_client,
+                            rate_limiter=self._services.rate_limiter,
+                            retry_config=self._services.retry_config,
                         )
                         await worker.process_job(job)
                     else:
-                        # No jobs available, wait before polling again
                         await asyncio.sleep(self.poll_interval)
 
                 finally:
                     db.close()
 
             except Exception as e:
-                # Log error but keep scheduler running
                 logger.error("scrape_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
@@ -271,11 +232,6 @@ class JobScheduler:
 
         This worker continuously polls for crawl jobs and processes them to completion.
         Multiple instances of this worker run in parallel to enable multi-domain parallelism.
-
-        Polling strategy:
-        1. Queued jobs (highest priority) - start new crawls
-        2. Running jobs needing status poll (updated_at > crawl_poll_interval ago)
-        3. Stale jobs are logged as warnings but handled by the same poll mechanism
 
         Args:
             worker_id: Unique identifier for this worker (for logging).
@@ -300,7 +256,6 @@ class JobScheduler:
                     )
 
                     # If no queued jobs, try to get a running job that needs polling
-                    # Poll every crawl_poll_interval seconds to check Firecrawl status
                     if not job:
                         poll_threshold = datetime.now(UTC) - timedelta(
                             seconds=settings.crawl_poll_interval
@@ -312,12 +267,12 @@ class JobScheduler:
                                 Job.status == JobStatus.RUNNING,
                                 Job.updated_at < poll_threshold,
                             )
-                            .order_by(Job.updated_at.asc())  # Poll oldest first
+                            .order_by(Job.updated_at.asc())
                             .with_for_update(skip_locked=True)
                             .first()
                         )
 
-                        # Log warning if job is past stale threshold (potential issue)
+                        # Log warning if job is past stale threshold
                         if job:
                             thresholds = get_stale_thresholds()
                             stale_threshold = datetime.now(UTC) - thresholds["crawl"]
@@ -337,11 +292,10 @@ class JobScheduler:
                     if job:
                         worker = CrawlWorker(
                             db=db,
-                            firecrawl_client=self._firecrawl_client,
+                            firecrawl_client=self._services.firecrawl_client,
                         )
                         await worker.process_job(job)
                     else:
-                        # No jobs available, wait before polling again
                         await asyncio.sleep(self.poll_interval)
 
                 finally:
@@ -366,12 +320,8 @@ class JobScheduler:
         shutdown = get_shutdown_manager()
         while self._running and not shutdown.is_shutting_down:
             try:
-                # Get a database session
                 db: Session = SessionLocal()
                 try:
-                    # Atomically claim a job using SELECT FOR UPDATE SKIP LOCKED
-                    # This prevents race conditions where multiple workers grab the same job
-                    # The row lock is held for the transaction duration, ensuring exclusive access
                     job = (
                         db.query(Job)
                         .filter(
@@ -382,7 +332,7 @@ class JobScheduler:
                         .first()
                     )
 
-                    # If no queued jobs, check for stale running jobs that need recovery
+                    # If no queued jobs, check for stale running jobs
                     if not job:
                         thresholds = get_stale_thresholds()
                         stale_threshold = datetime.now(UTC) - thresholds["extract"]
@@ -411,7 +361,9 @@ class JobScheduler:
                     if job:
                         # Build pipeline: cached stateless services + fresh per-job deps
                         llm_queue = (
-                            self._llm_queue if settings.llm_queue_enabled else None
+                            self._services.llm_queue
+                            if settings.llm_queue_enabled
+                            else None
                         )
                         llm_client = LLMClient(settings, llm_queue=llm_queue)
                         orchestrator = ExtractionOrchestrator(llm_client=llm_client)
@@ -421,19 +373,16 @@ class JobScheduler:
                         )
                         pipeline_service = ExtractionPipelineService(
                             orchestrator=orchestrator,
-                            deduplicator=self._deduplicator,
+                            deduplicator=self._services.deduplicator,
                             entity_extractor=entity_extractor,
                             extraction_repo=ExtractionRepository(db),
                             source_repo=SourceRepository(db),
                             project_repo=ProjectRepository(db),
-                            extraction_embedding=self._extraction_embedding,
+                            extraction_embedding=self._services.extraction_embedding,
                             profile_repo=ProfileRepository(db),
                             backpressure=BackpressureManager(llm_queue=llm_queue),
                         )
 
-                        # Process the job
-                        # The worker will handle status transitions within its own transaction
-                        # Pass settings and llm_queue for schema-based extraction support
                         worker = ExtractionWorker(
                             db=db,
                             pipeline_service=pipeline_service,
@@ -442,14 +391,12 @@ class JobScheduler:
                         )
                         await worker.process_job(job)
                     else:
-                        # No jobs available, wait before polling again
                         await asyncio.sleep(self.poll_interval)
 
                 finally:
                     db.close()
 
             except Exception as e:
-                # Log error but keep scheduler running
                 logger.error("extract_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
@@ -463,7 +410,8 @@ class JobScheduler:
         await self.stop()
 
 
-# Global scheduler instance
+# Global instances — backward compatible with start_scheduler()/stop_scheduler()
+_container: ServiceContainer | None = None
 _scheduler: JobScheduler | None = None
 
 
@@ -472,9 +420,12 @@ async def start_scheduler() -> None:
 
     Should be called during application startup.
     """
-    global _scheduler
+    global _container, _scheduler
+    if _container is None:
+        _container = ServiceContainer()
+        await _container.start()
     if _scheduler is None:
-        _scheduler = JobScheduler(poll_interval=5)
+        _scheduler = JobScheduler(services=_container, poll_interval=5)
         await _scheduler.start()
 
 
@@ -483,7 +434,10 @@ async def stop_scheduler() -> None:
 
     Should be called during application shutdown.
     """
-    global _scheduler
+    global _container, _scheduler
     if _scheduler is not None:
         await _scheduler.stop()
         _scheduler = None
+    if _container is not None:
+        await _container.stop()
+        _container = None
