@@ -274,12 +274,21 @@ class TestSchemaExtractorWithContext:
             from services.extraction.field_groups import FieldGroup, FieldDefinition
 
             # Mock settings
-            class MockSettings:
-                llm_model = "test"
-                openai_base_url = "http://test"
-                openai_api_key = "test"
-                llm_http_timeout = 30
-                extraction_content_limit = 20000
+            from config import LLMConfig
+            llm = LLMConfig(
+                base_url="http://test",
+                embedding_base_url="http://test",
+                api_key="test",
+                model="test",
+                embedding_model="bge-m3",
+                http_timeout=30,
+                max_tokens=4096,
+                max_retries=3,
+                retry_backoff_min=2,
+                retry_backoff_max=30,
+                base_temperature=0.1,
+                retry_temperature_increment=0.05,
+            )
 
             # Custom context
             context = ExtractionContext(
@@ -288,7 +297,7 @@ class TestSchemaExtractorWithContext:
                 entity_id_fields=["recipe_name", "recipe_id"],
             )
 
-            extractor = SchemaExtractor(MockSettings(), llm_queue=None, context=context)
+            extractor = SchemaExtractor(llm, llm_queue=None, content_limit=20000, context=context)
             return extractor, FieldGroup, FieldDefinition
         except ImportError:
             pytest.skip("Dependencies not available")
@@ -300,14 +309,22 @@ class TestSchemaExtractorWithContext:
             from services.extraction.schema_extractor import SchemaExtractor
             from services.extraction.field_groups import FieldGroup, FieldDefinition
 
-            class MockSettings:
-                llm_model = "test"
-                openai_base_url = "http://test"
-                openai_api_key = "test"
-                llm_http_timeout = 30
-                extraction_content_limit = 20000
-
-            extractor = SchemaExtractor(MockSettings(), llm_queue=None)
+            from config import LLMConfig
+            llm = LLMConfig(
+                base_url="http://test",
+                embedding_base_url="http://test",
+                api_key="test",
+                model="test",
+                embedding_model="bge-m3",
+                http_timeout=30,
+                max_tokens=4096,
+                max_retries=3,
+                retry_backoff_min=2,
+                retry_backoff_max=30,
+                base_temperature=0.1,
+                retry_temperature_increment=0.05,
+            )
+            extractor = SchemaExtractor(llm, llm_queue=None, content_limit=20000)
             return extractor, FieldGroup, FieldDefinition
         except ImportError:
             pytest.skip("Dependencies not available")

@@ -59,23 +59,23 @@ class TestSchemaExtractorQueueMode:
     """Tests for SchemaExtractor using LLM request queue."""
 
     @pytest.fixture
-    def mock_settings(self):
-        """Create mock settings."""
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        settings.llm_request_timeout = 300
-        # Retry settings
-        settings.llm_max_retries = 3
-        settings.llm_base_temperature = 0.1
-        settings.llm_retry_temperature_increment = 0.05
-        settings.llm_retry_backoff_min = 2
-        settings.llm_retry_backoff_max = 30
-        settings.llm_max_tokens = 4096
-        settings.extraction_content_limit = 20000
-        return settings
+    def llm_config(self):
+        """Create LLMConfig for testing."""
+        from config import LLMConfig
+        return LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=2,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.05,
+        )
 
     @pytest.fixture
     def mock_queue(self):
@@ -86,7 +86,7 @@ class TestSchemaExtractorQueueMode:
         return queue
 
     @pytest.mark.asyncio
-    async def test_uses_queue_when_provided(self, mock_settings, mock_queue):
+    async def test_uses_queue_when_provided(self, llm_config, mock_queue):
         """Test that extractor uses queue when provided."""
         from services.extraction.schema_extractor import SchemaExtractor
         from services.llm.models import LLMResponse
@@ -101,7 +101,7 @@ class TestSchemaExtractorQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         result = await extractor.extract_field_group(
             content="We manufacture planetary gearboxes.",
@@ -118,7 +118,7 @@ class TestSchemaExtractorQueueMode:
         assert result["manufactures_motors"] is False
 
     @pytest.mark.asyncio
-    async def test_submits_correct_request_type(self, mock_settings, mock_queue):
+    async def test_submits_correct_request_type(self, llm_config, mock_queue):
         """Test that correct request type is submitted."""
         from services.llm.models import LLMRequest, LLMResponse
 
@@ -132,7 +132,7 @@ class TestSchemaExtractorQueueMode:
         )
 
         from services.extraction.schema_extractor import SchemaExtractor
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         await extractor.extract_field_group(
             content="Test content",
@@ -151,7 +151,7 @@ class TestSchemaExtractorQueueMode:
         assert "source_context" in submitted_request.payload
 
     @pytest.mark.asyncio
-    async def test_queue_payload_includes_prompts(self, mock_settings, mock_queue):
+    async def test_queue_payload_includes_prompts(self, llm_config, mock_queue):
         """Test that queue payload includes system_prompt and user_prompt."""
         from services.llm.models import LLMResponse
 
@@ -165,7 +165,7 @@ class TestSchemaExtractorQueueMode:
         )
 
         from services.extraction.schema_extractor import SchemaExtractor
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         await extractor.extract_field_group(
             content="We manufacture gearboxes and motors.",
@@ -186,7 +186,7 @@ class TestSchemaExtractorQueueMode:
         assert "manufacture" in submitted_request.payload["user_prompt"].lower()
 
     @pytest.mark.asyncio
-    async def test_handles_queue_error_response(self, mock_settings, mock_queue):
+    async def test_handles_queue_error_response(self, llm_config, mock_queue):
         """Test that error responses from queue are handled."""
         from exceptions import LLMExtractionError
         from services.extraction.schema_extractor import SchemaExtractor
@@ -201,7 +201,7 @@ class TestSchemaExtractorQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         with pytest.raises(LLMExtractionError) as exc_info:
             await extractor.extract_field_group(
@@ -213,7 +213,7 @@ class TestSchemaExtractorQueueMode:
         assert "LLM processing failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_handles_queue_timeout_response(self, mock_settings, mock_queue):
+    async def test_handles_queue_timeout_response(self, llm_config, mock_queue):
         """Test that timeout responses from queue are handled."""
         from exceptions import LLMExtractionError
         from services.extraction.schema_extractor import SchemaExtractor
@@ -228,7 +228,7 @@ class TestSchemaExtractorQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         with pytest.raises(LLMExtractionError) as exc_info:
             await extractor.extract_field_group(
@@ -240,12 +240,12 @@ class TestSchemaExtractorQueueMode:
         assert "timeout" in str(exc_info.value).lower() or "expired" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_direct_when_no_queue(self, mock_settings):
+    async def test_falls_back_to_direct_when_no_queue(self, llm_config):
         """Test that extractor uses direct LLM calls when no queue provided."""
         from services.extraction.schema_extractor import SchemaExtractor
 
         # No queue provided - should use direct mode
-        extractor = SchemaExtractor(mock_settings, llm_queue=None)
+        extractor = SchemaExtractor(llm_config, llm_queue=None)
 
         # Mock the direct client
         extractor.client = MagicMock()
@@ -272,7 +272,7 @@ class TestSchemaExtractorQueueMode:
         assert result["manufactures_gearboxes"] is True
 
     @pytest.mark.asyncio
-    async def test_product_extraction_via_queue(self, mock_settings, mock_queue):
+    async def test_product_extraction_via_queue(self, llm_config, mock_queue):
         """Test product list extraction through queue."""
         from services.extraction.schema_extractor import SchemaExtractor
         from services.llm.models import LLMResponse
@@ -291,7 +291,7 @@ class TestSchemaExtractorQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         result = await extractor.extract_field_group(
             content="Our D Series gearbox offers 100kW.",
@@ -307,7 +307,7 @@ class TestSchemaExtractorQueueIntegration:
     """Integration tests for queue-based extraction."""
 
     @pytest.fixture
-    def mock_settings(self):
+    def llm_config(self):
         settings = MagicMock()
         settings.openai_base_url = "http://localhost:9003/v1"
         settings.openai_api_key = "test"
@@ -324,7 +324,7 @@ class TestSchemaExtractorQueueIntegration:
         return settings
 
     @pytest.mark.asyncio
-    async def test_concurrent_extractions_via_queue(self, mock_settings):
+    async def test_concurrent_extractions_via_queue(self, llm_config):
         """Test that multiple extractions can run concurrently via queue."""
         from services.extraction.schema_extractor import SchemaExtractor
         from services.llm.models import LLMRequest, LLMResponse
@@ -361,7 +361,7 @@ class TestSchemaExtractorQueueIntegration:
         mock_queue.submit = mock_submit
         mock_queue.wait_for_result = mock_wait
 
-        extractor = SchemaExtractor(mock_settings, llm_queue=mock_queue)
+        extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         # Run 5 extractions concurrently
         tasks = [

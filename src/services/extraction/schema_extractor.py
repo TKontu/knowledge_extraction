@@ -9,7 +9,7 @@ from uuid import uuid4
 import structlog
 from openai import AsyncOpenAI
 
-from config import Settings, settings as _settings_singleton
+from config import LLMConfig, settings as _settings_singleton
 from constants import LLM_RETRY_HINT
 from exceptions import LLMExtractionError
 from services.extraction.content_cleaner import strip_structural_junk
@@ -36,37 +36,42 @@ class SchemaExtractor:
 
     def __init__(
         self,
-        settings: Settings,
+        llm: LLMConfig,
+        *,
         llm_queue: "LLMRequestQueue | None" = None,
+        content_limit: int = 20000,
+        source_quoting: bool = True,
+        request_timeout: int = 300,
         context: "ExtractionContext | None" = None,
     ):
         """Initialize SchemaExtractor.
 
         Args:
-            settings: Application settings.
+            llm: LLM configuration with model, API URLs, and retry settings.
             llm_queue: Optional LLM request queue. If provided, uses queue mode.
+            content_limit: Max characters of source content to send to LLM.
+            source_quoting: Whether to include source quotes in extraction.
+            request_timeout: Timeout in seconds for queued LLM requests.
             context: Optional extraction context for prompt customization.
         """
         from services.extraction.schema_adapter import ExtractionContext
 
-        self.settings = settings
+        self._llm = llm
         self.llm_queue = llm_queue
-        self.model = settings.llm_model
+        self.model = llm.model
         self.context = context or ExtractionContext()
 
-        # Cache settings used at runtime (avoids module-level global_settings)
-        self._content_limit = settings.extraction_content_limit
-        self._source_quoting_enabled = getattr(
-            settings, "extraction_source_quoting_enabled", True
-        )
-        self._request_timeout = getattr(settings, "llm_request_timeout", 300)
+        # Cache settings used at runtime
+        self._content_limit = content_limit
+        self._source_quoting_enabled = source_quoting
+        self._request_timeout = request_timeout
 
         # Only create direct client if not using queue
         if llm_queue is None:
             self.client = AsyncOpenAI(
-                base_url=settings.openai_base_url,
-                api_key=settings.openai_api_key,
-                timeout=settings.llm_http_timeout,
+                base_url=llm.base_url,
+                api_key=llm.api_key,
+                timeout=llm.http_timeout,
             )
         else:
             self.client = None
@@ -213,12 +218,12 @@ class SchemaExtractor:
         Raises:
             LLMExtractionError: If all retry attempts fail.
         """
-        max_retries = self.settings.llm_max_retries
-        base_temp = self.settings.llm_base_temperature
-        temp_increment = self.settings.llm_retry_temperature_increment
-        backoff_min = self.settings.llm_retry_backoff_min
-        backoff_max = self.settings.llm_retry_backoff_max
-        max_tokens = self.settings.llm_max_tokens
+        max_retries = self._llm.max_retries
+        base_temp = self._llm.base_temperature
+        temp_increment = self._llm.retry_temperature_increment
+        backoff_min = self._llm.retry_backoff_min
+        backoff_max = self._llm.retry_backoff_max
+        max_tokens = self._llm.max_tokens
 
         last_error: Exception | None = None
 

@@ -342,7 +342,13 @@ async def extract_schema(
         )
 
     # Create extraction pipeline
-    extractor = SchemaExtractor(settings, llm_queue=llm_queue)
+    extractor = SchemaExtractor(
+        settings.llm,
+        llm_queue=llm_queue,
+        content_limit=settings.extraction_content_limit,
+        source_quoting=settings.extraction_source_quoting_enabled,
+        request_timeout=settings.llm_request_timeout,
+    )
 
     # Create smart classifier if enabled
     smart_classifier = None

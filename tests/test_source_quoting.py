@@ -46,19 +46,22 @@ PRODUCTS_GROUP = FieldGroup(
 
 
 @pytest.fixture
-def mock_settings():
-    s = MagicMock()
-    s.openai_base_url = "http://localhost:9003/v1"
-    s.openai_api_key = "test"
-    s.llm_http_timeout = 60
-    s.llm_model = "test-model"
-    s.llm_max_retries = 3
-    s.llm_base_temperature = 0.1
-    s.llm_retry_temperature_increment = 0.05
-    s.llm_retry_backoff_min = 2
-    s.llm_retry_backoff_max = 30
-    s.llm_max_tokens = 4096
-    return s
+def llm_config():
+    from config import LLMConfig
+    return LLMConfig(
+        base_url="http://localhost:9003/v1",
+        embedding_base_url="http://localhost:9003/v1",
+        api_key="test",
+        model="test-model",
+        embedding_model="bge-m3",
+        http_timeout=60,
+        max_tokens=4096,
+        max_retries=3,
+        retry_backoff_min=2,
+        retry_backoff_max=30,
+        base_temperature=0.1,
+        retry_temperature_increment=0.05,
+    )
 
 
 @pytest.fixture
@@ -72,33 +75,25 @@ def mock_extractor():
 class TestPromptQuoting:
     """Test that quoting instructions appear/disappear based on flag."""
 
-    def test_non_entity_prompt_includes_quotes_when_enabled(self, mock_settings):
-        with patch("services.extraction.schema_extractor.global_settings") as gs:
-            gs.extraction_source_quoting_enabled = True
-            extractor = SchemaExtractor(mock_settings)
+    def test_non_entity_prompt_includes_quotes_when_enabled(self, llm_config):
+            extractor = SchemaExtractor(llm_config, source_quoting=True)
             prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
             assert "_quotes" in prompt
             assert "verbatim excerpt" in prompt
 
-    def test_non_entity_prompt_excludes_quotes_when_disabled(self, mock_settings):
-        with patch("services.extraction.schema_extractor.global_settings") as gs:
-            gs.extraction_source_quoting_enabled = False
-            extractor = SchemaExtractor(mock_settings)
+    def test_non_entity_prompt_excludes_quotes_when_disabled(self, llm_config):
+            extractor = SchemaExtractor(llm_config, source_quoting=False)
             prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
             assert "_quotes" not in prompt
 
-    def test_entity_prompt_includes_quote_when_enabled(self, mock_settings):
-        with patch("services.extraction.schema_extractor.global_settings") as gs:
-            gs.extraction_source_quoting_enabled = True
-            extractor = SchemaExtractor(mock_settings)
+    def test_entity_prompt_includes_quote_when_enabled(self, llm_config):
+            extractor = SchemaExtractor(llm_config, source_quoting=True)
             prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
             assert "_quote" in prompt
             assert "verbatim excerpt" in prompt
 
-    def test_entity_prompt_excludes_quote_when_disabled(self, mock_settings):
-        with patch("services.extraction.schema_extractor.global_settings") as gs:
-            gs.extraction_source_quoting_enabled = False
-            extractor = SchemaExtractor(mock_settings)
+    def test_entity_prompt_excludes_quote_when_disabled(self, llm_config):
+            extractor = SchemaExtractor(llm_config, source_quoting=False)
             prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
             assert "_quote" not in prompt
 

@@ -79,13 +79,22 @@ class TestEntityListOutputKey:
             from services.extraction.field_groups import FieldGroup, FieldDefinition
 
             # Create minimal mock settings
-            class MockSettings:
-                llm_model = "test"
-                openai_base_url = "http://test"
-                openai_api_key = "test"
-                llm_http_timeout = 30
-
-            extractor = SchemaExtractor(MockSettings(), llm_queue=None)
+            from config import LLMConfig
+            llm = LLMConfig(
+                base_url="http://test",
+                embedding_base_url="http://test",
+                api_key="test",
+                model="test",
+                embedding_model="bge-m3",
+                http_timeout=30,
+                max_tokens=4096,
+                max_retries=3,
+                retry_backoff_min=2,
+                retry_backoff_max=30,
+                base_temperature=0.1,
+                retry_temperature_increment=0.05,
+            )
+            extractor = SchemaExtractor(llm, llm_queue=None)
             return extractor, FieldGroup, FieldDefinition
         except ImportError:
             pytest.skip("Dependencies not available")

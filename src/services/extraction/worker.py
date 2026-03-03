@@ -175,7 +175,13 @@ class ExtractionWorker:
         if not self.settings:
             raise ValueError("settings required for schema extraction")
 
-        extractor = SchemaExtractor(self.settings, llm_queue=self.llm_queue)
+        extractor = SchemaExtractor(
+            self.settings.llm,
+            llm_queue=self.llm_queue,
+            content_limit=self.settings.extraction_content_limit,
+            source_quoting=self.settings.extraction_source_quoting_enabled,
+            request_timeout=self.settings.llm_request_timeout,
+        )
 
         # Extract classification_config from project's extraction_schema
         classification_config = None

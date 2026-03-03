@@ -57,25 +57,26 @@ PRODUCTS_GEARBOX_GROUP = FieldGroup(
 
 class TestSchemaExtractor:
     @pytest.fixture
-    def mock_settings(self):
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        # Retry settings
-        settings.llm_max_retries = 3
-        settings.llm_base_temperature = 0.1
-        settings.llm_retry_temperature_increment = 0.05
-        settings.llm_retry_backoff_min = 2
-        settings.llm_retry_backoff_max = 30
-        settings.llm_max_tokens = 4096
-        settings.extraction_content_limit = 20000
-        return settings
+    def llm_config(self):
+        from config import LLMConfig
+        return LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=2,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.05,
+        )
 
-    async def test_extract_manufacturing_booleans(self, mock_settings):
+    async def test_extract_manufacturing_booleans(self, llm_config):
         """Test extraction of boolean manufacturing fields."""
-        extractor = SchemaExtractor(mock_settings)
+        extractor = SchemaExtractor(llm_config)
 
         # Mock the OpenAI response
         extractor.client = MagicMock()
@@ -100,9 +101,9 @@ class TestSchemaExtractor:
         assert result["manufactures_gearboxes"] is True
         assert result["manufactures_motors"] is False
 
-    async def test_extract_product_list(self, mock_settings):
+    async def test_extract_product_list(self, llm_config):
         """Test extraction of product entity list."""
-        extractor = SchemaExtractor(mock_settings)
+        extractor = SchemaExtractor(llm_config)
 
         extractor.client = MagicMock()
         extractor.client.chat.completions.create = AsyncMock(
@@ -125,9 +126,9 @@ class TestSchemaExtractor:
         assert len(result["products"]) == 1
         assert result["products"][0]["product_name"] == "D Series"
 
-    async def test_entity_list_truncation_returns_empty(self, mock_settings):
+    async def test_entity_list_truncation_returns_empty(self, llm_config):
         """Test that truncated entity list returns empty list instead of error."""
-        extractor = SchemaExtractor(mock_settings)
+        extractor = SchemaExtractor(llm_config)
 
         # Simulate truncated JSON response (finish_reason="length")
         truncated_json = '{"products_gearbox": [{"product_name": "Prod1"}, {"product_name": "Prod2'
@@ -153,9 +154,9 @@ class TestSchemaExtractor:
         assert isinstance(result["products_gearbox"], list)
         assert len(result["products_gearbox"]) >= 1
 
-    async def test_non_entity_truncation_attempts_repair(self, mock_settings):
+    async def test_non_entity_truncation_attempts_repair(self, llm_config):
         """Test that truncated non-entity extraction attempts JSON repair."""
-        extractor = SchemaExtractor(mock_settings)
+        extractor = SchemaExtractor(llm_config)
 
         # Repairable truncated JSON for non-entity group
         truncated_json = '{"manufactures_gearboxes": true, "manufactures_motors": false'
@@ -180,9 +181,9 @@ class TestSchemaExtractor:
         assert result["manufactures_gearboxes"] is True
         assert result["manufactures_motors"] is False
 
-    async def test_normal_completion_no_truncation_flag(self, mock_settings):
+    async def test_normal_completion_no_truncation_flag(self, llm_config):
         """Test that normal completion (finish_reason=stop) works correctly."""
-        extractor = SchemaExtractor(mock_settings)
+        extractor = SchemaExtractor(llm_config)
 
         extractor.client = MagicMock()
         extractor.client.chat.completions.create = AsyncMock(
@@ -224,18 +225,22 @@ class TestPromptGrounding:
 
     @pytest.fixture
     def extractor(self):
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        settings.llm_max_retries = 3
-        settings.llm_base_temperature = 0.1
-        settings.llm_retry_temperature_increment = 0.05
-        settings.llm_retry_backoff_min = 2
-        settings.llm_retry_backoff_max = 30
-        settings.llm_max_tokens = 4096
-        return SchemaExtractor(settings)
+        from config import LLMConfig
+        llm = LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=2,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.05,
+        )
+        return SchemaExtractor(llm)
 
     def test_non_entity_prompt_has_grounding(self, extractor):
         """Non-entity system prompt should contain grounding rules."""
@@ -290,19 +295,22 @@ class TestUserPromptCleaning:
 
     @pytest.fixture
     def extractor(self):
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        settings.llm_max_retries = 3
-        settings.llm_base_temperature = 0.1
-        settings.llm_retry_temperature_increment = 0.05
-        settings.llm_retry_backoff_min = 2
-        settings.llm_retry_backoff_max = 30
-        settings.llm_max_tokens = 4096
-        settings.extraction_content_limit = 20000
-        return SchemaExtractor(settings)
+        from config import LLMConfig
+        llm = LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=2,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.05,
+        )
+        return SchemaExtractor(llm, content_limit=20000)
 
     def test_user_prompt_strips_structural_junk(self, extractor):
         """User prompt should have bare nav links removed."""
