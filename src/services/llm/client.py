@@ -9,7 +9,7 @@ from uuid import uuid4
 import structlog
 from openai import AsyncOpenAI
 
-from config import Settings
+from config import LLMConfig
 from constants import LLM_RETRY_HINT
 from exceptions import LLMExtractionError
 from models import ExtractedFact
@@ -31,26 +31,30 @@ class LLMClient:
 
     def __init__(
         self,
-        settings: Settings,
+        llm: LLMConfig,
+        *,
         llm_queue: "LLMRequestQueue | None" = None,
+        request_timeout: int = 300,
     ):
         """Initialize LLM client.
 
         Args:
-            settings: Application settings.
+            llm: LLM configuration with model, API URLs, and retry settings.
             llm_queue: Optional LLM request queue. If provided, uses queue mode.
+            request_timeout: Timeout in seconds for queued LLM requests.
         """
-        self.settings = settings
+        self._llm = llm
         self.llm_queue = llm_queue
-        self.model = settings.llm_model
+        self.model = llm.model
+        self._request_timeout = request_timeout
         self._closed = False
 
         # Only create direct client if not using queue
         if llm_queue is None:
             self.client = AsyncOpenAI(
-                base_url=settings.openai_base_url,
-                api_key=settings.openai_api_key,
-                timeout=settings.llm_http_timeout,
+                base_url=llm.base_url,
+                api_key=llm.api_key,
+                timeout=llm.http_timeout,
             )
         else:
             self.client = None
@@ -126,7 +130,7 @@ class LLMClient:
         user_prompt = self._build_user_prompt(content)
 
         # Build request with prompts in payload
-        request_timeout = getattr(self.settings, "llm_request_timeout", 300)
+        request_timeout = self._request_timeout
         request = LLMRequest(
             request_id=str(uuid4()),
             request_type="extract_facts",
@@ -210,12 +214,12 @@ class LLMClient:
         Raises:
             LLMExtractionError: If all retry attempts fail.
         """
-        max_retries = self.settings.llm_max_retries
-        base_temp = self.settings.llm_base_temperature
-        temp_increment = self.settings.llm_retry_temperature_increment
-        backoff_min = self.settings.llm_retry_backoff_min
-        backoff_max = self.settings.llm_retry_backoff_max
-        max_tokens = self.settings.llm_max_tokens
+        max_retries = self._llm.max_retries
+        base_temp = self._llm.base_temperature
+        temp_increment = self._llm.retry_temperature_increment
+        backoff_min = self._llm.retry_backoff_min
+        backoff_max = self._llm.retry_backoff_max
+        max_tokens = self._llm.max_tokens
 
         last_error: Exception | None = None
 
@@ -425,7 +429,7 @@ Rules:
         )
 
         # Build request with prompts in payload
-        request_timeout = getattr(self.settings, "llm_request_timeout", 300)
+        request_timeout = self._request_timeout
         request = LLMRequest(
             request_id=str(uuid4()),
             request_type="extract_entities",
@@ -508,12 +512,12 @@ Rules:
         Raises:
             LLMExtractionError: If all retry attempts fail.
         """
-        max_retries = self.settings.llm_max_retries
-        base_temp = self.settings.llm_base_temperature
-        temp_increment = self.settings.llm_retry_temperature_increment
-        backoff_min = self.settings.llm_retry_backoff_min
-        backoff_max = self.settings.llm_retry_backoff_max
-        max_tokens = self.settings.llm_max_tokens
+        max_retries = self._llm.max_retries
+        base_temp = self._llm.base_temperature
+        temp_increment = self._llm.retry_temperature_increment
+        backoff_min = self._llm.retry_backoff_min
+        backoff_max = self._llm.retry_backoff_max
+        max_tokens = self._llm.max_tokens
 
         last_error: Exception | None = None
 
@@ -699,9 +703,9 @@ Guidelines:
     ) -> dict:
         """Direct LLM completion with retry logic."""
 
-        max_retries = self.settings.llm_max_retries
-        base_temp = temperature or self.settings.llm_base_temperature
-        temp_increment = self.settings.llm_retry_temperature_increment
+        max_retries = self._llm.max_retries
+        base_temp = temperature or self._llm.base_temperature
+        temp_increment = self._llm.retry_temperature_increment
 
         for attempt in range(1, max_retries + 1):
             # Vary temperature on retries to get different outputs
@@ -715,7 +719,7 @@ Guidelines:
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": current_temp,
-                    "max_tokens": self.settings.llm_max_tokens,
+                    "max_tokens": self._llm.max_tokens,
                 }
                 if response_format:
                     kwargs["response_format"] = response_format
@@ -732,7 +736,7 @@ Guidelines:
                 if attempt == max_retries:
                     raise LLMExtractionError(f"LLM completion failed: {e}") from e
                 await asyncio.sleep(
-                    self.settings.llm_retry_backoff_min * (2 ** (attempt - 1))
+                    self._llm.retry_backoff_min * (2 ** (attempt - 1))
                 )
 
     async def _complete_via_queue(

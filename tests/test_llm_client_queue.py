@@ -15,15 +15,23 @@ class TestLLMClientQueueMode:
     """Tests for LLMClient using LLM request queue."""
 
     @pytest.fixture
-    def mock_settings(self):
-        """Create mock settings."""
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        settings.llm_request_timeout = 300
-        return settings
+    def llm_config(self):
+        """Create LLMConfig for testing."""
+        from config import LLMConfig
+        return LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=1,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.1,
+        )
 
     @pytest.fixture
     def mock_queue(self):
@@ -34,7 +42,7 @@ class TestLLMClientQueueMode:
         return queue
 
     @pytest.mark.asyncio
-    async def test_uses_queue_when_provided(self, mock_settings, mock_queue):
+    async def test_uses_queue_when_provided(self, llm_config, mock_queue):
         """Test that LLMClient uses queue when provided."""
         from services.llm.models import LLMResponse
         from services.llm.client import LLMClient
@@ -49,7 +57,7 @@ class TestLLMClientQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         result = await client.extract_facts(
             content="Test content with facts.",
@@ -68,7 +76,7 @@ class TestLLMClientQueueMode:
         assert result[0].confidence == 0.9
 
     @pytest.mark.asyncio
-    async def test_submits_correct_request_type_for_facts(self, mock_settings, mock_queue):
+    async def test_submits_correct_request_type_for_facts(self, llm_config, mock_queue):
         """Test that correct request type is submitted for fact extraction."""
         from services.llm.models import LLMRequest, LLMResponse
 
@@ -82,7 +90,7 @@ class TestLLMClientQueueMode:
         )
 
         from services.llm.client import LLMClient
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         await client.extract_facts(
             content="Test content",
@@ -104,7 +112,7 @@ class TestLLMClientQueueMode:
         assert "user_prompt" in submitted_request.payload
 
     @pytest.mark.asyncio
-    async def test_includes_prompts_in_payload(self, mock_settings, mock_queue):
+    async def test_includes_prompts_in_payload(self, llm_config, mock_queue):
         """Test that pre-built prompts are included in queue request payload."""
         from services.llm.models import LLMResponse
 
@@ -118,7 +126,7 @@ class TestLLMClientQueueMode:
         )
 
         from services.llm.client import LLMClient
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         await client.extract_facts(
             content="Test content about gearboxes.",
@@ -137,7 +145,7 @@ class TestLLMClientQueueMode:
         assert "Test content about gearboxes" in submitted_request.payload["user_prompt"]
 
     @pytest.mark.asyncio
-    async def test_handles_queue_error_response(self, mock_settings, mock_queue):
+    async def test_handles_queue_error_response(self, llm_config, mock_queue):
         """Test that error responses from queue are handled."""
         from services.llm.models import LLMResponse
         from exceptions import LLMExtractionError
@@ -152,7 +160,7 @@ class TestLLMClientQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         with pytest.raises(LLMExtractionError) as exc_info:
             await client.extract_facts(
@@ -164,7 +172,7 @@ class TestLLMClientQueueMode:
         assert "LLM processing failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_handles_queue_timeout_response(self, mock_settings, mock_queue):
+    async def test_handles_queue_timeout_response(self, llm_config, mock_queue):
         """Test that timeout responses from queue are handled."""
         from services.llm.models import LLMResponse
         from exceptions import LLMExtractionError
@@ -179,7 +187,7 @@ class TestLLMClientQueueMode:
             completed_at=datetime.now(UTC),
         )
 
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         with pytest.raises(LLMExtractionError) as exc_info:
             await client.extract_facts(
@@ -191,20 +199,12 @@ class TestLLMClientQueueMode:
         assert "timeout" in str(exc_info.value).lower() or "expired" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_direct_when_no_queue(self, mock_settings):
+    async def test_falls_back_to_direct_when_no_queue(self, llm_config):
         """Test that LLMClient uses direct LLM calls when no queue provided."""
         from services.llm.client import LLMClient
 
-        # Set required numeric settings for direct mode retry logic
-        mock_settings.llm_max_retries = 1
-        mock_settings.llm_base_temperature = 0.1
-        mock_settings.llm_retry_temperature_increment = 0.1
-        mock_settings.llm_retry_backoff_min = 1.0
-        mock_settings.llm_retry_backoff_max = 5.0
-        mock_settings.llm_max_tokens = 4096
-
         # No queue provided - should use direct mode
-        client = LLMClient(mock_settings, llm_queue=None)
+        client = LLMClient(llm_config, llm_queue=None)
 
         # Mock the direct client
         client.client = MagicMock()
@@ -236,15 +236,23 @@ class TestLLMClientExtractEntities:
     """Tests for LLMClient.extract_entities() method."""
 
     @pytest.fixture
-    def mock_settings(self):
-        """Create mock settings."""
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        settings.llm_request_timeout = 300
-        return settings
+    def llm_config(self):
+        """Create LLMConfig for testing."""
+        from config import LLMConfig
+        return LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=1,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.1,
+        )
 
     @pytest.fixture
     def mock_queue(self):
@@ -255,16 +263,16 @@ class TestLLMClientExtractEntities:
         return queue
 
     @pytest.mark.asyncio
-    async def test_extract_entities_exists(self, mock_settings):
+    async def test_extract_entities_exists(self, llm_config):
         """Test that extract_entities method exists on LLMClient."""
         from services.llm.client import LLMClient
 
-        client = LLMClient(mock_settings)
+        client = LLMClient(llm_config)
         assert hasattr(client, "extract_entities")
         assert callable(client.extract_entities)
 
     @pytest.mark.asyncio
-    async def test_extract_entities_via_queue(self, mock_settings, mock_queue):
+    async def test_extract_entities_via_queue(self, llm_config, mock_queue):
         """Test entity extraction through queue."""
         from services.llm.models import LLMResponse
         from services.llm.client import LLMClient
@@ -283,7 +291,7 @@ class TestLLMClientExtractEntities:
             completed_at=datetime.now(UTC),
         )
 
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         extraction_data = {"fact_text": "Professional Plan includes API Access"}
         entity_types = [
@@ -307,7 +315,7 @@ class TestLLMClientExtractEntities:
         assert result[1]["type"] == "feature"
 
     @pytest.mark.asyncio
-    async def test_extract_entities_request_type(self, mock_settings, mock_queue):
+    async def test_extract_entities_request_type(self, llm_config, mock_queue):
         """Test that correct request type is submitted for entity extraction."""
         from services.llm.models import LLMRequest, LLMResponse
 
@@ -321,7 +329,7 @@ class TestLLMClientExtractEntities:
         )
 
         from services.llm.client import LLMClient
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         await client.extract_entities(
             extraction_data={"fact_text": "Test"},
@@ -342,7 +350,7 @@ class TestLLMClientExtractEntities:
         assert "user_prompt" in submitted_request.payload
 
     @pytest.mark.asyncio
-    async def test_extract_entities_prompts_in_payload(self, mock_settings, mock_queue):
+    async def test_extract_entities_prompts_in_payload(self, llm_config, mock_queue):
         """Test that entity extraction prompts are in payload."""
         from services.llm.models import LLMResponse
 
@@ -356,7 +364,7 @@ class TestLLMClientExtractEntities:
         )
 
         from services.llm.client import LLMClient
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         await client.extract_entities(
             extraction_data={"fact_text": "Enterprise plan with 1000 API calls/month"},
@@ -376,19 +384,11 @@ class TestLLMClientExtractEntities:
         assert "TestCompany" in submitted_request.payload["system_prompt"]
 
     @pytest.mark.asyncio
-    async def test_extract_entities_direct_mode(self, mock_settings):
+    async def test_extract_entities_direct_mode(self, llm_config):
         """Test entity extraction in direct mode (no queue)."""
         from services.llm.client import LLMClient
 
-        # Set required numeric settings for direct mode retry logic
-        mock_settings.llm_max_retries = 1
-        mock_settings.llm_base_temperature = 0.1
-        mock_settings.llm_retry_temperature_increment = 0.1
-        mock_settings.llm_retry_backoff_min = 1.0
-        mock_settings.llm_retry_backoff_max = 5.0
-        mock_settings.llm_max_tokens = 4096
-
-        client = LLMClient(mock_settings, llm_queue=None)
+        client = LLMClient(llm_config, llm_queue=None)
 
         # Mock the direct client
         client.client = MagicMock()
@@ -415,7 +415,7 @@ class TestLLMClientExtractEntities:
         assert result[0]["type"] == "plan"
 
     @pytest.mark.asyncio
-    async def test_extract_entities_handles_error(self, mock_settings, mock_queue):
+    async def test_extract_entities_handles_error(self, llm_config, mock_queue):
         """Test that entity extraction handles errors."""
         from services.llm.models import LLMResponse
         from exceptions import LLMExtractionError
@@ -430,7 +430,7 @@ class TestLLMClientExtractEntities:
             completed_at=datetime.now(UTC),
         )
 
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         with pytest.raises(LLMExtractionError) as exc_info:
             await client.extract_entities(
@@ -446,7 +446,7 @@ class TestLLMClientConcurrency:
     """Tests for concurrent operations via queue."""
 
     @pytest.fixture
-    def mock_settings(self):
+    def llm_config(self):
         settings = MagicMock()
         settings.openai_base_url = "http://localhost:9003/v1"
         settings.openai_api_key = "test"
@@ -456,7 +456,7 @@ class TestLLMClientConcurrency:
         return settings
 
     @pytest.mark.asyncio
-    async def test_concurrent_fact_extractions_via_queue(self, mock_settings):
+    async def test_concurrent_fact_extractions_via_queue(self, llm_config):
         """Test that multiple fact extractions can run concurrently via queue."""
         from services.llm.models import LLMRequest, LLMResponse
         from services.llm.client import LLMClient
@@ -493,7 +493,7 @@ class TestLLMClientConcurrency:
         mock_queue.submit = mock_submit
         mock_queue.wait_for_result = mock_wait
 
-        client = LLMClient(mock_settings, llm_queue=mock_queue)
+        client = LLMClient(llm_config, llm_queue=mock_queue)
 
         # Run 5 extractions concurrently
         tasks = [

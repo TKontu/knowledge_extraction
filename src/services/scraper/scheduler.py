@@ -365,7 +365,11 @@ class JobScheduler:
                             if settings.llm_queue_enabled
                             else None
                         )
-                        llm_client = LLMClient(settings, llm_queue=llm_queue)
+                        llm_client = LLMClient(
+                            settings.llm,
+                            llm_queue=llm_queue,
+                            request_timeout=settings.llm_queue.request_timeout,
+                        )
                         orchestrator = ExtractionOrchestrator(llm_client=llm_client)
                         entity_extractor = EntityExtractor(
                             llm_client=llm_client,

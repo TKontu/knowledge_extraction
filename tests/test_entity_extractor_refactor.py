@@ -295,14 +295,22 @@ class TestEntityExtractorWithQueueMode:
         return queue
 
     @pytest.fixture
-    def mock_settings(self):
-        settings = MagicMock()
-        settings.openai_base_url = "http://localhost:9003/v1"
-        settings.openai_api_key = "test"
-        settings.llm_http_timeout = 60
-        settings.llm_model = "test-model"
-        settings.llm_request_timeout = 300
-        return settings
+    def llm_config(self):
+        from config import LLMConfig
+        return LLMConfig(
+            base_url="http://localhost:9003/v1",
+            embedding_base_url="http://localhost:9003/v1",
+            api_key="test",
+            model="test-model",
+            embedding_model="bge-m3",
+            http_timeout=60,
+            max_tokens=4096,
+            max_retries=3,
+            retry_backoff_min=1,
+            retry_backoff_max=30,
+            base_temperature=0.1,
+            retry_temperature_increment=0.1,
+        )
 
     @pytest.fixture
     def mock_entity_repo(self):
@@ -322,7 +330,7 @@ class TestEntityExtractorWithQueueMode:
 
     @pytest.mark.asyncio
     async def test_works_with_queue_mode_llm_client(
-        self, mock_settings, mock_queue, mock_entity_repo
+        self, llm_config, mock_queue, mock_entity_repo
     ):
         """Test EntityExtractor works when LLMClient is in queue mode."""
         from services.knowledge.extractor import EntityExtractor
@@ -344,7 +352,7 @@ class TestEntityExtractorWithQueueMode:
         )
 
         # Create LLMClient in queue mode
-        llm_client = LLMClient(mock_settings, llm_queue=mock_queue)
+        llm_client = LLMClient(llm_config, llm_queue=mock_queue)
 
         # Create EntityExtractor with queue-mode client
         extractor = EntityExtractor(

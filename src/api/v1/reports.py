@@ -57,7 +57,7 @@ async def create_report(
     entity_repo = EntityRepository(db)
 
     # Use context manager to ensure LLMClient is properly closed
-    async with LLMClient(settings) as llm_client:
+    async with LLMClient(settings.llm) as llm_client:
         report_service = ReportService(
             extraction_repo=extraction_repo,
             entity_repo=entity_repo,
