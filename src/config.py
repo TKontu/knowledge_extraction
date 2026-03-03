@@ -1,5 +1,142 @@
+from dataclasses import dataclass
+
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ---------------------------------------------------------------------------
+# Typed subsystem facades (frozen dataclasses)
+# ---------------------------------------------------------------------------
+# These provide grouped access to settings (e.g. settings.llm.model) while
+# keeping all flat fields unchanged (settings.llm_model still works).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseConfig:
+    url: str
+    pool_size: int
+    max_overflow: int
+    pool_timeout: int
+
+
+@dataclass(frozen=True, slots=True)
+class LLMConfig:
+    base_url: str
+    embedding_base_url: str
+    api_key: str
+    model: str
+    embedding_model: str
+    http_timeout: int
+    max_tokens: int
+    max_retries: int
+    retry_backoff_min: int
+    retry_backoff_max: int
+    base_temperature: float
+    retry_temperature_increment: float
+
+
+@dataclass(frozen=True, slots=True)
+class LLMQueueConfig:
+    enabled: bool
+    stream_key: str
+    max_depth: int
+    backpressure_threshold: int
+    response_ttl: int
+    request_timeout: int
+    worker_concurrency: int
+    worker_max_concurrency: int
+    worker_min_concurrency: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionConfig:
+    content_limit: int
+    chunk_max_tokens: int
+    chunk_overlap_tokens: int
+    max_concurrent_chunks: int
+    max_concurrent_sources: int
+    source_quoting_enabled: bool
+    conflict_detection_enabled: bool
+    validation_enabled: bool
+    validation_min_confidence: float
+    embedding_max_concurrent: int
+    schema_embedding_enabled: bool
+    domain_dedup_enabled: bool
+    domain_dedup_threshold_pct: float
+    domain_dedup_min_pages: int
+    domain_dedup_min_block_chars: int
+
+
+@dataclass(frozen=True, slots=True)
+class ClassificationConfig:
+    enabled: bool
+    skip_enabled: bool
+    smart_enabled: bool
+    reranker_model: str
+    embedding_high_threshold: float
+    embedding_low_threshold: float
+    reranker_threshold: float
+    cache_ttl: int
+    use_default_skip_patterns: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ScrapingConfig:
+    delay_min: int
+    delay_max: int
+    max_concurrent_per_domain: int
+    daily_limit_per_domain: int
+    max_retries: int
+    timeout: int
+    retry_max_attempts: int
+    retry_base_delay: float
+    retry_max_delay: float
+    camoufox_networkidle_timeout: int
+    camoufox_content_stability_checks: int
+    camoufox_content_stability_interval: int
+
+
+@dataclass(frozen=True, slots=True)
+class CrawlConfig:
+    delay_ms: int
+    max_concurrency: int
+    max_concurrent_crawls: int
+    poll_interval: int
+    smart_relevance_threshold: float
+    smart_map_limit: int
+    smart_batch_max_concurrency: int
+    language_filtering_enabled: bool
+    language_detection_confidence: float
+    language_detection_timeout: float
+    excluded_language_codes: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class ProxyConfig:
+    enabled: bool
+    port: int
+    flaresolverr_url: str
+    flaresolverr_max_timeout: int
+    flaresolverr_blocked_domains: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerConfig:
+    cleanup_stale_on_startup: bool
+    startup_stagger_seconds: float
+    stale_threshold_scrape: int
+    stale_threshold_extract: int
+    stale_threshold_crawl: int
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityConfig:
+    log_level: str
+    log_format: str
+    metrics_enabled: bool
+    alerting_enabled: bool
+    alert_webhook_url: str | None
+    alert_webhook_format: str
 
 
 class Settings(BaseSettings):
@@ -413,6 +550,18 @@ class Settings(BaseSettings):
         description="Crawl job stale threshold in seconds (default: 30 minutes)",
     )
 
+    # Scheduler Startup Resilience
+    scheduler_cleanup_stale_on_startup: bool = Field(
+        default=True,
+        description="Mark running/cancelling jobs as failed on startup",
+    )
+    scheduler_startup_stagger_seconds: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description="Delay between starting each worker loop on startup",
+    )
+
     # Domain Boilerplate Deduplication
     domain_dedup_enabled: bool = Field(
         default=True,
@@ -599,6 +748,173 @@ class Settings(BaseSettings):
             d.strip() for d in self.flaresolverr_blocked_domains.split(",") if d.strip()
         ]
 
+    # -------------------------------------------------------------------
+    # Typed subsystem facades
+    # -------------------------------------------------------------------
+
+    @property
+    def database(self) -> DatabaseConfig:
+        return DatabaseConfig(
+            url=self.database_url,
+            pool_size=self.db_pool_size,
+            max_overflow=self.db_max_overflow,
+            pool_timeout=self.db_pool_timeout,
+        )
+
+    @property
+    def llm(self) -> LLMConfig:
+        return LLMConfig(
+            base_url=self.openai_base_url,
+            embedding_base_url=self.openai_embedding_base_url,
+            api_key=self.openai_api_key,
+            model=self.llm_model,
+            embedding_model=self.rag_embedding_model,
+            http_timeout=self.llm_http_timeout,
+            max_tokens=self.llm_max_tokens,
+            max_retries=self.llm_max_retries,
+            retry_backoff_min=self.llm_retry_backoff_min,
+            retry_backoff_max=self.llm_retry_backoff_max,
+            base_temperature=self.llm_base_temperature,
+            retry_temperature_increment=self.llm_retry_temperature_increment,
+        )
+
+    @property
+    def llm_queue(self) -> LLMQueueConfig:
+        return LLMQueueConfig(
+            enabled=self.llm_queue_enabled,
+            stream_key=self.llm_queue_stream_key,
+            max_depth=self.llm_queue_max_depth,
+            backpressure_threshold=self.llm_queue_backpressure_threshold,
+            response_ttl=self.llm_response_ttl,
+            request_timeout=self.llm_request_timeout,
+            worker_concurrency=self.llm_worker_concurrency,
+            worker_max_concurrency=self.llm_worker_max_concurrency,
+            worker_min_concurrency=self.llm_worker_min_concurrency,
+        )
+
+    @property
+    def extraction(self) -> ExtractionConfig:
+        return ExtractionConfig(
+            content_limit=self.extraction_content_limit,
+            chunk_max_tokens=self.extraction_chunk_max_tokens,
+            chunk_overlap_tokens=self.extraction_chunk_overlap_tokens,
+            max_concurrent_chunks=self.extraction_max_concurrent_chunks,
+            max_concurrent_sources=self.extraction_max_concurrent_sources,
+            source_quoting_enabled=self.extraction_source_quoting_enabled,
+            conflict_detection_enabled=self.extraction_conflict_detection_enabled,
+            validation_enabled=self.extraction_validation_enabled,
+            validation_min_confidence=self.extraction_validation_min_confidence,
+            embedding_max_concurrent=self.embedding_max_concurrent,
+            schema_embedding_enabled=self.schema_extraction_embedding_enabled,
+            domain_dedup_enabled=self.domain_dedup_enabled,
+            domain_dedup_threshold_pct=self.domain_dedup_threshold_pct,
+            domain_dedup_min_pages=self.domain_dedup_min_pages,
+            domain_dedup_min_block_chars=self.domain_dedup_min_block_chars,
+        )
+
+    @property
+    def classification(self) -> ClassificationConfig:
+        return ClassificationConfig(
+            enabled=self.classification_enabled,
+            skip_enabled=self.classification_skip_enabled,
+            smart_enabled=self.smart_classification_enabled,
+            reranker_model=self.reranker_model,
+            embedding_high_threshold=self.classification_embedding_high_threshold,
+            embedding_low_threshold=self.classification_embedding_low_threshold,
+            reranker_threshold=self.classification_reranker_threshold,
+            cache_ttl=self.classification_cache_ttl,
+            use_default_skip_patterns=self.classification_use_default_skip_patterns,
+        )
+
+    @property
+    def scraping(self) -> ScrapingConfig:
+        return ScrapingConfig(
+            delay_min=self.scrape_delay_min,
+            delay_max=self.scrape_delay_max,
+            max_concurrent_per_domain=self.scrape_max_concurrent_per_domain,
+            daily_limit_per_domain=self.scrape_daily_limit_per_domain,
+            max_retries=self.scrape_max_retries,
+            timeout=self.scrape_timeout,
+            retry_max_attempts=self.scrape_retry_max_attempts,
+            retry_base_delay=self.scrape_retry_base_delay,
+            retry_max_delay=self.scrape_retry_max_delay,
+            camoufox_networkidle_timeout=self.camoufox_networkidle_timeout,
+            camoufox_content_stability_checks=self.camoufox_content_stability_checks,
+            camoufox_content_stability_interval=self.camoufox_content_stability_interval,
+        )
+
+    @property
+    def crawl(self) -> CrawlConfig:
+        return CrawlConfig(
+            delay_ms=self.crawl_delay_ms,
+            max_concurrency=self.crawl_max_concurrency,
+            max_concurrent_crawls=self.max_concurrent_crawls,
+            poll_interval=self.crawl_poll_interval,
+            smart_relevance_threshold=self.smart_crawl_default_relevance_threshold,
+            smart_map_limit=self.smart_crawl_map_limit,
+            smart_batch_max_concurrency=self.smart_crawl_batch_max_concurrency,
+            language_filtering_enabled=self.language_filtering_enabled,
+            language_detection_confidence=self.language_detection_confidence_threshold,
+            language_detection_timeout=self.language_detection_timeout_seconds,
+            excluded_language_codes=self.excluded_language_codes
+            if isinstance(self.excluded_language_codes, list)
+            else [
+                c.strip() for c in self.excluded_language_codes.split(",") if c.strip()
+            ],
+        )
+
+    @property
+    def proxy(self) -> ProxyConfig:
+        return ProxyConfig(
+            enabled=self.proxy_adapter_enabled,
+            port=self.proxy_adapter_port,
+            flaresolverr_url=self.flaresolverr_url,
+            flaresolverr_max_timeout=self.flaresolverr_max_timeout,
+            flaresolverr_blocked_domains=self.flaresolverr_blocked_domains
+            if isinstance(self.flaresolverr_blocked_domains, list)
+            else [
+                d.strip()
+                for d in self.flaresolverr_blocked_domains.split(",")
+                if d.strip()
+            ],
+        )
+
+    @property
+    def scheduler(self) -> SchedulerConfig:
+        return SchedulerConfig(
+            cleanup_stale_on_startup=self.scheduler_cleanup_stale_on_startup,
+            startup_stagger_seconds=self.scheduler_startup_stagger_seconds,
+            stale_threshold_scrape=self.job_stale_threshold_scrape,
+            stale_threshold_extract=self.job_stale_threshold_extract,
+            stale_threshold_crawl=self.job_stale_threshold_crawl,
+        )
+
+    @property
+    def observability(self) -> ObservabilityConfig:
+        return ObservabilityConfig(
+            log_level=self.log_level,
+            log_format=self.log_format,
+            metrics_enabled=self.enable_metrics,
+            alerting_enabled=self.alerting_enabled,
+            alert_webhook_url=self.alert_webhook_url,
+            alert_webhook_format=self.alert_webhook_format,
+        )
+
+
+__all__ = [
+    "Settings",
+    "settings",
+    "DatabaseConfig",
+    "LLMConfig",
+    "LLMQueueConfig",
+    "ExtractionConfig",
+    "ClassificationConfig",
+    "ScrapingConfig",
+    "CrawlConfig",
+    "ProxyConfig",
+    "SchedulerConfig",
+    "ObservabilityConfig",
+]
 
 # Global settings instance
 settings = Settings()
