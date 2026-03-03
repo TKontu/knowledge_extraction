@@ -607,7 +607,7 @@ class CrawlWorker:
                 if self._url_filter is None:
                     if self._embedding_service is None:
                         # Create embedding service
-                        self._embedding_service = EmbeddingService(settings)
+                        self._embedding_service = EmbeddingService(settings.llm)
                     from services.scraper.url_filter import UrlRelevanceFilter
                     self._url_filter = UrlRelevanceFilter(
                         self._embedding_service,

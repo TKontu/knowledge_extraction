@@ -7,7 +7,7 @@ import structlog
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from config import Settings
+from config import LLMConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -50,23 +50,31 @@ class EmbeddingService:
         cls._max_concurrent = max_concurrent
         cls._semaphore = asyncio.Semaphore(max_concurrent)
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        llm: LLMConfig,
+        *,
+        reranker_model: str = "bge-reranker-v2-m3",
+        max_concurrent: int = 50,
+    ):
         """Initialize EmbeddingService.
 
         Args:
-            settings: Application settings.
+            llm: LLM configuration with embedding URLs, keys, and model names.
+            reranker_model: Reranker model name for relevance scoring.
+            max_concurrent: Max concurrent embedding/rerank requests.
         """
         self.client = AsyncOpenAI(
-            base_url=settings.openai_embedding_base_url,
-            api_key=settings.openai_api_key,
+            base_url=llm.embedding_base_url,
+            api_key=llm.api_key,
         )
-        self.model = settings.rag_embedding_model
-        self._reranker_model = settings.reranker_model
+        self.model = llm.embedding_model
+        self._reranker_model = reranker_model
         self._http_client: httpx.AsyncClient | None = None
 
         # Configure class-level concurrency from settings (only on first instance)
         if EmbeddingService._semaphore is None:
-            EmbeddingService.configure_concurrency(settings.embedding_max_concurrent)
+            EmbeddingService.configure_concurrency(max_concurrent)
 
     @property
     def dimension(self) -> int:

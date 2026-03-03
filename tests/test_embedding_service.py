@@ -1,19 +1,26 @@
 """Tests for EmbeddingService."""
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+
 from config import Settings
 
 
 @pytest.fixture
-def embedding_service():
-    """Create EmbeddingService with test settings."""
+def llm_config():
+    """Create LLMConfig from default settings."""
+    s = Settings()
+    return s.llm
+
+
+@pytest.fixture
+def embedding_service(llm_config):
+    """Create EmbeddingService with test LLMConfig."""
     from services.storage.embedding import EmbeddingService
 
-    settings = Settings()
-    return EmbeddingService(settings)
+    return EmbeddingService(llm_config)
 
 
 @pytest.fixture
@@ -267,11 +274,13 @@ class TestEmbeddingServiceConcurrency:
         """Should configure concurrency from settings on first instance."""
         from services.storage.embedding import EmbeddingService
 
-        settings = Settings()
-        expected_concurrent = settings.embedding_max_concurrent
+        s = Settings()
+        expected_concurrent = s.embedding_max_concurrent
 
         # First instance should configure
-        service = EmbeddingService(settings)
+        service = EmbeddingService(
+            s.llm, max_concurrent=s.extraction.embedding_max_concurrent
+        )
 
         assert EmbeddingService._max_concurrent == expected_concurrent
         assert EmbeddingService._semaphore._value == expected_concurrent
@@ -280,12 +289,12 @@ class TestEmbeddingServiceConcurrency:
         """Should reuse existing semaphore for subsequent instances."""
         from services.storage.embedding import EmbeddingService
 
-        settings = Settings()
+        llm = Settings().llm
 
-        service1 = EmbeddingService(settings)
+        service1 = EmbeddingService(llm)
         semaphore_after_first = EmbeddingService._semaphore
 
-        service2 = EmbeddingService(settings)
+        service2 = EmbeddingService(llm)
         semaphore_after_second = EmbeddingService._semaphore
 
         # Same semaphore instance
@@ -298,8 +307,7 @@ class TestEmbeddingServiceConcurrency:
         # Configure with low concurrency for testing
         EmbeddingService.configure_concurrency(2)
 
-        settings = Settings()
-        service = EmbeddingService(settings)
+        service = EmbeddingService(Settings().llm)
 
         # Track concurrent executions
         max_concurrent_observed = 0
@@ -345,8 +353,7 @@ class TestEmbeddingModelDefault:
         """EmbeddingService should use bge-m3 from default settings."""
         from services.storage.embedding import EmbeddingService
 
-        settings = Settings()
-        service = EmbeddingService(settings)
+        service = EmbeddingService(Settings().llm)
         assert service.model == "bge-m3"
 
 

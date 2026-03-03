@@ -67,7 +67,11 @@ class ServiceContainer:
         )
 
         # Cached stateless services for extraction pipeline
-        self._embedding_service = EmbeddingService(settings)
+        self._embedding_service = EmbeddingService(
+            settings.llm,
+            reranker_model=settings.classification.reranker_model,
+            max_concurrent=settings.extraction.embedding_max_concurrent,
+        )
         self._qdrant_repo = QdrantRepository(qdrant_client)
         self._extraction_embedding = ExtractionEmbeddingService(
             self._embedding_service, self._qdrant_repo

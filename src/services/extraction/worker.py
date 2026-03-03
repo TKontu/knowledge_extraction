@@ -199,7 +199,10 @@ class ExtractionWorker:
         smart_classifier = None
         if self.settings.smart_classification_enabled:
             async_redis = await get_async_redis()
-            embedding_service = EmbeddingService(self.settings)
+            embedding_service = EmbeddingService(
+                self.settings.llm,
+                reranker_model=self.settings.classification.reranker_model,
+            )
             smart_classifier = SmartClassifier(
                 embedding_service=embedding_service,
                 redis_client=async_redis,
@@ -221,7 +224,7 @@ class ExtractionWorker:
             from services.storage.qdrant.repository import QdrantRepository
 
             extraction_embedding = ExtractionEmbeddingService(
-                EmbeddingService(self.settings),
+                EmbeddingService(self.settings.llm),
                 QdrantRepository(QdrantClient(url=self.settings.qdrant_url)),
             )
 

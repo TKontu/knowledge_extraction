@@ -357,7 +357,10 @@ async def extract_schema(
             )
 
         async_redis = await get_async_redis()
-        embedding_service = EmbeddingService(settings)
+        embedding_service = EmbeddingService(
+            settings.llm,
+            reranker_model=settings.classification.reranker_model,
+        )
         smart_classifier = SmartClassifier(
             embedding_service=embedding_service,
             redis_client=async_redis,
@@ -444,7 +447,7 @@ async def recover_orphaned_extractions(
     from qdrant_connection import qdrant_client
 
     qdrant_repo = QdrantRepository(qdrant_client)
-    embedding_service = EmbeddingService(settings)
+    embedding_service = EmbeddingService(settings.llm)
     extraction_repo = ExtractionRepository(db)
 
     # Create recovery service
