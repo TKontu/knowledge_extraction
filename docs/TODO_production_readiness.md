@@ -94,3 +94,4 @@ Before deploying to production:
 - [x] Extraction pipeline fixes — all 5 phases (merge strategy defaults, config hardening, chunking quality, schema searchability, minor cleanup) - 2026-03-03
 - [x] Pipeline decomposition (embedding_pipeline, backpressure, content_selector extracted from pipeline.py) - 2026-03-03
 - [x] Group configuration facades (10 frozen dataclasses + @property accessors on Settings for grouped access) - 2026-03-03
+- [x] Typed config facade migration — all 7 phases (services accept typed facades, global settings use facade access) - 2026-03-03

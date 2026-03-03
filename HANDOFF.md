@@ -4,7 +4,17 @@
 
 ## Recently Completed
 
-- [x] **Group configuration facades** — 10 frozen dataclasses (`DatabaseConfig`, `LLMConfig`, `LLMQueueConfig`, `ExtractionConfig`, `ClassificationConfig`, `ScrapingConfig`, `CrawlConfig`, `ProxyConfig`, `SchedulerConfig`, `ObservabilityConfig`) with `@property` accessors on Settings. Grouped access via `settings.llm.model` while flat fields unchanged. 48 new tests. 1774 total tests pass.
+- [x] **Typed config facade migration (all 7 phases)** — Services now accept typed frozen dataclass facades instead of monolithic `Settings`. Global module-level settings also migrated to facade-style access (`settings.llm.model` instead of `settings.llm_model`). 1774 total tests pass.
+  - Phase 0: Cleanup schema_extractor.py global_settings
+  - Phase 1a: UrlRelevanceFilter → scalar kwargs
+  - Phase 1b: DomainDedupService → ExtractionConfig
+  - Phase 2: SmartClassifier → ClassificationConfig
+  - Phase 3: EmbeddingService → LLMConfig
+  - Phase 4a: LLMClient → LLMConfig
+  - Phase 4b: SchemaExtractor → LLMConfig
+  - Phase 5: ExtractionWorker → typed facades (llm, extraction, classification)
+  - Phase 6: Global module-level settings → facade access in 7 source files + 7 test files
+- [x] **Group configuration facades** — 10 frozen dataclasses (`DatabaseConfig`, `LLMConfig`, `LLMQueueConfig`, `ExtractionConfig`, `ClassificationConfig`, `ScrapingConfig`, `CrawlConfig`, `ProxyConfig`, `SchedulerConfig`, `ObservabilityConfig`) with `@property` accessors on Settings. 48 new tests.
 - [x] **Extraction Pipeline Fixes (all 5 phases)** — verified 2026-03-03, all implemented on `main`:
   - Phase 1: Merge strategy defaults (`highest_confidence` for numeric/text, `merge_strategy` field-level override, `VALID_MERGE_STRATEGIES`)
   - Phase 2: Config hardening (runtime content limit, chunk overlap cross-validation, configurable `max_items`)
@@ -49,7 +59,6 @@
 - [ ] **Validate classification + extraction quality** — re-extract David Brown Santasalo, verify page_type populated, product pages don't get company_meta, HQ = "Jyväskylä, Finland" not "Santasalo"
 
 ### Code Tasks (by priority)
-- [ ] **Migrate services to typed config facades** — gradually change service constructors from `settings: Settings` to typed subsystem configs (e.g., `LLMClient(config: LLMConfig)` instead of `LLMClient(settings: Settings)`)
 - [ ] **Scheduler burst limiting** (Phase 3 from scheduler TODO) — configurable limit on queued jobs per worker in first N seconds after startup (deferred, lower priority)
 - [ ] **Schema update safety** — block schema updates when extractions exist, or require `force=true` (see `docs/TODO_production_readiness.md`)
 
@@ -84,3 +93,4 @@
 - Test suite: 1774 tests passing
 - GitNexus index behind HEAD — run `npx gitnexus analyze` before using graph queries
 - All reliability features enabled in code defaults — not yet validated on real extraction data
+- Typed config facade migration complete — services use `LLMConfig`, `ExtractionConfig`, `ClassificationConfig` etc. instead of `Settings`
