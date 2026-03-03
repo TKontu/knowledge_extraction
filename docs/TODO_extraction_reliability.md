@@ -1,7 +1,7 @@
 # Extraction Reliability — Implementation Spec
 
 Version: 3.2 (2026-02-25)
-**Implementation status: 2026-03-03 — Phases 0, 1 (quality), 2, 3 DONE. Phase 1A features enabled (commit `89b4284`). Classification booleans already True in config defaults. Validation on real data pending.**
+**Implementation status: 2026-03-03 — ALL PHASES COMPLETE. Phase 1A extraction reliability features enabled (commit `89b4284`). Classification booleans enabled in config defaults (commit `89b4284`). Validation on real data pending.**
 Review: `docs/pipeline_review_extraction_reliability.md`
 Data analysis: `debug/analyze_plan_impact.py`
 
@@ -44,8 +44,8 @@ The small LLM (Qwen3-30B / gemma3-12b-awq) hallucinates when extracting from irr
 
 Source Content (Firecrawl markdown — often contaminated with nav junk)
     ↓
-[PHASE 1] Classification Filter (★ highest impact) — quality ✅, enablement ⬜
-    ├── 1A: Enable classification (4 config booleans → True) ⬜ PENDING
+[PHASE 1] Classification Filter (★ highest impact) — ✅ DONE
+    ├── 1A: Enable classification (4 config booleans → True) ✅ DONE (commit 89b4284)
     ├── 1B: Add prompt_hint to field group embeddings ✅
     ├── 1C: Expand window 2000 → 6000 chars (requires bge-m3) ✅
     ├── 1D: Dynamic fallback (top 80% of scores, not "all groups") ✅
@@ -116,9 +116,9 @@ Also add to `embed_batch()` — truncate each text in the list before sending.
 
 ---
 
-## Phase 1: Enable & Improve Classification (quality ✅, enablement ⬜)
+## Phase 1: Enable & Improve Classification ✅ DONE
 
-### 1A. Enable Classification ⬜ PENDING
+### 1A. Enable Classification ✅ DONE (commit 89b4284)
 
 The `SmartClassifier` and `PageClassifier` already exist. They use embeddings (not LLM) — reliable and cheap. Just needs to be turned on.
 
@@ -696,10 +696,10 @@ Re-extract David Brown Santasalo after all phases (after Phase 1A is enabled):
 
 1. ✅ EmbeddingService uses `bge-m3`. Embedding of 6000 chars succeeds.
 2. ✅ `_create_page_summary()` uses cleaned content.
-3. ⬜ Sources have `page_type` and `relevant_field_groups` populated. Product pages don't get `company_meta`. (Requires 1A)
+3. ⬜ Sources have `page_type` and `relevant_field_groups` populated. Product pages don't get `company_meta`. (Requires re-extraction)
 4. ✅ Field group embeddings include prompt_hint vocabulary.
 5. ✅ Empty extractions have confidence ≤ 0.1, filtered by merge.
 6. ✅ Boolean fields reflect majority vote (if multi-chunk content exists).
-7. ⬜ No "Santasalo" as city. HQ consistently "Jyväskylä, Finland." (Requires re-extraction after 1A)
+7. ⬜ No "Santasalo" as city. HQ consistently "Jyväskylä, Finland." (Requires re-extraction)
 8. ✅ Pages >8K chars have full content captured (up to 20K) — no silent truncation loss.
 9. ✅ Extraction input has bare nav links stripped (Layer 1) — more useful content in the window.

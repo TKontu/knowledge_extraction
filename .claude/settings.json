@@ -71,7 +71,8 @@
       "Bash(git commit -m *)",
       "Bash(git checkout -b feat/*)",
       "Bash(gh pr create --title * --body *)",
-      "Bash(gh pr view * --json title,url,state | python3 -m json.tool)"
+      "Bash(gh pr view * --json title,url,state | python3 -m json.tool)",
+      "Bash(npx gitnexus analyze)"
     ],
     "deny": [
       "Bash(cd * && python *)",

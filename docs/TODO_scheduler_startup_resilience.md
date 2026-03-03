@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-01
 **Priority:** High
-**Status:** Not started
+**Status:** DONE (2026-03-03) — Phases 1 & 2 implemented. Phase 3 (burst limiting) deferred.
 
 ## Problem
 
@@ -23,24 +23,26 @@ On container restart, the scheduler immediately polls for all `queued` and `runn
 
 ## Architecture Context
 
-### Current Startup Flow
+### Startup Flow (after refactor)
 
 ```
-lifespan() → start_scheduler() → JobScheduler.start()
-  ├─ Init Firecrawl, Redis, LLM queue, rate limiter
-  ├─ asyncio.create_task(_run_scrape_worker())      ← polls immediately
-  ├─ asyncio.create_task(_run_single_crawl_worker(0..5))  ← 6 tasks poll immediately
-  └─ asyncio.create_task(_run_extract_worker())      ← polls immediately
+lifespan() → start_scheduler()
+  ├─ ServiceContainer.start()           ← creates 10 app-lifetime services
+  └─ JobScheduler(services=container).start()
+       ├─ _cleanup_stale_jobs()          ← marks running/cancelling → failed
+       ├─ asyncio.create_task(scrape)    ← stagger delay
+       ├─ asyncio.create_task(crawl × N) ← stagger delay between each
+       └─ asyncio.create_task(extract)   ← stagger delay
 ```
 
 ### Key Files
 
 | File | Relevant Functions |
 |------|-------------------|
-| `src/main.py` | `lifespan()` (lines 72-161) |
-| `src/services/scraper/scheduler.py` | `JobScheduler.start()` (91-154), `_run_scrape_worker()` (177-245), `_run_single_crawl_worker()` (247-335), `_run_extract_worker()` (337-435) |
-| `src/config.py` | `job_stale_threshold_*` settings (374-386) |
-| `src/services/storage/repositories/job.py` | Job queries |
+| `src/main.py` | `lifespan()` — calls `start_scheduler()`/`stop_scheduler()` (unchanged) |
+| `src/services/scraper/service_container.py` | `ServiceContainer` — creates/caches/tears down services (NEW) |
+| `src/services/scraper/scheduler.py` | `JobScheduler.start()`, `_cleanup_stale_jobs()`, worker loops |
+| `src/config.py` | `scheduler_cleanup_stale_on_startup`, `scheduler_startup_stagger_seconds`, `job_stale_threshold_*` |
 
 ### Existing Stale Detection
 
@@ -145,45 +147,30 @@ scheduler_startup_window_seconds: int = 60   # Duration of startup throttle
 
 ## Tasks
 
-### Phase 1 — Startup Cleanup (do first)
+### Phase 1 — Startup Cleanup ✅ DONE
 
-1. **Add `_cleanup_stale_jobs()` to `JobScheduler`**
-   - File: `src/services/scraper/scheduler.py`
-   - Query: `SELECT * FROM jobs WHERE status IN ('running', 'cancelling')`
-   - Action: `UPDATE SET status='failed', error='...', completed_at=now()`
-   - Log summary: `scheduler_startup_cleanup, running_failed=N, cancelling_failed=M`
-   - Call from `start()` before creating worker tasks
+1. ✅ **`_cleanup_stale_jobs()` on `JobScheduler`** — marks running/cancelling → failed with `skip_locked=True`
+2. ✅ **Config flag** — `scheduler_cleanup_stale_on_startup: bool = True`
+3. ✅ **Tests** — `tests/test_scheduler_startup.py`: running/cancelling marked failed, queued untouched, config disable, error resilience
 
-2. **Add config flag**
-   - File: `src/config.py`
-   - `scheduler_cleanup_stale_on_startup: bool = True`
+### Phase 2 — Staggered Startup ✅ DONE
 
-3. **Write tests**
-   - File: `tests/test_scheduler_startup_cleanup.py`
-   - Test: creates running/queued/cancelling jobs, calls cleanup, verifies only running+cancelling are marked failed
-   - Test: queued jobs are left untouched
-   - Test: cleanup is skipped when config flag is False
-   - Test: cleanup logs correct counts
+4. ✅ **Stagger delays** — `await asyncio.sleep(stagger)` between each worker launch
+5. ✅ **Config** — `scheduler_startup_stagger_seconds: float = 1.0`
+6. ✅ **Tests** — stagger delay count verified, zero stagger works
 
-### Phase 2 — Staggered Startup
+### ServiceContainer Extraction ✅ DONE (added to plan)
 
-4. **Add stagger delays between worker task creation**
-   - File: `src/services/scraper/scheduler.py` in `start()`
-   - Add `await asyncio.sleep(scheduler_startup_stagger_seconds)` between worker launches
-   - Add config: `scheduler_startup_stagger_seconds: float = 1.0`
+7. ✅ **`ServiceContainer`** — `src/services/scraper/service_container.py` creates/caches/tears down 10 services
+8. ✅ **Refactored `JobScheduler`** — takes `services: ServiceContainer`, 489→310 lines
+9. ✅ **Tests** — `tests/test_service_container.py`: start/stop/property-before-start/context-manager
+10. ✅ **Existing tests updated** — `test_scheduler_llm_worker.py`, `test_scheduler_recovery.py`, `test_scheduler_stale_thresholds.py`
 
-5. **Write tests**
-   - Verify workers start with expected delays (mock asyncio.sleep)
+### Phase 3 — Burst Limiting (deferred, lower priority)
 
-### Phase 3 — Burst Limiting (optional, lower priority)
-
-6. **Add startup burst limiter to each worker loop**
-   - Modify `_run_scrape_worker()`, `_run_single_crawl_worker()`, `_run_extract_worker()`
-   - Add config: `scheduler_startup_burst_limit`, `scheduler_startup_window_seconds`
-
-7. **Write tests**
-   - Verify burst limit is respected during window
-   - Verify normal operation after window expires
+11. **Add startup burst limiter to each worker loop**
+    - Modify `_run_scrape_worker()`, `_run_single_crawl_worker()`, `_run_extract_worker()`
+    - Add config: `scheduler_startup_burst_limit`, `scheduler_startup_window_seconds`
 
 ## Verification
 

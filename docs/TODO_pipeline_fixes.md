@@ -2,6 +2,7 @@
 
 **Source**: `docs/pipeline_review_extraction_deep.md` (verified review, 13 real findings)
 **Date**: 2026-03-02
+**Status**: ✅ ALL PHASES COMPLETE (verified 2026-03-03)
 
 ---
 
@@ -10,16 +11,16 @@
 Five phases, each independently deployable. Ordered by: data correctness first, then safety, quality, features, cleanup.
 
 ```
-Phase 1: Merge Strategy Defaults          ← fixes every extraction's output
-Phase 2: Config Hardening                  ← prevents silent misconfig
-Phase 3: Chunking Quality                  ← improves input to all extractions
-Phase 4: Schema Pipeline Searchability     ← enables missing feature (search)
-Phase 5: Minor Cleanup                     ← low-priority correctness
+Phase 1: Merge Strategy Defaults          ✅ DONE
+Phase 2: Config Hardening                  ✅ DONE
+Phase 3: Chunking Quality                  ✅ DONE
+Phase 4: Schema Pipeline Searchability     ✅ DONE
+Phase 5: Minor Cleanup                     ✅ DONE
 ```
 
 ---
 
-## Phase 1: Merge Strategy Defaults
+## Phase 1: Merge Strategy Defaults ✅ DONE
 
 **Problem**: Numeric fields use `max()` (wrong for year_founded, price) and text fields concatenate with `"; "` (garbage for description/headquarters). Both should use highest-confidence chunk — the same strategy enum fields already use.
 
@@ -82,7 +83,7 @@ VALID_MERGE_STRATEGIES = {"highest_confidence", "max", "min", "concat", "majorit
 
 ---
 
-## Phase 2: Config Hardening
+## Phase 2: Config Hardening ✅ DONE
 
 **Problem**: Three independent config issues:
 1. `EXTRACTION_CONTENT_LIMIT` captured at import time, immune to runtime/test overrides
@@ -157,7 +158,7 @@ f"- Extract ONLY the most relevant/significant items (max {max_items} items)"
 
 ---
 
-## Phase 3: Chunking Quality
+## Phase 3: Chunking Quality ✅ DONE
 
 **Problem**: Three issues degrade chunk quality:
 1. Only splits on `## ` (H2) — H3/H4 structured docs produce oversized sections
@@ -251,7 +252,7 @@ The `chunk_document` function already merges small adjacent sections when they f
 
 ---
 
-## Phase 4: Schema Pipeline Searchability
+## Phase 4: Schema Pipeline Searchability ✅ DONE
 
 **Problem**: `SchemaExtractionPipeline` stores extractions in Postgres but never generates embeddings. `search_knowledge()` queries only Qdrant. All template-based extractions are invisible to search.
 
@@ -327,7 +328,7 @@ Payload fields to store in Qdrant (for filtering):
 
 ---
 
-## Phase 5: Minor Cleanup
+## Phase 5: Minor Cleanup ✅ DONE
 
 Low-priority fixes. Each is independent.
 

@@ -90,3 +90,7 @@ Before deploying to production:
 - [x] Fix dual import paths (standardize `from src.X` → `from X`) - 2026-03-02
 - [x] Enable Phase 1A extraction reliability features (chunk overlap, source quoting, conflict detection, schema validation, confidence gating) - 2026-03-02
 - [x] Domain boilerplate dedup (Phases A-E, section-aware two-pass) - 2026-02-27
+- [x] ServiceContainer + Scheduler startup resilience (stale cleanup, worker stagger, service lifecycle extraction) - 2026-03-03
+- [x] Extraction pipeline fixes — all 5 phases (merge strategy defaults, config hardening, chunking quality, schema searchability, minor cleanup) - 2026-03-03
+- [x] Pipeline decomposition (embedding_pipeline, backpressure, content_selector extracted from pipeline.py) - 2026-03-03
+- [x] Group configuration facades (10 frozen dataclasses + @property accessors on Settings for grouped access) - 2026-03-03

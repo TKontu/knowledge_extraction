@@ -1,7 +1,7 @@
 # Domain-Level Boilerplate Deduplication — Implementation Spec
 
 Version: 1.1 (2026-02-26)
-Status: **Phases A-E complete and deployed on `main`. `domain_dedup_enabled=True` set in config defaults. Phase F validation on real data pending.**
+Status: **✅ Phases A-E complete and deployed on `main`. `domain_dedup_enabled=True` in config defaults. Phase F (validation on real data) pending.**
 Depends on: None (independent of `TODO_extraction_reliability.md`)
 
 ## Problem
@@ -276,7 +276,7 @@ def get_domains_for_project(self, project_id: UUID) -> list[tuple[str, int]]:
 ```python
 # Domain Boilerplate Deduplication
 domain_dedup_enabled: bool = Field(
-    default=False,
+    default=True,  # Updated from False → True after Phase E validation
     description="Use cleaned_content (domain-deduped) for extraction when available",
 )
 domain_dedup_threshold_pct: float = Field(
@@ -346,18 +346,17 @@ Line 149 (generic extraction path):
 markdown=(source.cleaned_content or source.content) if settings.domain_dedup_enabled else source.content,
 ```
 
-`domain_dedup_enabled=False` by default → zero behavior change until explicitly enabled.
+`domain_dedup_enabled=True` in config defaults — pipeline automatically uses `cleaned_content` when available.
 
 ---
 
-## Phase F: Enable + Validate ⬜
+## Phase F: Validate on Real Data ⬜
 
 1. Run `analyze_boilerplate` on Industrial Drivetrain Companies project (`99a19141-...`)
 2. Inspect stats — expect ~19.5% average content reduction
 3. Spot-check `cleaned_content` for bauergears.com (cookie banner removed?), flender.com (product carousel removed?)
-4. Flip `domain_dedup_enabled=True`
-5. Re-extract a test domain (e.g., David Brown Santasalo)
-6. Compare extraction quality before/after
+4. Re-extract a test domain (e.g., David Brown Santasalo)
+5. Compare extraction quality before/after
 
 ---
 
@@ -404,5 +403,5 @@ markdown=(source.cleaned_content or source.content) if settings.domain_dedup_ena
 - **Min block chars**: 50 (below this, blocks are too short — headings, blank lines)
 - **Scope**: Per (project_id, domain) — different projects may crawl different sections
 - **Original content preserved**: `sources.content` is never modified; `cleaned_content` is a separate column
-- **Feature flag**: `domain_dedup_enabled=False` by default — zero impact until explicitly enabled
+- **Feature flag**: `domain_dedup_enabled=True` by default — pipeline uses cleaned_content when available
 - **Idempotent**: Re-running analysis updates all fingerprints and cleaned_content
