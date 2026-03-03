@@ -18,10 +18,14 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from config import ExtractionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -293,14 +297,18 @@ def strip_boilerplate(
 class DomainDedupService:
     """Orchestrates domain boilerplate analysis with DB persistence."""
 
-    def __init__(self, session: Session, settings: object | None = None):
+    def __init__(
+        self,
+        session: Session,
+        extraction: ExtractionConfig | None = None,
+    ):
         from services.storage.repositories.domain_boilerplate import (
             DomainBoilerplateRepository,
         )
         from services.storage.repositories.source import SourceRepository
 
         self._session = session
-        self._settings = settings
+        self._extraction = extraction
         self._source_repo = SourceRepository(session)
         self._bp_repo = DomainBoilerplateRepository(session)
 
@@ -328,16 +336,14 @@ class DomainDedupService:
         m_pages = min_pages if min_pages is not None else 5
         m_chars = min_block_chars if min_block_chars is not None else 50
 
-        # Load settings overrides if available
-        if self._settings is not None:
+        # Load config overrides if available
+        if self._extraction is not None:
             if threshold_pct is None:
-                t_pct = getattr(self._settings, "domain_dedup_threshold_pct", t_pct)
+                t_pct = self._extraction.domain_dedup_threshold_pct
             if min_pages is None:
-                m_pages = getattr(self._settings, "domain_dedup_min_pages", m_pages)
+                m_pages = self._extraction.domain_dedup_min_pages
             if min_block_chars is None:
-                m_chars = getattr(
-                    self._settings, "domain_dedup_min_block_chars", m_chars
-                )
+                m_chars = self._extraction.domain_dedup_min_block_chars
 
         # 1. Query sources for this domain
         sources = self._source_repo.get_by_project_and_domain(project_id, domain)

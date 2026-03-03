@@ -44,7 +44,7 @@ async def analyze_boilerplate(
     """
     from config import settings
 
-    service = DomainDedupService(db, settings)
+    service = DomainDedupService(db, settings.extraction)
 
     try:
         result = service.analyze_project(
@@ -96,7 +96,7 @@ async def get_boilerplate_stats(
     """Get per-domain boilerplate statistics for a project."""
     from config import settings
 
-    service = DomainDedupService(db, settings)
+    service = DomainDedupService(db, settings.extraction)
     stats = service.get_domain_stats(project_id)
 
     return {
