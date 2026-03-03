@@ -390,7 +390,11 @@ class JobScheduler:
                         worker = ExtractionWorker(
                             db=db,
                             pipeline_service=pipeline_service,
-                            settings=settings,
+                            llm=settings.llm,
+                            extraction=settings.extraction,
+                            classification=settings.classification,
+                            qdrant_url=settings.qdrant_url,
+                            request_timeout=settings.llm_queue.request_timeout,
                             llm_queue=llm_queue,
                         )
                         await worker.process_job(job)

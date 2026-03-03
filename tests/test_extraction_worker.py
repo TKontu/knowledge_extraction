@@ -1,12 +1,12 @@
 """Tests for ExtractionWorker."""
 
-import pytest
-from datetime import datetime, UTC
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from services.extraction.worker import ExtractionWorker, SchemaExtractionResult
+import pytest
+
 from orm_models import Job, Project
+from services.extraction.worker import ExtractionWorker, SchemaExtractionResult
 
 
 @pytest.fixture
@@ -24,18 +24,29 @@ def mock_pipeline_service():
 
 
 @pytest.fixture
-def mock_settings():
-    """Mock application settings."""
-    settings = Mock()
-    settings.llm_base_url = "http://localhost:8000"
-    settings.llm_model = "test-model"
-    settings.llm_http_timeout = 60
-    return settings
+def mock_llm():
+    """Mock LLM config for schema extraction."""
+    from config import LLMConfig
+
+    return LLMConfig(
+        base_url="http://localhost:8000/v1",
+        embedding_base_url="http://localhost:8000/v1",
+        api_key="test",
+        model="test-model",
+        embedding_model="bge-m3",
+        http_timeout=60,
+        max_tokens=4096,
+        max_retries=3,
+        retry_backoff_min=2,
+        retry_backoff_max=30,
+        base_temperature=0.1,
+        retry_temperature_increment=0.05,
+    )
 
 
 @pytest.fixture
 def extraction_worker(mock_db, mock_pipeline_service):
-    """Create ExtractionWorker with mocked dependencies (no settings)."""
+    """Create ExtractionWorker with mocked dependencies (no LLM config)."""
     return ExtractionWorker(
         db=mock_db,
         pipeline_service=mock_pipeline_service,
@@ -43,13 +54,12 @@ def extraction_worker(mock_db, mock_pipeline_service):
 
 
 @pytest.fixture
-def extraction_worker_with_settings(mock_db, mock_pipeline_service, mock_settings):
-    """Create ExtractionWorker with settings for schema extraction."""
+def extraction_worker_with_llm(mock_db, mock_pipeline_service, mock_llm):
+    """Create ExtractionWorker with LLM config for schema extraction."""
     return ExtractionWorker(
         db=mock_db,
         pipeline_service=mock_pipeline_service,
-        settings=mock_settings,
-        llm_queue=None,
+        llm=mock_llm,
     )
 
 
@@ -143,7 +153,7 @@ class TestSchemaExtractionSelection:
     """Tests for automatic schema-based extraction selection."""
 
     def test_has_extraction_schema_returns_true_for_project_with_schema(
-        self, mock_db, mock_pipeline_service, mock_settings
+        self, mock_db, mock_pipeline_service, mock_llm
     ):
         """Worker detects project with extraction_schema."""
         project_id = uuid4()
@@ -159,7 +169,7 @@ class TestSchemaExtractionSelection:
         worker = ExtractionWorker(
             db=mock_db,
             pipeline_service=mock_pipeline_service,
-            settings=mock_settings,
+            llm=mock_llm,
         )
 
         has_schema, project = worker._has_extraction_schema(project_id)
@@ -168,7 +178,7 @@ class TestSchemaExtractionSelection:
         assert project == mock_project
 
     def test_has_extraction_schema_returns_false_for_project_without_schema(
-        self, mock_db, mock_pipeline_service, mock_settings
+        self, mock_db, mock_pipeline_service, mock_llm
     ):
         """Worker detects project without extraction_schema."""
         project_id = uuid4()
@@ -181,7 +191,7 @@ class TestSchemaExtractionSelection:
         worker = ExtractionWorker(
             db=mock_db,
             pipeline_service=mock_pipeline_service,
-            settings=mock_settings,
+            llm=mock_llm,
         )
 
         has_schema, project = worker._has_extraction_schema(project_id)
@@ -190,7 +200,7 @@ class TestSchemaExtractionSelection:
         assert project == mock_project
 
     def test_has_extraction_schema_returns_false_for_empty_field_groups(
-        self, mock_db, mock_pipeline_service, mock_settings
+        self, mock_db, mock_pipeline_service, mock_llm
     ):
         """Worker returns False for schema with empty field_groups."""
         project_id = uuid4()
@@ -203,7 +213,7 @@ class TestSchemaExtractionSelection:
         worker = ExtractionWorker(
             db=mock_db,
             pipeline_service=mock_pipeline_service,
-            settings=mock_settings,
+            llm=mock_llm,
         )
 
         has_schema, project = worker._has_extraction_schema(project_id)
@@ -211,7 +221,7 @@ class TestSchemaExtractionSelection:
         assert has_schema is False
 
     async def test_worker_uses_schema_pipeline_when_project_has_schema(
-        self, mock_db, mock_pipeline_service, mock_settings
+        self, mock_db, mock_pipeline_service, mock_llm
     ):
         """Worker uses SchemaExtractionPipeline when project has extraction_schema."""
         project_id = uuid4()
@@ -234,7 +244,7 @@ class TestSchemaExtractionSelection:
         worker = ExtractionWorker(
             db=mock_db,
             pipeline_service=mock_pipeline_service,
-            settings=mock_settings,
+            llm=mock_llm,
         )
 
         # Mock the schema pipeline
@@ -255,7 +265,7 @@ class TestSchemaExtractionSelection:
         assert job.result["total_extractions"] == 35
 
     async def test_worker_uses_generic_pipeline_when_no_schema(
-        self, mock_db, mock_pipeline_service, mock_settings
+        self, mock_db, mock_pipeline_service, mock_llm
     ):
         """Worker uses generic pipeline when project has no extraction_schema."""
         project_id = uuid4()
@@ -284,7 +294,7 @@ class TestSchemaExtractionSelection:
         worker = ExtractionWorker(
             db=mock_db,
             pipeline_service=mock_pipeline_service,
-            settings=mock_settings,
+            llm=mock_llm,
         )
 
         await worker.process_job(job)
@@ -295,10 +305,10 @@ class TestSchemaExtractionSelection:
         assert job.status == "completed"
         assert job.result["total_extractions"] == 50
 
-    async def test_worker_falls_back_to_generic_when_no_settings(
+    async def test_worker_falls_back_to_generic_when_no_llm(
         self, mock_db, mock_pipeline_service
     ):
-        """Worker falls back to generic extraction when settings not provided."""
+        """Worker falls back to generic extraction when llm config not provided."""
         project_id = uuid4()
 
         # Mock project with extraction schema
@@ -325,11 +335,10 @@ class TestSchemaExtractionSelection:
         mock_result.total_entities = 100
         mock_pipeline_service.process_project_pending.return_value = mock_result
 
-        # Worker WITHOUT settings
+        # Worker WITHOUT llm config
         worker = ExtractionWorker(
             db=mock_db,
             pipeline_service=mock_pipeline_service,
-            settings=None,  # No settings
         )
 
         await worker.process_job(job)

@@ -18,6 +18,7 @@ from services.extraction.pipeline import (
 from services.storage.repositories.job import JobRepository
 
 if TYPE_CHECKING:
+    from config import ClassificationConfig, ExtractionConfig, LLMConfig
     from services.llm.queue import LLMRequestQueue
 
 logger = structlog.get_logger(__name__)
@@ -50,7 +51,11 @@ class ExtractionWorker:
     Args:
         db: Database session for persistence.
         pipeline_service: Pipeline service for generic extraction (fallback).
-        settings: Application settings for creating schema pipeline.
+        llm: LLM configuration (required for schema extraction).
+        extraction: Extraction configuration facade.
+        classification: Classification configuration facade.
+        qdrant_url: Qdrant server URL for embedding storage.
+        request_timeout: Timeout in seconds for queued LLM requests.
         llm_queue: Optional LLM request queue for schema extraction.
 
     Example:
@@ -58,7 +63,9 @@ class ExtractionWorker:
         worker = ExtractionWorker(
             db=db,
             pipeline_service=pipeline,
-            settings=settings,
+            llm=settings.llm,
+            extraction=settings.extraction,
+            classification=settings.classification,
             llm_queue=llm_queue,
         )
         await worker.process_job(job)
@@ -68,7 +75,12 @@ class ExtractionWorker:
         self,
         db: Session,
         pipeline_service: ExtractionPipelineService,
-        settings=None,
+        *,
+        llm: "LLMConfig | None" = None,
+        extraction: "ExtractionConfig | None" = None,
+        classification: "ClassificationConfig | None" = None,
+        qdrant_url: str | None = None,
+        request_timeout: int = 300,
         llm_queue: "LLMRequestQueue | None" = None,
     ) -> None:
         """Initialize ExtractionWorker.
@@ -76,12 +88,20 @@ class ExtractionWorker:
         Args:
             db: Database session.
             pipeline_service: Generic extraction pipeline service.
-            settings: Application settings (required for schema extraction).
+            llm: LLM configuration (required for schema extraction).
+            extraction: Extraction configuration facade.
+            classification: Classification configuration facade.
+            qdrant_url: Qdrant server URL for embedding storage.
+            request_timeout: Timeout in seconds for queued LLM requests.
             llm_queue: Optional LLM queue for schema extraction.
         """
         self.db = db
         self.pipeline_service = pipeline_service
-        self.settings = settings
+        self._llm = llm
+        self._extraction = extraction
+        self._classification = classification
+        self._qdrant_url = qdrant_url
+        self._request_timeout = request_timeout
         self.llm_queue = llm_queue
         self.job_repo = JobRepository(db)
 
@@ -172,15 +192,15 @@ class ExtractionWorker:
         from services.extraction.smart_classifier import SmartClassifier
         from services.storage.embedding import EmbeddingService
 
-        if not self.settings:
-            raise ValueError("settings required for schema extraction")
+        if not self._llm:
+            raise ValueError("llm config required for schema extraction")
 
         extractor = SchemaExtractor(
-            self.settings.llm,
+            self._llm,
             llm_queue=self.llm_queue,
-            content_limit=self.settings.extraction_content_limit,
-            source_quoting=self.settings.extraction_source_quoting_enabled,
-            request_timeout=self.settings.llm_request_timeout,
+            content_limit=self._extraction.content_limit if self._extraction else 20000,
+            source_quoting=self._extraction.source_quoting_enabled if self._extraction else True,
+            request_timeout=self._request_timeout,
         )
 
         # Extract classification_config from project's extraction_schema
@@ -203,16 +223,16 @@ class ExtractionWorker:
 
         # Create smart classifier if enabled
         smart_classifier = None
-        if self.settings.smart_classification_enabled:
+        if self._classification and self._classification.smart_enabled:
             async_redis = await get_async_redis()
             embedding_service = EmbeddingService(
-                self.settings.llm,
-                reranker_model=self.settings.classification.reranker_model,
+                self._llm,
+                reranker_model=self._classification.reranker_model,
             )
             smart_classifier = SmartClassifier(
                 embedding_service=embedding_service,
                 redis_client=async_redis,
-                app_config=self.settings.classification,
+                app_config=self._classification,
                 classification_config=classification_config,
             )
 
@@ -222,7 +242,7 @@ class ExtractionWorker:
 
         # Inject embedding dependencies if schema embedding is enabled
         extraction_embedding = None
-        if self.settings.schema_extraction_embedding_enabled:
+        if self._extraction and self._extraction.schema_embedding_enabled:
             from qdrant_client import QdrantClient
             from services.extraction.embedding_pipeline import (
                 ExtractionEmbeddingService,
@@ -230,8 +250,8 @@ class ExtractionWorker:
             from services.storage.qdrant.repository import QdrantRepository
 
             extraction_embedding = ExtractionEmbeddingService(
-                EmbeddingService(self.settings.llm),
-                QdrantRepository(QdrantClient(url=self.settings.qdrant_url)),
+                EmbeddingService(self._llm),
+                QdrantRepository(QdrantClient(url=self._qdrant_url)),
             )
 
         return SchemaExtractionPipeline(
@@ -351,7 +371,7 @@ class ExtractionWorker:
             async def check_cancellation() -> bool:
                 return self.job_repo.is_cancellation_requested(job.id)
 
-            if has_schema and self.settings:
+            if has_schema and self._llm:
                 # Use schema-based extraction
                 schema_name = project.extraction_schema.get("name", "unknown")
                 logger.info(
@@ -375,11 +395,11 @@ class ExtractionWorker:
                 )
             else:
                 # Use generic fact extraction (original behavior)
-                if has_schema and not self.settings:
+                if has_schema and not self._llm:
                     logger.warning(
                         "extraction_job_schema_fallback",
                         job_id=str(job.id),
-                        reason="settings not provided, falling back to generic extraction",
+                        reason="llm config not provided, falling back to generic extraction",
                     )
 
                 logger.info(
