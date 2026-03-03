@@ -9,8 +9,7 @@ from uuid import uuid4
 import structlog
 from openai import AsyncOpenAI
 
-from config import Settings
-from config import settings as global_settings
+from config import Settings, settings as _settings_singleton
 from constants import LLM_RETRY_HINT
 from exceptions import LLMExtractionError
 from services.extraction.content_cleaner import strip_structural_junk
@@ -23,8 +22,8 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Backward-compatible alias — new code should use settings.extraction_content_limit
-EXTRACTION_CONTENT_LIMIT = global_settings.extraction_content_limit
+# Backward-compatible alias — external code (llm/worker.py, tests) imports this.
+EXTRACTION_CONTENT_LIMIT = _settings_singleton.extraction_content_limit
 
 
 class SchemaExtractor:
@@ -54,6 +53,13 @@ class SchemaExtractor:
         self.llm_queue = llm_queue
         self.model = settings.llm_model
         self.context = context or ExtractionContext()
+
+        # Cache settings used at runtime (avoids module-level global_settings)
+        self._content_limit = settings.extraction_content_limit
+        self._source_quoting_enabled = getattr(
+            settings, "extraction_source_quoting_enabled", True
+        )
+        self._request_timeout = getattr(settings, "llm_request_timeout", 300)
 
         # Only create direct client if not using queue
         if llm_queue is None:
@@ -120,7 +126,7 @@ class SchemaExtractor:
         user_prompt = self._build_user_prompt(content, field_group, source_context)
 
         # Build request
-        request_timeout = getattr(self.settings, "llm_request_timeout", 300)
+        request_timeout = self._request_timeout
         request = LLMRequest(
             request_id=str(uuid4()),
             request_type="extract_field_group",
@@ -352,7 +358,7 @@ class SchemaExtractor:
         fields_str = "\n".join(field_specs)
 
         quoting_instruction = ""
-        if global_settings.extraction_source_quoting_enabled:
+        if self._source_quoting_enabled:
             quoting_instruction = """
 Include a "_quotes" object mapping each non-null field to a brief verbatim excerpt (15-50 chars) from the source that supports the value.
 Example: "_quotes": {"field_name": "exact text from source"}
@@ -413,7 +419,7 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
         entity_singular = field_group.name.removesuffix("s")
 
         quoting_instruction = ""
-        if global_settings.extraction_source_quoting_enabled:
+        if self._source_quoting_enabled:
             quoting_instruction = (
                 '\nFor each entity, include a "_quote" field with a brief verbatim '
                 "excerpt (15-50 chars) from the source that identifies this entity.\n"
@@ -470,7 +476,7 @@ Keep output concise - quality over quantity.
         )
 
         cleaned = strip_structural_junk(content)
-        limit = self.settings.extraction_content_limit
+        limit = self._content_limit
 
         return f"""{context_line}Extract {field_group.name} information from ONLY the content below:
 
