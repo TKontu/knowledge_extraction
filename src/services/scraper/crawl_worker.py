@@ -611,7 +611,7 @@ class CrawlWorker:
                     from services.scraper.url_filter import UrlRelevanceFilter
                     self._url_filter = UrlRelevanceFilter(
                         self._embedding_service,
-                        settings,
+                        default_relevance_threshold=settings.crawl.smart_relevance_threshold,
                     )
 
                 # Load crawl_config once for all settings

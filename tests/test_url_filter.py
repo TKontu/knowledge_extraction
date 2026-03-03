@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from config import Settings
 from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.scraper.url_filter import (
     FilteredUrl,
@@ -37,14 +36,6 @@ def reference_embedding(dim: int = 1024) -> list[float]:
     vec = [0.0] * dim
     vec[0] = 1.0
     return vec
-
-
-@pytest.fixture
-def settings():
-    """Create test settings."""
-    settings = MagicMock(spec=Settings)
-    settings.smart_crawl_default_relevance_threshold = 0.4
-    return settings
 
 
 @pytest.fixture
@@ -93,9 +84,9 @@ def field_groups():
 
 
 @pytest.fixture
-def url_filter(embedding_service, settings):
+def url_filter(embedding_service):
     """Create UrlRelevanceFilter instance."""
-    return UrlRelevanceFilter(embedding_service, settings)
+    return UrlRelevanceFilter(embedding_service, default_relevance_threshold=0.4)
 
 
 class TestUrlRelevanceFilter:

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 import structlog
 
-from config import Settings
 from services.extraction.field_groups import FieldGroup
 from services.storage.embedding import EmbeddingService
 from utils import cosine_similarity
@@ -74,16 +73,17 @@ class UrlRelevanceFilter:
     def __init__(
         self,
         embedding_service: EmbeddingService,
-        settings: Settings,
+        *,
+        default_relevance_threshold: float = 0.4,
     ) -> None:
         """Initialize UrlRelevanceFilter.
 
         Args:
             embedding_service: Service for generating embeddings.
-            settings: Application settings for default threshold.
+            default_relevance_threshold: Default similarity threshold for relevance.
         """
         self._embedding_service = embedding_service
-        self._settings = settings
+        self._default_relevance_threshold = default_relevance_threshold
 
     async def filter_urls(
         self,
@@ -116,11 +116,11 @@ class UrlRelevanceFilter:
                 total_urls=0,
                 relevant_urls=[],
                 filtered_out=0,
-                threshold_used=threshold or self._settings.smart_crawl_default_relevance_threshold,
+                threshold_used=threshold or self._default_relevance_threshold,
             )
 
         if threshold is None:
-            threshold = self._settings.smart_crawl_default_relevance_threshold
+            threshold = self._default_relevance_threshold
 
         logger.info(
             "url_filter_started",
