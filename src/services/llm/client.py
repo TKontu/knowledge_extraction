@@ -257,7 +257,9 @@ class LLMClient:
                 )
 
                 result_text = response.choices[0].message.content
-                result_data = try_repair_json(result_text, context="extract_facts_direct")
+                result_data = try_repair_json(
+                    result_text, context="extract_facts_direct"
+                )
 
                 facts = self._parse_facts_from_result(result_data)
 
@@ -315,8 +317,14 @@ class LLMClient:
                     source_quote=fact_data.get("source_quote"),
                 )
                 facts.append(fact)
-            except (KeyError, TypeError):
-                # Skip facts with missing required fields
+            except (KeyError, TypeError) as e:
+                logger.warning(
+                    "malformed_fact_skipped",
+                    error=str(e),
+                    fact_keys=list(fact_data.keys())
+                    if isinstance(fact_data, dict)
+                    else None,
+                )
                 continue
         return facts
 
@@ -704,18 +712,25 @@ Guidelines:
         """Direct LLM completion with retry logic."""
 
         max_retries = self._llm.max_retries
-        base_temp = temperature or self._llm.base_temperature
+        base_temp = (
+            temperature if temperature is not None else self._llm.base_temperature
+        )
         temp_increment = self._llm.retry_temperature_increment
 
         for attempt in range(1, max_retries + 1):
             # Vary temperature on retries to get different outputs
             current_temp = base_temp + (attempt - 1) * temp_increment
 
+            # Add conciseness hint on retries
+            effective_system = system_prompt
+            if attempt > 1:
+                effective_system = system_prompt + LLM_RETRY_HINT
+
             try:
                 kwargs = {
                     "model": self.model,
                     "messages": [
-                        {"role": "system", "content": system_prompt},
+                        {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": current_temp,
@@ -735,9 +750,11 @@ Guidelines:
             except Exception as e:
                 if attempt == max_retries:
                     raise LLMExtractionError(f"LLM completion failed: {e}") from e
-                await asyncio.sleep(
-                    self._llm.retry_backoff_min * (2 ** (attempt - 1))
+                backoff = min(
+                    self._llm.retry_backoff_min * (2 ** (attempt - 1)),
+                    self._llm.retry_backoff_max,
                 )
+                await asyncio.sleep(backoff)
 
     async def _complete_via_queue(
         self,
@@ -762,13 +779,13 @@ Guidelines:
             },
             priority=5,
             created_at=datetime.now(UTC),
-            timeout_at=datetime.now(UTC) + timedelta(seconds=300),
+            timeout_at=datetime.now(UTC) + timedelta(seconds=self._request_timeout),
         )
 
         try:
             await self.llm_queue.submit(request)
             response = await self.llm_queue.wait_for_result(
-                request.request_id, timeout=300
+                request.request_id, timeout=self._request_timeout
             )
         except (QueueFullError, RequestTimeoutError) as e:
             raise LLMExtractionError(f"LLM queue error: {e}") from e

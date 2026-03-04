@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class ClassificationConfig:
-    """Configuration for page classification during extraction.
+class TemplateClassificationConfig:
+    """Template-driven classification configuration for page filtering.
 
     Controls skip patterns used by PageClassifier to filter pages before
     semantic classification. This enables context-agnostic extraction where
@@ -46,7 +46,9 @@ class ClassificationConfig:
 
         if self.skip_patterns is not None:
             if not isinstance(self.skip_patterns, list):
-                errors.append("classification_config.skip_patterns must be a list or null")
+                errors.append(
+                    "classification_config.skip_patterns must be a list or null"
+                )
             else:
                 for i, pattern in enumerate(self.skip_patterns):
                     if not isinstance(pattern, str):
@@ -64,8 +66,12 @@ class ClassificationConfig:
         return len(errors) == 0, errors
 
 
+# Backward-compatible alias
+ClassificationConfig = TemplateClassificationConfig
+
+
 @dataclass
-class CrawlConfig:
+class TemplateCrawlConfig:
     """Optional template-driven crawl configuration for smart crawl.
 
     Controls URL filtering behavior during smart crawl. When provided in a
@@ -157,9 +163,7 @@ class CrawlConfig:
             else:
                 for i, term in enumerate(self.focus_terms):
                     if not isinstance(term, str):
-                        errors.append(
-                            f"crawl_config.focus_terms[{i}] must be a string"
-                        )
+                        errors.append(f"crawl_config.focus_terms[{i}] must be a string")
 
         # Validate relevance_threshold
         if self.relevance_threshold is not None:
@@ -171,6 +175,10 @@ class CrawlConfig:
                 )
 
         return len(errors) == 0, errors
+
+
+# Backward-compatible alias
+CrawlConfig = TemplateCrawlConfig
 
 
 @dataclass
@@ -200,9 +208,7 @@ class ExtractionContext:
         return cls(
             source_type=data.get("source_type", "content"),
             source_label=data.get("source_label", "Source"),
-            entity_id_fields=data.get(
-                "entity_id_fields", ["entity_id", "name", "id"]
-            ),
+            entity_id_fields=data.get("entity_id_fields", ["entity_id", "name", "id"]),
         )
 
 
@@ -249,9 +255,7 @@ class SchemaAdapter:
         for fg in schema["field_groups"]:
             if isinstance(fg, dict) and "name" in fg:
                 if fg["name"] in group_names:
-                    errors.append(
-                        f"Duplicate field_group name: '{fg['name']}'"
-                    )
+                    errors.append(f"Duplicate field_group name: '{fg['name']}'")
                 group_names.append(fg["name"])
 
         # Validate each field_group
@@ -283,7 +287,9 @@ class SchemaAdapter:
             # Rule 7: is_entity_list groups should have at least one identifiable field
             # (warning, not error - some lists may not need dedup)
             if fg.get("is_entity_list", False):
-                field_names = [f.get("name") for f in fg["fields"] if isinstance(f, dict)]
+                field_names = [
+                    f.get("name") for f in fg["fields"] if isinstance(f, dict)
+                ]
                 # Check against common ID patterns - validation doesn't know template context
                 common_id_fields = ["entity_id", "name", "id", "product_name"]
                 has_id_field = any(name in field_names for name in common_id_fields)
@@ -306,11 +312,15 @@ class SchemaAdapter:
                     continue
 
                 if "field_type" not in field:
-                    errors.append(f"field_groups[{i}]['fields'][{j}] missing 'field_type'")
+                    errors.append(
+                        f"field_groups[{i}]['fields'][{j}] missing 'field_type'"
+                    )
                     continue
 
                 if "description" not in field:
-                    errors.append(f"field_groups[{i}]['fields'][{j}] missing 'description'")
+                    errors.append(
+                        f"field_groups[{i}]['fields'][{j}] missing 'description'"
+                    )
 
                 # Check duplicate field names
                 if field["name"] in field_names_in_group:
@@ -455,7 +465,9 @@ class SchemaAdapter:
             # Entity lists need guidance on finding multiple items
             entity_singular = name.removesuffix("s")
             hints.append(f"Look for all {name} mentioned in the content.")
-            hints.append(f"Each {entity_singular} should be a separate item in the list.")
+            hints.append(
+                f"Each {entity_singular} should be a separate item in the list."
+            )
         else:
             # Regular extraction - focus on where to find info
             hints.append(f"Look for {description.lower()} in the content.")

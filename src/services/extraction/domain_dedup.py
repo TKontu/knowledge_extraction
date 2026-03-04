@@ -29,6 +29,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Default dedup thresholds (shared across functions and service)
+DEFAULT_THRESHOLD_PCT = 0.7
+DEFAULT_MIN_PAGES = 5
+DEFAULT_MIN_BLOCK_CHARS = 50
+
 
 @dataclass
 class DomainFingerprintResult:
@@ -95,9 +100,9 @@ def hash_block(block: str) -> str:
 
 def compute_domain_fingerprint(
     pages: list[str],
-    threshold_pct: float = 0.7,
-    min_pages: int = 5,
-    min_block_chars: int = 50,
+    threshold_pct: float = DEFAULT_THRESHOLD_PCT,
+    min_pages: int = DEFAULT_MIN_PAGES,
+    min_block_chars: int = DEFAULT_MIN_BLOCK_CHARS,
     threshold_floor: int | None = None,
 ) -> DomainFingerprintResult:
     """Compute boilerplate fingerprint for a set of pages from one domain.
@@ -182,9 +187,9 @@ class SectionFingerprintResult:
 
 def compute_section_fingerprints(
     pages_with_uris: list[tuple[str, str]],
-    threshold_pct: float = 0.7,
-    min_pages: int = 5,
-    min_block_chars: int = 50,
+    threshold_pct: float = DEFAULT_THRESHOLD_PCT,
+    min_pages: int = DEFAULT_MIN_PAGES,
+    min_block_chars: int = DEFAULT_MIN_BLOCK_CHARS,
     path_depth: int = 1,
     exclude_hashes: set[str] | None = None,
     threshold_floor: int = 3,
@@ -332,9 +337,11 @@ class DomainDedupService:
         Returns:
             DomainAnalysisResult with statistics.
         """
-        t_pct = threshold_pct if threshold_pct is not None else 0.7
-        m_pages = min_pages if min_pages is not None else 5
-        m_chars = min_block_chars if min_block_chars is not None else 50
+        t_pct = threshold_pct if threshold_pct is not None else DEFAULT_THRESHOLD_PCT
+        m_pages = min_pages if min_pages is not None else DEFAULT_MIN_PAGES
+        m_chars = (
+            min_block_chars if min_block_chars is not None else DEFAULT_MIN_BLOCK_CHARS
+        )
 
         # Load config overrides if available
         if self._extraction is not None:
@@ -345,9 +352,15 @@ class DomainDedupService:
             if min_block_chars is None:
                 m_chars = self._extraction.domain_dedup_min_block_chars
 
-        # 1. Query sources for this domain
+        # 1. Query sources for this domain — single-pass construction
         sources = self._source_repo.get_by_project_and_domain(project_id, domain)
-        pages = [s.content for s in sources if s.content]
+        pages = []
+        pages_with_uris = []
+        for s in sources:
+            if s.content:
+                pages.append(s.content)
+                if s.uri:
+                    pages_with_uris.append((s.content, s.uri))
 
         if not pages:
             return DomainAnalysisResult(
@@ -363,11 +376,9 @@ class DomainDedupService:
             pages, threshold_pct=t_pct, min_pages=m_pages, min_block_chars=m_chars
         )
         domain_hashes = set(fp.boilerplate_hashes)
+        del pages  # Free memory before section pass
 
         # 3. Pass 2: Section-level fingerprints
-        pages_with_uris = [
-            (s.content, s.uri) for s in sources if s.content and s.uri
-        ]
         section_fp = compute_section_fingerprints(
             pages_with_uris,
             threshold_pct=t_pct,
@@ -497,8 +508,8 @@ class DomainDedupService:
             )
             domain_results.append(result)
 
-        # Commit after all domains processed
-        self._session.commit()
+        # Flush — caller manages transaction commit
+        self._session.flush()
 
         domains_with_bp = sum(1 for r in domain_results if r.blocks_boilerplate > 0)
         total_cleaned = sum(r.pages_cleaned for r in domain_results)

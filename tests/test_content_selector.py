@@ -1,6 +1,6 @@
 """Tests for content_selector module."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from services.extraction.content_selector import get_extraction_content
 
@@ -14,12 +14,7 @@ class TestGetExtractionContent:
         source.content = "raw content"
         source.cleaned_content = "cleaned content"
 
-        with patch(
-            "services.extraction.content_selector.app_settings"
-        ) as mock_settings:
-            mock_settings.extraction.domain_dedup_enabled = False
-            result = get_extraction_content(source)
-
+        result = get_extraction_content(source, domain_dedup_enabled=False)
         assert result == "raw content"
 
     def test_returns_cleaned_content_when_dedup_enabled(self):
@@ -28,12 +23,7 @@ class TestGetExtractionContent:
         source.content = "raw content"
         source.cleaned_content = "cleaned content"
 
-        with patch(
-            "services.extraction.content_selector.app_settings"
-        ) as mock_settings:
-            mock_settings.extraction.domain_dedup_enabled = True
-            result = get_extraction_content(source)
-
+        result = get_extraction_content(source, domain_dedup_enabled=True)
         assert result == "cleaned content"
 
     def test_falls_back_to_raw_when_cleaned_is_none(self):
@@ -42,10 +32,14 @@ class TestGetExtractionContent:
         source.content = "raw content"
         source.cleaned_content = None
 
-        with patch(
-            "services.extraction.content_selector.app_settings"
-        ) as mock_settings:
-            mock_settings.extraction.domain_dedup_enabled = True
-            result = get_extraction_content(source)
-
+        result = get_extraction_content(source, domain_dedup_enabled=True)
         assert result == "raw content"
+
+    def test_defaults_to_dedup_enabled(self):
+        """Default domain_dedup_enabled=True uses cleaned_content."""
+        source = Mock()
+        source.content = "raw content"
+        source.cleaned_content = "cleaned content"
+
+        result = get_extraction_content(source)
+        assert result == "cleaned content"

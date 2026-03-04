@@ -107,6 +107,7 @@ class ServiceContainer:
             model=settings.llm.model,
             max_tokens=settings.llm.max_tokens,
             response_ttl=settings.llm_queue.response_ttl,
+            content_limit=settings.extraction_content_limit,
         )
         await self._llm_worker.initialize()
         import asyncio

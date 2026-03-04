@@ -770,158 +770,199 @@ class Settings(BaseSettings):
         ]
 
     # -------------------------------------------------------------------
-    # Typed subsystem facades
+    # Typed subsystem facades (cached on first access)
     # -------------------------------------------------------------------
+
+    def _get_facade(self, key: str, factory):
+        """Return cached facade or create and cache it."""
+        if not hasattr(self, "_facade_cache"):
+            object.__setattr__(self, "_facade_cache", {})
+        cache = object.__getattribute__(self, "_facade_cache")
+        if key not in cache:
+            cache[key] = factory()
+        return cache[key]
 
     @property
     def database(self) -> DatabaseConfig:
-        return DatabaseConfig(
-            url=self.database_url,
-            pool_size=self.db_pool_size,
-            max_overflow=self.db_max_overflow,
-            pool_timeout=self.db_pool_timeout,
+        return self._get_facade(
+            "database",
+            lambda: DatabaseConfig(
+                url=self.database_url,
+                pool_size=self.db_pool_size,
+                max_overflow=self.db_max_overflow,
+                pool_timeout=self.db_pool_timeout,
+            ),
         )
 
     @property
     def llm(self) -> LLMConfig:
-        return LLMConfig(
-            base_url=self.openai_base_url,
-            embedding_base_url=self.openai_embedding_base_url,
-            api_key=self.openai_api_key,
-            model=self.llm_model,
-            embedding_model=self.rag_embedding_model,
-            embedding_dimension=self.embedding_dimension,
-            http_timeout=self.llm_http_timeout,
-            max_tokens=self.llm_max_tokens,
-            max_retries=self.llm_max_retries,
-            retry_backoff_min=self.llm_retry_backoff_min,
-            retry_backoff_max=self.llm_retry_backoff_max,
-            base_temperature=self.llm_base_temperature,
-            retry_temperature_increment=self.llm_retry_temperature_increment,
+        return self._get_facade(
+            "llm",
+            lambda: LLMConfig(
+                base_url=self.openai_base_url,
+                embedding_base_url=self.openai_embedding_base_url,
+                api_key=self.openai_api_key,
+                model=self.llm_model,
+                embedding_model=self.rag_embedding_model,
+                embedding_dimension=self.embedding_dimension,
+                http_timeout=self.llm_http_timeout,
+                max_tokens=self.llm_max_tokens,
+                max_retries=self.llm_max_retries,
+                retry_backoff_min=self.llm_retry_backoff_min,
+                retry_backoff_max=self.llm_retry_backoff_max,
+                base_temperature=self.llm_base_temperature,
+                retry_temperature_increment=self.llm_retry_temperature_increment,
+            ),
         )
 
     @property
     def llm_queue(self) -> LLMQueueConfig:
-        return LLMQueueConfig(
-            enabled=self.llm_queue_enabled,
-            stream_key=self.llm_queue_stream_key,
-            max_depth=self.llm_queue_max_depth,
-            backpressure_threshold=self.llm_queue_backpressure_threshold,
-            response_ttl=self.llm_response_ttl,
-            request_timeout=self.llm_request_timeout,
-            worker_concurrency=self.llm_worker_concurrency,
-            worker_max_concurrency=self.llm_worker_max_concurrency,
-            worker_min_concurrency=self.llm_worker_min_concurrency,
+        return self._get_facade(
+            "llm_queue",
+            lambda: LLMQueueConfig(
+                enabled=self.llm_queue_enabled,
+                stream_key=self.llm_queue_stream_key,
+                max_depth=self.llm_queue_max_depth,
+                backpressure_threshold=self.llm_queue_backpressure_threshold,
+                response_ttl=self.llm_response_ttl,
+                request_timeout=self.llm_request_timeout,
+                worker_concurrency=self.llm_worker_concurrency,
+                worker_max_concurrency=self.llm_worker_max_concurrency,
+                worker_min_concurrency=self.llm_worker_min_concurrency,
+            ),
         )
 
     @property
     def extraction(self) -> ExtractionConfig:
-        return ExtractionConfig(
-            content_limit=self.extraction_content_limit,
-            chunk_max_tokens=self.extraction_chunk_max_tokens,
-            chunk_overlap_tokens=self.extraction_chunk_overlap_tokens,
-            max_concurrent_chunks=self.extraction_max_concurrent_chunks,
-            max_concurrent_sources=self.extraction_max_concurrent_sources,
-            extraction_batch_size=self.extraction_batch_size,
-            source_quoting_enabled=self.extraction_source_quoting_enabled,
-            conflict_detection_enabled=self.extraction_conflict_detection_enabled,
-            validation_enabled=self.extraction_validation_enabled,
-            validation_min_confidence=self.extraction_validation_min_confidence,
-            embedding_max_concurrent=self.embedding_max_concurrent,
-            schema_embedding_enabled=self.schema_extraction_embedding_enabled,
-            domain_dedup_enabled=self.domain_dedup_enabled,
-            domain_dedup_threshold_pct=self.domain_dedup_threshold_pct,
-            domain_dedup_min_pages=self.domain_dedup_min_pages,
-            domain_dedup_min_block_chars=self.domain_dedup_min_block_chars,
+        return self._get_facade(
+            "extraction",
+            lambda: ExtractionConfig(
+                content_limit=self.extraction_content_limit,
+                chunk_max_tokens=self.extraction_chunk_max_tokens,
+                chunk_overlap_tokens=self.extraction_chunk_overlap_tokens,
+                max_concurrent_chunks=self.extraction_max_concurrent_chunks,
+                max_concurrent_sources=self.extraction_max_concurrent_sources,
+                extraction_batch_size=self.extraction_batch_size,
+                source_quoting_enabled=self.extraction_source_quoting_enabled,
+                conflict_detection_enabled=self.extraction_conflict_detection_enabled,
+                validation_enabled=self.extraction_validation_enabled,
+                validation_min_confidence=self.extraction_validation_min_confidence,
+                embedding_max_concurrent=self.embedding_max_concurrent,
+                schema_embedding_enabled=self.schema_extraction_embedding_enabled,
+                domain_dedup_enabled=self.domain_dedup_enabled,
+                domain_dedup_threshold_pct=self.domain_dedup_threshold_pct,
+                domain_dedup_min_pages=self.domain_dedup_min_pages,
+                domain_dedup_min_block_chars=self.domain_dedup_min_block_chars,
+            ),
         )
 
     @property
     def classification(self) -> ClassificationConfig:
-        return ClassificationConfig(
-            enabled=self.classification_enabled,
-            skip_enabled=self.classification_skip_enabled,
-            smart_enabled=self.smart_classification_enabled,
-            reranker_model=self.reranker_model,
-            embedding_high_threshold=self.classification_embedding_high_threshold,
-            embedding_low_threshold=self.classification_embedding_low_threshold,
-            reranker_threshold=self.classification_reranker_threshold,
-            cache_ttl=self.classification_cache_ttl,
-            use_default_skip_patterns=self.classification_use_default_skip_patterns,
-            classifier_content_limit=self.classification_content_limit,
+        return self._get_facade(
+            "classification",
+            lambda: ClassificationConfig(
+                enabled=self.classification_enabled,
+                skip_enabled=self.classification_skip_enabled,
+                smart_enabled=self.smart_classification_enabled,
+                reranker_model=self.reranker_model,
+                embedding_high_threshold=self.classification_embedding_high_threshold,
+                embedding_low_threshold=self.classification_embedding_low_threshold,
+                reranker_threshold=self.classification_reranker_threshold,
+                cache_ttl=self.classification_cache_ttl,
+                use_default_skip_patterns=self.classification_use_default_skip_patterns,
+                classifier_content_limit=self.classification_content_limit,
+            ),
         )
 
     @property
     def scraping(self) -> ScrapingConfig:
-        return ScrapingConfig(
-            delay_min=self.scrape_delay_min,
-            delay_max=self.scrape_delay_max,
-            max_concurrent_per_domain=self.scrape_max_concurrent_per_domain,
-            daily_limit_per_domain=self.scrape_daily_limit_per_domain,
-            max_retries=self.scrape_max_retries,
-            timeout=self.scrape_timeout,
-            retry_max_attempts=self.scrape_retry_max_attempts,
-            retry_base_delay=self.scrape_retry_base_delay,
-            retry_max_delay=self.scrape_retry_max_delay,
-            camoufox_networkidle_timeout=self.camoufox_networkidle_timeout,
-            camoufox_content_stability_checks=self.camoufox_content_stability_checks,
-            camoufox_content_stability_interval=self.camoufox_content_stability_interval,
+        return self._get_facade(
+            "scraping",
+            lambda: ScrapingConfig(
+                delay_min=self.scrape_delay_min,
+                delay_max=self.scrape_delay_max,
+                max_concurrent_per_domain=self.scrape_max_concurrent_per_domain,
+                daily_limit_per_domain=self.scrape_daily_limit_per_domain,
+                max_retries=self.scrape_max_retries,
+                timeout=self.scrape_timeout,
+                retry_max_attempts=self.scrape_retry_max_attempts,
+                retry_base_delay=self.scrape_retry_base_delay,
+                retry_max_delay=self.scrape_retry_max_delay,
+                camoufox_networkidle_timeout=self.camoufox_networkidle_timeout,
+                camoufox_content_stability_checks=self.camoufox_content_stability_checks,
+                camoufox_content_stability_interval=self.camoufox_content_stability_interval,
+            ),
         )
 
     @property
     def crawl(self) -> CrawlConfig:
-        return CrawlConfig(
-            delay_ms=self.crawl_delay_ms,
-            max_concurrency=self.crawl_max_concurrency,
-            max_concurrent_crawls=self.max_concurrent_crawls,
-            poll_interval=self.crawl_poll_interval,
-            smart_relevance_threshold=self.smart_crawl_default_relevance_threshold,
-            smart_map_limit=self.smart_crawl_map_limit,
-            smart_batch_max_concurrency=self.smart_crawl_batch_max_concurrency,
-            language_filtering_enabled=self.language_filtering_enabled,
-            language_detection_confidence=self.language_detection_confidence_threshold,
-            language_detection_timeout=self.language_detection_timeout_seconds,
-            excluded_language_codes=self.excluded_language_codes
-            if isinstance(self.excluded_language_codes, list)
-            else [
-                c.strip() for c in self.excluded_language_codes.split(",") if c.strip()
-            ],
+        return self._get_facade(
+            "crawl",
+            lambda: CrawlConfig(
+                delay_ms=self.crawl_delay_ms,
+                max_concurrency=self.crawl_max_concurrency,
+                max_concurrent_crawls=self.max_concurrent_crawls,
+                poll_interval=self.crawl_poll_interval,
+                smart_relevance_threshold=self.smart_crawl_default_relevance_threshold,
+                smart_map_limit=self.smart_crawl_map_limit,
+                smart_batch_max_concurrency=self.smart_crawl_batch_max_concurrency,
+                language_filtering_enabled=self.language_filtering_enabled,
+                language_detection_confidence=self.language_detection_confidence_threshold,
+                language_detection_timeout=self.language_detection_timeout_seconds,
+                excluded_language_codes=self.excluded_language_codes
+                if isinstance(self.excluded_language_codes, list)
+                else [
+                    c.strip()
+                    for c in self.excluded_language_codes.split(",")
+                    if c.strip()
+                ],
+            ),
         )
 
     @property
     def proxy(self) -> ProxyConfig:
-        return ProxyConfig(
-            enabled=self.proxy_adapter_enabled,
-            port=self.proxy_adapter_port,
-            flaresolverr_url=self.flaresolverr_url,
-            flaresolverr_max_timeout=self.flaresolverr_max_timeout,
-            flaresolverr_blocked_domains=self.flaresolverr_blocked_domains
-            if isinstance(self.flaresolverr_blocked_domains, list)
-            else [
-                d.strip()
-                for d in self.flaresolverr_blocked_domains.split(",")
-                if d.strip()
-            ],
+        return self._get_facade(
+            "proxy",
+            lambda: ProxyConfig(
+                enabled=self.proxy_adapter_enabled,
+                port=self.proxy_adapter_port,
+                flaresolverr_url=self.flaresolverr_url,
+                flaresolverr_max_timeout=self.flaresolverr_max_timeout,
+                flaresolverr_blocked_domains=self.flaresolverr_blocked_domains
+                if isinstance(self.flaresolverr_blocked_domains, list)
+                else [
+                    d.strip()
+                    for d in self.flaresolverr_blocked_domains.split(",")
+                    if d.strip()
+                ],
+            ),
         )
 
     @property
     def scheduler(self) -> SchedulerConfig:
-        return SchedulerConfig(
-            cleanup_stale_on_startup=self.scheduler_cleanup_stale_on_startup,
-            startup_stagger_seconds=self.scheduler_startup_stagger_seconds,
-            stale_threshold_scrape=self.job_stale_threshold_scrape,
-            stale_threshold_extract=self.job_stale_threshold_extract,
-            stale_threshold_crawl=self.job_stale_threshold_crawl,
+        return self._get_facade(
+            "scheduler",
+            lambda: SchedulerConfig(
+                cleanup_stale_on_startup=self.scheduler_cleanup_stale_on_startup,
+                startup_stagger_seconds=self.scheduler_startup_stagger_seconds,
+                stale_threshold_scrape=self.job_stale_threshold_scrape,
+                stale_threshold_extract=self.job_stale_threshold_extract,
+                stale_threshold_crawl=self.job_stale_threshold_crawl,
+            ),
         )
 
     @property
     def observability(self) -> ObservabilityConfig:
-        return ObservabilityConfig(
-            log_level=self.log_level,
-            log_format=self.log_format,
-            metrics_enabled=self.enable_metrics,
-            alerting_enabled=self.alerting_enabled,
-            alert_webhook_url=self.alert_webhook_url,
-            alert_webhook_format=self.alert_webhook_format,
+        return self._get_facade(
+            "observability",
+            lambda: ObservabilityConfig(
+                log_level=self.log_level,
+                log_format=self.log_format,
+                metrics_enabled=self.enable_metrics,
+                alerting_enabled=self.alerting_enabled,
+                alert_webhook_url=self.alert_webhook_url,
+                alert_webhook_format=self.alert_webhook_format,
+            ),
         )
 
 

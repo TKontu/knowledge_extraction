@@ -21,12 +21,12 @@ def count_tokens(text: str) -> int:
     for ch in text:
         cp = ord(ch)
         if (
-            0x4E00 <= cp <= 0x9FFF      # CJK Unified Ideographs
-            or 0x3400 <= cp <= 0x4DBF   # CJK Extension A
-            or 0xF900 <= cp <= 0xFAFF   # CJK Compatibility
-            or 0x3040 <= cp <= 0x309F   # Hiragana
-            or 0x30A0 <= cp <= 0x30FF   # Katakana
-            or 0xAC00 <= cp <= 0xD7AF   # Hangul
+            0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+            or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+            or 0xF900 <= cp <= 0xFAFF  # CJK Compatibility
+            or 0x3040 <= cp <= 0x309F  # Hiragana
+            or 0x30A0 <= cp <= 0x30FF  # Katakana
+            or 0xAC00 <= cp <= 0xD7AF  # Hangul
         ):
             cjk_count += 1
 
@@ -55,7 +55,25 @@ def _get_tail_text(text: str, target_tokens: int) -> str:
     if not paragraphs:
         return ""
 
-    max_chars = target_tokens * 4  # 4 chars ≈ 1 token
+    # Estimate chars_per_token based on CJK ratio
+    total_chars = len(text)
+    if total_chars > 0:
+        cjk_count = sum(
+            1
+            for ch in text
+            if 0x4E00 <= ord(ch) <= 0x9FFF
+            or 0x3400 <= ord(ch) <= 0x4DBF
+            or 0xF900 <= ord(ch) <= 0xFAFF
+            or 0x3040 <= ord(ch) <= 0x309F
+            or 0x30A0 <= ord(ch) <= 0x30FF
+            or 0xAC00 <= ord(ch) <= 0xD7AF
+        )
+        cjk_ratio = cjk_count / total_chars
+        # Blend between 4 chars/token (English) and 1.5 chars/token (CJK)
+        chars_per_token = 4.0 * (1 - cjk_ratio) + 1.5 * cjk_ratio
+    else:
+        chars_per_token = 4.0
+    max_chars = int(target_tokens * chars_per_token)
 
     # Collect paragraphs from the end
     collected: list[str] = []
@@ -123,7 +141,7 @@ def extract_header_path(markdown: str) -> list[str]:
                 headers = headers[:1] + [line[3:].strip()]
             else:
                 headers = [line[3:].strip()]
-        elif line.startswith("### "):
+        elif line.startswith("### ") and not line.startswith("#### "):
             # H3 - keep H1 and H2, replace rest
             if len(headers) >= 2:
                 headers = headers[:2] + [line[4:].strip()]
@@ -131,6 +149,13 @@ def extract_header_path(markdown: str) -> list[str]:
                 headers = headers[:1] + [line[4:].strip()]
             else:
                 headers = [line[4:].strip()]
+        elif re.match(r"^(#{4,}) (.+)", line):
+            # H4+ - keep headers up to level-1, append new header
+            match = re.match(r"^(#{4,}) (.+)", line)
+            level = len(match.group(1))  # 4 for H4, 5 for H5, etc.
+            keep = level - 1  # H4 keeps 3 levels (H1, H2, H3)
+            header_text = match.group(2).strip()
+            headers = headers[:keep] + [header_text]
 
     return headers
 

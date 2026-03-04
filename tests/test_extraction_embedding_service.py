@@ -104,9 +104,10 @@ class TestEmbedAndUpsert:
     """Tests for embed_and_upsert method."""
 
     async def test_empty_list_returns_zero(self, embedding_svc):
-        """Returns 0 for empty list."""
+        """Returns EmbeddingResult with 0 for empty list."""
         result = await embedding_svc.embed_and_upsert([])
-        assert result == 0
+        assert result.embedded_count == 0
+        assert result.errors == []
 
     async def test_embeds_and_upserts_extractions(
         self, embedding_svc, mock_embedding_service, mock_qdrant_repo
@@ -124,7 +125,8 @@ class TestEmbedAndUpsert:
 
         result = await embedding_svc.embed_and_upsert([extraction])
 
-        assert result == 1
+        assert result.embedded_count == 1
+        assert result.errors == []
         mock_embedding_service.embed_batch.assert_called_once()
         mock_qdrant_repo.upsert_batch.assert_called_once()
 
@@ -138,7 +140,7 @@ class TestEmbedAndUpsert:
 
         result = await embedding_svc.embed_and_upsert([extraction])
 
-        assert result == 0
+        assert result.embedded_count == 0
         mock_embedding_service.embed_batch.assert_not_called()
 
     async def test_handles_embedding_failure(
@@ -153,7 +155,8 @@ class TestEmbedAndUpsert:
         mock_embedding_service.embed_batch.side_effect = Exception("API error")
 
         result = await embedding_svc.embed_and_upsert([extraction])
-        assert result == 0
+        assert result.embedded_count == 0
+        assert len(result.errors) == 1
 
 
 class TestEmbedFacts:

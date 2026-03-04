@@ -7,7 +7,6 @@ from uuid import UUID
 
 import structlog
 
-from config import settings as app_settings
 from constants import SourceStatus
 from models import ExtractionProfile
 from services.alerting import get_alert_service
@@ -27,8 +26,8 @@ from services.storage.repositories.source import SourceRepository
 # Default fallback profile when database profile not found
 DEFAULT_PROFILE = ExtractionProfile(
     name="general",
-    categories=["general", "features", "technical", "integration"],
-    prompt_focus="General technical facts about the product, features, integrations, and capabilities",
+    categories=["general", "details", "specifications", "relationships"],
+    prompt_focus="Key facts, details, specifications, and relationships found in the content",
     depth="detailed",
     is_builtin=True,
 )
@@ -65,7 +64,12 @@ class BatchPipelineResult:
 
 @dataclass
 class SchemaPipelineResult:
-    """Result from schema-based extraction pipeline."""
+    """Result from schema-based extraction pipeline.
+
+    Note: total_deduplicated and total_entities are always 0 for schema pipeline.
+    Schema extraction uses merge_dedupe within field groups rather than a
+    separate dedup/entity step. Kept for interface compatibility with BatchPipelineResult.
+    """
 
     project_id: str
     sources_processed: int
@@ -423,10 +427,16 @@ class SchemaExtractionPipeline:
         orchestrator,  # SchemaExtractionOrchestrator
         db_session,
         extraction_embedding: ExtractionEmbeddingService | None = None,
+        extraction_config=None,
+        project_repo: "ProjectRepository | None" = None,
     ):
+        from config import settings
+
         self._orchestrator = orchestrator
         self._db = db_session
         self._extraction_embedding = extraction_embedding
+        self._extraction = extraction_config or settings.extraction
+        self._project_repo = project_repo
 
     async def extract_source(
         self,
@@ -464,7 +474,9 @@ class SchemaExtractionPipeline:
             return []
 
         # Run extraction for all field groups (prefer domain-deduped content)
-        dedup_content = get_extraction_content(source)
+        dedup_content = get_extraction_content(
+            source, domain_dedup_enabled=self._extraction.domain_dedup_enabled
+        )
         results, classification = await self._orchestrator.extract_all_groups(
             source_id=source.id,
             markdown=dedup_content,
@@ -527,10 +539,12 @@ class SchemaExtractionPipeline:
         Returns:
             Summary dict with extraction counts including sources_failed.
         """
+        from sqlalchemy import select
+
         from orm_models import Source
 
         # Load project to get extraction_schema
-        project_repo = ProjectRepository(self._db)
+        project_repo = self._project_repo or ProjectRepository(self._db)
         project = project_repo.get(project_id)
         if not project:
             logger.error("project_not_found", project_id=str(project_id))
@@ -585,7 +599,7 @@ class SchemaExtractionPipeline:
         # Build query based on whether specific source_ids are provided
         if source_ids:
             # When specific source_ids provided, extract those regardless of status
-            query = self._db.query(Source).filter(
+            stmt = select(Source).where(
                 Source.project_id == project_id,
                 Source.id.in_(source_ids),
                 Source.content.isnot(None),
@@ -597,16 +611,16 @@ class SchemaExtractionPipeline:
                 allowed_statuses.append(SourceStatus.EXTRACTED)
 
             # Include sources that are ready (and optionally extracted)
-            query = self._db.query(Source).filter(
+            stmt = select(Source).where(
                 Source.project_id == project_id,
                 Source.status.in_(allowed_statuses),
                 Source.content.isnot(None),
             )
 
         if source_groups:
-            query = query.filter(Source.source_group.in_(source_groups))
+            stmt = stmt.where(Source.source_group.in_(source_groups))
 
-        sources = query.all()
+        sources = list(self._db.execute(stmt).scalars().all())
 
         logger.info(
             "project_extraction_started",
@@ -637,12 +651,12 @@ class SchemaExtractionPipeline:
 
         # Process sources in parallel with cancellation support
         # Use chunked processing to allow cancellation checks between batches
-        semaphore = asyncio.Semaphore(app_settings.extraction.max_concurrent_sources)
-        chunk_size = app_settings.extraction.extraction_batch_size
+        semaphore = asyncio.Semaphore(self._extraction.max_concurrent_sources)
+        chunk_size = self._extraction.extraction_batch_size
 
         # Track whether embedding is available for this run
         embed_enabled = (
-            app_settings.schema_extraction_embedding_enabled
+            self._extraction.schema_embedding_enabled
             and self._extraction_embedding is not None
         )
 
@@ -727,10 +741,16 @@ class SchemaExtractionPipeline:
 
             # Embed extractions from this chunk (after flush, before commit)
             if embed_enabled and chunk_extractions:
-                embedded = await self._extraction_embedding.embed_and_upsert(
+                embed_result = await self._extraction_embedding.embed_and_upsert(
                     chunk_extractions
                 )
-                total_embedded += embedded
+                total_embedded += embed_result.embedded_count
+                if embed_result.errors:
+                    logger.error(
+                        "chunk_embedding_failed",
+                        errors=embed_result.errors,
+                        chunk=chunk_idx + 1,
+                    )
 
             # Call checkpoint callback to update job payload before commit
             if checkpoint_callback:

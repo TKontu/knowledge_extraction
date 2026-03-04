@@ -55,6 +55,7 @@ class SmartClassifier:
         redis_client: aioredis.Redis,
         app_config: AppClassificationConfig,
         classification_config: ClassificationConfig | None = None,
+        embedding_model_name: str = "",
     ):
         """Initialize SmartClassifier.
 
@@ -64,11 +65,13 @@ class SmartClassifier:
             app_config: App-level classification settings (thresholds, models).
             classification_config: Optional classification configuration from template.
                 Controls skip patterns for context-agnostic extraction.
+            embedding_model_name: Model name to include in cache keys for invalidation.
         """
         self._embedding_service = embedding_service
         self._redis = redis_client
         self._app_config = app_config
         self._classification_config = classification_config
+        self._embedding_model_name = embedding_model_name
         self._content_limit = app_config.classifier_content_limit
 
         # Resolve skip patterns based on config and settings
@@ -346,7 +349,9 @@ class SmartClassifier:
         # Select groups above reranker threshold
         reranker_threshold = self._app_config.reranker_threshold
         confirmed_groups = [
-            name for name, score in reranker_scores.items() if score >= reranker_threshold
+            name
+            for name, score in reranker_scores.items()
+            if score >= reranker_threshold
         ]
 
         logger.info(
@@ -378,9 +383,7 @@ class SmartClassifier:
                 reranker_scores=reranker_scores,
             )
 
-        max_rerank_score = max(
-            reranker_scores[g] for g in confirmed_groups
-        )
+        max_rerank_score = max(reranker_scores[g] for g in confirmed_groups)
         return SmartClassificationResult(
             page_type=self._infer_page_type(confirmed_groups),
             relevant_groups=confirmed_groups,
@@ -417,7 +420,7 @@ class SmartClassifier:
         try:
             cached_values = await self._redis.mget(cache_keys)
         except Exception as e:
-            logger.debug(
+            logger.warning(
                 "cache_batch_read_failed",
                 error=str(e),
             )
@@ -451,7 +454,7 @@ class SmartClassifier:
                         json.dumps(embedding),
                     )
                 except Exception as e:
-                    logger.debug(
+                    logger.warning(
                         "cache_write_failed",
                         group=group.name,
                         error=str(e),
@@ -471,7 +474,8 @@ class SmartClassifier:
             Cache key string.
         """
         group_text = self._create_group_text(group)
-        text_hash = hashlib.sha256(group_text.encode()).hexdigest()[:16]
+        key_input = f"{self._embedding_model_name}:{group_text}"
+        text_hash = hashlib.sha256(key_input.encode()).hexdigest()[:16]
         return f"{self.CACHE_KEY_PREFIX}{text_hash}"
 
     def _create_group_text(self, group: FieldGroup) -> str:
@@ -531,7 +535,9 @@ class SmartClassifier:
         """
         cleaned = clean_markdown_for_embedding(content)
         # Truncate content at word boundary (configurable, safe with bge-m3's 8192 token limit)
-        truncated_content = self._truncate_at_word_boundary(cleaned, self._content_limit)
+        truncated_content = self._truncate_at_word_boundary(
+            cleaned, self._content_limit
+        )
 
         parts = []
         if title:

@@ -7,10 +7,13 @@ A FastAPI-based web scraping and knowledge extraction pipeline that crawls websi
 This system orchestrates a complete data pipeline from web scraping to structured knowledge extraction:
 
 1. **Crawl/Scrape** - Fetches web pages using Firecrawl with rate limiting and retry logic
-2. **Extract** - Uses LLMs to extract structured data based on configurable schemas
-3. **Store** - Persists extractions in PostgreSQL with vector embeddings in Qdrant
-4. **Search** - Enables semantic search across extracted knowledge
-5. **Report** - Generates markdown and Excel reports from extracted data
+2. **Smart Crawl** - Filters discovered URLs by relevance to extraction schema before scraping
+3. **Domain Dedup** - Removes boilerplate content (navs, footers, cookie banners) per domain
+4. **Classify** - 3-tier page classification (skip → embed → rerank) to select relevant field groups
+5. **Extract** - Uses LLMs to extract structured data based on configurable schemas
+6. **Store** - Persists extractions in PostgreSQL with vector embeddings in Qdrant
+7. **Search** - Enables semantic search across extracted knowledge
+8. **Report** - Generates markdown and Excel reports from extracted data
 
 ## Key Features
 
@@ -20,18 +23,36 @@ This system orchestrates a complete data pipeline from web scraping to structure
 - Template-based project creation (company analysis, research surveys, etc.)
 - Flexible JSONB schemas for domain-specific extraction
 
-### Intelligent Scraping
+### Smart Crawl & Scraping
 - Firecrawl integration for robust web scraping
+- **Smart Crawl**: Maps site URLs, filters by embedding similarity to extraction schema, scrapes only relevant pages
 - Domain-level rate limiting with Redis
 - Automatic retry with exponential backoff
-- Language detection and filtering
+- Language detection and filtering (12 languages excluded by default)
 - Crawl depth control with URL pattern filtering
+
+### Domain Boilerplate Deduplication
+- Two-pass dedup: domain-level then section-level (by URL path prefix)
+- SHA-256 block fingerprinting with whitespace normalization
+- Configurable threshold (default 70% of pages)
+- Stores `cleaned_content` separately (never modifies `source.content`)
+- Per `(project_id, domain)` scope
+
+### Page Classification
+- 3-tier classification: pattern skip → embedding similarity → reranker scoring
+- Embedding-based (not regex) using bge-m3 + BGE-reranker-v2-m3
+- Configurable thresholds per tier
+- Template-specific skip patterns (careers, news, legal pages)
 
 ### Schema-Based Extraction
 - Multi-pass extraction across field groups
-- Chunk-based processing for large documents
-- Parallel extraction with KV cache optimization
-- Confidence scoring and validation
+- Chunk-based processing with H2+ multi-level header splitting
+- CJK-aware token counting
+- Parallel extraction with KV cache optimization (up to 80 concurrent chunks)
+- Source quoting (verbatim excerpts per field)
+- Conflict detection between chunks
+- Schema validation with type coercion
+- Confidence gating (suppress low-confidence fields)
 - Entity extraction and normalization
 
 ### Storage & Search
@@ -41,10 +62,13 @@ This system orchestrates a complete data pipeline from web scraping to structure
 - Source-to-extraction lineage tracking
 
 ### Background Job Processing
-- Asynchronous job scheduler with worker pools
+- **ServiceContainer** manages 10 app-lifetime services with create/cache/teardown
+- **JobScheduler** with worker pools and staggered startup
 - Separate workers for scraping, crawling, and extraction
-- Graceful shutdown handling
+- Stale job cleanup on startup
+- Graceful shutdown via ShutdownManager
 - Job status tracking and error recovery
+- Dead Letter Queue (DLQ) for failed LLM requests
 
 ## Architecture Components
 
@@ -52,10 +76,14 @@ This system orchestrates a complete data pipeline from web scraping to structure
 
 | Service | Purpose |
 |---------|---------|
+| **ServiceContainer** | Creates, caches, and tears down 10 app-lifetime services |
 | **Scraper** | Manages Firecrawl client, rate limiting, and retry logic |
 | **Camoufox** | Browser-based scraper with anti-bot evasion and AJAX discovery |
 | **Proxy Adapter** | Routes requests through FlareSolverr for challenge solving |
+| **SmartClassifier** | 3-tier page classification (skip → embed → rerank) |
+| **DomainDedupService** | Two-pass boilerplate removal per domain |
 | **Extraction** | Orchestrates LLM-based extraction across field groups |
+| **EmbeddingPipeline** | Unified embed+upsert service for both pipelines |
 | **Storage** | Handles persistence to PostgreSQL and Qdrant |
 | **LLM Client** | Enqueues requests to Redis Streams for async processing |
 | **LLM Worker** | Background worker executing LLM calls with adaptive concurrency |
@@ -80,20 +108,39 @@ This system orchestrates a complete data pipeline from web scraping to structure
 
 ```
 src/
-├── api/v1/           # FastAPI endpoints (scrape, crawl, extraction, projects, search)
+├── api/v1/             # FastAPI endpoints (scrape, crawl, extraction, projects, search, dedup)
 ├── services/
-│   ├── scraper/      # Scraping workers, rate limiting, scheduler
-│   ├── extraction/   # Schema orchestrator, field groups, validators
-│   ├── storage/      # Repositories (source, extraction, entity), Qdrant
-│   ├── llm/          # LLM client, chunking, request queue
-│   ├── knowledge/    # Entity extraction
-│   └── filtering/    # Language detection, pattern filtering
-├── middleware/       # Auth, rate limiting, logging, security headers
-├── models.py         # Pydantic models for API
-├── orm_models.py     # SQLAlchemy ORM models
-├── database.py       # Database connection
-├── config.py         # Settings and environment configuration
-└── main.py           # FastAPI application entry point
+│   ├── scraper/
+│   │   ├── service_container.py  # App-lifetime service creation/caching/teardown
+│   │   ├── scheduler.py          # Job scheduler with staggered startup
+│   │   ├── scrape_worker.py      # Scrape job processing
+│   │   ├── crawl_worker.py       # Multi-page crawl with depth control
+│   │   └── ...                   # Rate limiting, Firecrawl client, smart crawl
+│   ├── extraction/
+│   │   ├── pipeline.py           # Main pipeline orchestration (SchemaExtractionPipeline)
+│   │   ├── schema_orchestrator.py # Multi-pass field group extraction + merge
+│   │   ├── schema_extractor.py   # LLM-based extraction per field group
+│   │   ├── schema_validator.py   # Type coercion, enum, confidence gating
+│   │   ├── smart_classifier.py   # 3-tier page classification
+│   │   ├── domain_dedup.py       # Two-pass boilerplate removal
+│   │   ├── embedding_pipeline.py # Unified embed+upsert service
+│   │   ├── backpressure.py       # LLM queue backpressure manager
+│   │   ├── content_selector.py   # Domain-dedup-aware content selection
+│   │   ├── field_groups.py       # FieldDefinition (with merge_strategy), FieldGroup
+│   │   ├── schema_adapter.py     # Template → FieldGroup conversion
+│   │   ├── worker.py             # Extraction job worker
+│   │   └── ...                   # Content cleaner, page classifier
+│   ├── storage/        # Repositories (source, extraction, entity), Qdrant, embedding
+│   ├── llm/            # LLM client, chunking (CJK-aware), request queue
+│   ├── knowledge/      # Entity extraction
+│   ├── dlq/            # Dead Letter Queue service
+│   └── filtering/      # Language detection, pattern filtering
+├── middleware/         # Auth, rate limiting, logging, security headers
+├── models.py           # Pydantic models for API
+├── orm_models.py       # SQLAlchemy ORM models
+├── database.py         # Database connection
+├── config.py           # Settings, 10 typed subsystem facades (frozen dataclasses)
+└── main.py             # FastAPI application entry point
 ```
 
 ## Quick Start
@@ -161,7 +208,8 @@ CAMOUFOX_POOL_SIZE=10
 # LLM Configuration
 OPENAI_BASE_URL=http://localhost:9003/v1
 LLM_MODEL=Qwen3-30B-A3B-Instruct-4bit
-RAG_EMBEDDING_MODEL=bge-large-en
+RAG_EMBEDDING_MODEL=bge-m3
+EMBEDDING_DIMENSION=1024
 ```
 
 ### Running the Application
@@ -205,9 +253,13 @@ docker-compose down
 - `GET /api/v1/crawl/{job_id}` - Get crawl job status
 
 ### Extraction
-- `POST /api/v1/projects/{id}/extract` - Queue extraction job (with profile parameter)
+- `POST /api/v1/projects/{id}/extract` - Queue extraction job
 - `GET /api/v1/projects/{id}/extractions` - List extractions with filters
 - `GET /api/v1/projects/{id}/extractions/{extraction_id}` - Get extraction details
+
+### Domain Dedup
+- `POST /api/v1/projects/{id}/analyze-boilerplate` - Run boilerplate analysis
+- `GET /api/v1/projects/{id}/boilerplate-stats` - Get per-domain dedup statistics
 
 ### Search & Entities
 - `POST /api/v1/search` - Semantic search across extractions
@@ -264,12 +316,11 @@ crawl_response = httpx.post(
     headers={"X-API-Key": "your-api-key"}
 )
 
-# Or trigger extraction manually with profile
+# Or trigger extraction manually
 extract_response = httpx.post(
     f"http://localhost:8000/api/v1/projects/{project_id}/extract",
     json={
-        "source_ids": ["source-uuid"],
-        "profile": "detailed"  # or "general"
+        "source_ids": ["source-uuid"]
     },
     headers={"X-API-Key": "your-api-key"}
 )
@@ -314,8 +365,11 @@ The system includes pre-built templates for common use cases:
 | `research_survey` | Academic paper extraction | author, institution, method, metric, dataset, citation |
 | `contract_review` | Legal document analysis | party, date, amount, duration, jurisdiction |
 | `book_catalog` | Book information extraction | book, author, price, category, publisher |
+| `drivetrain_company_analysis` | Detailed industrial drivetrain company analysis | product, certification, application, standard |
+| `drivetrain_company_simple` | Simplified drivetrain company extraction | product, service, certification |
+| `default` | Generic fact extraction for any content | entity, fact, attribute |
 
-All templates include complete extraction schemas, entity type definitions, and customizable prompt templates.
+All templates include extraction schemas, entity type definitions, optional extraction context (source type, entity ID fields), and optional classification/crawl configuration.
 
 ## Configuration Options
 
@@ -331,18 +385,42 @@ All templates include complete extraction schemas, entity type definitions, and 
 - `MAX_CONCURRENT_CRAWLS` - Parallel crawl jobs across domains
 
 ### LLM Configuration
-- `LLM_MODEL` - Model name for extraction
-- `RAG_EMBEDDING_MODEL` - Embedding model name
-- `LLM_HTTP_TIMEOUT` - Request timeout (seconds)
-- `LLM_MAX_RETRIES` - Maximum retry attempts before DLQ
-- `LLM_RETRY_BACKOFF_MIN/MAX` - Retry backoff range (seconds)
-- `LLM_QUEUE_ENABLED` - Enable Redis queue mode (default: true)
-- `EXTRACTION_MAX_CONCURRENT_CHUNKS` - Parallel chunk processing
+- `LLM_MODEL` - Model name for extraction (default: `Qwen3-30B-A3B-Instruct-4bit`)
+- `RAG_EMBEDDING_MODEL` - Embedding model name (default: `bge-m3`)
+- `EMBEDDING_DIMENSION` - Embedding vector dimension (default: 1024)
+- `LLM_HTTP_TIMEOUT` - Request timeout in seconds (default: 120)
+- `LLM_MAX_TOKENS` - Maximum response tokens (default: 8192)
+- `LLM_MAX_RETRIES` - Maximum retry attempts (default: 3)
+- `LLM_RETRY_BACKOFF_MIN/MAX` - Retry backoff range in seconds (default: 2/30)
+- `LLM_QUEUE_ENABLED` - Enable Redis queue mode (default: false)
+- `EXTRACTION_MAX_CONCURRENT_CHUNKS` - Parallel chunk processing (default: 80)
+
+### Extraction Configuration
+- `EXTRACTION_CONTENT_LIMIT` - Max characters sent to LLM (default: 20000)
+- `EXTRACTION_CHUNK_MAX_TOKENS` - Max tokens per chunk (default: 5000)
+- `EXTRACTION_CHUNK_OVERLAP_TOKENS` - Overlap between chunks (default: 200)
+- `EXTRACTION_SOURCE_QUOTING_ENABLED` - Source quotes per field (default: true)
+- `EXTRACTION_CONFLICT_DETECTION_ENABLED` - Merge conflict recording (default: true)
+- `EXTRACTION_VALIDATION_ENABLED` - Schema validation (default: true)
+- `EXTRACTION_BATCH_SIZE` - Sources per batch in schema pipeline (default: 20)
+
+### Classification Configuration
+- `CLASSIFICATION_ENABLED` - Enable page classification (default: true)
+- `CLASSIFICATION_SKIP_ENABLED` - Skip irrelevant pages (default: true)
+- `SMART_CLASSIFICATION_ENABLED` - Embedding-based classification (default: true)
+- `RERANKER_MODEL` - Reranker model (default: `bge-reranker-v2-m3`)
+- `CLASSIFICATION_CONTENT_LIMIT` - Max chars for classifier (default: 6000)
+
+### Domain Dedup Configuration
+- `DOMAIN_DEDUP_ENABLED` - Use cleaned content for extraction (default: true)
+- `DOMAIN_DEDUP_THRESHOLD_PCT` - Boilerplate frequency threshold (default: 0.7)
+- `DOMAIN_DEDUP_MIN_PAGES` - Minimum pages before analysis (default: 5)
+- `DOMAIN_DEDUP_MIN_BLOCK_CHARS` - Minimum block size (default: 50)
 
 ### Language Filtering
-- `LANGUAGE_FILTERING_ENABLED` - Enable language detection
-- `LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD` - Confidence threshold
-- `EXCLUDED_LANGUAGE_CODES` - Languages to exclude
+- `LANGUAGE_FILTERING_ENABLED` - Enable language detection (default: true)
+- `LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD` - Confidence threshold (default: 0.7)
+- `EXCLUDED_LANGUAGE_CODES` - Languages to exclude (default: de,fi,fr,es,it,nl,pt,pl,ru,sv,no,da)
 
 ## Testing
 

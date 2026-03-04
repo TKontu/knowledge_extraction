@@ -198,7 +198,9 @@ class ExtractionWorker:
             self._llm,
             llm_queue=self.llm_queue,
             content_limit=self._extraction.content_limit if self._extraction else 20000,
-            source_quoting=self._extraction.source_quoting_enabled if self._extraction else True,
+            source_quoting=self._extraction.source_quoting_enabled
+            if self._extraction
+            else True,
             request_timeout=self._request_timeout,
         )
 
@@ -222,13 +224,18 @@ class ExtractionWorker:
 
         # Create smart classifier if enabled (reuses shared embedding service)
         smart_classifier = None
-        if self._classification and self._classification.smart_enabled and self._embedding_service:
+        if (
+            self._classification
+            and self._classification.smart_enabled
+            and self._embedding_service
+        ):
             async_redis = await get_async_redis()
             smart_classifier = SmartClassifier(
                 embedding_service=self._embedding_service,
                 redis_client=async_redis,
                 app_config=self._classification,
                 classification_config=classification_config,
+                embedding_model_name=self._embedding_service.model,
             )
 
         orchestrator = SchemaExtractionOrchestrator(
@@ -247,6 +254,7 @@ class ExtractionWorker:
             orchestrator,
             self.db,
             extraction_embedding=extraction_embedding,
+            extraction_config=self._extraction,
         )
 
     async def _process_with_schema_pipeline(
@@ -329,6 +337,7 @@ class ExtractionWorker:
             source_ids = payload.get("source_ids")
             profile_name = payload.get("profile", "general")
             force = payload.get("force", False)
+            source_groups = payload.get("source_groups")
 
             if not project_id:
                 raise ValueError("project_id is required in job payload")
@@ -340,9 +349,20 @@ class ExtractionWorker:
             # Check if project has extraction schema
             has_schema, project = self._has_extraction_schema(project_id)
 
-            # Create cancellation check callback for both pipelines
+            # Create cancellation check callback with time-throttle (skip DB check if <5s since last)
+            _last_cancel_check = 0.0
+            _last_cancel_result = False
+
             async def check_cancellation() -> bool:
-                return self.job_repo.is_cancellation_requested(job.id)
+                nonlocal _last_cancel_check, _last_cancel_result
+                import time
+
+                now = time.monotonic()
+                if now - _last_cancel_check < 5.0:
+                    return _last_cancel_result
+                _last_cancel_check = now
+                _last_cancel_result = self.job_repo.is_cancellation_requested(job.id)
+                return _last_cancel_result
 
             if has_schema and self._llm:
                 # Use schema-based extraction
@@ -361,6 +381,7 @@ class ExtractionWorker:
                     source_ids=[UUID(sid) for sid in source_ids]
                     if source_ids
                     else None,
+                    source_groups=source_groups,
                     force=force,
                     cancellation_check=check_cancellation,
                     project=project,

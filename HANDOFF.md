@@ -1,10 +1,12 @@
 # Handoff: Knowledge Extraction Orchestrator
 
-**Last updated:** 2026-03-03
+**Last updated:** 2026-03-04
 
 ## Recently Completed
 
-- [x] **Typed config facade migration (all 7 phases)** — Services now accept typed frozen dataclass facades instead of monolithic `Settings`. Global module-level settings also migrated to facade-style access (`settings.llm.model` instead of `settings.llm_model`). 1774 total tests pass.
+- [x] **Fix 32 verified extraction pipeline design issues** — 6 phases: critical data correctness (source_groups plumbing, temperature=0.0 falsy, confidence pop/default), config facade completion (SchemaExtractionPipeline DI, content_selector migration, LLMWorker content_limit injection), reliability (EmbeddingResult typed return, domain dedup single-pass, entity dedup case-insensitive, flush-not-commit), LLM client fixes (backoff cap+jitter, retry hints, CJK-aware chunking, H4+ headers, _singularize helper), polish (cache key includes model, facade caching, time-throttled cancel, word-boundary page matching, MCP offset param). 30+ files changed. 1738 tests pass. Full review: `docs/review_extraction_pipeline_design.md`.
+- [x] **Fix 10 verified extraction pipeline issues** — 2 critical bugs, 4 important design problems, 4 minor fixes. Typed `SchemaPipelineResult` return, orchestrator config injection, `merge_dedupe` strategy, SHA-256 hashing, configurable batch size/classifier limit/embedding dimension, fail on invalid schema, remove drivetrain defaults, recovery endpoint uses shared services. 55 files changed, net -928 lines.
+- [x] **Typed config facade migration (all 7 phases)** — Services now accept typed frozen dataclass facades instead of monolithic `Settings`. Global module-level settings also migrated to facade-style access (`settings.llm.model` instead of `settings.llm_model`).
   - Phase 0: Cleanup schema_extractor.py global_settings
   - Phase 1a: UrlRelevanceFilter → scalar kwargs
   - Phase 1b: DomainDedupService → ExtractionConfig
@@ -79,6 +81,7 @@
 
 | Doc | Status |
 |-----|--------|
+| `docs/review_extraction_pipeline_design.md` | ✅ All 32 issues implemented (6 phases) |
 | `docs/TODO_pipeline_fixes.md` | ✅ All 5 phases complete |
 | `docs/TODO_extraction_reliability.md` | ✅ All phases complete (validation pending) |
 | `docs/TODO_domain_dedup.md` | ✅ Phases A-E complete (Phase F validation pending) |
@@ -90,7 +93,9 @@
 ## Context
 
 - All work committed on `main` (not yet pushed to remote)
-- Test suite: 1774 tests passing
+- Test suite: 1738 tests passing
 - GitNexus index behind HEAD — run `npx gitnexus analyze` before using graph queries
 - All reliability features enabled in code defaults — not yet validated on real extraction data
 - Typed config facade migration complete — services use `LLMConfig`, `ExtractionConfig`, `ClassificationConfig` etc. instead of `Settings`
+- 10-issue fix complete — `SchemaPipelineResult` typed return, orchestrator accepts config facades, drivetrain-specific defaults removed
+- 32-issue design review fix complete — source_groups plumbed end-to-end, EmbeddingResult typed return, facade caching, backoff jitter, CJK chunking, entity dedup normalization

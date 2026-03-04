@@ -96,7 +96,6 @@ class ScrapeResponse(BaseModel):
     )
 
 
-
 class CrawlRequest(BaseModel):
     """Request body for crawl endpoint."""
 
@@ -126,6 +125,7 @@ class CrawlRequest(BaseModel):
             except re.error as e:
                 raise ValueError(f"Invalid regex pattern at index {i}: {e}") from e
         return v
+
     allow_backward_links: bool = Field(
         default=True, description="Allow parent/sibling URLs"
     )
@@ -304,6 +304,10 @@ class ExtractRequest(BaseModel):
     force: bool = Field(
         default=False,
         description="If True, re-extract sources even if already extracted. Useful for re-running with a different template.",
+    )
+    source_groups: list[str] | None = Field(
+        default=None,
+        description="Optional filter by source groups (company names). If omitted, extracts from all groups.",
     )
 
 

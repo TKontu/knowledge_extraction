@@ -22,8 +22,29 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Backward-compatible alias — external code (llm/worker.py, tests) imports this.
+# Deprecated: frozen at import time. Use config.settings.extraction_content_limit instead.
+# Kept for backward compatibility — llm/worker.py uses it as fallback default.
 EXTRACTION_CONTENT_LIMIT = _settings_singleton.extraction_content_limit
+
+
+def _singularize(word: str) -> str:
+    """Naive singularization for English plural nouns.
+
+    Handles common patterns: -ies→-y, -ses/-xes/-zes→drop 2, -s→drop 1.
+    Preserves words ending in -ss, -us, -is (already singular-looking).
+    """
+    if not word or len(word) < 3:
+        return word
+    lower = word.lower()
+    if lower.endswith(("ss", "us", "is")):
+        return word
+    if lower.endswith("ies"):
+        return word[:-3] + "y"
+    if lower.endswith(("ses", "xes", "zes")):
+        return word[:-2]
+    if lower.endswith("s"):
+        return word[:-1]
+    return word
 
 
 class SchemaExtractor:
@@ -280,7 +301,9 @@ class SchemaExtractor:
                             logger.warning(
                                 "schema_extraction_truncated_unrecoverable",
                                 field_group=field_group.name,
-                                response_preview=result_text[:500] if result_text else None,
+                                response_preview=result_text[:500]
+                                if result_text
+                                else None,
                             )
                             # Return empty list result for entity lists
                             return {field_group.name: [], "confidence": 0.0}
@@ -395,8 +418,10 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
         field_specs = []
         id_field = None
         # Use context entity_id_fields for ID field detection
-        id_field_names = self.context.entity_id_fields if self.context else (
-            "entity_id", "name", "id"
+        id_field_names = (
+            self.context.entity_id_fields
+            if self.context
+            else ("entity_id", "name", "id")
         )
         for f in field_group.fields:
             spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'
@@ -418,7 +443,7 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
             example_fields = f'"{first_field}": "...", ...'
 
         # Singular form for "each X" phrasing
-        entity_singular = field_group.name.removesuffix("s")
+        entity_singular = _singularize(field_group.name)
 
         quoting_instruction = ""
         if self._source_quoting_enabled:

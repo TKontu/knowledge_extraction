@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **knowledge_extraction-orchestrator** (4387 symbols, 11325 relationships, 258 execution flows).
+This project is indexed by GitNexus as **knowledge_extraction-orchestrator** (4297 symbols, 11007 relationships, 230 execution flows).
 
 ## Always Start Here
 

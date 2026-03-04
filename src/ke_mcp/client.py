@@ -261,6 +261,7 @@ class KnowledgeExtractionClient:
         project_id: str,
         source_ids: list[str] | None = None,
         force: bool = False,
+        source_groups: list[str] | None = None,
     ) -> dict[str, Any]:
         """Start an extraction job.
 
@@ -268,14 +269,18 @@ class KnowledgeExtractionClient:
             project_id: Project UUID.
             source_ids: Optional specific source IDs to extract.
             force: If True, re-extract sources even if already extracted.
+            source_groups: Optional filter by source groups.
 
         Returns:
             Job creation response with job_id.
         """
+        body: dict[str, Any] = {"source_ids": source_ids, "force": force}
+        if source_groups is not None:
+            body["source_groups"] = source_groups
         return await self._request(
             "POST",
             f"/api/v1/projects/{project_id}/extract",
-            json={"source_ids": source_ids, "force": force},
+            json=body,
         )
 
     async def list_extractions(

@@ -54,6 +54,7 @@ async def analyze_boilerplate(
             min_pages=min_pages,
             min_block_chars=min_block_chars,
         )
+        db.commit()
     except Exception as e:
         logger.error(
             "boilerplate_analysis_failed",

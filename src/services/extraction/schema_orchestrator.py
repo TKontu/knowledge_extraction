@@ -51,12 +51,21 @@ class SchemaExtractionOrchestrator:
                 classification. When provided and classification is enabled,
                 uses semantic similarity for field group selection.
         """
-        from config import settings
         from services.extraction.schema_adapter import ExtractionContext
 
         self._extractor = schema_extractor
-        self._extraction = extraction_config or settings.extraction
-        self._classification = classification_config or settings.classification
+        if extraction_config is None:
+            from config import settings
+
+            logger.debug("schema_orchestrator_using_global_extraction_config")
+            extraction_config = settings.extraction
+        if classification_config is None:
+            from config import settings
+
+            logger.debug("schema_orchestrator_using_global_classification_config")
+            classification_config = settings.classification
+        self._extraction = extraction_config
+        self._classification = classification_config
         self._context = context or ExtractionContext()
         self._smart_classifier = smart_classifier
 
@@ -197,7 +206,7 @@ class SchemaExtractionOrchestrator:
 
                 group_result["data"] = merged
 
-                raw_confidence = merged.pop("confidence", 0.0)
+                raw_confidence = merged.get("confidence", 0.0)
                 is_empty, _ = self._is_empty_result(merged, group)
 
                 if is_empty:
@@ -241,9 +250,7 @@ class SchemaExtractionOrchestrator:
         max_concurrent = self._extraction.max_concurrent_chunks
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def extract_chunk_with_semaphore(
-            chunk, chunk_idx: int
-        ) -> dict | None:
+        async def extract_chunk_with_semaphore(chunk, chunk_idx: int) -> dict | None:
             """Extract from a single chunk with semaphore-controlled concurrency.
 
             No retry here — extract_field_group → _extract_direct already
@@ -357,7 +364,7 @@ class SchemaExtractionOrchestrator:
             return {}
 
         if group.is_entity_list:
-            return self._merge_entity_lists(chunk_results)
+            return self._merge_entity_lists(chunk_results, group)
 
         merged = {}
         for field in group.fields:
@@ -424,7 +431,10 @@ class SchemaExtractionOrchestrator:
                 chunk_conf = result.get("confidence", 0.5)
                 if isinstance(chunk_quotes, dict):
                     for field_name, quote in chunk_quotes.items():
-                        if field_name not in best_conf or chunk_conf > best_conf[field_name]:
+                        if (
+                            field_name not in best_conf
+                            or chunk_conf > best_conf[field_name]
+                        ):
                             merged_quotes[field_name] = quote
                             best_conf[field_name] = chunk_conf
             if merged_quotes:
@@ -438,24 +448,30 @@ class SchemaExtractionOrchestrator:
 
         return merged
 
-    def _merge_entity_lists(self, chunk_results: list[dict]) -> dict:
+    def _merge_entity_lists(
+        self, chunk_results: list[dict], group: FieldGroup | None = None
+    ) -> dict:
         """Merge entity lists from multiple chunks.
 
-        Dynamically detects the entity list key (e.g., "products", "employees",
-        "locations") and deduplicates by common ID fields.
+        Uses group.name as the expected entity key, falling back to scanning
+        chunk results for the first list value.
         """
-        # Find which key contains the entity list by looking for any list value
-        # (excluding 'confidence' and other known non-list keys)
         reserved_keys = {"confidence", "error", "status"}
         entity_key = None
 
-        for result in chunk_results:
-            for key, value in result.items():
-                if key not in reserved_keys and isinstance(value, list):
-                    entity_key = key
+        # Prefer group.name as the entity key
+        if group is not None:
+            entity_key = group.name
+
+        # Fall back to scanning chunk results
+        if not entity_key:
+            for result in chunk_results:
+                for key, value in result.items():
+                    if key not in reserved_keys and isinstance(value, list):
+                        entity_key = key
+                        break
+                if entity_key:
                     break
-            if entity_key:
-                break
 
         # Default to "entities" if no entity list found
         if not entity_key:
@@ -476,8 +492,9 @@ class SchemaExtractionOrchestrator:
                 # Use context-defined ID fields for deduplication
                 entity_id = None
                 for id_field in self._context.entity_id_fields:
-                    if entity.get(id_field):
-                        entity_id = entity.get(id_field)
+                    raw_id = entity.get(id_field)
+                    if raw_id is not None and raw_id != "":
+                        entity_id = str(raw_id).strip().lower()
                         break
 
                 if entity_id and entity_id not in seen_ids:
@@ -556,8 +573,7 @@ class SchemaExtractionOrchestrator:
             if has_conflict:
                 conflicts[field.name] = {
                     "values": [
-                        {"chunk": idx, "value": val}
-                        for idx, val in values_with_chunk
+                        {"chunk": idx, "value": val} for idx, val in values_with_chunk
                     ],
                     "resolution": strategy,
                     "resolved_value": merged.get(field.name),
@@ -565,9 +581,7 @@ class SchemaExtractionOrchestrator:
 
         return conflicts
 
-    def _is_empty_result(
-        self, data: dict, group: FieldGroup
-    ) -> tuple[bool, float]:
+    def _is_empty_result(self, data: dict, group: FieldGroup) -> tuple[bool, float]:
         """Check if extraction result is empty or default-only.
 
         Args:

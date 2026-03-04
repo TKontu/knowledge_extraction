@@ -77,7 +77,9 @@ class PageClassifier:
         self._available_groups = set(available_groups) if available_groups else None
         self._url_patterns = url_patterns or {}
         self._title_keywords = title_keywords or {}
-        self._skip_patterns = skip_patterns if skip_patterns is not None else self.DEFAULT_SKIP_PATTERNS
+        self._skip_patterns = (
+            skip_patterns if skip_patterns is not None else self.DEFAULT_SKIP_PATTERNS
+        )
 
     def classify(
         self,
@@ -181,12 +183,24 @@ class PageClassifier:
             reasoning="; ".join(reasoning_parts) if reasoning_parts else None,
         )
 
-    def _infer_page_type(self, groups: list[str]) -> str:
-        """Infer page type from matched groups."""
-        if any("product" in g.lower() for g in groups):
+    @staticmethod
+    def _infer_page_type(groups: list[str]) -> str:
+        """Infer page type from matched groups using word-boundary matching."""
+
+        def _group_words(name: str) -> set[str]:
+            """Split group name on separators and return lowercase word set."""
+            import re
+
+            return set(re.split(r"[_\-\s]+", name.lower()))
+
+        all_words = set()
+        for g in groups:
+            all_words.update(_group_words(g))
+
+        if "product" in all_words or "products" in all_words:
             return "product"
-        if any("service" in g.lower() for g in groups):
+        if "service" in all_words or "services" in all_words:
             return "service"
-        if any(kw in g.lower() for g in groups for kw in ("company", "about", "overview")):
+        if all_words & {"company", "about", "overview"}:
             return "about"
         return "general"

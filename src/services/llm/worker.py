@@ -10,7 +10,9 @@ import structlog
 
 from constants import LLM_RETRY_HINT
 from services.extraction.content_cleaner import strip_structural_junk
-from services.extraction.schema_extractor import EXTRACTION_CONTENT_LIMIT
+from services.extraction.schema_extractor import (
+    EXTRACTION_CONTENT_LIMIT,  # deprecated alias
+)
 from services.llm.json_repair import try_repair_json
 from services.llm.models import LLMRequest, LLMResponse
 
@@ -59,6 +61,7 @@ class LLMWorker:
         base_temperature: float = 0.1,
         temperature_increment: float = 0.05,
         response_ttl: int = 300,
+        content_limit: int | None = None,
     ):
         """Initialize LLM worker.
 
@@ -77,6 +80,7 @@ class LLMWorker:
             base_temperature: Base temperature for LLM requests.
             temperature_increment: Temperature increase per retry attempt.
             response_ttl: TTL in seconds for response storage in Redis.
+            content_limit: Max chars for content truncation. Falls back to EXTRACTION_CONTENT_LIMIT.
         """
         self.redis = redis
         self.llm_client = llm_client
@@ -89,6 +93,9 @@ class LLMWorker:
         self.base_temperature = base_temperature
         self.temperature_increment = temperature_increment
         self.response_ttl = response_ttl
+        self._content_limit = (
+            content_limit if content_limit is not None else EXTRACTION_CONTENT_LIMIT
+        )
 
         # Adaptive concurrency
         self.concurrency = initial_concurrency
@@ -409,7 +416,7 @@ class LLMWorker:
             profile_name = payload.get("profile_name", "general")
             system_prompt = f"Extract facts from the content. Categories: {categories}. Profile: {profile_name}"
             cleaned = strip_structural_junk(content)
-            user_prompt = cleaned[:EXTRACTION_CONTENT_LIMIT]
+            user_prompt = cleaned[: self._content_limit]
 
         # Add conciseness hint on retries
         if retry_count > 0:
@@ -466,9 +473,9 @@ class LLMWorker:
             cleaned = strip_structural_junk(content)
             # Use generic "Source:" label in fallback mode
             user_prompt = (
-                f"Source: {source_context}\n\nContent:\n{cleaned[:EXTRACTION_CONTENT_LIMIT]}"
+                f"Source: {source_context}\n\nContent:\n{cleaned[: self._content_limit]}"
                 if source_context
-                else f"Content:\n{cleaned[:EXTRACTION_CONTENT_LIMIT]}"
+                else f"Content:\n{cleaned[: self._content_limit]}"
             )
 
         # Add conciseness hint on retries

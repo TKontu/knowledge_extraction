@@ -1000,26 +1000,19 @@ class TestExtractProjectSkipExtracted:
             "extraction_schema"
         ]
 
-        # Mock execute() for ProjectRepository.get() (returns project)
+        # Mock execute() for both ProjectRepository.get() and Source query
+        scalars_mock = Mock()
+        scalars_mock.all.return_value = []
+
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = mock_project
+        mock_result.scalars.return_value = scalars_mock
         mock_db_session.execute.return_value = mock_result
-
-        # Setup mock query chain for Source query (still uses db.query())
-        mock_query = Mock()
-        mock_filter = Mock()
-        mock_query.filter.return_value = mock_filter
-        mock_filter.filter.return_value = mock_filter
-        mock_filter.all.return_value = []
-        mock_db_session.query.return_value = mock_query
 
         await schema_pipeline.extract_project(project_id, skip_extracted=True)
 
-        # Verify that the filter was called with appropriate status values
-        # When skip_extracted=True, 'extracted' should NOT be in the allowed statuses
-        filter_calls = mock_filter.filter.call_args_list
-        # Check that we made filter calls
-        assert len(filter_calls) >= 0  # Query was built
+        # Verify execute was called (project lookup + source query)
+        assert mock_db_session.execute.call_count >= 1
 
     async def test_skip_extracted_false_includes_all(
         self, schema_pipeline, mock_db_session
@@ -1037,20 +1030,16 @@ class TestExtractProjectSkipExtracted:
             "extraction_schema"
         ]
 
-        # Mock execute() for ProjectRepository.get() (returns project)
+        # Mock execute() for both ProjectRepository.get() and Source query
+        scalars_mock = Mock()
+        scalars_mock.all.return_value = []
+
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = mock_project
+        mock_result.scalars.return_value = scalars_mock
         mock_db_session.execute.return_value = mock_result
-
-        # Setup mock query chain for Source query (still uses db.query())
-        mock_query = Mock()
-        mock_filter = Mock()
-        mock_query.filter.return_value = mock_filter
-        mock_filter.filter.return_value = mock_filter
-        mock_filter.all.return_value = []
-        mock_db_session.query.return_value = mock_query
 
         await schema_pipeline.extract_project(project_id, skip_extracted=False)
 
-        # Verify query was executed (includes extracted sources)
+        # Verify execute was called (includes extracted sources)
         assert mock_db_session.execute.call_count >= 1

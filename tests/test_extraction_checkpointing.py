@@ -266,23 +266,16 @@ class TestSchemaExtractionPipelineCheckpointing:
 
     def _setup_db_mock(self, mock_db, mock_project, sources):
         """Set up database mock with proper query chain for sources."""
-        # Project query: db.query(Project).filter(...).first()
-        project_query = Mock()
-        project_query.first.return_value = mock_project
+        # ProjectRepository.get() uses: session.execute(select(...)).scalar_one_or_none()
+        # Source query uses: session.execute(stmt).scalars().all()
+        scalars_mock = Mock()
+        scalars_mock.all.return_value = sources
 
-        # Source query: db.query(Source).filter(...).filter(...).all()
-        source_query = Mock()
-        source_query.all.return_value = sources
-        # Handle the second .filter() call for source_groups
-        source_query.filter.return_value = source_query
+        execute_result = Mock()
+        execute_result.scalar_one_or_none.return_value = mock_project
+        execute_result.scalars.return_value = scalars_mock
 
-        def query_side_effect(model):
-            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
-            if "Project" in model_name:
-                return Mock(filter=Mock(return_value=project_query))
-            return Mock(filter=Mock(return_value=source_query))
-
-        mock_db.query.side_effect = query_side_effect
+        mock_db.execute.return_value = execute_result
 
     async def test_checkpoint_callback_called_after_chunk(
         self, mock_db, mock_orchestrator, mock_source

@@ -13,6 +13,9 @@ from services.storage.qdrant.repository import EmbeddingItem, QdrantRepository
 
 logger = structlog.get_logger(__name__)
 
+# Max items per list value when building embeddable text
+EMBEDDING_MAX_LIST_ITEMS = 50
+
 
 @dataclass
 class EmbeddingResult:
@@ -57,7 +60,7 @@ class ExtractionEmbeddingService:
                     continue
                 if value is not None:
                     if isinstance(value, list):
-                        for item in value[:20]:
+                        for item in value[:EMBEDDING_MAX_LIST_ITEMS]:
                             if isinstance(item, dict):
                                 item_parts = [
                                     f"{k}: {v}"
@@ -71,7 +74,7 @@ class ExtractionEmbeddingService:
                         parts.append(f"{key}: {value}")
         return "\n".join(parts)
 
-    async def embed_and_upsert(self, extractions: list) -> int:
+    async def embed_and_upsert(self, extractions: list) -> EmbeddingResult:
         """Batch embed extractions and upsert to Qdrant.
 
         Extractions must have .id set (post-flush).
@@ -80,15 +83,15 @@ class ExtractionEmbeddingService:
             extractions: List of Extraction ORM objects.
 
         Returns:
-            Number of extractions successfully embedded.
+            EmbeddingResult with count and any errors.
         """
         if not extractions:
-            return 0
+            return EmbeddingResult(embedded_count=0, errors=[])
 
         texts = [self.extraction_to_text(e) for e in extractions]
         valid = [(e, t) for e, t in zip(extractions, texts, strict=True) if t.strip()]
         if not valid:
-            return 0
+            return EmbeddingResult(embedded_count=0, errors=[])
 
         try:
             embeddings = await self._embedding_service.embed_batch(
@@ -110,15 +113,15 @@ class ExtractionEmbeddingService:
             ]
 
             await self._qdrant_repo.upsert_batch(items)
-            return len(items)
+            return EmbeddingResult(embedded_count=len(items), errors=[])
 
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "extraction_embedding_failed",
                 error=str(e),
                 extraction_count=len(valid),
             )
-            return 0
+            return EmbeddingResult(embedded_count=0, errors=[str(e)])
 
     async def embed_facts(
         self,

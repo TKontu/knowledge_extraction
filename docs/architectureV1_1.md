@@ -7,21 +7,21 @@ The Knowledge Extraction Orchestrator is a multi-stage pipeline that transforms 
 ## Pipeline Flow
 
 ```
-┌─────────┐     ┌─────────┐     ┌───────────┐     ┌────────┐
-│ Crawl/  │────▶│ Scrape  │────▶│ Extract   │────▶│ Store  │
-│ Request │     │ Worker  │     │ Worker    │     │ (DB)   │
-└─────────┘     └─────────┘     └───────────┘     └────────┘
-                     │                │                 │
-                     ▼                ▼                 ▼
-                ┌─────────┐     ┌─────────┐      ┌─────────┐
-                │Firecrawl│     │LLM Queue│      │ Qdrant  │
-                └─────────┘     └─────────┘      └─────────┘
-                     │                │
-                     ▼                ▼
-              ┌──────────┐      ┌─────────┐
-              │ Camoufox │      │   LLM   │
-              │  + Proxy │      │ Worker  │
-              └──────────┘      └─────────┘
+┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌────────┐
+│ Crawl/  │───▶│  Smart   │───▶│ Domain   │───▶│ Classify │───▶│ Extract   │───▶│ Store  │
+│ Scrape  │    │  Crawl   │    │  Dedup   │    │ (3-tier) │    │ Worker    │    │ (DB)   │
+└─────────┘    └──────────┘    └──────────┘    └──────────┘    └───────────┘    └────────┘
+     │              │                                │                │              │
+     ▼              ▼                                ▼                ▼              ▼
+┌─────────┐   ┌──────────┐                    ┌──────────┐    ┌─────────┐    ┌─────────┐
+│Firecrawl│   │ Embedding│                    │ Reranker │    │LLM Queue│    │ Qdrant  │
+└─────────┘   │ (bge-m3) │                    │(bge-rnk) │    └─────────┘    └─────────┘
+     │        └──────────┘                    └──────────┘         │
+     ▼                                                             ▼
+┌──────────┐                                                 ┌─────────┐
+│ Camoufox │                                                 │   LLM   │
+│  + Proxy │                                                 │ Worker  │
+└──────────┘                                                 └─────────┘
 ```
 
 ### Stage 1: Web Scraping
@@ -69,38 +69,65 @@ The Knowledge Extraction Orchestrator is a multi-stage pipeline that transforms 
 - Crawl depth limiting
 - `llms.txt` awareness (overrides robots.txt if AI allowed)
 
-### Stage 2: Knowledge Extraction
+### Stage 2: Domain Dedup & Classification
+
+**Components:**
+- `DomainDedupService` - Two-pass boilerplate removal
+- `SmartClassifier` - 3-tier page classification
+- `ContentSelector` - Domain-dedup-aware content selection
+
+**Domain Dedup Flow:**
+1. `analyze_boilerplate()` called per (project_id, domain)
+2. Pass 1: Domain-level — SHA-256 fingerprint all content blocks across pages
+3. Blocks appearing in ≥70% of pages marked as boilerplate
+4. Pass 2: Section-level — group by URL path prefix (depth=1), repeat analysis
+5. Merge fingerprints → store `cleaned_content` per source (original `content` never modified)
+
+**Classification Flow (per source):**
+1. **Pattern Skip**: Check URL/content against skip patterns (careers, news, legal)
+2. **Embedding Similarity**: Embed page content (truncated to 6000 chars), compare to field group descriptions
+   - High similarity (≥0.75) → use matched field groups only
+   - Low similarity (<0.40) → use all field groups (conservative fallback)
+   - Mid-range → proceed to reranker
+3. **Reranker Scoring**: BGE-reranker-v2-m3 scores each (content, field_group) pair
+   - Score ≥0.50 → include field group
+   - Below threshold → exclude
+
+### Stage 3: Knowledge Extraction
 
 **Components:**
 - `ExtractionWorker` - Processes extraction jobs
-- `ExtractionPipelineService` - Orchestrates extraction flow
-- `SchemaExtractionOrchestrator` - Multi-pass field group extraction
-- `SchemaExtractor` - LLM-based extraction per field group
+- `SchemaExtractionPipeline` - Schema-based pipeline returning typed `SchemaPipelineResult`
+- `ExtractionPipelineService` - Generic extraction pipeline returning `BatchPipelineResult`
+- `SchemaExtractionOrchestrator` - Multi-pass field group extraction + merge (accepts typed config facades)
+- `SchemaExtractor` - LLM-based extraction per field group with source quoting
+- `SchemaValidator` - Type coercion, enum validation, confidence gating
+- `BackpressureManager` - LLM queue backpressure with exponential backoff
+- `EmbeddingPipeline` - Unified embed+upsert service
 - `EntityExtractor` - Named entity recognition
 - `LLMClient` - Enqueues requests to Redis Streams
 - `LLMWorker` - Background worker executing LLM calls
 
 **Flow:**
 1. Extraction job queued (auto or manual trigger)
-2. Worker loads sources with `status=pending`
-3. Content chunked for large documents
-4. **LLM Request Queueing:**
-   - Extraction requests enqueued to Redis Streams
-   - LLM Worker claims requests via consumer group
-   - Adaptive concurrency (5-50 concurrent calls)
-   - Failed requests retry up to 3 times
-   - Persistent failures moved to Dead Letter Queue (DLQ)
-5. Parallel extraction across field groups:
-   - Manufacturing capabilities
-   - Services offered
-   - Company information
-   - Product specifications
-   - Custom fields per project schema
-6. Chunk results merged with aggregation rules
-7. Entities extracted and normalized
-8. Extractions validated against schema
-9. Deduplication via embedding similarity (threshold: 0.90)
-10. Results persisted to PostgreSQL + Qdrant
+2. Worker loads sources, selects content (cleaned if domain dedup enabled, else raw)
+3. Content chunked with H2+ multi-level header splitting (max 5000 tokens, 200 token overlap)
+4. **Classification** filters irrelevant field groups per source (see Stage 2)
+5. **Parallel extraction** across field groups (up to 80 concurrent chunks):
+   - Custom fields per project extraction schema
+   - Source quoting (verbatim excerpts per field)
+   - Conflict detection between chunks
+6. Chunk results merged with typed strategies:
+   - Boolean: `any()` — True if any chunk says True
+   - Numeric: `highest_confidence` — value from best chunk
+   - Text: `highest_confidence` — longest non-empty from best chunk
+   - List: `merge_dedupe` — merge and deduplicate across chunks
+   - Per-field `merge_strategy` override supported
+7. Schema validation with type coercion (enum normalization, list parsing)
+8. Confidence gating — suppress fields below `validation_min_confidence` (0.3)
+9. Entities extracted and normalized
+10. Deduplication via embedding similarity (threshold: 0.90)
+11. Results persisted to PostgreSQL + Qdrant (via EmbeddingPipeline)
 
 **LLM Worker Features:**
 - Adaptive concurrency based on timeout ratio:
@@ -110,19 +137,15 @@ The Knowledge Extraction Orchestrator is a multi-stage pipeline that transforms 
 - Request expiration handling
 - Dead Letter Queue for manual reprocessing
 
-**Extraction Profiles:**
-- `general` - Standard extraction with default categories
-- `detailed` - More thorough extraction with additional context
-- Profiles customize system prompts and extraction depth
-- Configurable per extraction request
-
 **Optimization:**
-- Parallel chunk processing with semaphore control
+- Parallel chunk processing with semaphore control (80 concurrent)
+- Parallel source processing (up to 20 concurrent sources)
 - Continuous request flow for KV cache utilization
-- Batched embedding generation
+- Batched embedding generation (50 concurrent)
+- Backpressure manager with exponential backoff
 - Adaptive concurrency prevents LLM overload
 
-### Stage 3: Storage & Indexing
+### Stage 4: Storage & Indexing
 
 **Components:**
 - `ExtractionRepository` - Extraction CRUD operations
@@ -214,14 +237,16 @@ Field groups define extraction schemas with typed fields:
 ```python
 FieldGroup(
     name="company_overview",
+    description="Company overview information",
     fields=[
-        Field(name="company_name", type="text", required=True),
-        Field(name="industry", type="text"),
-        Field(name="employee_count", type="integer"),
-        Field(name="founded_year", type="integer"),
-        Field(name="headquarters", type="text"),
+        FieldDefinition(name="company_name", field_type="text", description="Company name"),
+        FieldDefinition(name="industry", field_type="text", description="Industry sector"),
+        FieldDefinition(name="employee_count", field_type="integer", description="Employee count"),
+        FieldDefinition(name="headquarters", field_type="text", description="HQ location"),
     ],
-    extraction_prompt="Extract company overview information..."
+    prompt_hint="Extract company overview information...",
+    is_entity_list=False,
+    max_items=None,
 )
 ```
 
@@ -230,13 +255,20 @@ FieldGroup(
 - `integer` / `float` - Numeric values
 - `boolean` - True/False flags
 - `list` - Arrays of values
-- `enum` - Predefined choices
+- `enum` - Predefined choices (with `allowed_values`)
 
-**Merge Strategies:**
-- Boolean: `any()` - True if any chunk says True
-- Numeric: `max()` - Take highest value
-- Text: Longest non-empty string
-- List: Merge and deduplicate
+**Merge Strategies** (per-field `merge_strategy` override supported):
+
+| Strategy | Used For | Behavior |
+|----------|----------|----------|
+| `any_true` | boolean | True if any chunk says True |
+| `highest_confidence` | text, numeric | Value from highest-confidence chunk |
+| `merge_dedupe` | list | Merge and deduplicate across chunks |
+| `most_common` | enum, text | Most frequently seen value |
+| `collect_unique` | list | Collect all unique values |
+| `latest` | text | Value from last chunk |
+
+**Valid merge strategies**: `any_true`, `highest_confidence`, `most_common`, `collect_unique`, `latest`, `merge_dedupe`
 
 ## Service Architecture
 
@@ -265,23 +297,39 @@ FastAPI Router
 
 **Note:** Middleware executes outer→inner on request, inner→outer on response.
 
-### Background Job Scheduler
+### Service Container & Job Scheduler
 
-**JobScheduler** manages worker pools:
+**ServiceContainer** manages 10 app-lifetime services:
+```python
+ServiceContainer
+├── embedding_service      # EmbeddingService (bge-m3)
+├── qdrant_repo            # QdrantRepository (1024-dim vectors)
+├── extraction_embedding   # EmbeddingPipeline
+├── smart_classifier       # SmartClassifier (3-tier)
+├── llm_client             # LLMClient
+├── llm_queue              # LLMRequestQueue (Redis Streams)
+├── llm_worker             # LLMWorker (adaptive concurrency)
+├── scrape_worker          # ScrapeWorker
+├── crawl_worker           # CrawlWorker
+└── extraction_worker      # ExtractionWorker
+```
 
+**JobScheduler** (takes ServiceContainer):
 ```python
 Scheduler
-├── _run_scrape_worker()     # 1 worker
+├── _cleanup_stale_jobs()    # Startup: mark running/cancelling → failed
+├── _run_scrape_worker()     # 1 worker (staggered start)
 ├── _run_crawl_worker()      # N workers (configurable)
-├── _run_extract_worker()    # 1 worker
+├── _run_extract_worker()    # 1 worker (staggered start)
 └── _llm_worker              # LLM request processor
 ```
 
 **Job Claiming:**
 - `SELECT FOR UPDATE SKIP LOCKED` prevents race conditions
 - Workers atomically claim jobs
-- Stale job recovery for crashed workers
+- Stale job recovery on startup
 - Priority-based ordering (priority DESC, created_at ASC)
+- Staggered worker startup (default 1.0s between each)
 
 ### LLM Integration
 
@@ -330,10 +378,12 @@ Scheduler
 
 ### Extraction Concurrency
 
-- **Chunk-level parallelism** - Chunks processed in parallel with semaphore
-- **Field group parallelism** - All field groups extracted concurrently
+- **Source-level parallelism** - Up to 20 sources processed concurrently
+- **Chunk-level parallelism** - Chunks processed in parallel with semaphore (80 concurrent)
+- **Field group parallelism** - All field groups extracted concurrently per source
+- **Embedding parallelism** - Up to 50 concurrent embedding/rerank requests
 - **KV cache optimization** - Continuous request flow prevents cache eviction
-- **Max concurrent chunks** - `EXTRACTION_MAX_CONCURRENT_CHUNKS` (default: 80)
+- **Backpressure** - Exponential backoff when LLM queue depth exceeds threshold
 
 ### Worker Pools
 
@@ -346,7 +396,10 @@ CRAWL_MAX_CONCURRENCY = 2   # Concurrent requests per domain
 CRAWL_DELAY_MS = 2000       # Delay between requests
 
 # Extraction parallelism
-EXTRACTION_MAX_CONCURRENT_CHUNKS = 80  # Chunks in flight
+EXTRACTION_MAX_CONCURRENT_CHUNKS = 80   # Chunks in flight
+EXTRACTION_MAX_CONCURRENT_SOURCES = 20  # Sources in parallel
+EXTRACTION_BATCH_SIZE = 20              # Sources per batch
+EMBEDDING_MAX_CONCURRENT = 50           # Embedding requests
 ```
 
 ## Storage Patterns
@@ -355,10 +408,19 @@ EXTRACTION_MAX_CONCURRENT_CHUNKS = 80  # Chunks in flight
 
 **Lifecycle:**
 ```
-pending → (extraction) → completed
-        ↓ (on error)
-       failed
+pending → ready → (extraction) → extracted → completed
+                    ↓ (skip)      ↓ (on error)
+                   skipped         failed
 ```
+
+**Statuses:**
+- `pending` — scraped, awaiting processing
+- `ready` — domain dedup cleaned (if enabled)
+- `skipped` — classified as irrelevant (careers, news, etc.)
+- `extracted` — LLM extraction complete
+- `completed` — fully processed (embeddings stored)
+- `failed` — error during processing
+- `partial` — partially processed (some field groups succeeded)
 
 **Deduplication:**
 - Unique constraint on `(project_id, uri)`
@@ -408,25 +470,48 @@ pending → (extraction) → completed
 2. Default values in `config.py`
 3. Pydantic validation and type coercion
 
+**Typed Config Facades:**
+
+Settings are organized into 10 frozen dataclass facades accessible via properties:
+- `settings.database` → `DatabaseConfig`
+- `settings.llm` → `LLMConfig`
+- `settings.llm_queue` → `LLMQueueConfig`
+- `settings.extraction` → `ExtractionConfig`
+- `settings.classification` → `ClassificationConfig`
+- `settings.scraping` → `ScrapingConfig`
+- `settings.crawl` → `CrawlConfig`
+- `settings.proxy` → `ProxyConfig`
+- `settings.scheduler` → `SchedulerConfig`
+- `settings.observability` → `ObservabilityConfig`
+
+Services accept these typed facades in constructors (e.g. `SchemaExtractor(llm_config: LLMConfig)`) instead of the monolithic `Settings` object.
+
 **Key Settings:**
 
 | Category | Setting | Default | Purpose |
 |----------|---------|---------|---------|
 | Security | `API_KEY` | (required) | API authentication |
-| Database | `DATABASE_URL` | localhost | Main PostgreSQL |
+| Database | `DATABASE_URL` | localhost:5432 | Main PostgreSQL |
 | Redis | `REDIS_URL` | localhost:6379 | Cache and queue |
 | Qdrant | `QDRANT_URL` | localhost:6333 | Vector DB |
 | Firecrawl | `FIRECRAWL_URL` | localhost:3002 | Scraping API |
-| FlareSolverr | `FLARESOLVERR_URL` | localhost:8191 | Challenge solver |
-| FlareSolverr | `USE_FLARESOLVERR` | true | Enable proxy routing |
-| Camoufox | `CAMOUFOX_BROWSER_COUNT` | 5 | Browser pool size |
-| Camoufox | `CAMOUFOX_POOL_SIZE` | 10 | Max concurrent pages |
-| LLM | `LLM_MODEL` | gemma3-12b-awq | Extraction model |
-| LLM | `LLM_HTTP_TIMEOUT` | 900s | Request timeout |
-| LLM | `LLM_QUEUE_ENABLED` | true | Use Redis queue mode |
+| LLM | `LLM_MODEL` | Qwen3-30B-A3B-Instruct-4bit | Extraction model |
+| LLM | `RAG_EMBEDDING_MODEL` | bge-m3 | Embedding model |
+| LLM | `EMBEDDING_DIMENSION` | 1024 | Vector dimension |
+| LLM | `LLM_HTTP_TIMEOUT` | 120s | Request timeout |
+| LLM | `LLM_MAX_TOKENS` | 8192 | Max response tokens |
+| Extraction | `EXTRACTION_CONTENT_LIMIT` | 20000 | Max chars to LLM |
+| Extraction | `EXTRACTION_CHUNK_MAX_TOKENS` | 5000 | Tokens per chunk |
+| Extraction | `EXTRACTION_BATCH_SIZE` | 20 | Sources per batch |
+| Classification | `CLASSIFICATION_ENABLED` | true | Page classification |
+| Classification | `SMART_CLASSIFICATION_ENABLED` | true | Embedding-based |
+| Classification | `RERANKER_MODEL` | bge-reranker-v2-m3 | Reranker model |
+| Classification | `CLASSIFICATION_CONTENT_LIMIT` | 6000 | Classifier char limit |
+| Dedup | `DOMAIN_DEDUP_ENABLED` | true | Boilerplate removal |
 | Scraping | `SCRAPE_TIMEOUT` | 180s | Page load timeout |
 | Crawl | `CRAWL_DELAY_MS` | 2000 | Per-request delay |
 | Crawl | `MAX_CONCURRENT_CRAWLS` | 6 | Parallel crawl jobs |
+| Scheduler | `SCHEDULER_CLEANUP_STALE_ON_STARTUP` | true | Stale job recovery |
 
 ## Error Handling
 
@@ -439,9 +524,9 @@ pending → (extraction) → completed
 - Exponential backoff
 
 **LLM Requests:**
-- Max retries: 5
-- Backoff: 2s to 60s
-- Timeout: 900s (15 minutes)
+- Max retries: 3
+- Backoff: 2s to 30s
+- Timeout: 120s (2 minutes)
 
 **Crawl Jobs:**
 - Poll interval: 5s
@@ -452,14 +537,15 @@ pending → (extraction) → completed
 
 ```
 queued → running → completed
-         ↓
-        failed
+         ↓    ↓
+        failed  cancelling → cancelled
 ```
 
 **Recovery:**
-- Stale jobs (not updated in poll_interval) auto-recovered
-- Workers use row-level locking to prevent duplicate processing
+- **Startup cleanup**: Running/cancelling jobs from previous instance marked as failed
+- Workers use row-level locking (`SELECT FOR UPDATE SKIP LOCKED`) to prevent duplicate processing
 - Failed jobs retain error message and partial results
+- Stale threshold per job type: scrape 5min, extract 15min, crawl 30min
 
 ## Security Architecture
 
@@ -656,6 +742,11 @@ Projects can be created in two ways:
 - `research_survey` - Academic paper extraction
 - `contract_review` - Legal document analysis
 - `book_catalog` - Book information extraction
+- `drivetrain_company_analysis` - Detailed industrial drivetrain company analysis
+- `drivetrain_company_simple` - Simplified drivetrain company extraction
+- `default` - Generic fact extraction for any content
+
+Templates may include `extraction_context` (source type, entity ID fields), `classification_config` (skip patterns), and `crawl_config` (focus terms).
 
 ### Soft Delete
 
@@ -678,51 +769,29 @@ DELETE /api/v1/projects/{id}  # Sets is_active=false
 - No orphaned foreign key references
 - Safe for production environments
 
-## Document Processing
-
-### Chunking Strategy
-
-**Header-Based Splitting:**
-- Documents split on `## ` (H2) headers
-- Maximum 8000 tokens per chunk
-- Header breadcrumb paths preserved for context
-- Falls back to paragraph/word splitting for oversized sections
-
-**Chunk Metadata:**
-```python
-DocumentChunk(
-    content="...",              # Chunk text
-    chunk_index=0,              # Position in document
-    total_chunks=5,             # Total chunks
-    header_path=["Main", "API"] # Breadcrumb path
-)
-```
-
-**Benefits:**
-- Semantic coherence (keeps related content together)
-- Context preservation via header paths
-- Efficient LLM processing within token limits
-
 ## Document Processing & Chunking
 
 ### Chunking Strategy
 
 Documents are chunked semantically to preserve context while staying within LLM token limits:
 
-**Header-Based Splitting:**
-- Primary split on `## ` (H2 headers, not H1 or H3+)
-- Maximum 8000 tokens per chunk (approximate: 4 chars = 1 token)
+**Multi-Level Header Splitting:**
+- Primary split on H2+ headers (`## `, `### `, etc.)
+- Maximum 5000 tokens per chunk (CJK-aware token counting)
+- 200-token overlap between chunks for context continuity
 - Header breadcrumb paths preserved for context tracking
+- Preamble (content before first header) treated as standalone chunk
 - Falls back to paragraph splitting, then word splitting for oversized sections
 
 **Algorithm:**
-1. Split document on `## ` headers
+1. Split document on H2+ headers
 2. Combine sections until reaching token limit
 3. If single section exceeds limit:
    - Keep header
    - Split content by paragraphs (`\n\n`)
    - If paragraph still too large, split by words
 4. Extract header path (H1 > H2 > H3) for breadcrumbs
+5. Apply overlap window between adjacent chunks
 
 **Chunk Metadata:**
 ```python
@@ -734,34 +803,10 @@ DocumentChunk(
 )
 ```
 
-**Benefits:**
-- Semantic coherence (related content stays together)
-- Context preservation via header paths
-- Efficient LLM processing within token budget
-- Minimal information loss across chunk boundaries
-
-### Extraction Profiles
-
-Extraction requests support a `profile` parameter for different extraction strategies:
-
-**Available Profiles:**
-- `general` - Standard extraction with default categories and depth
-- `detailed` - More thorough extraction with expanded context windows
-
-**Profile Customization:**
-- Custom system prompts per profile
-- Configurable extraction depth and thoroughness
-- Field group selection based on profile
-- Adjustable confidence thresholds
-
-**Usage:**
-```bash
-POST /api/v1/projects/{id}/extract
-{
-  "source_ids": ["uuid1", "uuid2"],
-  "profile": "detailed"
-}
-```
+**Content Selection:**
+- When `domain_dedup_enabled=True`: prefer `cleaned_content` over raw `content`
+- Content truncated to `EXTRACTION_CONTENT_LIMIT` (20000 chars) before chunking
+- Content budget: ~21% of Qwen3-30B's 32K token context window
 
 ## Report Generation
 

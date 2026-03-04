@@ -24,6 +24,10 @@ def register_extraction_tools(mcp: FastMCP) -> None:
             bool,
             "If True, re-extract sources even if already extracted (useful for re-running with different template)",
         ] = False,
+        source_groups: Annotated[
+            list[str] | None,
+            "Optional filter by source groups (company names). If omitted, extracts from all groups.",
+        ] = None,
         ctx: Context = None,
     ) -> dict:
         """Run LLM-based knowledge extraction on sources.
@@ -47,6 +51,7 @@ def register_extraction_tools(mcp: FastMCP) -> None:
                 project_id=project_id,
                 source_ids=source_ids,
                 force=force,
+                source_groups=source_groups,
             )
 
             return {
@@ -70,6 +75,7 @@ def register_extraction_tools(mcp: FastMCP) -> None:
             float | None, "Minimum confidence score (0.0-1.0)"
         ] = None,
         limit: Annotated[int, "Maximum results to return"] = 20,
+        offset: Annotated[int, "Number of results to skip (for pagination)"] = 0,
         ctx: Context = None,
     ) -> dict:
         """List extracted knowledge from a project.
@@ -86,6 +92,7 @@ def register_extraction_tools(mcp: FastMCP) -> None:
                 extraction_type=extraction_type,
                 min_confidence=min_confidence,
                 limit=limit,
+                offset=offset,
             )
 
             return {

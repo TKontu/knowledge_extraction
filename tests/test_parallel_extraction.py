@@ -284,16 +284,14 @@ class TestSchemaExtractionPipelineParallel:
             source.source_group = "test_company"
             sources.append(source)
 
-        # Mock ProjectRepository.get() which uses execute().scalar_one_or_none()
+        # Mock execute() for both ProjectRepository.get() and Source query
+        scalars_mock = MagicMock()
+        scalars_mock.all.return_value = sources
+
         mock_execute_result = MagicMock()
         mock_execute_result.scalar_one_or_none.return_value = mock_project
+        mock_execute_result.scalars.return_value = scalars_mock
         mock_db.execute.return_value = mock_execute_result
-
-        # Mock the SQLAlchemy query chain for Source queries
-        mock_query = MagicMock()
-        mock_query.filter.return_value = mock_query
-        mock_query.all.return_value = sources
-        mock_db.query.return_value = mock_query
 
         # Track concurrency
         max_concurrent = 0

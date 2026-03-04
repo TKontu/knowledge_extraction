@@ -1,6 +1,7 @@
 """LLM queue backpressure management with exponential backoff."""
 
 import asyncio
+import random
 from typing import TYPE_CHECKING
 
 import structlog
@@ -53,7 +54,8 @@ class BackpressureManager:
             if not status.get("should_wait", False):
                 return
 
-            wait_time = self._wait_base * (1.5**attempt)
+            base_wait = self._wait_base * (1.5**attempt)
+            wait_time = base_wait * random.uniform(0.75, 1.25)
             logger.info(
                 "pipeline_backpressure_wait",
                 attempt=attempt + 1,
