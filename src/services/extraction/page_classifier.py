@@ -183,10 +183,10 @@ class PageClassifier:
 
     def _infer_page_type(self, groups: list[str]) -> str:
         """Infer page type from matched groups."""
-        if any("product" in g for g in groups):
+        if any("product" in g.lower() for g in groups):
             return "product"
-        if "services" in groups:
+        if any("service" in g.lower() for g in groups):
             return "service"
-        if "company_info" in groups:
+        if any(kw in g.lower() for g in groups for kw in ("company", "about", "overview")):
             return "about"
         return "general"

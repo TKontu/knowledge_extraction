@@ -1,11 +1,15 @@
 """Extraction API endpoints."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from api.dependencies import get_embedding_service, get_qdrant_repository
 from constants import JobStatus, JobType, SourceStatus
 from database import get_db
 from models import (
@@ -21,6 +25,10 @@ from services.storage.repositories.extraction import (
     ExtractionRepository,
 )
 from services.storage.repositories.source import SourceRepository
+
+if TYPE_CHECKING:
+    from services.storage.embedding import EmbeddingService
+    from services.storage.qdrant.repository import QdrantRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -255,145 +263,6 @@ async def list_extractions(
 
 
 @router.post(
-    "/projects/{project_id}/extract-schema",
-    deprecated=True,
-    summary="[DEPRECATED] Run schema-based extraction",
-)
-async def extract_schema(
-    project_id: str,
-    source_groups: list[str] | None = None,
-    db: Session = Depends(get_db),
-) -> dict:
-    """Run schema-based extraction on project sources.
-
-    .. deprecated::
-        This endpoint is deprecated. Use POST /projects/{project_id}/extract instead.
-        The /extract endpoint automatically detects if the project has a schema and
-        uses the appropriate extraction method. It also provides:
-        - Job tracking and status monitoring
-        - Cancellation support
-        - force parameter for re-extraction
-        - source_ids parameter for selective extraction
-
-    This endpoint runs extraction synchronously in the request context, which can
-    timeout for large projects. Use /extract for production workloads.
-
-    Args:
-        project_id: Project UUID.
-        source_groups: Optional filter by company names.
-
-    Returns:
-        Summary of extraction results.
-    """
-    from config import settings
-    from orm_models import Project
-    from redis_client import get_async_redis
-    from services.extraction.pipeline import SchemaExtractionPipeline
-    from services.extraction.schema_extractor import SchemaExtractor
-    from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
-    from services.extraction.smart_classifier import SmartClassifier
-    from services.llm.queue import LLMRequestQueue
-    from services.storage.embedding import EmbeddingService
-
-    # Log deprecation warning
-    logger.warning(
-        "deprecated_endpoint_called",
-        endpoint="/extract-schema",
-        recommended="/extract",
-        project_id=project_id,
-    )
-
-    # Validate project_id format
-    try:
-        project_uuid = UUID(project_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Invalid project_id format. Must be a valid UUID.",
-        )
-
-    # Validate project exists
-    project = db.query(Project).filter(Project.id == project_uuid).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # Log which schema will be used
-    schema_name = (
-        project.extraction_schema.get("name", "unknown")
-        if project.extraction_schema
-        else "default"
-    )
-    logger.info(
-        "extract_schema_endpoint_called",
-        project_id=project_id,
-        schema_name=schema_name,
-        source_groups=source_groups,
-    )
-
-    # Create LLM queue if enabled (requires async Redis client)
-    llm_queue = None
-    if settings.llm_queue.enabled:
-        async_redis = await get_async_redis()
-        llm_queue = LLMRequestQueue(
-            redis=async_redis,
-            stream_key=settings.llm_queue.stream_key,
-            max_queue_depth=settings.llm_queue.max_depth,
-            backpressure_threshold=settings.llm_queue.backpressure_threshold,
-        )
-
-    # Create extraction pipeline
-    extractor = SchemaExtractor(
-        settings.llm,
-        llm_queue=llm_queue,
-        content_limit=settings.extraction.content_limit,
-        source_quoting=settings.extraction.source_quoting_enabled,
-        request_timeout=settings.llm_queue.request_timeout,
-    )
-
-    # Create smart classifier if enabled
-    smart_classifier = None
-    if settings.classification.smart_enabled:
-        from services.extraction.schema_adapter import ClassificationConfig
-
-        # Extract classification_config from project's extraction_schema
-        classification_config = None
-        if project.extraction_schema:
-            classification_config = ClassificationConfig.from_dict(
-                project.extraction_schema.get("classification_config")
-            )
-
-        async_redis = await get_async_redis()
-        embedding_service = EmbeddingService(
-            settings.llm,
-            reranker_model=settings.classification.reranker_model,
-        )
-        smart_classifier = SmartClassifier(
-            embedding_service=embedding_service,
-            redis_client=async_redis,
-            app_config=settings.classification,
-            classification_config=classification_config,
-        )
-
-    orchestrator = SchemaExtractionOrchestrator(
-        extractor, smart_classifier=smart_classifier
-    )
-    pipeline = SchemaExtractionPipeline(orchestrator, db, extraction_embedding=None)
-
-    # Run extraction
-    result = await pipeline.extract_project(
-        project_id=project_uuid,
-        source_groups=source_groups,
-    )
-
-    # Add deprecation notice to response
-    result["_deprecated"] = (
-        "This endpoint is deprecated. Use POST /projects/{project_id}/extract instead."
-    )
-
-    return result
-
-
-@router.post(
     "/projects/{project_id}/extractions/recover", status_code=status.HTTP_200_OK
 )
 async def recover_orphaned_extractions(
@@ -402,6 +271,8 @@ async def recover_orphaned_extractions(
         default=10, le=100, description="Maximum batches to process"
     ),
     db: Session = Depends(get_db),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
+    qdrant_repo: QdrantRepository = Depends(get_qdrant_repository),
 ) -> RecoverySummaryResponse:
     """
     Manually trigger recovery of orphaned extractions.
@@ -413,6 +284,8 @@ async def recover_orphaned_extractions(
         project_id: Project UUID to recover extractions for.
         max_batches: Maximum number of batches to process (default 10, max 100).
         db: Database session.
+        embedding_service: Embedding service (injected).
+        qdrant_repo: Qdrant repository (injected).
 
     Returns:
         RecoverySummaryResponse with recovery statistics.
@@ -420,10 +293,7 @@ async def recover_orphaned_extractions(
     Raises:
         HTTPException: 404 if project not found, 422 if invalid UUID format.
     """
-    from config import settings
     from services.extraction.embedding_recovery import EmbeddingRecoveryService
-    from services.storage.embedding import EmbeddingService
-    from services.storage.qdrant.repository import QdrantRepository
 
     # Validate project_id format
     try:
@@ -449,11 +319,6 @@ async def recover_orphaned_extractions(
         max_batches=max_batches,
     )
 
-    # Create service dependencies - use singleton Qdrant client
-    from qdrant_connection import qdrant_client
-
-    qdrant_repo = QdrantRepository(qdrant_client)
-    embedding_service = EmbeddingService(settings.llm)
     extraction_repo = ExtractionRepository(db)
 
     # Create recovery service

@@ -52,9 +52,6 @@ class TestEmbeddingServiceInit:
         assert hasattr(embedding_service, "client")
         assert hasattr(embedding_service, "model")
 
-    def test_dimension_property_returns_1024(self, embedding_service):
-        """Should expose dimension property with value 1024."""
-        assert embedding_service.dimension == 1024
 
 
 class TestEmbeddingServiceEmbed:

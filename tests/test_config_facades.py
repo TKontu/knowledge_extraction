@@ -92,6 +92,7 @@ class TestLLMConfig:
         assert llm.api_key == s.openai_api_key
         assert llm.model == s.llm_model
         assert llm.embedding_model == s.rag_embedding_model
+        assert llm.embedding_dimension == s.embedding_dimension
         assert llm.http_timeout == s.llm_http_timeout
         assert llm.max_tokens == s.llm_max_tokens
         assert llm.max_retries == s.llm_max_retries
@@ -123,6 +124,7 @@ class TestExtractionConfig:
         assert ex.chunk_overlap_tokens == s.extraction_chunk_overlap_tokens
         assert ex.max_concurrent_chunks == s.extraction_max_concurrent_chunks
         assert ex.max_concurrent_sources == s.extraction_max_concurrent_sources
+        assert ex.extraction_batch_size == s.extraction_batch_size
         assert ex.source_quoting_enabled == s.extraction_source_quoting_enabled
         assert ex.conflict_detection_enabled == s.extraction_conflict_detection_enabled
         assert ex.validation_enabled == s.extraction_validation_enabled
@@ -147,6 +149,7 @@ class TestClassificationConfig:
         assert cl.reranker_threshold == s.classification_reranker_threshold
         assert cl.cache_ttl == s.classification_cache_ttl
         assert cl.use_default_skip_patterns == s.classification_use_default_skip_patterns
+        assert cl.classifier_content_limit == s.classification_content_limit
 
 
 class TestScrapingConfig:

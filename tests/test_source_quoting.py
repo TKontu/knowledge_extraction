@@ -1,6 +1,6 @@
 """Tests for source quoting in extraction prompts and merge."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -54,6 +54,7 @@ def llm_config():
         api_key="test",
         model="test-model",
         embedding_model="bge-m3",
+        embedding_dimension=1024,
         http_timeout=60,
         max_tokens=4096,
         max_retries=3,
@@ -101,12 +102,25 @@ class TestPromptQuoting:
 class TestQuoteMerge:
     """Test that quotes merge correctly in orchestrator."""
 
+    @staticmethod
+    def _make_config(*, quoting=True, conflicts=False):
+        cfg = Mock()
+        cfg.source_quoting_enabled = quoting
+        cfg.conflict_detection_enabled = conflicts
+        return cfg
+
     @pytest.fixture
     def orchestrator(self, mock_extractor):
-        return SchemaExtractionOrchestrator(mock_extractor)
+        return SchemaExtractionOrchestrator(
+            mock_extractor,
+            extraction_config=self._make_config(quoting=True),
+        )
 
-    def test_quotes_merged_from_best_chunk(self, orchestrator):
+    def test_quotes_merged_from_best_chunk(self, mock_extractor):
         """Quotes from higher-confidence chunk should win."""
+        orch = SchemaExtractionOrchestrator(
+            mock_extractor, extraction_config=self._make_config(quoting=True),
+        )
         chunk_results = [
             {
                 "manufactures_gearboxes": True,
@@ -119,27 +133,27 @@ class TestQuoteMerge:
                 "_quotes": {"manufactures_gearboxes": "gearbox production"},
             },
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = True
-            s.extraction.conflict_detection_enabled = False
-            merged = orchestrator._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
+        merged = orch._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
         assert merged.get("_quotes", {}).get("manufactures_gearboxes") == "we produce gearboxes"
 
-    def test_missing_quotes_handled_gracefully(self, orchestrator):
+    def test_missing_quotes_handled_gracefully(self, mock_extractor):
         """Chunks without _quotes should not cause errors."""
+        orch = SchemaExtractionOrchestrator(
+            mock_extractor, extraction_config=self._make_config(quoting=True),
+        )
         chunk_results = [
             {"manufactures_gearboxes": True, "confidence": 0.8},
             {"manufactures_gearboxes": True, "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = True
-            s.extraction.conflict_detection_enabled = False
-            merged = orchestrator._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
+        merged = orch._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
         # No error, and no _quotes key (since none were provided)
         assert "_quotes" not in merged
 
-    def test_quotes_not_added_when_disabled(self, orchestrator):
+    def test_quotes_not_added_when_disabled(self, mock_extractor):
         """When quoting is disabled, no _quotes key should appear."""
+        orch = SchemaExtractionOrchestrator(
+            mock_extractor, extraction_config=self._make_config(quoting=False),
+        )
         chunk_results = [
             {
                 "manufactures_gearboxes": True,
@@ -147,8 +161,5 @@ class TestQuoteMerge:
                 "_quotes": {"manufactures_gearboxes": "we produce gearboxes"},
             },
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = False
-            merged = orchestrator._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
+        merged = orch._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
         assert "_quotes" not in merged

@@ -73,22 +73,35 @@ class TestEntityListMerging:
 
     @pytest.fixture
     def orchestrator(self):
-        """Create orchestrator, skip if deps not available."""
+        """Create orchestrator with default context, skip if deps not available."""
         try:
             from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
             return SchemaExtractionOrchestrator(schema_extractor=None)
         except ImportError:
             pytest.skip("structlog not available")
 
-    def test_merge_entity_lists_with_product_name(self, orchestrator):
-        """Merging works with product_name field."""
+    @pytest.fixture
+    def orchestrator_with_product_name(self):
+        """Create orchestrator with product_name in entity_id_fields."""
+        try:
+            from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+            from services.extraction.schema_adapter import ExtractionContext
+            context = ExtractionContext(
+                entity_id_fields=["product_name", "entity_id", "name", "id"],
+            )
+            return SchemaExtractionOrchestrator(schema_extractor=None, context=context)
+        except ImportError:
+            pytest.skip("structlog not available")
+
+    def test_merge_entity_lists_with_product_name(self, orchestrator_with_product_name):
+        """Merging works with product_name field when context includes it."""
         chunk_results = [
             {"products": [{"product_name": "Product A", "price": 100}], "confidence": 0.9},
             {"products": [{"product_name": "Product B", "price": 200}], "confidence": 0.8},
             {"products": [{"product_name": "Product A", "price": 150}], "confidence": 0.7},
         ]
 
-        merged = orchestrator._merge_entity_lists(chunk_results)
+        merged = orchestrator_with_product_name._merge_entity_lists(chunk_results)
 
         assert len(merged["products"]) == 2
         names = [p["product_name"] for p in merged["products"]]

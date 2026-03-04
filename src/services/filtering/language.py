@@ -5,8 +5,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
-from typing import Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 import structlog
 

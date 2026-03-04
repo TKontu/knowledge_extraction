@@ -65,6 +65,7 @@ class TestSchemaExtractor:
             api_key="test",
             model="test-model",
             embedding_model="bge-m3",
+            embedding_dimension=1024,
             http_timeout=60,
             max_tokens=4096,
             max_retries=3,
@@ -95,7 +96,7 @@ class TestSchemaExtractor:
         result = await extractor.extract_field_group(
             content="We manufacture planetary gearboxes.",
             field_group=MANUFACTURING_GROUP,
-            company_name="Test Company",
+            source_context="Test Company",
         )
 
         assert result["manufactures_gearboxes"] is True
@@ -232,6 +233,7 @@ class TestPromptGrounding:
             api_key="test",
             model="test-model",
             embedding_model="bge-m3",
+            embedding_dimension=1024,
             http_timeout=60,
             max_tokens=4096,
             max_retries=3,
@@ -302,6 +304,7 @@ class TestUserPromptCleaning:
             api_key="test",
             model="test-model",
             embedding_model="bge-m3",
+            embedding_dimension=1024,
             http_timeout=60,
             max_tokens=4096,
             max_retries=3,

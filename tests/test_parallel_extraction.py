@@ -258,6 +258,21 @@ class TestSchemaExtractionPipelineParallel:
             db_session=mock_db,
         )
 
+        # Create mock project with valid schema
+        mock_project = MagicMock()
+        mock_project.extraction_schema = {
+            "name": "test_schema",
+            "field_groups": [
+                {
+                    "name": "test",
+                    "description": "Test group",
+                    "fields": [
+                        {"name": "test_field", "field_type": "text", "description": "Test"},
+                    ],
+                },
+            ],
+        }
+
         # Create mock sources
         sources = []
         for i in range(10):
@@ -265,12 +280,18 @@ class TestSchemaExtractionPipelineParallel:
             source.id = uuid4()
             source.project_id = uuid4()
             source.content = f"Content {i}"
+            source.cleaned_content = None
             source.source_group = "test_company"
             sources.append(source)
 
-        # Mock the SQLAlchemy query chain correctly
+        # Mock ProjectRepository.get() which uses execute().scalar_one_or_none()
+        mock_execute_result = MagicMock()
+        mock_execute_result.scalar_one_or_none.return_value = mock_project
+        mock_db.execute.return_value = mock_execute_result
+
+        # Mock the SQLAlchemy query chain for Source queries
         mock_query = MagicMock()
-        mock_query.filter.return_value = mock_query  # Allow chaining
+        mock_query.filter.return_value = mock_query
         mock_query.all.return_value = sources
         mock_db.query.return_value = mock_query
 
@@ -298,7 +319,6 @@ class TestSchemaExtractionPipelineParallel:
         await pipeline.extract_project(project_id=project_id)
 
         # Should see concurrent execution (current limit is 4)
-        # After fix, should allow higher concurrency
         assert max_concurrent > 1, (
             f"Expected concurrent processing but max_concurrent was {max_concurrent}"
         )

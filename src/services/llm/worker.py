@@ -457,10 +457,7 @@ class LLMWorker:
         if not system_prompt or not user_prompt:
             content = payload.get("content", "")
             field_group = payload.get("field_group", {})
-            # Support both source_context (new) and company_name (backward compat)
-            source_context = payload.get("source_context") or payload.get(
-                "company_name", ""
-            )
+            source_context = payload.get("source_context", "")
 
             group_name = field_group.get("name", "unknown")
             group_desc = field_group.get("description", "")

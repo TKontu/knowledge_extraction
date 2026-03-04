@@ -72,7 +72,9 @@ class ServiceContainer:
             reranker_model=settings.classification.reranker_model,
             max_concurrent=settings.extraction.embedding_max_concurrent,
         )
-        self._qdrant_repo = QdrantRepository(qdrant_client)
+        self._qdrant_repo = QdrantRepository(
+            qdrant_client, embedding_dimension=settings.llm.embedding_dimension
+        )
         self._extraction_embedding = ExtractionEmbeddingService(
             self._embedding_service, self._qdrant_repo
         )
@@ -152,11 +154,6 @@ class ServiceContainer:
         return self._embedding_service  # type: ignore[return-value]
 
     @property
-    def qdrant_repo(self) -> QdrantRepository:
-        self._check_started()
-        return self._qdrant_repo  # type: ignore[return-value]
-
-    @property
     def extraction_embedding(self) -> ExtractionEmbeddingService:
         self._check_started()
         return self._extraction_embedding  # type: ignore[return-value]
@@ -170,11 +167,6 @@ class ServiceContainer:
     def llm_queue(self) -> LLMRequestQueue:
         self._check_started()
         return self._llm_queue  # type: ignore[return-value]
-
-    @property
-    def llm_worker(self) -> LLMWorker:
-        self._check_started()
-        return self._llm_worker  # type: ignore[return-value]
 
     async def __aenter__(self) -> "ServiceContainer":
         await self.start()

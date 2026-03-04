@@ -95,16 +95,20 @@ async def get_job_status(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid job_id format. Must be a valid UUID.",
-        )
+        ) from None
 
-    # Query database for job
-    job = db.query(Job).filter(Job.id == job_uuid).first()
+    # Query database for job (filter by scrape type to prevent cross-type leaks)
+    job = (
+        db.query(Job)
+        .filter(Job.id == job_uuid, Job.type == JobType.SCRAPE)
+        .first()
+    )
 
     # Check if job exists
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found",
+            detail=f"Scrape job {job_id} not found",
         )
 
     # Extract data from Job ORM model

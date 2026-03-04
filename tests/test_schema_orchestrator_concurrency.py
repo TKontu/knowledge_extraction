@@ -5,13 +5,21 @@ concurrency instead of batch-and-wait, which keeps vLLM KV cache utilized.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
 from services.extraction.field_groups import FieldGroup, FieldDefinition
+
+
+def _make_extraction_config(max_concurrent_chunks=2):
+    """Create a mock ExtractionConfig with given concurrency settings."""
+    cfg = Mock()
+    cfg.max_concurrent_chunks = max_concurrent_chunks
+    cfg.source_quoting_enabled = False
+    cfg.conflict_detection_enabled = False
+    return cfg
 
 
 @pytest.fixture
@@ -33,17 +41,19 @@ def test_field_group():
     )
 
 
-@pytest.fixture
-def orchestrator(mock_schema_extractor):
-    """Create orchestrator with mocked extractor."""
-    return SchemaExtractionOrchestrator(mock_schema_extractor)
+def _make_orchestrator(extractor, max_concurrent_chunks=2):
+    """Create orchestrator with injected extraction config."""
+    return SchemaExtractionOrchestrator(
+        extractor,
+        extraction_config=_make_extraction_config(max_concurrent_chunks),
+    )
 
 
 class TestContinuousConcurrency:
     """Tests verifying continuous semaphore-based concurrency."""
 
     async def test_chunks_processed_with_continuous_flow(
-        self, orchestrator, mock_schema_extractor, test_field_group
+        self, mock_schema_extractor, test_field_group
     ):
         """Verify requests start immediately when semaphore slot opens.
 
@@ -56,6 +66,8 @@ class TestContinuousConcurrency:
         - With continuous flow, chunk 2 should start at ~0.02s when chunk 0 finishes
         - With batch-and-wait, chunk 2 would wait until 0.10s for both to finish
         """
+        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=2)
+
         # Track when each extraction starts and completes
         extraction_events = []
         extraction_lock = asyncio.Lock()
@@ -80,15 +92,11 @@ class TestContinuousConcurrency:
         # Create mock chunks
         chunks = [Mock(content=f"chunk_{i}") for i in range(6)]
 
-        # Patch settings to use concurrency of 2
-        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
-            mock_settings.extraction.max_concurrent_chunks = 2
-
-            results = await orchestrator._extract_chunks_batched(
-                chunks=chunks,
-                group=test_field_group,
-                source_context="test_company",
-            )
+        results = await orchestrator._extract_chunks_batched(
+            chunks=chunks,
+            group=test_field_group,
+            source_context="test_company",
+        )
 
         # Verify all chunks processed
         assert len(results) == 6
@@ -109,9 +117,11 @@ class TestContinuousConcurrency:
         )
 
     async def test_max_concurrent_chunks_respected(
-        self, orchestrator, mock_schema_extractor, test_field_group
+        self, mock_schema_extractor, test_field_group
     ):
         """Verify concurrency never exceeds extraction_max_concurrent_chunks."""
+        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=3)
+
         max_concurrent_observed = 0
         current_concurrent = 0
         concurrent_lock = asyncio.Lock()
@@ -131,15 +141,11 @@ class TestContinuousConcurrency:
         # Create 10 chunks to process
         chunks = [Mock(content=f"chunk_{i}") for i in range(10)]
 
-        # Set max concurrent to 3
-        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
-            mock_settings.extraction.max_concurrent_chunks = 3
-
-            await orchestrator._extract_chunks_batched(
-                chunks=chunks,
-                group=test_field_group,
-                source_context="test_company",
-            )
+        await orchestrator._extract_chunks_batched(
+            chunks=chunks,
+            group=test_field_group,
+            source_context="test_company",
+        )
 
         # Verify max concurrent never exceeded limit
         assert max_concurrent_observed <= 3, (
@@ -151,9 +157,11 @@ class TestContinuousConcurrency:
         )
 
     async def test_all_chunks_complete_despite_varying_times(
-        self, orchestrator, mock_schema_extractor, test_field_group
+        self, mock_schema_extractor, test_field_group
     ):
         """All chunks complete even with varying processing times."""
+        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=4)
+
         completed_chunks = []
 
         async def varying_time_extraction(content, **kwargs):
@@ -168,23 +176,22 @@ class TestContinuousConcurrency:
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(8)]
 
-        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
-            mock_settings.extraction.max_concurrent_chunks = 4
-
-            results = await orchestrator._extract_chunks_batched(
-                chunks=chunks,
-                group=test_field_group,
-                source_context="test_company",
-            )
+        results = await orchestrator._extract_chunks_batched(
+            chunks=chunks,
+            group=test_field_group,
+            source_context="test_company",
+        )
 
         # All 8 chunks should complete
         assert len(results) == 8
         assert len(completed_chunks) == 8
 
     async def test_failed_chunks_dont_block_others(
-        self, orchestrator, mock_schema_extractor, test_field_group
+        self, mock_schema_extractor, test_field_group
     ):
         """Failed extractions don't prevent other chunks from processing."""
+        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=2)
+
         call_count = 0
 
         async def failing_extraction(content, **kwargs):
@@ -200,14 +207,11 @@ class TestContinuousConcurrency:
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(5)]
 
-        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
-            mock_settings.extraction.max_concurrent_chunks = 2
-
-            results = await orchestrator._extract_chunks_batched(
-                chunks=chunks,
-                group=test_field_group,
-                source_context="test_company",
-            )
+        results = await orchestrator._extract_chunks_batched(
+            chunks=chunks,
+            group=test_field_group,
+            source_context="test_company",
+        )
 
         # 4 successful + chunk_2 failed (no outer retry — inner retry is
         # in extract_field_group → _extract_direct, which the mock bypasses)
@@ -220,7 +224,7 @@ class TestRetryBehavior:
     """Tests for retry behavior within concurrency control."""
 
     async def test_failing_chunk_returns_none_without_blocking(
-        self, orchestrator, mock_schema_extractor, test_field_group
+        self, mock_schema_extractor, test_field_group
     ):
         """Failing chunk returns None; no outer retry (inner retry is in _extract_direct).
 
@@ -228,6 +232,8 @@ class TestRetryBehavior:
         and returns None. Retries are handled by the inner _extract_direct
         loop inside extract_field_group, which the mock bypasses here.
         """
+        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=2)
+
         attempt_counts = {}
 
         async def failing_extraction(content, **kwargs):
@@ -241,14 +247,11 @@ class TestRetryBehavior:
 
         chunks = [Mock(content=f"chunk_{i}") for i in range(3)]
 
-        with patch("services.extraction.schema_orchestrator.settings") as mock_settings:
-            mock_settings.extraction.max_concurrent_chunks = 2
-
-            results = await orchestrator._extract_chunks_batched(
-                chunks=chunks,
-                group=test_field_group,
-                source_context="test_company",
-            )
+        results = await orchestrator._extract_chunks_batched(
+            chunks=chunks,
+            group=test_field_group,
+            source_context="test_company",
+        )
 
         # chunk_0 and chunk_2 succeed; chunk_1 fails and is excluded
         assert len(results) == 2

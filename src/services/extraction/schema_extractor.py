@@ -81,7 +81,6 @@ class SchemaExtractor:
         content: str,
         field_group: FieldGroup,
         source_context: str | None = None,
-        company_name: str | None = None,  # Deprecated, backward compat
     ) -> dict[str, Any]:
         """Extract fields for a specific field group.
 
@@ -89,7 +88,6 @@ class SchemaExtractor:
             content: Markdown content to extract from.
             field_group: Field group definition.
             source_context: Optional source context (e.g., company name, website name).
-            company_name: DEPRECATED. Use source_context instead.
 
         Returns:
             Dictionary of extracted field values.
@@ -97,8 +95,7 @@ class SchemaExtractor:
         Raises:
             LLMExtractionError: If extraction fails.
         """
-        # Backward compatibility: use company_name if source_context not provided
-        context_value = source_context or company_name
+        context_value = source_context
 
         if self.llm_queue is not None:
             return await self._extract_via_queue(content, field_group, context_value)
@@ -399,7 +396,7 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
         id_field = None
         # Use context entity_id_fields for ID field detection
         id_field_names = self.context.entity_id_fields if self.context else (
-            "product_name", "entity_id", "name", "id"
+            "entity_id", "name", "id"
         )
         for f in field_group.fields:
             spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'

@@ -69,6 +69,7 @@ class SmartClassifier:
         self._redis = redis_client
         self._app_config = app_config
         self._classification_config = classification_config
+        self._content_limit = app_config.classifier_content_limit
 
         # Resolve skip patterns based on config and settings
         skip_patterns = self._resolve_skip_patterns()
@@ -304,9 +305,9 @@ class SmartClassifier:
         group_texts = [self._create_group_text(g) for g in field_groups]
         group_names = [g.name for g in field_groups]
 
-        # Clean and truncate content for reranking (6000 chars safe with bge-m3)
+        # Clean and truncate content for reranking
         cleaned = clean_markdown_for_embedding(content)
-        query = self._truncate_at_word_boundary(cleaned, 6000)
+        query = self._truncate_at_word_boundary(cleaned, self._content_limit)
 
         try:
             rerank_results = await self._embedding_service.rerank(
@@ -529,8 +530,8 @@ class SmartClassifier:
             Summary text for embedding (title + truncated content).
         """
         cleaned = clean_markdown_for_embedding(content)
-        # Truncate content at word boundary (6000 chars safe with bge-m3's 8192 token limit)
-        truncated_content = self._truncate_at_word_boundary(cleaned, 6000)
+        # Truncate content at word boundary (configurable, safe with bge-m3's 8192 token limit)
+        truncated_content = self._truncate_at_word_boundary(cleaned, self._content_limit)
 
         parts = []
         if title:
@@ -543,11 +544,11 @@ class SmartClassifier:
 
     # Page type inference patterns: type → keywords to match in group names
     _PAGE_TYPE_PATTERNS: dict[str, list[str]] = {
-        "product": ["product", "catalog", "equipment", "motor", "model"],
+        "product": ["product", "catalog", "item", "model"],
         "service": ["service", "solution", "offering"],
         "about": ["company", "about", "overview", "history"],
         "contact": ["contact", "location", "office"],
-        "technical": ["specification", "technical", "engineering", "fleet"],
+        "technical": ["specification", "technical", "data"],
         "pricing": ["pricing", "price", "cost", "plan"],
     }
 

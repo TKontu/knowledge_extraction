@@ -1,6 +1,5 @@
 """Background worker for processing extraction jobs."""
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -14,25 +13,17 @@ from services.extraction.pipeline import (
     CheckpointCallback,
     ExtractionPipelineService,
     SchemaExtractionPipeline,
+    SchemaPipelineResult,
 )
 from services.storage.repositories.job import JobRepository
 
 if TYPE_CHECKING:
     from config import ClassificationConfig, ExtractionConfig, LLMConfig
+    from services.extraction.embedding_pipeline import ExtractionEmbeddingService
     from services.llm.queue import LLMRequestQueue
+    from services.storage.embedding import EmbeddingService
 
 logger = structlog.get_logger(__name__)
-
-
-@dataclass
-class SchemaExtractionResult:
-    """Result from schema-based extraction to match BatchPipelineResult interface."""
-
-    sources_processed: int
-    sources_failed: int
-    total_extractions: int
-    total_deduplicated: int = 0
-    total_entities: int = 0
 
 
 class ExtractionWorker:
@@ -54,7 +45,8 @@ class ExtractionWorker:
         llm: LLM configuration (required for schema extraction).
         extraction: Extraction configuration facade.
         classification: Classification configuration facade.
-        qdrant_url: Qdrant server URL for embedding storage.
+        embedding_service: Shared embedding service (from ServiceContainer).
+        extraction_embedding: Shared extraction embedding service (from ServiceContainer).
         request_timeout: Timeout in seconds for queued LLM requests.
         llm_queue: Optional LLM request queue for schema extraction.
 
@@ -66,6 +58,8 @@ class ExtractionWorker:
             llm=settings.llm,
             extraction=settings.extraction,
             classification=settings.classification,
+            embedding_service=container.embedding_service,
+            extraction_embedding=container.extraction_embedding,
             llm_queue=llm_queue,
         )
         await worker.process_job(job)
@@ -79,7 +73,8 @@ class ExtractionWorker:
         llm: "LLMConfig | None" = None,
         extraction: "ExtractionConfig | None" = None,
         classification: "ClassificationConfig | None" = None,
-        qdrant_url: str | None = None,
+        embedding_service: "EmbeddingService | None" = None,
+        extraction_embedding: "ExtractionEmbeddingService | None" = None,
         request_timeout: int = 300,
         llm_queue: "LLMRequestQueue | None" = None,
     ) -> None:
@@ -91,7 +86,8 @@ class ExtractionWorker:
             llm: LLM configuration (required for schema extraction).
             extraction: Extraction configuration facade.
             classification: Classification configuration facade.
-            qdrant_url: Qdrant server URL for embedding storage.
+            embedding_service: Shared embedding service (from ServiceContainer).
+            extraction_embedding: Shared extraction embedding service (from ServiceContainer).
             request_timeout: Timeout in seconds for queued LLM requests.
             llm_queue: Optional LLM queue for schema extraction.
         """
@@ -100,7 +96,8 @@ class ExtractionWorker:
         self._llm = llm
         self._extraction = extraction
         self._classification = classification
-        self._qdrant_url = qdrant_url
+        self._embedding_service = embedding_service
+        self._extraction_embedding = extraction_embedding
         self._request_timeout = request_timeout
         self.llm_queue = llm_queue
         self.job_repo = JobRepository(db)
@@ -182,6 +179,9 @@ class ExtractionWorker:
     ) -> SchemaExtractionPipeline:
         """Create a SchemaExtractionPipeline for schema-based extraction.
 
+        Uses shared embedding services injected at construction time
+        (from ServiceContainer) rather than creating per-job instances.
+
         Args:
             project: Optional project to extract classification_config from.
         """
@@ -190,7 +190,6 @@ class ExtractionWorker:
         from services.extraction.schema_extractor import SchemaExtractor
         from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
         from services.extraction.smart_classifier import SmartClassifier
-        from services.storage.embedding import EmbeddingService
 
         if not self._llm:
             raise ValueError("llm config required for schema extraction")
@@ -221,38 +220,28 @@ class ExtractionWorker:
                     # Reset to None to use defaults instead of failing
                     classification_config = None
 
-        # Create smart classifier if enabled
+        # Create smart classifier if enabled (reuses shared embedding service)
         smart_classifier = None
-        if self._classification and self._classification.smart_enabled:
+        if self._classification and self._classification.smart_enabled and self._embedding_service:
             async_redis = await get_async_redis()
-            embedding_service = EmbeddingService(
-                self._llm,
-                reranker_model=self._classification.reranker_model,
-            )
             smart_classifier = SmartClassifier(
-                embedding_service=embedding_service,
+                embedding_service=self._embedding_service,
                 redis_client=async_redis,
                 app_config=self._classification,
                 classification_config=classification_config,
             )
 
         orchestrator = SchemaExtractionOrchestrator(
-            extractor, smart_classifier=smart_classifier
+            extractor,
+            extraction_config=self._extraction,
+            classification_config=self._classification,
+            smart_classifier=smart_classifier,
         )
 
-        # Inject embedding dependencies if schema embedding is enabled
+        # Use shared extraction embedding service if schema embedding is enabled
         extraction_embedding = None
         if self._extraction and self._extraction.schema_embedding_enabled:
-            from qdrant_client import QdrantClient
-            from services.extraction.embedding_pipeline import (
-                ExtractionEmbeddingService,
-            )
-            from services.storage.qdrant.repository import QdrantRepository
-
-            extraction_embedding = ExtractionEmbeddingService(
-                EmbeddingService(self._llm),
-                QdrantRepository(QdrantClient(url=self._qdrant_url)),
-            )
+            extraction_embedding = self._extraction_embedding
 
         return SchemaExtractionPipeline(
             orchestrator,
@@ -269,7 +258,7 @@ class ExtractionWorker:
         cancellation_check=None,
         project: Project | None = None,
         job: Job | None = None,
-    ) -> SchemaExtractionResult:
+    ) -> SchemaPipelineResult:
         """Process extraction using schema-based pipeline.
 
         Args:
@@ -283,7 +272,7 @@ class ExtractionWorker:
             job: Optional job for checkpoint callback and resume support.
 
         Returns:
-            SchemaExtractionResult with extraction counts.
+            SchemaPipelineResult with extraction counts.
         """
         pipeline = await self._create_schema_pipeline(project=project)
 
@@ -296,7 +285,7 @@ class ExtractionWorker:
 
         # Schema pipeline processes sources for the project
         # skip_extracted=False when force=True to re-extract
-        result = await pipeline.extract_project(
+        return await pipeline.extract_project(
             project_id=project_id,
             source_ids=source_ids,
             source_groups=source_groups,
@@ -304,22 +293,6 @@ class ExtractionWorker:
             cancellation_check=cancellation_check,
             checkpoint_callback=checkpoint_callback,
             resume_from=resume_from,
-        )
-
-        # Handle error case
-        if "error" in result:
-            return SchemaExtractionResult(
-                sources_processed=0,
-                sources_failed=1,
-                total_extractions=0,
-            )
-
-        return SchemaExtractionResult(
-            sources_processed=result.get("sources_processed", 0),
-            sources_failed=result.get("sources_failed", 0),
-            total_extractions=result.get("extractions_created", 0),
-            total_deduplicated=0,
-            total_entities=0,
         )
 
     async def process_job(self, job: Job) -> None:
@@ -428,6 +401,19 @@ class ExtractionWorker:
                         profile_name=profile_name,
                         cancellation_check=check_cancellation,
                     )
+
+            # Handle schema pipeline error results (e.g. invalid schema, project not found)
+            if isinstance(result, SchemaPipelineResult) and result.error:
+                job.status = JobStatus.FAILED
+                job.error = result.error
+                job.completed_at = datetime.now(UTC)
+                self.db.commit()
+                logger.error(
+                    "extraction_job_pipeline_error",
+                    job_id=str(job.id),
+                    error=result.error,
+                )
+                return
 
             # Check if job was cancelled during processing
             if self.job_repo.is_cancellation_requested(job.id):

@@ -5,7 +5,7 @@ from typing import Any
 
 # Valid merge strategies for field definitions
 VALID_MERGE_STRATEGIES = frozenset(
-    {"highest_confidence", "max", "min", "concat", "majority_vote"}
+    {"highest_confidence", "max", "min", "concat", "majority_vote", "merge_dedupe"}
 )
 
 

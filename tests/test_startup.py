@@ -190,10 +190,9 @@ class TestSearchEndpointQdrantUsage:
 
         # Also verify the correct pattern exists
         correct_import = "from qdrant_connection import qdrant_client"
-        correct_usage = "QdrantRepository(qdrant_client)"
-
         assert correct_import in source_code, \
             f"Missing import: '{correct_import}' in search.py"
 
-        assert correct_usage in source_code, \
-            f"Missing correct usage: '{correct_usage}' in search.py"
+        # QdrantRepository should be called with qdrant_client (may have additional kwargs)
+        assert "QdrantRepository(qdrant_client" in source_code, \
+            f"Missing correct usage: 'QdrantRepository(qdrant_client' in search.py"

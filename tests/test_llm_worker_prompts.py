@@ -161,7 +161,7 @@ class TestLLMWorkerPromptsFromPayload:
             payload={
                 "content": "Content",
                 "field_group": {"name": "manufacturing", "description": "Manufacturing info"},
-                "company_name": "TestCo",
+                "source_context": "TestCo",
                 "system_prompt": custom_system_prompt,
                 "user_prompt": custom_user_prompt,
                 "model": "test-model",

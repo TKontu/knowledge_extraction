@@ -68,6 +68,7 @@ class TestSchemaExtractorQueueMode:
             api_key="test",
             model="test-model",
             embedding_model="bge-m3",
+            embedding_dimension=1024,
             http_timeout=60,
             max_tokens=4096,
             max_retries=3,
@@ -106,7 +107,7 @@ class TestSchemaExtractorQueueMode:
         result = await extractor.extract_field_group(
             content="We manufacture planetary gearboxes.",
             field_group=MANUFACTURING_GROUP,
-            company_name="Test Company",
+            source_context="Test Company",
         )
 
         # Should have submitted to queue
@@ -137,7 +138,7 @@ class TestSchemaExtractorQueueMode:
         await extractor.extract_field_group(
             content="Test content",
             field_group=MANUFACTURING_GROUP,
-            company_name="Test Co",
+            source_context="Test Co",
         )
 
         # Check the submitted request
@@ -170,7 +171,7 @@ class TestSchemaExtractorQueueMode:
         await extractor.extract_field_group(
             content="We manufacture gearboxes and motors.",
             field_group=MANUFACTURING_GROUP,
-            company_name="TestCorp",
+            source_context="TestCorp",
         )
 
         # Check the submitted request
@@ -207,7 +208,7 @@ class TestSchemaExtractorQueueMode:
             await extractor.extract_field_group(
                 content="Test content",
                 field_group=MANUFACTURING_GROUP,
-                company_name="Test Co",
+                source_context="Test Co",
             )
 
         assert "LLM processing failed" in str(exc_info.value)
@@ -234,7 +235,7 @@ class TestSchemaExtractorQueueMode:
             await extractor.extract_field_group(
                 content="Test content",
                 field_group=MANUFACTURING_GROUP,
-                company_name="Test Co",
+                source_context="Test Co",
             )
 
         assert "timeout" in str(exc_info.value).lower() or "expired" in str(exc_info.value).lower()
@@ -264,7 +265,7 @@ class TestSchemaExtractorQueueMode:
         result = await extractor.extract_field_group(
             content="Test content",
             field_group=MANUFACTURING_GROUP,
-            company_name="Test Co",
+            source_context="Test Co",
         )
 
         # Should have called the client directly
@@ -296,7 +297,7 @@ class TestSchemaExtractorQueueMode:
         result = await extractor.extract_field_group(
             content="Our D Series gearbox offers 100kW.",
             field_group=PRODUCTS_GEARBOX_GROUP,
-            company_name="Test Co",
+            source_context="Test Co",
         )
 
         assert len(result["products"]) == 1
@@ -368,7 +369,7 @@ class TestSchemaExtractorQueueIntegration:
             extractor.extract_field_group(
                 content=f"Content {i}",
                 field_group=MANUFACTURING_GROUP,
-                company_name=f"Company {i}",
+                source_context=f"Company {i}",
             )
             for i in range(5)
         ]

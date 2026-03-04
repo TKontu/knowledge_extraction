@@ -35,38 +35,6 @@ class ProfileRepository:
 
         return self._to_dataclass(orm_profile)
 
-    def list_all(self) -> list[ExtractionProfile]:
-        """List all profiles.
-
-        Returns:
-            List of all extraction profiles.
-        """
-        orm_profiles = self._session.query(ORMProfile).all()
-        return [self._to_dataclass(p) for p in orm_profiles]
-
-    def list_builtin(self) -> list[ExtractionProfile]:
-        """List only built-in profiles.
-
-        Returns:
-            List of built-in extraction profiles.
-        """
-        orm_profiles = (
-            self._session.query(ORMProfile).filter(ORMProfile.is_builtin == True).all()
-        )
-        return [self._to_dataclass(p) for p in orm_profiles]
-
-    def exists(self, name: str) -> bool:
-        """Check if a profile exists.
-
-        Args:
-            name: Profile name to check.
-
-        Returns:
-            True if profile exists, False otherwise.
-        """
-        count = self._session.query(ORMProfile).filter(ORMProfile.name == name).count()
-        return count > 0
-
     def _to_dataclass(self, orm_profile: ORMProfile) -> ExtractionProfile:
         """Convert ORM model to dataclass.
 

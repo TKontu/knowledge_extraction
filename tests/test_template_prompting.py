@@ -86,6 +86,7 @@ class TestEntityListOutputKey:
                 api_key="test",
                 model="test",
                 embedding_model="bge-m3",
+                embedding_dimension=1024,
                 http_timeout=30,
                 max_tokens=4096,
                 max_retries=3,

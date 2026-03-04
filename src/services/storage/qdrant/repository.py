@@ -37,20 +37,22 @@ class SearchResult:
 class QdrantRepository:
     """Repository for Qdrant vector database operations."""
 
-    def __init__(self, client: QdrantClient):
+    def __init__(self, client: QdrantClient, embedding_dimension: int = 1024):
         """Initialize QdrantRepository.
 
         Args:
             client: Qdrant client instance.
+            embedding_dimension: Embedding vector dimension (default 1024 for bge-m3).
         """
         self.client = client
         self.collection_name = "extractions"
+        self._embedding_dimension = embedding_dimension
 
     async def init_collection(self) -> None:
         """Create collection if it doesn't exist.
 
         Creates a collection with:
-        - Vector size: 1024 (BGE-large-en)
+        - Vector size: configured embedding dimension (bge-m3 default 1024)
         - Distance metric: Cosine
         """
         # Run sync operations in executor
@@ -63,14 +65,14 @@ class QdrantRepository:
         if any(c.name == self.collection_name for c in collections.collections):
             return
 
-        # Create collection with BGE-large-en configuration
+        # Create collection with configured embedding model dimension
         await loop.run_in_executor(
             None,
             partial(
                 self.client.create_collection,
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(
-                    size=1024,  # BGE-large-en dimension
+                    size=self._embedding_dimension,
                     distance=Distance.COSINE,
                 ),
             ),

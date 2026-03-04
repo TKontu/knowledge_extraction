@@ -1,6 +1,5 @@
 """URL pattern generation for language-based filtering."""
 
-import re
 from typing import Sequence
 
 import structlog
@@ -8,23 +7,6 @@ import structlog
 from .language import LanguageCode
 
 logger = structlog.get_logger(__name__)
-
-
-# Default languages to exclude (common European languages)
-DEFAULT_EXCLUDED_LANGUAGES = [
-    LanguageCode.DE,  # German
-    LanguageCode.FI,  # Finnish
-    LanguageCode.FR,  # French
-    LanguageCode.ES,  # Spanish
-    LanguageCode.IT,  # Italian
-    LanguageCode.NL,  # Dutch
-    LanguageCode.PT,  # Portuguese
-    LanguageCode.PL,  # Polish
-    LanguageCode.RU,  # Russian
-    LanguageCode.SV,  # Swedish
-    LanguageCode.NO,  # Norwegian
-    LanguageCode.DA,  # Danish
-]
 
 
 def generate_language_exclusion_patterns(
@@ -77,27 +59,3 @@ def generate_language_exclusion_patterns(
     )
 
     return patterns
-
-
-def should_exclude_url(url: str, excluded_patterns: list[str]) -> bool:
-    """Check if URL matches any exclusion pattern (client-side validation).
-
-    Args:
-        url: URL to check.
-        excluded_patterns: List of regex patterns.
-
-    Returns:
-        True if URL should be excluded, False otherwise.
-
-    Note:
-        Patterns are already in regex format, ready for Firecrawl.
-    """
-    url_lower = url.lower()
-
-    for pattern in excluded_patterns:
-        # Patterns are already regex, use directly
-        if re.search(pattern, url_lower):
-            logger.debug("url_matches_exclusion_pattern", url=url, pattern=pattern)
-            return True
-
-    return False

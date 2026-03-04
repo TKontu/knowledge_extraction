@@ -1,11 +1,17 @@
 """Reusable FastAPI dependencies for API endpoints."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
+
+if TYPE_CHECKING:
+    from services.storage.embedding import EmbeddingService
 from orm_models import Project
 from qdrant_connection import qdrant_client
 from redis_client import get_async_redis
@@ -56,4 +62,18 @@ def get_qdrant_repository() -> QdrantRepository:
     Returns:
         QdrantRepository instance with the global Qdrant client.
     """
-    return QdrantRepository(qdrant_client)
+    from config import settings
+
+    return QdrantRepository(qdrant_client, embedding_dimension=settings.llm.embedding_dimension)
+
+
+def get_embedding_service() -> EmbeddingService:
+    """Get EmbeddingService instance.
+
+    Returns:
+        EmbeddingService instance configured from settings.
+    """
+    from config import settings
+    from services.storage.embedding import EmbeddingService
+
+    return EmbeddingService(settings.llm)

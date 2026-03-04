@@ -1,6 +1,6 @@
 """Tests for merge conflict detection."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -16,9 +16,20 @@ def mock_extractor():
     return extractor
 
 
+def _make_extraction_config(*, quoting=False, conflicts=True):
+    """Create a mock ExtractionConfig with the given settings."""
+    cfg = Mock()
+    cfg.source_quoting_enabled = quoting
+    cfg.conflict_detection_enabled = conflicts
+    return cfg
+
+
 @pytest.fixture
 def orchestrator(mock_extractor):
-    return SchemaExtractionOrchestrator(mock_extractor)
+    return SchemaExtractionOrchestrator(
+        mock_extractor,
+        extraction_config=_make_extraction_config(),
+    )
 
 
 @pytest.fixture
@@ -46,10 +57,7 @@ class TestNumericConflict:
             {"employees": 100, "confidence": 0.8},
             {"employees": 200, "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         assert "_conflicts" in merged
         assert "employees" in merged["_conflicts"]
@@ -64,10 +72,7 @@ class TestNumericConflict:
             {"employees": 100, "confidence": 0.8},
             {"employees": 105, "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         conflicts = merged.get("_conflicts", {})
         assert "employees" not in conflicts
@@ -82,10 +87,7 @@ class TestBooleanConflict:
             {"is_public": True, "confidence": 0.8},
             {"is_public": False, "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         assert "_conflicts" in merged
         assert "is_public" in merged["_conflicts"]
@@ -97,10 +99,7 @@ class TestBooleanConflict:
             {"is_public": True, "confidence": 0.8},
             {"is_public": True, "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         conflicts = merged.get("_conflicts", {})
         assert "is_public" not in conflicts
@@ -114,10 +113,7 @@ class TestTextConflict:
             {"name": "Acme Corp", "confidence": 0.8},
             {"name": "ACME Corporation", "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         assert "_conflicts" in merged
         assert "name" in merged["_conflicts"]
@@ -128,10 +124,7 @@ class TestTextConflict:
             {"name": "Acme Corp", "confidence": 0.8},
             {"name": "Acme Corp", "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         conflicts = merged.get("_conflicts", {})
         assert "name" not in conflicts
@@ -140,16 +133,17 @@ class TestTextConflict:
 class TestConflictFlag:
     """Test that flag controls conflict detection."""
 
-    def test_flag_off_no_conflicts_key(self, orchestrator, mixed_group):
+    def test_flag_off_no_conflicts_key(self, mock_extractor, mixed_group):
         """When disabled, no _conflicts key should appear."""
+        orch = SchemaExtractionOrchestrator(
+            mock_extractor,
+            extraction_config=_make_extraction_config(conflicts=False),
+        )
         chunk_results = [
             {"name": "Acme", "employees": 100, "confidence": 0.8},
             {"name": "ACME", "employees": 200, "confidence": 0.7},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = False
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orch._merge_chunk_results(chunk_results, mixed_group)
 
         assert "_conflicts" not in merged
 
@@ -158,9 +152,6 @@ class TestConflictFlag:
         chunk_results = [
             {"name": "Acme", "employees": 100, "confidence": 0.8},
         ]
-        with patch("services.extraction.schema_orchestrator.settings") as s:
-            s.extraction.source_quoting_enabled = False
-            s.extraction.conflict_detection_enabled = True
-            merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
+        merged = orchestrator._merge_chunk_results(chunk_results, mixed_group)
 
         assert "_conflicts" not in merged

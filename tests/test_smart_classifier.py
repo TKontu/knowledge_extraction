@@ -69,6 +69,7 @@ def app_config():
         cache_ttl=86400,
         # Use default skip patterns for backward compatibility in tests
         use_default_skip_patterns=True,
+        classifier_content_limit=6000,
     )
 
 
@@ -500,6 +501,7 @@ class TestSmartClassifierDisabled:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         classifier = SmartClassifier(
@@ -751,6 +753,7 @@ class TestClassificationConfigIntegration:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         # Custom config that only skips /custom-skip/
@@ -790,6 +793,7 @@ class TestClassificationConfigIntegration:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         # Explicitly empty patterns = no skipping
@@ -831,6 +835,7 @@ class TestClassificationConfigIntegration:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=False,
+            classifier_content_limit=6000,
         )
 
         # None patterns = context-agnostic (no skipping when smart enabled)
@@ -872,6 +877,7 @@ class TestClassificationConfigIntegration:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         # None patterns = use defaults when smart classification disabled
@@ -902,6 +908,7 @@ class TestClassificationConfigIntegration:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         # None patterns with override = use defaults
@@ -932,6 +939,7 @@ class TestClassificationConfigIntegration:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         # Explicit empty patterns should override global setting
@@ -975,6 +983,7 @@ class TestResolveSkipPatterns:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=False,
+            classifier_content_limit=6000,
         )
 
         classification_config = ClassificationConfig(skip_patterns=[])
@@ -994,6 +1003,7 @@ class TestResolveSkipPatterns:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=False,
+            classifier_content_limit=6000,
         )
 
         custom = [r"/my-pattern/"]
@@ -1014,6 +1024,7 @@ class TestResolveSkipPatterns:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=False,
+            classifier_content_limit=6000,
         )
 
         classification_config = ClassificationConfig(skip_patterns=None)
@@ -1033,6 +1044,7 @@ class TestResolveSkipPatterns:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         classification_config = ClassificationConfig(skip_patterns=None)
@@ -1055,6 +1067,7 @@ class TestResolveSkipPatterns:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=False,
+            classifier_content_limit=6000,
         )
 
         # No classification_config provided
@@ -1074,6 +1087,7 @@ class TestResolveSkipPatterns:
             reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
             embedding_low_threshold=0.4, reranker_threshold=0.5,
             cache_ttl=86400, use_default_skip_patterns=True,
+            classifier_content_limit=6000,
         )
 
         classification_config = ClassificationConfig(skip_patterns=None)

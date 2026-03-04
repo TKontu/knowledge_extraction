@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI):
     check_security_config()
 
     # Initialize Qdrant collection with retry logic
-    qdrant_repo = QdrantRepository(qdrant_client)
+    qdrant_repo = QdrantRepository(qdrant_client, embedding_dimension=settings.llm.embedding_dimension)
     max_retries = 5
     for attempt in range(max_retries):
         try:

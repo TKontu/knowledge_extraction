@@ -393,7 +393,8 @@ class JobScheduler:
                             llm=settings.llm,
                             extraction=settings.extraction,
                             classification=settings.classification,
-                            qdrant_url=settings.qdrant_url,
+                            embedding_service=self._services.embedding_service,
+                            extraction_embedding=self._services.extraction_embedding,
                             request_timeout=settings.llm_queue.request_timeout,
                             llm_queue=llm_queue,
                         )
@@ -408,17 +409,8 @@ class JobScheduler:
                 logger.error("extract_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
-    async def __aenter__(self) -> "JobScheduler":
-        """Enter async context manager."""
-        await self.start()
-        return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Exit async context manager and cleanup."""
-        await self.stop()
-
-
-# Global instances — backward compatible with start_scheduler()/stop_scheduler()
+# Global instances for start_scheduler()/stop_scheduler()
 _container: ServiceContainer | None = None
 _scheduler: JobScheduler | None = None
 

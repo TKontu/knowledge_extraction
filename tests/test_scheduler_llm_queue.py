@@ -24,6 +24,7 @@ class TestSchedulerLLMQueueWiring:
             api_key="test",
             model="test-model",
             embedding_model="bge-m3",
+            embedding_dimension=1024,
             http_timeout=60,
             max_tokens=4096,
             max_retries=3,

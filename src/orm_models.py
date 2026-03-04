@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for database tables."""
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import Optional
 from uuid import uuid4
 
@@ -11,7 +11,6 @@ from sqlalchemy import (
     ARRAY,
     JSON,
     Boolean,
-    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -100,69 +99,6 @@ class Job(Base):
         return f"<Job(id={self.id}, type={self.type}, status={self.status})>"
 
 
-class Page(Base):
-    """Page table for storing scraped web pages."""
-
-    __tablename__ = "pages"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
-    url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    domain: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    company: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    title: Mapped[str | None] = mapped_column(Text, nullable=True)
-    markdown_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    scraped_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    status: Mapped[str] = mapped_column(Text, default="completed", index=True)
-    meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-    )
-
-    # Relationship to facts
-    facts: Mapped[list["Fact"]] = relationship(
-        "Fact", back_populates="page", cascade="all, delete-orphan"
-    )
-
-    def __repr__(self) -> str:
-        return f"<Page(id={self.id}, url={self.url}, company={self.company})>"
-
-
-class Fact(Base):
-    """Fact table for storing extracted facts from pages."""
-
-    __tablename__ = "facts"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
-    page_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("pages.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    fact_text: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    confidence: Mapped[float] = mapped_column(Float, nullable=False, index=True)
-    profile_used: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    embedding_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    extracted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    meta_data: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-
-    # Relationship to page
-    page: Mapped["Page"] = relationship("Page", back_populates="facts")
-
-    def __repr__(self) -> str:
-        return f"<Fact(id={self.id}, category={self.category}, confidence={self.confidence})>"
-
-
 class Profile(Base):
     """Profile table for extraction profiles."""
 
@@ -212,23 +148,6 @@ class Report(Base):
 
     def __repr__(self) -> str:
         return f"<Report(id={self.id}, type={self.type}, title={self.title})>"
-
-
-class RateLimit(Base):
-    """Rate limit table for tracking domain-specific rate limits."""
-
-    __tablename__ = "rate_limits"
-
-    domain: Mapped[str] = mapped_column(Text, primary_key=True)
-    request_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_request: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    daily_count: Mapped[int] = mapped_column(Integer, default=0)
-    daily_reset_at: Mapped[date] = mapped_column(Date, default=lambda: date.today())
-
-    def __repr__(self) -> str:
-        return f"<RateLimit(domain={self.domain}, count={self.request_count})>"
 
 
 # ===================

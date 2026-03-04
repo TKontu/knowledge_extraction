@@ -276,6 +276,6 @@ class TestServiceContainerLLMWorkerLifecycle:
             await container.start()
 
             assert container._llm_worker_task is not None
-            assert container.llm_worker is mock_worker_instance
+            assert container._llm_worker is mock_worker_instance
 
             await container.stop()

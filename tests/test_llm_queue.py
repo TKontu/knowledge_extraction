@@ -575,7 +575,7 @@ class TestLLMWorker:
             payload={
                 "content": "Test content",
                 "field_group": {"name": "test"},
-                "company_name": "Test Co",
+                "source_context": "Test Co",
             },
             priority=5,
             created_at=datetime.now(UTC),

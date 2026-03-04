@@ -26,6 +26,7 @@ class LLMConfig:
     api_key: str
     model: str
     embedding_model: str
+    embedding_dimension: int
     http_timeout: int
     max_tokens: int
     max_retries: int
@@ -55,6 +56,7 @@ class ExtractionConfig:
     chunk_overlap_tokens: int
     max_concurrent_chunks: int
     max_concurrent_sources: int
+    extraction_batch_size: int
     source_quoting_enabled: bool
     conflict_detection_enabled: bool
     validation_enabled: bool
@@ -78,6 +80,7 @@ class ClassificationConfig:
     reranker_threshold: float
     cache_ttl: int
     use_default_skip_patterns: bool
+    classifier_content_limit: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +230,12 @@ class Settings(BaseSettings):
         default="bge-m3",
         description="Embedding model name",
     )
+    embedding_dimension: int = Field(
+        default=1024,
+        ge=1,
+        le=8192,
+        description="Embedding vector dimension (1024 for bge-m3)",
+    )
 
     # LLM Timeouts
     llm_http_timeout: int = Field(
@@ -266,6 +275,12 @@ class Settings(BaseSettings):
     extraction_max_concurrent_sources: int = Field(
         default=20,
         description="Max concurrent source extractions in pipeline",
+    )
+    extraction_batch_size: int = Field(
+        default=20,
+        ge=1,
+        le=200,
+        description="Number of sources per chunk in schema extraction pipeline",
     )
 
     # Embedding Concurrency
@@ -633,6 +648,12 @@ class Settings(BaseSettings):
         description="When True, use DEFAULT_SKIP_PATTERNS if template has no classification_config. "
         "When False, smart classification uses no skip patterns (context-agnostic).",
     )
+    classification_content_limit: int = Field(
+        default=6000,
+        ge=1000,
+        le=30000,
+        description="Max characters of content for classifier embedding/reranking",
+    )
 
     # Extraction Pipeline Reliability
     extraction_content_limit: int = Field(
@@ -769,6 +790,7 @@ class Settings(BaseSettings):
             api_key=self.openai_api_key,
             model=self.llm_model,
             embedding_model=self.rag_embedding_model,
+            embedding_dimension=self.embedding_dimension,
             http_timeout=self.llm_http_timeout,
             max_tokens=self.llm_max_tokens,
             max_retries=self.llm_max_retries,
@@ -800,6 +822,7 @@ class Settings(BaseSettings):
             chunk_overlap_tokens=self.extraction_chunk_overlap_tokens,
             max_concurrent_chunks=self.extraction_max_concurrent_chunks,
             max_concurrent_sources=self.extraction_max_concurrent_sources,
+            extraction_batch_size=self.extraction_batch_size,
             source_quoting_enabled=self.extraction_source_quoting_enabled,
             conflict_detection_enabled=self.extraction_conflict_detection_enabled,
             validation_enabled=self.extraction_validation_enabled,
@@ -824,6 +847,7 @@ class Settings(BaseSettings):
             reranker_threshold=self.classification_reranker_threshold,
             cache_ttl=self.classification_cache_ttl,
             use_default_skip_patterns=self.classification_use_default_skip_patterns,
+            classifier_content_limit=self.classification_content_limit,
         )
 
     @property

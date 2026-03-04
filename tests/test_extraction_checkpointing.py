@@ -7,8 +7,8 @@ from uuid import uuid4
 import pytest
 
 from orm_models import Job, Project
-from services.extraction.pipeline import CheckpointCallback, SchemaExtractionPipeline
-from services.extraction.worker import ExtractionWorker, SchemaExtractionResult
+from services.extraction.pipeline import CheckpointCallback, SchemaExtractionPipeline, SchemaPipelineResult
+from services.extraction.worker import ExtractionWorker
 
 
 @pytest.fixture
@@ -36,6 +36,7 @@ def mock_llm():
         api_key="test",
         model="test-model",
         embedding_model="bge-m3",
+        embedding_dimension=1024,
         http_timeout=60,
         max_tokens=4096,
         max_retries=3,
@@ -367,7 +368,7 @@ class TestSchemaExtractionPipelineCheckpointing:
             )
 
         # Only 3 sources should be processed (5 total - 2 already done)
-        assert result["sources_processed"] == 3
+        assert result.sources_processed == 3
 
     async def test_batch_commit_happens_after_each_chunk(
         self, mock_db, mock_orchestrator, mock_source
@@ -457,7 +458,7 @@ class TestSchemaExtractionPipelineCheckpointing:
             )
 
         # Should have 2 failed sources
-        assert result["sources_failed"] == 2
+        assert result.sources_failed == 2
 
         # Checkpoint should only contain successful source IDs (indices 0, 2, 4)
         if checkpoint_calls:
@@ -509,11 +510,14 @@ class TestWorkerProcessJobWithCheckpointing:
             worker, "_create_schema_pipeline", new_callable=AsyncMock
         ) as mock_create:
             mock_pipeline = AsyncMock()
-            mock_pipeline.extract_project.return_value = {
-                "sources_processed": 5,
-                "sources_failed": 0,
-                "extractions_created": 15,
-            }
+            mock_pipeline.extract_project.return_value = SchemaPipelineResult(
+                project_id="test",
+                sources_processed=5,
+                sources_failed=0,
+                total_extractions=15,
+                field_groups=1,
+                schema_name="test",
+            )
             mock_create.return_value = mock_pipeline
 
             await worker.process_job(job)
@@ -565,11 +569,14 @@ class TestWorkerProcessJobWithCheckpointing:
             worker, "_create_schema_pipeline", new_callable=AsyncMock
         ) as mock_create:
             mock_pipeline = AsyncMock()
-            mock_pipeline.extract_project.return_value = {
-                "sources_processed": 3,
-                "sources_failed": 0,
-                "extractions_created": 9,
-            }
+            mock_pipeline.extract_project.return_value = SchemaPipelineResult(
+                project_id="test",
+                sources_processed=3,
+                sources_failed=0,
+                total_extractions=9,
+                field_groups=1,
+                schema_name="test",
+            )
             mock_create.return_value = mock_pipeline
 
             await worker.process_job(job)

@@ -63,6 +63,22 @@ class BatchPipelineResult:
     results: list[PipelineResult] = field(default_factory=list)
 
 
+@dataclass
+class SchemaPipelineResult:
+    """Result from schema-based extraction pipeline."""
+
+    project_id: str
+    sources_processed: int
+    sources_failed: int
+    total_extractions: int
+    field_groups: int
+    schema_name: str
+    total_deduplicated: int = 0
+    total_entities: int = 0
+    cancelled: bool = False
+    error: str | None = None
+
+
 class ExtractionPipelineService:
     """Orchestrates the complete extraction pipeline."""
 
@@ -416,9 +432,7 @@ class SchemaExtractionPipeline:
         self,
         source,  # Source ORM object
         source_context: str | None = None,
-        company_name: str | None = None,  # Deprecated, backward compat
         field_groups: list | None = None,
-        extraction_context: "ExtractionContext | None" = None,
         schema_name: str = "unknown",
     ) -> list:  # list[Extraction]
         """Extract all field groups from a source.
@@ -426,9 +440,7 @@ class SchemaExtractionPipeline:
         Args:
             source: Source ORM object with markdown content.
             source_context: Source context (e.g., company name, website name).
-            company_name: DEPRECATED. Use source_context instead.
             field_groups: Pre-converted FieldGroup objects (required).
-            extraction_context: Optional extraction context for prompt customization.
             schema_name: Name of the schema used for extraction (for tracking).
 
         Returns:
@@ -436,8 +448,7 @@ class SchemaExtractionPipeline:
         """
         from orm_models import Extraction
 
-        # Backward compatibility: use company_name if source_context not provided
-        context_value = source_context if source_context is not None else company_name
+        context_value = source_context
 
         if not source.content:
             logger.warning("source_has_no_content", source_id=str(source.id))
@@ -497,7 +508,7 @@ class SchemaExtractionPipeline:
         cancellation_check: Callable[[], Awaitable[bool]] | None = None,
         checkpoint_callback: CheckpointCallback | None = None,
         resume_from: set[str] | None = None,
-    ) -> dict:
+    ) -> SchemaPipelineResult:
         """Extract all sources in a project.
 
         Args:
@@ -523,7 +534,15 @@ class SchemaExtractionPipeline:
         project = project_repo.get(project_id)
         if not project:
             logger.error("project_not_found", project_id=str(project_id))
-            return {"error": "Project not found", "project_id": str(project_id)}
+            return SchemaPipelineResult(
+                project_id=str(project_id),
+                sources_processed=0,
+                sources_failed=0,
+                total_extractions=0,
+                field_groups=0,
+                schema_name="unknown",
+                error="Project not found",
+            )
 
         # Convert project schema to field groups
         adapter = SchemaAdapter()
@@ -540,11 +559,19 @@ class SchemaExtractionPipeline:
         validation = adapter.validate_extraction_schema(schema)
         if not validation.is_valid:
             logger.error(
-                "invalid_extraction_schema_using_default",
+                "invalid_extraction_schema",
                 project_id=str(project_id),
                 errors=validation.errors,
             )
-            schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
+            return SchemaPipelineResult(
+                project_id=str(project_id),
+                sources_processed=0,
+                sources_failed=0,
+                total_extractions=0,
+                field_groups=0,
+                schema_name="invalid",
+                error=f"Invalid extraction schema: {'; '.join(validation.errors)}",
+            )
 
         field_groups = adapter.convert_to_field_groups(schema)
 
@@ -598,20 +625,20 @@ class SchemaExtractionPipeline:
                 project_id=str(project_id),
                 source_count=len(sources),
             )
-            return {
-                "project_id": str(project_id),
-                "sources_processed": 0,
-                "sources_failed": 0,
-                "extractions_created": 0,
-                "field_groups": len(field_groups),
-                "schema_name": schema.get("name", "unknown"),
-                "cancelled": True,
-            }
+            return SchemaPipelineResult(
+                project_id=str(project_id),
+                sources_processed=0,
+                sources_failed=0,
+                total_extractions=0,
+                field_groups=len(field_groups),
+                schema_name=schema.get("name", "unknown"),
+                cancelled=True,
+            )
 
         # Process sources in parallel with cancellation support
         # Use chunked processing to allow cancellation checks between batches
         semaphore = asyncio.Semaphore(app_settings.extraction.max_concurrent_sources)
-        chunk_size = 20  # Check cancellation every 20 sources
+        chunk_size = app_settings.extraction.extraction_batch_size
 
         # Track whether embedding is available for this run
         embed_enabled = (
@@ -727,16 +754,12 @@ class SchemaExtractionPipeline:
         sources_failed = sum(1 for _, success in all_results if not success)
         sources_processed = len(all_results)
 
-        result = {
-            "project_id": str(project_id),
-            "sources_processed": sources_processed,
-            "sources_failed": sources_failed,
-            "extractions_created": total_extractions,
-            "field_groups": len(field_groups),
-            "schema_name": schema.get("name", "unknown"),
-        }
-
-        if cancelled:
-            result["cancelled"] = True
-
-        return result
+        return SchemaPipelineResult(
+            project_id=str(project_id),
+            sources_processed=sources_processed,
+            sources_failed=sources_failed,
+            total_extractions=total_extractions,
+            field_groups=len(field_groups),
+            schema_name=schema.get("name", "unknown"),
+            cancelled=cancelled,
+        )

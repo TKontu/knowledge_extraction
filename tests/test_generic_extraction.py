@@ -14,8 +14,7 @@ class TestExtractionContext:
 
         assert context.source_type == "content"
         assert context.source_label == "Source"
-        # Include product_name for backward compatibility
-        assert context.entity_id_fields == ["product_name", "entity_id", "name", "id"]
+        assert context.entity_id_fields == ["entity_id", "name", "id"]
 
     def test_extraction_context_from_dict_with_all_fields(self):
         """Custom context should be parsed from dict."""
@@ -42,7 +41,6 @@ class TestExtractionContext:
         assert context.source_type == "research paper"
         assert context.source_label == "Source"  # default
         assert context.entity_id_fields == [
-            "product_name",
             "entity_id",
             "name",
             "id",
@@ -54,7 +52,7 @@ class TestExtractionContext:
 
         assert context.source_type == "content"
         assert context.source_label == "Source"
-        assert context.entity_id_fields == ["product_name", "entity_id", "name", "id"]
+        assert context.entity_id_fields == ["entity_id", "name", "id"]
 
     def test_extraction_context_from_dict_empty(self):
         """Empty dict should use all defaults."""
@@ -62,7 +60,7 @@ class TestExtractionContext:
 
         assert context.source_type == "content"
         assert context.source_label == "Source"
-        assert context.entity_id_fields == ["product_name", "entity_id", "name", "id"]
+        assert context.entity_id_fields == ["entity_id", "name", "id"]
 
 
 class TestParseTemplate:
@@ -281,6 +279,7 @@ class TestSchemaExtractorWithContext:
                 api_key="test",
                 model="test",
                 embedding_model="bge-m3",
+                embedding_dimension=1024,
                 http_timeout=30,
                 max_tokens=4096,
                 max_retries=3,
@@ -316,6 +315,7 @@ class TestSchemaExtractorWithContext:
                 api_key="test",
                 model="test",
                 embedding_model="bge-m3",
+                embedding_dimension=1024,
                 http_timeout=30,
                 max_tokens=4096,
                 max_retries=3,

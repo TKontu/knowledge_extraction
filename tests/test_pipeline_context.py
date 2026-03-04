@@ -86,44 +86,6 @@ class TestPipelineExtractSource:
         call_args = mock_orchestrator_with_context.extract_all_groups.call_args
         assert call_args.kwargs.get("source_context") == "Test Company"
 
-    @pytest.mark.asyncio
-    async def test_extract_source_backward_compatible_company_name(
-        self, mock_orchestrator_with_context, mock_db, mock_source
-    ):
-        """extract_source should still accept company_name for backward compatibility."""
-        from services.extraction.field_groups import FieldDefinition, FieldGroup
-        from services.extraction.pipeline import SchemaExtractionPipeline
-
-        pipeline = SchemaExtractionPipeline(mock_orchestrator_with_context, mock_db)
-
-        field_groups = [
-            FieldGroup(
-                name="test_group",
-                description="Test group",
-                fields=[
-                    FieldDefinition(
-                        name="field1",
-                        field_type="text",
-                        description="Test field",
-                    ),
-                ],
-                prompt_hint="Test",
-                is_entity_list=False,
-            )
-        ]
-
-        # Should still accept company_name parameter
-        extractions = await pipeline.extract_source(
-            source=mock_source,
-            company_name="Test Company",
-            field_groups=field_groups,
-            schema_name="test_schema",
-        )
-
-        # Orchestrator should be called with source_context
-        mock_orchestrator_with_context.extract_all_groups.assert_called_once()
-
-
 class TestParseTemplateInPipeline:
     """Test that pipeline uses parse_template to get context."""
 

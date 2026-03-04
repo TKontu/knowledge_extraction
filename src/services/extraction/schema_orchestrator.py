@@ -10,7 +10,6 @@ from uuid import UUID
 
 import structlog
 
-from config import settings
 from services.extraction.field_groups import FieldGroup
 from services.extraction.page_classifier import (
     ClassificationResult,
@@ -21,6 +20,9 @@ from services.extraction.schema_validator import SchemaValidator
 from services.llm.chunking import chunk_document
 
 if TYPE_CHECKING:
+    from config import ClassificationConfig, ExtractionConfig
+    from services.extraction.field_groups import FieldDefinition
+    from services.extraction.schema_adapter import ExtractionContext
     from services.extraction.smart_classifier import SmartClassifier
 
 logger = structlog.get_logger(__name__)
@@ -32,6 +34,9 @@ class SchemaExtractionOrchestrator:
     def __init__(
         self,
         schema_extractor: SchemaExtractor,
+        *,
+        extraction_config: "ExtractionConfig | None" = None,
+        classification_config: "ClassificationConfig | None" = None,
         context: "ExtractionContext | None" = None,
         smart_classifier: "SmartClassifier | None" = None,
     ):
@@ -39,14 +44,19 @@ class SchemaExtractionOrchestrator:
 
         Args:
             schema_extractor: Extractor for field groups.
+            extraction_config: Extraction settings facade.
+            classification_config: Classification settings facade.
             context: Extraction context configuration.
             smart_classifier: Optional smart classifier for embedding-based
-                classification. When provided and settings.classification.smart_enabled
-                is True, uses semantic similarity for field group selection.
+                classification. When provided and classification is enabled,
+                uses semantic similarity for field group selection.
         """
+        from config import settings
         from services.extraction.schema_adapter import ExtractionContext
 
         self._extractor = schema_extractor
+        self._extraction = extraction_config or settings.extraction
+        self._classification = classification_config or settings.classification
         self._context = context or ExtractionContext()
         self._smart_classifier = smart_classifier
 
@@ -58,7 +68,6 @@ class SchemaExtractionOrchestrator:
         field_groups: list[FieldGroup],
         source_url: str | None = None,
         source_title: str | None = None,
-        company_name: str | None = None,  # Deprecated, backward compat
     ) -> tuple[list[dict], ClassificationResult | None]:
         """Extract all field groups from source content.
 
@@ -69,13 +78,11 @@ class SchemaExtractionOrchestrator:
             field_groups: Field groups to extract (REQUIRED).
             source_url: Source URL for classification.
             source_title: Source title for classification.
-            company_name: DEPRECATED. Use source_context instead.
 
         Returns:
             Tuple of (extraction results, classification result or None).
         """
-        # Backward compatibility
-        context_value = source_context if source_context is not None else company_name
+        context_value = source_context
         classification: ClassificationResult | None = None
 
         if not field_groups:
@@ -87,9 +94,9 @@ class SchemaExtractionOrchestrator:
             return [], None
 
         # Classify page if URL is available and classification is enabled
-        if source_url and settings.classification.enabled:
+        if source_url and self._classification.enabled:
             # Use smart classifier if available and enabled
-            if self._smart_classifier and settings.classification.smart_enabled:
+            if self._smart_classifier and self._classification.smart_enabled:
                 classification = await self._smart_classifier.classify(
                     url=source_url,
                     title=source_title,
@@ -116,7 +123,7 @@ class SchemaExtractionOrchestrator:
             )
 
             # Only skip if both classification says skip AND skip is enabled
-            if classification.skip_extraction and settings.classification.skip_enabled:
+            if classification.skip_extraction and self._classification.skip_enabled:
                 logger.info(
                     "skipping_extraction",
                     source_id=str(source_id),
@@ -143,8 +150,8 @@ class SchemaExtractionOrchestrator:
         # Chunk document for large content
         # Reduce max_tokens by overlap so chunk + prepended overlap fits
         # within EXTRACTION_CONTENT_LIMIT (both are ~4 chars/token aligned)
-        overlap = settings.extraction.chunk_overlap_tokens
-        effective_max = settings.extraction.chunk_max_tokens - overlap
+        overlap = self._extraction.chunk_overlap_tokens
+        effective_max = self._extraction.chunk_max_tokens - overlap
         chunks = chunk_document(
             markdown,
             max_tokens=effective_max,
@@ -182,9 +189,9 @@ class SchemaExtractionOrchestrator:
                 merged = self._merge_chunk_results(chunk_results, group)
 
                 # Schema-aware validation (before confidence pop)
-                if settings.extraction.validation_enabled:
+                if self._extraction.validation_enabled:
                     validator = SchemaValidator(
-                        min_confidence=settings.extraction.validation_min_confidence,
+                        min_confidence=self._extraction.validation_min_confidence,
                     )
                     merged, _ = validator.validate(merged, group)
 
@@ -231,7 +238,7 @@ class SchemaExtractionOrchestrator:
         Returns:
             List of extraction results from successful chunks.
         """
-        max_concurrent = settings.extraction.max_concurrent_chunks
+        max_concurrent = self._extraction.max_concurrent_chunks
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def extract_chunk_with_semaphore(
@@ -409,7 +416,7 @@ class SchemaExtractionOrchestrator:
         merged["confidence"] = sum(confidences) / len(confidences)
 
         # Merge source quotes: keep quote from highest-confidence chunk per field
-        if settings.extraction.source_quoting_enabled:
+        if self._extraction.source_quoting_enabled:
             merged_quotes: dict[str, str] = {}
             best_conf: dict[str, float] = {}
             for result in chunk_results:
@@ -424,7 +431,7 @@ class SchemaExtractionOrchestrator:
                 merged["_quotes"] = merged_quotes
 
         # Detect merge conflicts between chunks
-        if settings.extraction.conflict_detection_enabled and len(chunk_results) > 1:
+        if self._extraction.conflict_detection_enabled and len(chunk_results) > 1:
             conflicts = self._detect_conflicts(chunk_results, group, merged)
             if conflicts:
                 merged["_conflicts"] = conflicts
@@ -478,9 +485,9 @@ class SchemaExtractionOrchestrator:
                     all_entities.append(entity)
                 elif not entity_id:
                     # No ID field - dedupe by content hash
-                    entity_hash = hashlib.md5(
+                    entity_hash = hashlib.sha256(
                         json.dumps(entity, sort_keys=True).encode()
-                    ).hexdigest()
+                    ).hexdigest()[:16]
                     if entity_hash not in seen_ids:
                         seen_ids.add(entity_hash)
                         all_entities.append(entity)

@@ -189,7 +189,7 @@ class ExtractionContext:
     source_type: str = "content"
     source_label: str = "Source"
     entity_id_fields: list[str] = field(
-        default_factory=lambda: ["product_name", "entity_id", "name", "id"]
+        default_factory=lambda: ["entity_id", "name", "id"]
     )
 
     @classmethod
@@ -201,7 +201,7 @@ class ExtractionContext:
             source_type=data.get("source_type", "content"),
             source_label=data.get("source_label", "Source"),
             entity_id_fields=data.get(
-                "entity_id_fields", ["product_name", "entity_id", "name", "id"]
+                "entity_id_fields", ["entity_id", "name", "id"]
             ),
         )
 

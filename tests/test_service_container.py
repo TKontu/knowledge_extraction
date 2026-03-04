@@ -86,11 +86,9 @@ class TestServiceContainerStart:
         assert container.rate_limiter is not None
         assert container.retry_config is not None
         assert container.embedding_service is not None
-        assert container.qdrant_repo is not None
         assert container.extraction_embedding is not None
         assert container.deduplicator is not None
         assert container.llm_queue is not None
-        assert container.llm_worker is not None
 
         await container.stop()
 
@@ -122,11 +120,9 @@ class TestServiceContainerStart:
             "rate_limiter",
             "retry_config",
             "embedding_service",
-            "qdrant_repo",
             "extraction_embedding",
             "deduplicator",
             "llm_queue",
-            "llm_worker",
         ]
 
         for prop in properties:

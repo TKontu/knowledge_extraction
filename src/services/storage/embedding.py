@@ -76,15 +76,6 @@ class EmbeddingService:
         if EmbeddingService._semaphore is None:
             EmbeddingService.configure_concurrency(max_concurrent)
 
-    @property
-    def dimension(self) -> int:
-        """Get embedding dimension.
-
-        Returns:
-            Embedding dimension (1024 for bge-m3).
-        """
-        return 1024
-
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=4, max=60),

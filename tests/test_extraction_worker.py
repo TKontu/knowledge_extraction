@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 
 from orm_models import Job, Project
-from services.extraction.worker import ExtractionWorker, SchemaExtractionResult
+from services.extraction.pipeline import SchemaPipelineResult
+from services.extraction.worker import ExtractionWorker
 
 
 @pytest.fixture
@@ -34,6 +35,7 @@ def mock_llm():
         api_key="test",
         model="test-model",
         embedding_model="bge-m3",
+        embedding_dimension=1024,
         http_timeout=60,
         max_tokens=4096,
         max_retries=3,
@@ -249,10 +251,13 @@ class TestSchemaExtractionSelection:
 
         # Mock the schema pipeline
         with patch.object(worker, "_process_with_schema_pipeline") as mock_schema:
-            mock_schema.return_value = SchemaExtractionResult(
+            mock_schema.return_value = SchemaPipelineResult(
+                project_id="test",
                 sources_processed=5,
                 sources_failed=0,
                 total_extractions=35,  # 7 field groups * 5 sources
+                field_groups=7,
+                schema_name="test",
             )
 
             await worker.process_job(job)

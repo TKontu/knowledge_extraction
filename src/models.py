@@ -95,16 +95,6 @@ class ScrapeResponse(BaseModel):
         description="Extraction profile (if specified)",
     )
 
-    @staticmethod
-    def create(request: ScrapeRequest) -> "ScrapeResponse":
-        """Create a response from a scrape request."""
-        return ScrapeResponse(
-            job_id=str(uuid4()),
-            status=JobStatus.QUEUED,
-            url_count=len(request.urls),
-            company=request.company,
-            profile=request.profile,
-        )
 
 
 class CrawlRequest(BaseModel):
