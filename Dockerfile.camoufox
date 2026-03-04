@@ -46,7 +46,7 @@ RUN python -m camoufox fetch
 COPY src/services/camoufox/ ./src/services/camoufox/
 
 # Set Python path for module imports
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
 # Default port
@@ -57,4 +57,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3003/health')" || exit 1
 
 # Run the service
-CMD ["python", "-m", "src.services.camoufox.server"]
+CMD ["python", "-m", "services.camoufox.server"]
