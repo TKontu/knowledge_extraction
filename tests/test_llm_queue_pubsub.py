@@ -230,7 +230,7 @@ class TestWorkerNotification:
         # Create test request
         request = LLMRequest(
             request_id="test-req-notify",
-            request_type="extract_facts",
+            request_type="extract_field_group",
             payload={
                 "content": "test content",
                 "categories": ["test"],

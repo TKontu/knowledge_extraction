@@ -5,11 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from services.extraction.field_groups import FieldDefinition, FieldGroup
-from services.extraction.schema_extractor import (
-    EXTRACTION_CONTENT_LIMIT,
-    SchemaExtractor,
-)
-from services.llm import worker as llm_worker
+from services.extraction.schema_extractor import SchemaExtractor
 
 # Test fixtures for field groups (mimics schema-driven groups)
 MANUFACTURING_GROUP = FieldGroup(
@@ -209,18 +205,6 @@ class TestSchemaExtractor:
         assert result["manufactures_motors"] is True
 
 
-class TestExtractionContentLimit:
-    """Test Phase 2B: content window expansion."""
-
-    def test_constant_value(self):
-        """EXTRACTION_CONTENT_LIMIT should be 20000."""
-        assert EXTRACTION_CONTENT_LIMIT == 20000
-
-    def test_worker_imports_from_schema_extractor(self):
-        """Worker should use the same constant from schema_extractor."""
-        assert llm_worker.EXTRACTION_CONTENT_LIMIT is EXTRACTION_CONTENT_LIMIT
-
-
 class TestPromptGrounding:
     """Test Phase 2A: grounding rules in prompts."""
 
@@ -346,7 +330,7 @@ class TestUserPromptCleaning:
         prompt = extractor._build_user_prompt(long_content, MANUFACTURING_GROUP, None)
         # The content between --- markers should be at most EXTRACTION_CONTENT_LIMIT
         content_section = prompt.split("---")[1]
-        assert len(content_section.strip()) == EXTRACTION_CONTENT_LIMIT
+        assert len(content_section.strip()) == 20000
 
     def test_user_prompt_cleaning_before_truncation(self, extractor):
         """Cleaning should happen before truncation to reclaim window space."""

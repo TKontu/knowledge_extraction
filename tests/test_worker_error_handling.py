@@ -201,22 +201,12 @@ class TestExtractionWorkerErrorHandling:
         session = MagicMock()
         session.commit = MagicMock()
         session.rollback = MagicMock()
-        # Mock query for _has_extraction_schema
-        mock_query = MagicMock()
-        mock_query.filter.return_value = mock_query
-        mock_query.first.return_value = None  # No project found = no schema
-        session.query.return_value = mock_query
         return session
 
     @pytest.fixture
-    def pipeline_service(self):
-        """Mock pipeline service."""
-        return AsyncMock()
-
-    @pytest.fixture
-    def extraction_worker(self, db_session, pipeline_service):
+    def extraction_worker(self, db_session):
         """Create ExtractionWorker instance."""
-        worker = ExtractionWorker(db=db_session, pipeline_service=pipeline_service)
+        worker = ExtractionWorker(db=db_session, llm=MagicMock())
         worker.job_repo = MagicMock()
         worker.job_repo.is_cancellation_requested.return_value = False
         return worker
@@ -236,11 +226,13 @@ class TestExtractionWorkerErrorHandling:
 
     @pytest.mark.asyncio
     async def test_exception_includes_error_type_in_job_error(
-        self, extraction_worker, extract_job, pipeline_service
+        self, extraction_worker, extract_job
     ):
         """Test that job.error includes the error type."""
-        # Arrange: Pipeline service raises KeyError
-        pipeline_service.process_project_pending.side_effect = KeyError("missing_key")
+        # Arrange: Schema pipeline raises KeyError
+        extraction_worker._process_with_schema_pipeline = AsyncMock(
+            side_effect=KeyError("missing_key")
+        )
 
         # Act: Process job
         await extraction_worker.process_job(extract_job)
@@ -254,11 +246,13 @@ class TestExtractionWorkerErrorHandling:
 
     @pytest.mark.asyncio
     async def test_exception_logs_with_exc_info(
-        self, extraction_worker, extract_job, pipeline_service
+        self, extraction_worker, extract_job
     ):
         """Test that exceptions are logged with exc_info=True."""
         # Arrange
-        pipeline_service.process_project_pending.side_effect = ValueError("Invalid data")
+        extraction_worker._process_with_schema_pipeline = AsyncMock(
+            side_effect=ValueError("Invalid data")
+        )
 
         # Act: Process job with log capture
         with patch("services.extraction.worker.logger") as mock_logger:
@@ -271,11 +265,13 @@ class TestExtractionWorkerErrorHandling:
 
     @pytest.mark.asyncio
     async def test_exception_logs_include_error_type_field(
-        self, extraction_worker, extract_job, pipeline_service
+        self, extraction_worker, extract_job
     ):
         """Test that logs include error_type field."""
         # Arrange
-        pipeline_service.process_project_pending.side_effect = OSError("File not found")
+        extraction_worker._process_with_schema_pipeline = AsyncMock(
+            side_effect=OSError("File not found")
+        )
 
         # Act: Process job with log capture
         with patch("services.extraction.worker.logger") as mock_logger:

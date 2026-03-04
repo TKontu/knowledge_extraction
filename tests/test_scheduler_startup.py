@@ -26,7 +26,6 @@ class TestCleanupStaleJobsUnit:
         container.rate_limiter = MagicMock()
         container.retry_config = MagicMock()
         container.llm_queue = MagicMock()
-        container.deduplicator = MagicMock()
         container.extraction_embedding = MagicMock()
         container.embedding_service = MagicMock()
         return container
@@ -99,7 +98,6 @@ class TestWorkerStagger:
         container.rate_limiter = MagicMock()
         container.retry_config = MagicMock()
         container.llm_queue = MagicMock()
-        container.deduplicator = MagicMock()
         container.extraction_embedding = MagicMock()
         container.embedding_service = MagicMock()
         return container

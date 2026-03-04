@@ -76,7 +76,7 @@ class TestSemaphoreRaceCondition:
         for i in range(20):
             req = LLMRequest(
                 request_id=f"test-{i}",
-                request_type="extract_facts",
+                request_type="extract_field_group",
                 payload={"content": "test", "categories": []},
                 priority=5,
                 created_at=datetime.now(UTC),

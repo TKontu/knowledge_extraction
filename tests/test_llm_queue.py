@@ -62,7 +62,7 @@ class TestLLMRequestModel:
 
         original = LLMRequest(
             request_id="test-456",
-            request_type="extract_facts",
+            request_type="extract_field_group",
             payload={"categories": ["tech"]},
             priority=10,
             created_at=datetime.now(UTC),

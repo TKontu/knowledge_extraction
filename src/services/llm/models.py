@@ -8,7 +8,6 @@ from typing import Any
 
 # Valid request types
 VALID_REQUEST_TYPES = frozenset({
-    "extract_facts",
     "extract_field_group",
     "extract_entities",
 })
@@ -39,7 +38,7 @@ class LLMRequest:
 
     Attributes:
         request_id: Unique identifier for correlation.
-        request_type: Type of extraction (extract_facts, extract_field_group, extract_entities).
+        request_type: Type of extraction (extract_field_group, extract_entities).
         payload: Type-specific payload data.
         priority: Request priority (0=low, 5=normal, 10=high).
         created_at: When request was created.

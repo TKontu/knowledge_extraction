@@ -24,7 +24,6 @@ class TestServiceContainerStart:
             patch("services.scraper.service_container.EmbeddingService"),
             patch("services.scraper.service_container.QdrantRepository"),
             patch("services.scraper.service_container.ExtractionEmbeddingService"),
-            patch("services.scraper.service_container.ExtractionDeduplicator"),
             patch("services.scraper.service_container.LLMRequestQueue"),
             patch("services.scraper.service_container.LLMWorker") as mock_worker_cls,
             patch("services.scraper.service_container.AsyncOpenAI"),
@@ -87,7 +86,6 @@ class TestServiceContainerStart:
         assert container.retry_config is not None
         assert container.embedding_service is not None
         assert container.extraction_embedding is not None
-        assert container.deduplicator is not None
         assert container.llm_queue is not None
 
         await container.stop()
@@ -121,7 +119,6 @@ class TestServiceContainerStart:
             "retry_config",
             "embedding_service",
             "extraction_embedding",
-            "deduplicator",
             "llm_queue",
         ]
 

@@ -136,12 +136,6 @@ class TestExtractionWorkerRollback:
         return db
 
     @pytest.fixture
-    def mock_pipeline_service(self):
-        """Create a mock pipeline service."""
-        service = AsyncMock()
-        return service
-
-    @pytest.fixture
     def extract_job(self):
         """Create a test extraction job."""
         job = MagicMock(spec=Job)
@@ -157,20 +151,17 @@ class TestExtractionWorkerRollback:
 
     @pytest.mark.asyncio
     async def test_rollback_called_on_exception(
-        self, mock_db, mock_pipeline_service, extract_job
+        self, mock_db, extract_job
     ):
         """Verify db.rollback() is called when an exception occurs during extraction."""
         from services.extraction.worker import ExtractionWorker
 
-        # Create worker
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-        )
+        # Create worker with llm config (required)
+        worker = ExtractionWorker(db=mock_db, llm=MagicMock())
 
-        # Make pipeline service raise an exception
-        mock_pipeline_service.process_batch.side_effect = RuntimeError(
-            "LLM service unavailable"
+        # Make schema pipeline raise an exception
+        worker._process_with_schema_pipeline = AsyncMock(
+            side_effect=RuntimeError("LLM service unavailable")
         )
 
         # Process the job
@@ -184,7 +175,7 @@ class TestExtractionWorkerRollback:
         assert "LLM service unavailable" in extract_job.error
 
     @pytest.mark.asyncio
-    async def test_rollback_called_on_value_error(self, mock_db, mock_pipeline_service):
+    async def test_rollback_called_on_value_error(self, mock_db):
         """Verify db.rollback() is called when project_id is missing."""
         from services.extraction.worker import ExtractionWorker
 
@@ -198,10 +189,7 @@ class TestExtractionWorkerRollback:
         job.error = None
         job.result = None
 
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-        )
+        worker = ExtractionWorker(db=mock_db, llm=MagicMock())
 
         await worker.process_job(job)
 

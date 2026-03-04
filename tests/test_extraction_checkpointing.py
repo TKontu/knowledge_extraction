@@ -1,13 +1,13 @@
 """Tests for extraction pipeline checkpointing and resume functionality."""
 
-from datetime import datetime, UTC
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
 
 from orm_models import Job, Project
-from services.extraction.pipeline import CheckpointCallback, SchemaExtractionPipeline, SchemaPipelineResult
+from services.extraction.pipeline import SchemaExtractionPipeline, SchemaPipelineResult
 from services.extraction.worker import ExtractionWorker
 
 
@@ -17,12 +17,6 @@ def mock_db():
     db = Mock()
     db.query.return_value.filter.return_value.first.return_value = None
     return db
-
-
-@pytest.fixture
-def mock_pipeline_service():
-    """Mock ExtractionPipelineService."""
-    return AsyncMock()
 
 
 @pytest.fixture
@@ -51,12 +45,11 @@ class TestCheckpointCallback:
     """Tests for checkpoint callback creation in ExtractionWorker."""
 
     def test_create_checkpoint_callback_returns_callable(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """_create_checkpoint_callback returns a callable."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(
@@ -71,12 +64,11 @@ class TestCheckpointCallback:
         assert callable(callback)
 
     def test_checkpoint_callback_updates_job_payload(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """Checkpoint callback updates job.payload with checkpoint data."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(
@@ -104,12 +96,11 @@ class TestCheckpointCallback:
         # This ensures checkpoint and extractions are committed atomically
 
     def test_checkpoint_callback_preserves_existing_payload(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """Checkpoint callback preserves existing payload fields."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         existing_payload = {
@@ -139,12 +130,11 @@ class TestResumeState:
     """Tests for resume state detection in ExtractionWorker."""
 
     def test_get_resume_state_returns_none_for_no_payload(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """_get_resume_state returns None when job has no payload."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(
@@ -158,12 +148,11 @@ class TestResumeState:
         assert result is None
 
     def test_get_resume_state_returns_none_for_no_checkpoint(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """_get_resume_state returns None when payload has no checkpoint."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(
@@ -177,12 +166,11 @@ class TestResumeState:
         assert result is None
 
     def test_get_resume_state_returns_set_of_processed_ids(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """_get_resume_state returns set of processed source IDs."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         processed_ids = [str(uuid4()), str(uuid4()), str(uuid4())]
@@ -209,12 +197,11 @@ class TestResumeState:
         assert all(pid in result for pid in processed_ids)
 
     def test_get_resume_state_returns_none_for_empty_processed_ids(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """_get_resume_state returns None when processed_source_ids is empty."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(
@@ -472,7 +459,7 @@ class TestWorkerProcessJobWithCheckpointing:
     """Tests for process_job with checkpoint support."""
 
     async def test_process_job_passes_checkpoint_callback_to_pipeline(
-        self, mock_db, mock_pipeline_service, mock_llm
+        self, mock_db, mock_llm
     ):
         """Worker passes checkpoint callback to schema pipeline."""
         project_id = uuid4()
@@ -494,7 +481,6 @@ class TestWorkerProcessJobWithCheckpointing:
 
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
             llm=mock_llm,
         )
 
@@ -522,7 +508,7 @@ class TestWorkerProcessJobWithCheckpointing:
             assert call_kwargs["checkpoint_callback"] is not None
 
     async def test_process_job_resumes_from_checkpoint(
-        self, mock_db, mock_pipeline_service, mock_llm
+        self, mock_db, mock_llm
     ):
         """Worker resumes from checkpoint when restarting a failed job."""
         project_id = uuid4()
@@ -554,7 +540,6 @@ class TestWorkerProcessJobWithCheckpointing:
 
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
             llm=mock_llm,
         )
 
@@ -584,12 +569,11 @@ class TestCheckpointDataStructure:
     """Tests for checkpoint data structure integrity."""
 
     def test_checkpoint_has_required_fields(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """Checkpoint data contains all required fields."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(
@@ -611,12 +595,11 @@ class TestCheckpointDataStructure:
         assert "total_entities" in checkpoint
 
     def test_checkpoint_timestamp_is_iso_format(
-        self, mock_db, mock_pipeline_service
+        self, mock_db
     ):
         """Checkpoint timestamp is in ISO 8601 format."""
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
         )
 
         job = Job(

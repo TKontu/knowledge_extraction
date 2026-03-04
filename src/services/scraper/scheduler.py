@@ -12,20 +12,10 @@ from config import settings
 from constants import JobStatus, JobType
 from database import SessionLocal
 from orm_models import Job
-from services.extraction.backpressure import BackpressureManager
-from services.extraction.extractor import ExtractionOrchestrator
-from services.extraction.pipeline import ExtractionPipelineService
-from services.extraction.profiles import ProfileRepository
 from services.extraction.worker import ExtractionWorker
-from services.knowledge.extractor import EntityExtractor
-from services.llm.client import LLMClient
-from services.projects.repository import ProjectRepository
 from services.scraper.crawl_worker import CrawlWorker
 from services.scraper.service_container import ServiceContainer
 from services.scraper.worker import ScraperWorker
-from services.storage.repositories.entity import EntityRepository
-from services.storage.repositories.extraction import ExtractionRepository
-from services.storage.repositories.source import SourceRepository
 from shutdown import get_shutdown_manager
 
 
@@ -359,37 +349,14 @@ class JobScheduler:
                             )
 
                     if job:
-                        # Build pipeline: cached stateless services + fresh per-job deps
                         llm_queue = (
                             self._services.llm_queue
                             if settings.llm_queue.enabled
                             else None
                         )
-                        llm_client = LLMClient(
-                            settings.llm,
-                            llm_queue=llm_queue,
-                            request_timeout=settings.llm_queue.request_timeout,
-                        )
-                        orchestrator = ExtractionOrchestrator(llm_client=llm_client)
-                        entity_extractor = EntityExtractor(
-                            llm_client=llm_client,
-                            entity_repo=EntityRepository(db),
-                        )
-                        pipeline_service = ExtractionPipelineService(
-                            orchestrator=orchestrator,
-                            deduplicator=self._services.deduplicator,
-                            entity_extractor=entity_extractor,
-                            extraction_repo=ExtractionRepository(db),
-                            source_repo=SourceRepository(db),
-                            project_repo=ProjectRepository(db),
-                            extraction_embedding=self._services.extraction_embedding,
-                            profile_repo=ProfileRepository(db),
-                            backpressure=BackpressureManager(llm_queue=llm_queue),
-                        )
 
                         worker = ExtractionWorker(
                             db=db,
-                            pipeline_service=pipeline_service,
                             llm=settings.llm,
                             extraction=settings.extraction,
                             classification=settings.classification,

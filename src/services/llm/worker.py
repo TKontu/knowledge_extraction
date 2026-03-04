@@ -10,9 +10,6 @@ import structlog
 
 from constants import LLM_RETRY_HINT
 from services.extraction.content_cleaner import strip_structural_junk
-from services.extraction.schema_extractor import (
-    EXTRACTION_CONTENT_LIMIT,  # deprecated alias
-)
 from services.llm.json_repair import try_repair_json
 from services.llm.models import LLMRequest, LLMResponse
 
@@ -80,7 +77,7 @@ class LLMWorker:
             base_temperature: Base temperature for LLM requests.
             temperature_increment: Temperature increase per retry attempt.
             response_ttl: TTL in seconds for response storage in Redis.
-            content_limit: Max chars for content truncation. Falls back to EXTRACTION_CONTENT_LIMIT.
+            content_limit: Max chars for content truncation (default: 20000).
         """
         self.redis = redis
         self.llm_client = llm_client
@@ -93,9 +90,7 @@ class LLMWorker:
         self.base_temperature = base_temperature
         self.temperature_increment = temperature_increment
         self.response_ttl = response_ttl
-        self._content_limit = (
-            content_limit if content_limit is not None else EXTRACTION_CONTENT_LIMIT
-        )
+        self._content_limit = content_limit if content_limit is not None else 20000
 
         # Adaptive concurrency
         self.concurrency = initial_concurrency
@@ -369,11 +364,7 @@ class LLMWorker:
             request.retry_count * self.temperature_increment
         )
 
-        if request.request_type == "extract_facts":
-            return await self._extract_facts(
-                request.payload, temperature, request.retry_count
-            )
-        elif request.request_type == "extract_field_group":
+        if request.request_type == "extract_field_group":
             return await self._extract_field_group(
                 request.payload, temperature, request.retry_count
             )
@@ -387,57 +378,6 @@ class LLMWorker:
             )
         else:
             raise ValueError(f"Unknown request type: {request.request_type}")
-
-    async def _extract_facts(
-        self, payload: dict, temperature: float, retry_count: int
-    ) -> dict:
-        """Execute fact extraction.
-
-        Uses prompts from payload if available (preferred), otherwise falls back
-        to building prompts internally for backward compatibility.
-
-        Args:
-            payload: Request payload with content, categories, profile_name,
-                    and optionally system_prompt, user_prompt, model.
-            temperature: Temperature for this request (varies with retries).
-            retry_count: Current retry attempt number.
-
-        Returns:
-            Extracted facts.
-        """
-        # Use prompts from payload if available (preferred)
-        system_prompt = payload.get("system_prompt")
-        user_prompt = payload.get("user_prompt")
-
-        # Fallback to internal prompt building if not in payload
-        if not system_prompt or not user_prompt:
-            content = payload.get("content", "")
-            categories = payload.get("categories", [])
-            profile_name = payload.get("profile_name", "general")
-            system_prompt = f"Extract facts from the content. Categories: {categories}. Profile: {profile_name}"
-            cleaned = strip_structural_junk(content)
-            user_prompt = cleaned[: self._content_limit]
-
-        # Add conciseness hint on retries
-        if retry_count > 0:
-            system_prompt += LLM_RETRY_HINT
-
-        # Use model from payload if provided, otherwise use worker's default
-        model = payload.get("model", self.model)
-
-        response = await self.llm_client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=temperature,
-            max_tokens=self.max_tokens,
-        )
-
-        result_text = response.choices[0].message.content
-        return try_repair_json(result_text, context="extract_facts")
 
     async def _extract_field_group(
         self, payload: dict, temperature: float, retry_count: int

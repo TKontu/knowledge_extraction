@@ -62,27 +62,23 @@ class TestSchedulerLLMQueueWiring:
         assert llm_client.client is not None  # Has direct client
 
     @pytest.mark.asyncio
-    async def test_extraction_worker_uses_queued_llm_client(self, llm_config):
-        """Test that extraction worker flow uses LLMClient with queue."""
-        from services.llm.client import LLMClient
+    async def test_extraction_worker_receives_queued_llm(self, llm_config):
+        """Test that extraction worker can be created with queue-backed LLM config."""
         from services.llm.queue import LLMRequestQueue
-        from services.knowledge.extractor import EntityExtractor
+        from services.extraction.worker import ExtractionWorker
 
         mock_queue = MagicMock(spec=LLMRequestQueue)
-        mock_queue.submit = AsyncMock(return_value="test-id")
+        mock_db = MagicMock()
 
-        # Create LLMClient with queue
-        llm_client = LLMClient(llm_config, llm_queue=mock_queue)
-
-        # Create EntityExtractor with queued LLMClient
-        mock_entity_repo = AsyncMock()
-        entity_extractor = EntityExtractor(
-            llm_client=llm_client,
-            entity_repo=mock_entity_repo,
+        # Create ExtractionWorker with llm config and queue
+        worker = ExtractionWorker(
+            db=mock_db,
+            llm=llm_config,
+            llm_queue=mock_queue,
         )
 
-        # Verify the chain is set up correctly
-        assert entity_extractor._llm_client.llm_queue is mock_queue
+        # Verify the queue is wired through
+        assert worker.llm_queue is mock_queue
 
 
 class TestSchedulerQueueInitialization:

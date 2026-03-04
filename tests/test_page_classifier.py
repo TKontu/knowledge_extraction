@@ -380,7 +380,6 @@ class TestClassificationMethod:
     def test_enum_values(self):
         """ClassificationMethod should have expected values."""
         assert ClassificationMethod.RULE_BASED.value == "rule"
-        assert ClassificationMethod.LLM_ASSISTED.value == "llm"
         assert ClassificationMethod.HYBRID.value == "hybrid"
 
     def test_string_conversion(self):

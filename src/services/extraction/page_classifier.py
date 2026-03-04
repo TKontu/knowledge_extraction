@@ -13,7 +13,6 @@ class ClassificationMethod(str, Enum):
     """Method used for page classification."""
 
     RULE_BASED = "rule"
-    LLM_ASSISTED = "llm"  # Future
     HYBRID = "hybrid"  # Future
 
 
@@ -95,11 +94,7 @@ class PageClassifier:
         Returns:
             ClassificationResult with page type and relevant groups.
         """
-        if self._method == ClassificationMethod.RULE_BASED:
-            result = self._classify_rule_based(url, title)
-        else:
-            # Future: LLM-assisted classification
-            result = self._classify_rule_based(url, title)
+        result = self._classify_rule_based(url, title)
 
         # Filter to available groups if specified
         if self._available_groups and result.relevant_groups:

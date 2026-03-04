@@ -3,10 +3,9 @@
 TDD: These tests define the expected behavior for DLQ handling.
 """
 
-import asyncio
 import json
-from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -63,7 +62,7 @@ class TestDeadLetterQueue:
         # Next failure should move it to DLQ
         request = LLMRequest(
             request_id="test-dlq",
-            request_type="extract_facts",
+            request_type="extract_field_group",
             payload={"content": "test"},
             priority=5,
             created_at=datetime.now(UTC),
@@ -97,7 +96,7 @@ class TestDeadLetterQueue:
         # Request with no retries yet
         request = LLMRequest(
             request_id="test-retry",
-            request_type="extract_facts",
+            request_type="extract_field_group",
             payload={"content": "test"},
             priority=5,
             created_at=datetime.now(UTC),
@@ -191,7 +190,7 @@ class TestDeadLetterQueue:
         dlq_item = json.dumps({
             "request": {
                 "request_id": "test-reprocess",
-                "request_type": "extract_facts",
+                "request_type": "extract_field_group",
                 "payload": {"content": "test"},
                 "priority": 5,
                 "created_at": datetime.now(UTC).isoformat(),
@@ -226,7 +225,7 @@ class TestDeadLetterQueue:
 
         request = LLMRequest(
             request_id="test-error-response",
-            request_type="extract_facts",
+            request_type="extract_field_group",
             payload={"content": "test"},
             priority=5,
             created_at=datetime.now(UTC),

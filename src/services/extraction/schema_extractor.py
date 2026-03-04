@@ -9,7 +9,7 @@ from uuid import uuid4
 import structlog
 from openai import AsyncOpenAI
 
-from config import LLMConfig, settings as _settings_singleton
+from config import LLMConfig
 from constants import LLM_RETRY_HINT
 from exceptions import LLMExtractionError
 from services.extraction.content_cleaner import strip_structural_junk
@@ -21,10 +21,6 @@ if TYPE_CHECKING:
     from services.llm.queue import LLMRequestQueue
 
 logger = structlog.get_logger(__name__)
-
-# Deprecated: frozen at import time. Use config.settings.extraction_content_limit instead.
-# Kept for backward compatibility — llm/worker.py uses it as fallback default.
-EXTRACTION_CONTENT_LIMIT = _settings_singleton.extraction_content_limit
 
 
 def _singularize(word: str) -> str:

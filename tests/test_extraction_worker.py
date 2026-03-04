@@ -1,6 +1,6 @@
 """Tests for ExtractionWorker."""
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -16,12 +16,6 @@ def mock_db():
     db = Mock()
     db.query.return_value.filter.return_value.first.return_value = None
     return db
-
-
-@pytest.fixture
-def mock_pipeline_service():
-    """Mock ExtractionPipelineService."""
-    return AsyncMock()
 
 
 @pytest.fixture
@@ -46,184 +40,11 @@ def mock_llm():
     )
 
 
-@pytest.fixture
-def extraction_worker(mock_db, mock_pipeline_service):
-    """Create ExtractionWorker with mocked dependencies (no LLM config)."""
-    return ExtractionWorker(
-        db=mock_db,
-        pipeline_service=mock_pipeline_service,
-    )
-
-
-@pytest.fixture
-def extraction_worker_with_llm(mock_db, mock_pipeline_service, mock_llm):
-    """Create ExtractionWorker with LLM config for schema extraction."""
-    return ExtractionWorker(
-        db=mock_db,
-        pipeline_service=mock_pipeline_service,
-        llm=mock_llm,
-    )
-
-
-class TestExtractionWorker:
-    """Tests for ExtractionWorker."""
-
-    async def test_worker_processes_queued_jobs(self, extraction_worker, mock_db):
-        """Worker processes jobs with queued status."""
-        project_id = uuid4()
-
-        # Create a mock job
-        job = Job(
-            id=uuid4(),
-            type="extract",
-            status="queued",
-            payload={"project_id": str(project_id)},
-        )
-
-        # Mock pipeline service
-        mock_result = Mock()
-        mock_result.sources_processed = 5
-        mock_result.sources_failed = 0
-        mock_result.total_extractions = 10
-        extraction_worker.pipeline_service.process_project_pending.return_value = (
-            mock_result
-        )
-
-        # Process job
-        await extraction_worker.process_job(job)
-
-        # Verify job was updated
-        assert job.status == "completed"
-        assert job.started_at is not None
-        assert job.completed_at is not None
-        assert job.result is not None
-
-    async def test_worker_updates_job_status(self, extraction_worker, mock_db):
-        """Worker updates job status through lifecycle."""
-        project_id = uuid4()
-
-        job = Job(
-            id=uuid4(),
-            type="extract",
-            status="queued",
-            payload={"project_id": str(project_id)},
-        )
-
-        # Mock pipeline service
-        mock_result = Mock()
-        mock_result.sources_processed = 3
-        mock_result.sources_failed = 0
-        mock_result.total_extractions = 6
-        extraction_worker.pipeline_service.process_project_pending.return_value = (
-            mock_result
-        )
-
-        # Process job
-        await extraction_worker.process_job(job)
-
-        # Verify status transitions: queued -> running -> completed
-        assert job.status == "completed"
-        assert job.result["sources_processed"] == 3
-        assert job.result["total_extractions"] == 6
-
-    async def test_worker_handles_job_failure(self, extraction_worker, mock_db):
-        """Worker handles job failures gracefully."""
-        project_id = uuid4()
-
-        job = Job(
-            id=uuid4(),
-            type="extract",
-            status="queued",
-            payload={"project_id": str(project_id)},
-        )
-
-        # Mock pipeline service to raise exception
-        extraction_worker.pipeline_service.process_project_pending.side_effect = (
-            Exception("Pipeline error")
-        )
-
-        # Process job
-        await extraction_worker.process_job(job)
-
-        # Verify job is marked as failed
-        assert job.status == "failed"
-        assert "Pipeline error" in job.error
-        assert job.completed_at is not None
-
-
 class TestSchemaExtractionSelection:
     """Tests for automatic schema-based extraction selection."""
 
-    def test_has_extraction_schema_returns_true_for_project_with_schema(
-        self, mock_db, mock_pipeline_service, mock_llm
-    ):
-        """Worker detects project with extraction_schema."""
-        project_id = uuid4()
-
-        # Mock project with extraction schema
-        mock_project = Mock(spec=Project)
-        mock_project.extraction_schema = {
-            "name": "test_schema",
-            "field_groups": [{"name": "test_group", "fields": []}],
-        }
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-            llm=mock_llm,
-        )
-
-        has_schema, project = worker._has_extraction_schema(project_id)
-
-        assert has_schema is True
-        assert project == mock_project
-
-    def test_has_extraction_schema_returns_false_for_project_without_schema(
-        self, mock_db, mock_pipeline_service, mock_llm
-    ):
-        """Worker detects project without extraction_schema."""
-        project_id = uuid4()
-
-        # Mock project without extraction schema
-        mock_project = Mock(spec=Project)
-        mock_project.extraction_schema = None
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-            llm=mock_llm,
-        )
-
-        has_schema, project = worker._has_extraction_schema(project_id)
-
-        assert has_schema is False
-        assert project == mock_project
-
-    def test_has_extraction_schema_returns_false_for_empty_field_groups(
-        self, mock_db, mock_pipeline_service, mock_llm
-    ):
-        """Worker returns False for schema with empty field_groups."""
-        project_id = uuid4()
-
-        # Mock project with schema but no field groups
-        mock_project = Mock(spec=Project)
-        mock_project.extraction_schema = {"name": "test_schema", "field_groups": []}
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-            llm=mock_llm,
-        )
-
-        has_schema, project = worker._has_extraction_schema(project_id)
-
-        assert has_schema is False
-
     async def test_worker_uses_schema_pipeline_when_project_has_schema(
-        self, mock_db, mock_pipeline_service, mock_llm
+        self, mock_db, mock_llm
     ):
         """Worker uses SchemaExtractionPipeline when project has extraction_schema."""
         project_id = uuid4()
@@ -245,7 +66,6 @@ class TestSchemaExtractionSelection:
 
         worker = ExtractionWorker(
             db=mock_db,
-            pipeline_service=mock_pipeline_service,
             llm=mock_llm,
         )
 
@@ -262,92 +82,9 @@ class TestSchemaExtractionSelection:
 
             await worker.process_job(job)
 
-            # Verify schema pipeline was used, not generic
+            # Verify schema pipeline was used
             mock_schema.assert_called_once()
-            mock_pipeline_service.process_project_pending.assert_not_called()
 
         assert job.status == "completed"
         assert job.result["total_extractions"] == 35
 
-    async def test_worker_uses_generic_pipeline_when_no_schema(
-        self, mock_db, mock_pipeline_service, mock_llm
-    ):
-        """Worker uses generic pipeline when project has no extraction_schema."""
-        project_id = uuid4()
-
-        # Mock project without extraction schema
-        mock_project = Mock(spec=Project)
-        mock_project.extraction_schema = None
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-
-        job = Job(
-            id=uuid4(),
-            type="extract",
-            status="queued",
-            payload={"project_id": str(project_id)},
-        )
-
-        # Mock generic pipeline result
-        mock_result = Mock()
-        mock_result.sources_processed = 5
-        mock_result.sources_failed = 0
-        mock_result.total_extractions = 50
-        mock_result.total_deduplicated = 5
-        mock_result.total_entities = 100
-        mock_pipeline_service.process_project_pending.return_value = mock_result
-
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-            llm=mock_llm,
-        )
-
-        await worker.process_job(job)
-
-        # Verify generic pipeline was used
-        mock_pipeline_service.process_project_pending.assert_called_once()
-
-        assert job.status == "completed"
-        assert job.result["total_extractions"] == 50
-
-    async def test_worker_falls_back_to_generic_when_no_llm(
-        self, mock_db, mock_pipeline_service
-    ):
-        """Worker falls back to generic extraction when llm config not provided."""
-        project_id = uuid4()
-
-        # Mock project with extraction schema
-        mock_project = Mock(spec=Project)
-        mock_project.extraction_schema = {
-            "name": "drivetrain_company",
-            "field_groups": [{"name": "manufacturing", "fields": []}],
-        }
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-
-        job = Job(
-            id=uuid4(),
-            type="extract",
-            status="queued",
-            payload={"project_id": str(project_id)},
-        )
-
-        # Mock generic pipeline result
-        mock_result = Mock()
-        mock_result.sources_processed = 5
-        mock_result.sources_failed = 0
-        mock_result.total_extractions = 50
-        mock_result.total_deduplicated = 5
-        mock_result.total_entities = 100
-        mock_pipeline_service.process_project_pending.return_value = mock_result
-
-        # Worker WITHOUT llm config
-        worker = ExtractionWorker(
-            db=mock_db,
-            pipeline_service=mock_pipeline_service,
-        )
-
-        await worker.process_job(job)
-
-        # Should fall back to generic pipeline
-        mock_pipeline_service.process_project_pending.assert_called_once()
-        assert job.status == "completed"

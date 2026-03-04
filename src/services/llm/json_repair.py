@@ -122,7 +122,7 @@ def try_repair_json(text: str | None, context: str = "") -> dict[str, Any]:
 
     Args:
         text: JSON string to parse (None is handled gracefully)
-        context: Optional context for logging (e.g., "extract_facts", "extract_entities")
+        context: Optional context for logging (e.g., "extract_field_group", "extract_entities")
 
     Returns:
         Parsed dictionary

@@ -64,8 +64,7 @@ class TestServiceContainerLLMWorkerStartup:
              patch("services.scraper.service_container.AsyncOpenAI"), \
              patch("services.scraper.service_container.EmbeddingService"), \
              patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"), \
-             patch("services.scraper.service_container.ExtractionDeduplicator"):
+             patch("services.scraper.service_container.ExtractionEmbeddingService"):
 
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
@@ -97,8 +96,7 @@ class TestServiceContainerLLMWorkerStartup:
              patch("services.scraper.service_container.AsyncOpenAI"), \
              patch("services.scraper.service_container.EmbeddingService"), \
              patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"), \
-             patch("services.scraper.service_container.ExtractionDeduplicator"):
+             patch("services.scraper.service_container.ExtractionEmbeddingService"):
 
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
@@ -128,8 +126,7 @@ class TestServiceContainerLLMWorkerStartup:
              patch("services.scraper.service_container.AsyncOpenAI"), \
              patch("services.scraper.service_container.EmbeddingService"), \
              patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"), \
-             patch("services.scraper.service_container.ExtractionDeduplicator"):
+             patch("services.scraper.service_container.ExtractionEmbeddingService"):
 
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
@@ -158,8 +155,7 @@ class TestServiceContainerLLMWorkerStartup:
              patch("services.scraper.service_container.AsyncOpenAI"), \
              patch("services.scraper.service_container.EmbeddingService"), \
              patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"), \
-             patch("services.scraper.service_container.ExtractionDeduplicator"):
+             patch("services.scraper.service_container.ExtractionEmbeddingService"):
 
             mock_queue_instance = MagicMock()
             MockQueue.return_value = mock_queue_instance
@@ -192,8 +188,7 @@ class TestServiceContainerLLMWorkerStartup:
              patch("services.scraper.service_container.AsyncOpenAI"), \
              patch("services.scraper.service_container.EmbeddingService"), \
              patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"), \
-             patch("services.scraper.service_container.ExtractionDeduplicator"):
+             patch("services.scraper.service_container.ExtractionEmbeddingService"):
 
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
@@ -263,8 +258,7 @@ class TestServiceContainerLLMWorkerLifecycle:
              patch("services.scraper.service_container.AsyncOpenAI"), \
              patch("services.scraper.service_container.EmbeddingService"), \
              patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"), \
-             patch("services.scraper.service_container.ExtractionDeduplicator"):
+             patch("services.scraper.service_container.ExtractionEmbeddingService"):
 
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()

@@ -11,7 +11,6 @@ from constants import JobStatus
 from orm_models import Job, Project
 from services.extraction.pipeline import (
     CheckpointCallback,
-    ExtractionPipelineService,
     SchemaExtractionPipeline,
     SchemaPipelineResult,
 )
@@ -31,17 +30,11 @@ class ExtractionWorker:
 
     Handles queued extraction jobs by:
     1. Updating job status to "running"
-    2. Checking if project has extraction_schema
-    3. Using SchemaExtractionPipeline if schema exists, else ExtractionPipelineService
-    4. Updating job with results and completion status
-
-    The worker automatically selects the appropriate extraction strategy:
-    - Projects WITH extraction_schema: Uses template-based field group extraction
-    - Projects WITHOUT extraction_schema: Uses generic fact extraction
+    2. Using SchemaExtractionPipeline for template-based field group extraction
+    3. Updating job with results and completion status
 
     Args:
         db: Database session for persistence.
-        pipeline_service: Pipeline service for generic extraction (fallback).
         llm: LLM configuration (required for schema extraction).
         extraction: Extraction configuration facade.
         classification: Classification configuration facade.
@@ -51,10 +44,8 @@ class ExtractionWorker:
         llm_queue: Optional LLM request queue for schema extraction.
 
     Example:
-        pipeline = ExtractionPipelineService(...)
         worker = ExtractionWorker(
             db=db,
-            pipeline_service=pipeline,
             llm=settings.llm,
             extraction=settings.extraction,
             classification=settings.classification,
@@ -68,7 +59,6 @@ class ExtractionWorker:
     def __init__(
         self,
         db: Session,
-        pipeline_service: ExtractionPipelineService,
         *,
         llm: "LLMConfig | None" = None,
         extraction: "ExtractionConfig | None" = None,
@@ -82,7 +72,6 @@ class ExtractionWorker:
 
         Args:
             db: Database session.
-            pipeline_service: Generic extraction pipeline service.
             llm: LLM configuration (required for schema extraction).
             extraction: Extraction configuration facade.
             classification: Classification configuration facade.
@@ -92,7 +81,6 @@ class ExtractionWorker:
             llm_queue: Optional LLM queue for schema extraction.
         """
         self.db = db
-        self.pipeline_service = pipeline_service
         self._llm = llm
         self._extraction = extraction
         self._classification = classification
@@ -101,22 +89,6 @@ class ExtractionWorker:
         self._request_timeout = request_timeout
         self.llm_queue = llm_queue
         self.job_repo = JobRepository(db)
-
-    def _has_extraction_schema(self, project_id: UUID) -> tuple[bool, Project | None]:
-        """Check if project has an extraction_schema defined.
-
-        Returns:
-            Tuple of (has_schema, project)
-        """
-        project = self.db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            return False, None
-
-        # Check if extraction_schema exists and has field_groups
-        schema = project.extraction_schema
-        if schema and isinstance(schema, dict) and schema.get("field_groups"):
-            return True, project
-        return False, project
 
     def _create_checkpoint_callback(self, job: Job) -> CheckpointCallback:
         """Create a checkpoint callback that saves progress to job.payload.
@@ -304,12 +276,7 @@ class ExtractionWorker:
         )
 
     async def process_job(self, job: Job) -> None:
-        """Process an extraction job.
-
-        Automatically selects the appropriate extraction strategy based on
-        whether the project has an extraction_schema defined:
-        - WITH schema: Uses SchemaExtractionPipeline (template-based)
-        - WITHOUT schema: Uses ExtractionPipelineService (generic facts)
+        """Process an extraction job using SchemaExtractionPipeline.
 
         Args:
             job: Job instance to process.
@@ -326,6 +293,9 @@ class ExtractionWorker:
                 self.db.commit()
                 return
 
+            if not self._llm:
+                raise ValueError("LLM config required for extraction")
+
             # Update job status to running
             job.status = JobStatus.RUNNING
             job.started_at = datetime.now(UTC)
@@ -335,7 +305,6 @@ class ExtractionWorker:
             payload = job.payload or {}
             project_id = payload.get("project_id")
             source_ids = payload.get("source_ids")
-            profile_name = payload.get("profile", "general")
             force = payload.get("force", False)
             source_groups = payload.get("source_groups")
 
@@ -346,8 +315,8 @@ class ExtractionWorker:
             if isinstance(project_id, str):
                 project_id = UUID(project_id)
 
-            # Check if project has extraction schema
-            has_schema, project = self._has_extraction_schema(project_id)
+            # Load project for classification_config
+            project = self.db.query(Project).filter(Project.id == project_id).first()
 
             # Create cancellation check callback with time-throttle (skip DB check if <5s since last)
             _last_cancel_check = 0.0
@@ -364,64 +333,25 @@ class ExtractionWorker:
                 _last_cancel_result = self.job_repo.is_cancellation_requested(job.id)
                 return _last_cancel_result
 
-            if has_schema and self._llm:
-                # Use schema-based extraction
-                schema_name = project.extraction_schema.get("name", "unknown")
-                logger.info(
-                    "extraction_job_using_schema",
-                    job_id=str(job.id),
-                    project_id=str(project_id),
-                    schema_name=schema_name,
-                    source_count=len(source_ids) if source_ids else "all_pending",
-                    force=force,
-                )
+            logger.info(
+                "extraction_job_using_schema",
+                job_id=str(job.id),
+                project_id=str(project_id),
+                source_count=len(source_ids) if source_ids else "all_pending",
+                force=force,
+            )
 
-                result = await self._process_with_schema_pipeline(
-                    project_id=project_id,
-                    source_ids=[UUID(sid) for sid in source_ids]
-                    if source_ids
-                    else None,
-                    source_groups=source_groups,
-                    force=force,
-                    cancellation_check=check_cancellation,
-                    project=project,
-                    job=job,
-                )
-            else:
-                # Use generic fact extraction (original behavior)
-                if has_schema and not self._llm:
-                    logger.warning(
-                        "extraction_job_schema_fallback",
-                        job_id=str(job.id),
-                        reason="llm config not provided, falling back to generic extraction",
-                    )
-
-                logger.info(
-                    "extraction_job_using_generic",
-                    job_id=str(job.id),
-                    project_id=str(project_id),
-                    profile=profile_name,
-                    source_count=len(source_ids) if source_ids else "all_pending",
-                )
-
-                # Process sources with generic pipeline
-                if source_ids:
-                    # Process specific sources
-                    if isinstance(source_ids[0], str):
-                        source_ids = [UUID(sid) for sid in source_ids]
-                    result = await self.pipeline_service.process_batch(
-                        source_ids=source_ids,
-                        project_id=project_id,
-                        profile_name=profile_name,
-                        cancellation_check=check_cancellation,
-                    )
-                else:
-                    # Process all pending sources for project
-                    result = await self.pipeline_service.process_project_pending(
-                        project_id=project_id,
-                        profile_name=profile_name,
-                        cancellation_check=check_cancellation,
-                    )
+            result = await self._process_with_schema_pipeline(
+                project_id=project_id,
+                source_ids=[UUID(sid) for sid in source_ids]
+                if source_ids
+                else None,
+                source_groups=source_groups,
+                force=force,
+                cancellation_check=check_cancellation,
+                project=project,
+                job=job,
+            )
 
             # Handle schema pipeline error results (e.g. invalid schema, project not found)
             if isinstance(result, SchemaPipelineResult) and result.error:

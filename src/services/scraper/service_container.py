@@ -19,7 +19,6 @@ from services.llm.worker import LLMWorker
 from services.scraper.client import FirecrawlClient
 from services.scraper.rate_limiter import DomainRateLimiter, RateLimitConfig
 from services.scraper.retry import RetryConfig
-from services.storage.deduplication import ExtractionDeduplicator
 from services.storage.embedding import EmbeddingService
 from services.storage.qdrant.repository import QdrantRepository
 
@@ -36,7 +35,6 @@ class ServiceContainer:
         self._embedding_service: EmbeddingService | None = None
         self._qdrant_repo: QdrantRepository | None = None
         self._extraction_embedding: ExtractionEmbeddingService | None = None
-        self._deduplicator: ExtractionDeduplicator | None = None
         self._async_redis = None
         self._llm_queue: LLMRequestQueue | None = None
         self._llm_worker: LLMWorker | None = None
@@ -78,11 +76,6 @@ class ServiceContainer:
         self._extraction_embedding = ExtractionEmbeddingService(
             self._embedding_service, self._qdrant_repo
         )
-        self._deduplicator = ExtractionDeduplicator(
-            embedding_service=self._embedding_service,
-            qdrant_repo=self._qdrant_repo,
-        )
-
         # LLM request queue and worker
         self._async_redis = await get_async_redis()
         self._llm_queue = LLMRequestQueue(
@@ -158,11 +151,6 @@ class ServiceContainer:
     def extraction_embedding(self) -> ExtractionEmbeddingService:
         self._check_started()
         return self._extraction_embedding  # type: ignore[return-value]
-
-    @property
-    def deduplicator(self) -> ExtractionDeduplicator:
-        self._check_started()
-        return self._deduplicator  # type: ignore[return-value]
 
     @property
     def llm_queue(self) -> LLMRequestQueue:
