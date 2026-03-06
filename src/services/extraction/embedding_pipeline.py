@@ -23,6 +23,7 @@ class EmbeddingResult:
 
     embedded_count: int
     errors: list[str]
+    failed_count: int = 0
 
 
 class ExtractionEmbeddingService:
@@ -91,7 +92,10 @@ class ExtractionEmbeddingService:
         texts = [self.extraction_to_text(e) for e in extractions]
         valid = [(e, t) for e, t in zip(extractions, texts, strict=True) if t.strip()]
         if not valid:
-            return EmbeddingResult(embedded_count=0, errors=[])
+            return EmbeddingResult(
+                embedded_count=0,
+                errors=[f"All {len(extractions)} extractions produced empty text"],
+            )
 
         try:
             embeddings = await self._embedding_service.embed_batch(
@@ -121,5 +125,7 @@ class ExtractionEmbeddingService:
                 error=str(e),
                 extraction_count=len(valid),
             )
-            return EmbeddingResult(embedded_count=0, errors=[str(e)])
+            return EmbeddingResult(
+                embedded_count=0, errors=[str(e)], failed_count=len(valid)
+            )
 

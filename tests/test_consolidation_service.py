@@ -293,11 +293,13 @@ class TestConsolidateProject:
         assert result["records_created"] >= 2
         assert result["errors"] == 0
 
-    def test_project_not_found(self, service):
+    def test_project_not_found_returns_zero_counts(self, service):
         from uuid import uuid4
 
         result = service.consolidate_project(uuid4())
-        assert "error" in result
+        assert result["source_groups"] == 0
+        assert result["records_created"] == 0
+        assert result["errors"] == 0
 
 
 class TestReconsolidate:
@@ -352,6 +354,65 @@ class TestReconsolidate:
 
         result = service.reconsolidate(test_project.id, source_groups=["abb"])
         assert result["records_created"] >= 1
+
+    def test_error_in_one_group_does_not_crash(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        """reconsolidate with explicit groups isolates per-group errors."""
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+            source_group="abb",
+        )
+
+        def failing_upsert(*args, **kwargs):
+            raise RuntimeError("simulated DB error")
+
+        service._upsert_record = failing_upsert
+
+        result = service.reconsolidate(test_project.id, source_groups=["abb"])
+        assert result["errors"] == 1
+        assert result["source_groups"] == 1
+
+        # Session still usable
+        from sqlalchemy import text
+
+        row = db_session.execute(text("SELECT 1")).scalar()
+        assert row == 1
+
+
+class TestConsolidateProjectSessionRollback:
+    """Verify session rollback after per-group failure keeps loop healthy."""
+
+    def test_error_in_one_group_does_not_crash_loop(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        """If one source group fails, the loop completes and session stays usable."""
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+            source_group="abb",
+        )
+
+        # Force _upsert_record to always fail
+        def failing_upsert(*args, **kwargs):
+            raise RuntimeError("simulated DB error")
+
+        service._upsert_record = failing_upsert
+
+        result = service.consolidate_project(test_project.id)
+        assert result["errors"] == 1
+        assert result["source_groups"] == 1
+
+        # Session should still be usable after rollback
+        from sqlalchemy import text
+
+        row = db_session.execute(text("SELECT 1")).scalar()
+        assert row == 1
 
 
 class TestConsolidateEndpoint:

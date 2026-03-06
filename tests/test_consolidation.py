@@ -6,6 +6,7 @@ from services.extraction.consolidation import (
     ConsolidatedField,
     ConsolidatedRecord,
     WeightedValue,
+    _dedup_dicts,
     any_true,
     consolidate_extractions,
     consolidate_field,
@@ -316,15 +317,26 @@ class TestEffectiveWeight:
     def test_required_grounded(self):
         assert effective_weight(0.9, 1.0, "required") == pytest.approx(0.9)
 
-    def test_required_ungrounded(self):
-        assert effective_weight(0.9, 0.0, "required") == 0.0
+    def test_required_ungrounded_has_floor(self):
+        """Ungrounded data gets floor weight (0.1), not zero."""
+        assert effective_weight(0.9, 0.0, "required") == pytest.approx(0.09)
 
     def test_required_partial_grounding(self):
         assert effective_weight(0.9, 0.6, "required") == pytest.approx(0.54)
 
-    def test_required_below_threshold(self):
-        """Grounding score < 0.5 -> weight 0."""
-        assert effective_weight(0.9, 0.4, "required") == 0.0
+    def test_required_below_old_threshold_still_contributes(self):
+        """Score < 0.5 now contributes (no cliff). 0.9 * 0.4 = 0.36."""
+        assert effective_weight(0.9, 0.4, "required") == pytest.approx(0.36)
+
+    def test_required_none_score_gets_floor(self):
+        """None grounding score treated as 0.0, gets floor of 0.1."""
+        assert effective_weight(0.9, None, "required") == pytest.approx(0.09)
+
+    def test_grounded_dominates_ungrounded(self):
+        """High-conf ungrounded (0.08) < low-conf grounded (0.36)."""
+        ungrounded = effective_weight(0.8, 0.0, "required")
+        grounded = effective_weight(0.45, 1.0, "required")
+        assert grounded > ungrounded
 
     def test_semantic_no_grounding(self):
         assert effective_weight(0.9, None, "semantic") == 0.9
@@ -577,3 +589,35 @@ class TestConsolidateExtractions:
         record = consolidate_extractions(extractions, field_definitions, "g", "t")
         assert record.fields["employee_count"].value == 100
         assert record.fields["employee_count"].source_count == 1
+
+
+# ── Fix: _dedup_dicts should deduplicate nameless items by content hash ──
+
+
+class TestDedupDictsContentHash:
+    def test_identical_nameless_dicts_deduplicated(self):
+        """Two identical dicts without name/id should produce one result."""
+        items = [
+            {"type": "pump", "size": "large"},
+            {"type": "pump", "size": "large"},
+        ]
+        result = _dedup_dicts(items)
+        assert len(result) == 1
+
+    def test_different_nameless_dicts_kept(self):
+        """Different dicts without name/id should both appear."""
+        items = [
+            {"type": "pump", "size": "large"},
+            {"type": "motor", "size": "small"},
+        ]
+        result = _dedup_dicts(items)
+        assert len(result) == 2
+
+    def test_named_dicts_still_dedup_by_name(self):
+        """Dicts with name field still dedup by name (existing behavior)."""
+        items = [
+            {"name": "Widget", "price": 10},
+            {"name": "widget", "price": 20},
+        ]
+        result = _dedup_dicts(items)
+        assert len(result) == 1

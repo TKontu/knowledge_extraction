@@ -137,3 +137,113 @@ class TestServiceContainerStart:
 
         # After exit, _started should be False
         assert container._started is False
+
+
+class TestServiceContainerShutdownResilience:
+    """Test that stop() completes even when individual services fail."""
+
+    @pytest.fixture
+    def _patch_all(self):
+        """Patch all external dependencies used by ServiceContainer."""
+        with (
+            patch("services.scraper.service_container.settings") as mock_settings,
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock) as mock_get_redis,
+            patch("services.scraper.service_container.FirecrawlClient") as mock_fc,
+            patch("services.scraper.service_container.DomainRateLimiter"),
+            patch("services.scraper.service_container.RateLimitConfig"),
+            patch("services.scraper.service_container.RetryConfig"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+            patch("services.scraper.service_container.LLMRequestQueue"),
+            patch("services.scraper.service_container.LLMWorker") as mock_worker_cls,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+        ):
+            mock_settings.firecrawl_url = "http://localhost:3002"
+            mock_settings.scrape_timeout = 60
+            mock_settings.scrape_delay_min = 1
+            mock_settings.scrape_delay_max = 3
+            mock_settings.scrape_daily_limit_per_domain = 500
+            mock_settings.scrape_retry_max_attempts = 3
+            mock_settings.scrape_retry_base_delay = 1.0
+            mock_settings.scrape_retry_max_delay = 30.0
+            mock_settings.openai_base_url = "http://localhost:9003/v1"
+            mock_settings.openai_api_key = "test"
+            mock_settings.llm_http_timeout = 60
+            mock_settings.llm_model = "test-model"
+            mock_settings.llm_max_tokens = 8192
+            mock_settings.llm_response_ttl = 300
+            mock_settings.llm_queue_stream_key = "llm:requests"
+            mock_settings.llm_queue_max_depth = 1000
+            mock_settings.llm_queue_backpressure_threshold = 500
+            mock_settings.llm_worker_concurrency = 10
+            mock_settings.llm_worker_max_concurrency = 50
+            mock_settings.llm_worker_min_concurrency = 5
+
+            worker_instance = AsyncMock()
+            worker_instance.initialize = AsyncMock()
+            worker_instance.start = AsyncMock()
+            worker_instance.stop = AsyncMock()
+            mock_worker_cls.return_value = worker_instance
+
+            mock_fc.return_value.close = AsyncMock()
+
+            mock_redis_instance = AsyncMock()
+            mock_get_redis.return_value = mock_redis_instance
+
+            yield {
+                "settings": mock_settings,
+                "worker_cls": mock_worker_cls,
+                "worker_instance": worker_instance,
+                "firecrawl_cls": mock_fc,
+                "redis_instance": mock_redis_instance,
+            }
+
+    @pytest.mark.asyncio
+    async def test_stop_completes_when_llm_worker_raises(self, _patch_all):
+        """stop() finishes even if llm_worker.stop() raises."""
+        from services.scraper.service_container import ServiceContainer
+
+        container = ServiceContainer()
+        await container.start()
+
+        _patch_all["worker_instance"].stop.side_effect = RuntimeError("LLM crash")
+
+        await container.stop()  # Should not raise
+
+        assert container._started is False
+        # Redis should still have been closed
+        _patch_all["redis_instance"].close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_completes_when_firecrawl_raises(self, _patch_all):
+        """stop() finishes even if firecrawl close raises."""
+        from services.scraper.service_container import ServiceContainer
+
+        container = ServiceContainer()
+        await container.start()
+
+        _patch_all["firecrawl_cls"].return_value.close.side_effect = RuntimeError("close failed")
+
+        await container.stop()
+
+        assert container._started is False
+        _patch_all["redis_instance"].close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_completes_when_redis_raises(self, _patch_all):
+        """stop() finishes even if redis close raises."""
+        from services.scraper.service_container import ServiceContainer
+
+        container = ServiceContainer()
+        await container.start()
+
+        _patch_all["redis_instance"].close.side_effect = RuntimeError("redis down")
+
+        await container.stop()
+
+        assert container._started is False
+        # LLM worker should still have been stopped
+        _patch_all["worker_instance"].stop.assert_called_once()

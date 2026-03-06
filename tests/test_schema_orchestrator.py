@@ -266,8 +266,13 @@ class TestConfidenceRecalibration:
         assert final == pytest.approx(0.8, abs=0.01)
 
 
-class TestBooleanMajorityVote:
-    """Test Phase 3B: boolean merge uses majority vote instead of any()."""
+class TestBooleanChunkMerge:
+    """Test boolean chunk merge uses any-true-wins strategy.
+
+    LLMs return explicit False when a chunk lacks evidence, not when evidence
+    contradicts. So any True from any chunk means the page supports the claim.
+    See TODO_downstream_trials.md Trial 2A: any_true=86% vs majority_vote=48%.
+    """
 
     @pytest.fixture
     def orchestrator(self, mock_extractor):
@@ -284,18 +289,18 @@ class TestBooleanMajorityVote:
             prompt_hint="",
         )
 
-    def test_majority_false(self, orchestrator, bool_group):
-        """1 True + 2 False → False (majority)."""
+    def test_any_true_wins(self, orchestrator, bool_group):
+        """1 True + 2 False → True (any True wins at chunk level)."""
         chunk_results = [
             {"has_factory": True, "confidence": 0.8},
             {"has_factory": False, "confidence": 0.8},
             {"has_factory": False, "confidence": 0.8},
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
-        assert merged["has_factory"] is False
+        assert merged["has_factory"] is True
 
     def test_majority_true(self, orchestrator, bool_group):
-        """2 True + 1 False → True (majority)."""
+        """2 True + 1 False → True."""
         chunk_results = [
             {"has_factory": True, "confidence": 0.8},
             {"has_factory": True, "confidence": 0.8},
@@ -322,11 +327,107 @@ class TestBooleanMajorityVote:
         merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
         assert merged["has_factory"] is False
 
-    def test_tie_is_false(self, orchestrator, bool_group):
-        """1 True + 1 False → False (conservative tie-break)."""
+    def test_tie_true_wins(self, orchestrator, bool_group):
+        """1 True + 1 False → True (any True wins)."""
         chunk_results = [
             {"has_factory": True, "confidence": 0.8},
             {"has_factory": False, "confidence": 0.8},
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is True
+
+    def test_single_true(self, orchestrator, bool_group):
+        """Single True chunk → True."""
+        chunk_results = [{"has_factory": True, "confidence": 0.9}]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is True
+
+    def test_single_false(self, orchestrator, bool_group):
+        """Single False chunk → False."""
+        chunk_results = [{"has_factory": False, "confidence": 0.9}]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
         assert merged["has_factory"] is False
+
+    def test_none_values_excluded(self, orchestrator, bool_group):
+        """Chunks returning None for boolean are excluded, remaining decide."""
+        chunk_results = [
+            {"has_factory": None, "confidence": 0.8},
+            {"has_factory": True, "confidence": 0.7},
+            {"has_factory": None, "confidence": 0.6},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, bool_group)
+        assert merged["has_factory"] is True
+
+
+class TestConfidenceAveraging:
+    """Test confidence averaging skips missing values instead of defaulting 0.5."""
+
+    @pytest.fixture
+    def orchestrator(self, mock_extractor):
+        return SchemaExtractionOrchestrator(mock_extractor)
+
+    @pytest.fixture
+    def group(self):
+        return FieldGroup(
+            name="info",
+            description="Info",
+            fields=[
+                FieldDefinition(name="name", field_type="text", description="Name"),
+            ],
+            prompt_hint="",
+        )
+
+    def test_all_present(self, orchestrator, group):
+        """All chunks have confidence → normal average."""
+        chunk_results = [
+            {"name": "A", "confidence": 0.9},
+            {"name": "B", "confidence": 0.7},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, group)
+        assert merged["confidence"] == pytest.approx(0.8)
+
+    def test_one_missing(self, orchestrator, group):
+        """One chunk omits confidence → average of present only."""
+        chunk_results = [
+            {"name": "A", "confidence": 0.9},
+            {"name": "B"},  # no confidence key
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, group)
+        assert merged["confidence"] == pytest.approx(0.9)
+
+    def test_one_null(self, orchestrator, group):
+        """One chunk has confidence=None → average of present only."""
+        chunk_results = [
+            {"name": "A", "confidence": 0.9},
+            {"name": "B", "confidence": None},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, group)
+        assert merged["confidence"] == pytest.approx(0.9)
+
+    def test_all_missing(self, orchestrator, group):
+        """All chunks omit confidence → fallback to 0.5."""
+        chunk_results = [
+            {"name": "A"},
+            {"name": "B"},
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, group)
+        assert merged["confidence"] == pytest.approx(0.5)
+
+    def test_entity_list_confidence_skips_missing(self, mock_extractor):
+        """Entity list merge also skips missing confidence."""
+        orchestrator = SchemaExtractionOrchestrator(mock_extractor)
+        entity_group = FieldGroup(
+            name="products",
+            description="Products",
+            fields=[
+                FieldDefinition(name="product_name", field_type="string", description="Name"),
+            ],
+            prompt_hint="",
+            is_entity_list=True,
+        )
+        chunk_results = [
+            {"products": [{"product_name": "A"}], "confidence": 0.9},
+            {"products": [{"product_name": "B"}]},  # no confidence
+        ]
+        merged = orchestrator._merge_chunk_results(chunk_results, entity_group)
+        assert merged["confidence"] == pytest.approx(0.9)

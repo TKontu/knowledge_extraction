@@ -139,18 +139,42 @@ class TestListWrapping:
 
 
 class TestConfidenceGating:
-    """Test confidence threshold suppression."""
+    """Test confidence threshold: records violation but preserves data."""
 
-    def test_below_threshold_suppresses_all(self, strict_validator, mixed_group):
+    def test_below_threshold_preserves_data(self, strict_validator, mixed_group):
         data = {
             "name": "Acme",
             "employees": 100,
             "confidence": 0.3,  # Below 0.5 threshold
         }
         cleaned, violations = strict_validator.validate(data, mixed_group)
-        # All field values should be None
-        assert cleaned["name"] is None
-        assert cleaned["employees"] is None
+        # Data preserved for consolidation weighting
+        assert cleaned["name"] == "Acme"
+        assert cleaned["employees"] == 100
+        assert any(v["issue"] == "confidence_below_threshold" for v in violations)
+
+    def test_below_threshold_still_validates(self, strict_validator, mixed_group):
+        """Type coercion/enum validation still runs on low-confidence data."""
+        data = {
+            "employees": "42",  # string → int coercion
+            "industry": "Manufacturing",  # case-insensitive enum
+            "confidence": 0.3,
+        }
+        cleaned, violations = strict_validator.validate(data, mixed_group)
+        assert cleaned["employees"] == 42
+        assert cleaned["industry"] == "manufacturing"
+        assert any(v["issue"] == "confidence_below_threshold" for v in violations)
+        assert any(v["issue"] == "type_coerced" for v in violations)
+
+    def test_below_threshold_entity_list_preserved(self, strict_validator, entity_group):
+        """Entity list data preserved when below threshold."""
+        data = {
+            "products": [{"product_name": "Widget", "power_kw": 100.0}],
+            "confidence": 0.2,
+        }
+        cleaned, violations = strict_validator.validate(data, entity_group)
+        assert len(cleaned["products"]) == 1
+        assert cleaned["products"][0]["product_name"] == "Widget"
         assert any(v["issue"] == "confidence_below_threshold" for v in violations)
 
     def test_above_threshold_preserved(self, strict_validator, mixed_group):
@@ -162,11 +186,13 @@ class TestConfidenceGating:
         cleaned, violations = strict_validator.validate(data, mixed_group)
         assert cleaned["name"] == "Acme"
         assert cleaned["employees"] == 100
+        assert not any(v["issue"] == "confidence_below_threshold" for v in violations)
 
-    def test_zero_threshold_never_suppresses(self, validator, mixed_group):
+    def test_zero_threshold_never_flags(self, validator, mixed_group):
         data = {"name": "Acme", "confidence": 0.01}
         cleaned, violations = validator.validate(data, mixed_group)
         assert cleaned["name"] == "Acme"
+        assert not any(v["issue"] == "confidence_below_threshold" for v in violations)
 
 
 class TestMetadataPreservation:

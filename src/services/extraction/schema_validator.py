@@ -39,10 +39,11 @@ class SchemaValidator:
         """
         violations: list[dict[str, str]] = []
 
-        # Confidence gating: suppress all fields if below threshold
+        # Confidence gating: record violation but preserve data for
+        # consolidation weighting. Don't nullify — downstream uses
+        # confidence as weight signal, not a filter.
         confidence = data.get("confidence", 1.0)
         if self.min_confidence > 0 and confidence < self.min_confidence:
-            cleaned = {k: v for k, v in data.items() if k in _METADATA_KEYS}
             violations.append(
                 {
                     "field": "*",
@@ -50,17 +51,6 @@ class SchemaValidator:
                     "detail": f"confidence {confidence} < threshold {self.min_confidence}",
                 }
             )
-            if group.is_entity_list:
-                # Preserve entity list key as empty list (not individual fields)
-                for key, value in data.items():
-                    if key not in _METADATA_KEYS and isinstance(value, list):
-                        cleaned[key] = []
-                        break
-            else:
-                for field in group.fields:
-                    cleaned[field.name] = None
-            cleaned["_validation"] = violations
-            return cleaned, violations
 
         if group.is_entity_list:
             return self._validate_entity_list(data, group, violations)

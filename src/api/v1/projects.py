@@ -325,15 +325,19 @@ async def consolidate_project(
 
     service = ConsolidationService(db, repo)
 
-    if source_group:
-        records = service.consolidate_source_group(project_id, source_group)
-        db.commit()
-        return {
-            "source_groups": 1,
-            "records_created": len(records),
-            "errors": 0,
-        }
+    try:
+        if source_group:
+            records = service.consolidate_source_group(project_id, source_group)
+            db.commit()
+            return {
+                "source_groups": 1,
+                "records_created": len(records),
+                "errors": 0,
+            }
 
-    result = service.consolidate_project(project_id)
-    db.commit()
-    return result
+        result = service.consolidate_project(project_id)
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise

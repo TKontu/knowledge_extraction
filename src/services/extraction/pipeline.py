@@ -36,6 +36,10 @@ class SchemaPipelineResult:
     total_extractions: int
     field_groups: int
     schema_name: str
+    sources_skipped: int = 0
+    sources_no_content: int = 0
+    total_embedded: int = 0
+    embedding_errors: int = 0
     total_deduplicated: int = 0
     total_entities: int = 0
     cancelled: bool = False
@@ -287,8 +291,11 @@ class SchemaExtractionPipeline:
         # Collect extractions per source for batch embedding
         chunk_extractions: list = []  # Extraction ORM objects from current chunk
 
-        async def extract_with_limit(source) -> tuple[int, bool]:
-            """Extract source and return (extraction_count, success)."""
+        async def extract_with_limit(source) -> tuple[int, bool, str]:
+            """Extract source and return (extraction_count, success, status).
+
+            Status is one of: "extracted", "skipped", "no_content", "failed".
+            """
             async with semaphore:
                 try:
                     extractions = await self.extract_source(
@@ -300,12 +307,14 @@ class SchemaExtractionPipeline:
                     # Update source status based on classification result
                     if source.page_type == "skip":
                         source.status = SourceStatus.SKIPPED
-                    else:
-                        source.status = SourceStatus.EXTRACTED
+                        return len(extractions), True, "skipped"
+                    source.status = SourceStatus.EXTRACTED
                     # Collect for batch embedding
                     if embed_enabled:
                         chunk_extractions.extend(extractions)
-                    return len(extractions), True
+                    if not extractions and not source.content:
+                        return 0, True, "no_content"
+                    return len(extractions), True, "extracted"
                 except Exception as e:
                     logger.error(
                         "schema_extraction_failed",
@@ -313,12 +322,13 @@ class SchemaExtractionPipeline:
                         error=str(e),
                         exc_info=True,
                     )
-                    return 0, False
+                    return 0, False, "failed"
 
         # Process in chunks to allow cancellation checks and batch commits
         all_results = []
         all_processed_ids: list[str] = []
         total_embedded = 0
+        total_embedding_errors = 0
         cancelled = False
         chunk_idx = 0
 
@@ -355,7 +365,7 @@ class SchemaExtractionPipeline:
             # Failed sources keep their original status and can be retried
             chunk_processed_ids = [
                 str(s.id)
-                for s, (_, success) in zip(chunk, chunk_results, strict=True)
+                for s, (_, success, _status) in zip(chunk, chunk_results, strict=True)
                 if success
             ]
             all_processed_ids.extend(chunk_processed_ids)
@@ -370,6 +380,7 @@ class SchemaExtractionPipeline:
                 )
                 total_embedded += embed_result.embedded_count
                 if embed_result.errors:
+                    total_embedding_errors += embed_result.failed_count or 1
                     logger.error(
                         "chunk_embedding_failed",
                         errors=embed_result.errors,
@@ -378,7 +389,7 @@ class SchemaExtractionPipeline:
 
             # Call checkpoint callback to update job payload before commit
             if checkpoint_callback:
-                total_extractions_so_far = sum(count for count, _ in all_results)
+                total_extractions_so_far = sum(count for count, _, _ in all_results)
                 checkpoint_callback(all_processed_ids, total_extractions_so_far, 0)
 
             # Commit after each chunk for durability (includes checkpoint update)
@@ -393,9 +404,15 @@ class SchemaExtractionPipeline:
 
             chunk_idx += 1
 
-        # Count successes and failures
-        total_extractions = sum(count for count, _ in all_results)
-        sources_failed = sum(1 for _, success in all_results if not success)
+        # Count successes, failures, and categories
+        total_extractions = sum(count for count, _, _ in all_results)
+        sources_failed = sum(1 for _, success, _ in all_results if not success)
+        sources_skipped = sum(
+            1 for _, success, st in all_results if success and st == "skipped"
+        )
+        sources_no_content = sum(
+            1 for _, success, st in all_results if success and st == "no_content"
+        )
         sources_processed = len(all_results)
 
         return SchemaPipelineResult(
@@ -405,5 +422,9 @@ class SchemaExtractionPipeline:
             total_extractions=total_extractions,
             field_groups=len(field_groups),
             schema_name=schema.get("name", "unknown"),
+            sources_skipped=sources_skipped,
+            sources_no_content=sources_no_content,
+            total_embedded=total_embedded,
+            embedding_errors=total_embedding_errors,
             cancelled=cancelled,
         )

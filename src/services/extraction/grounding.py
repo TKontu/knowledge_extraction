@@ -43,7 +43,7 @@ def verify_numeric_in_quote(value: Any, quote: str | None) -> float:
 
     # Coerce value to number
     num = _to_number(value)
-    if num is None or num == 0:
+    if num is None:
         return 0.0
 
     # Extract all numbers from quote in various formats
@@ -125,6 +125,29 @@ def verify_list_items_in_quote(items: list, quote: str | None) -> float:
     return round(found / len(string_items), 4)
 
 
+def score_field(value: Any, quote: str, field_type: str) -> float:
+    """Score a single field value against its quote via string-match.
+
+    Args:
+        value: The extracted field value.
+        quote: The source quote for this field.
+        field_type: Type string ("integer", "string", "list", etc.)
+
+    Returns:
+        Grounding score 0.0-1.0.
+    """
+    if not quote:
+        return 0.0
+    if field_type in ("integer", "float"):
+        return verify_numeric_in_quote(value, quote)
+    if field_type == "list":
+        if isinstance(value, list):
+            return verify_list_items_in_quote(value, quote)
+        return verify_string_in_quote(str(value), quote)
+    # string, enum, and any other type
+    return verify_string_in_quote(value, quote)
+
+
 def compute_grounding_scores(
     data: dict,
     field_types: dict[str, str],
@@ -163,22 +186,7 @@ def compute_grounding_scores(
 
         value = data[field_name]
         quote = quotes.get(field_name, "")
-
-        if not quote:
-            scores[field_name] = 0.0
-            continue
-
-        # Dispatch by field type
-        if field_type in ("integer", "float"):
-            scores[field_name] = verify_numeric_in_quote(value, quote)
-        elif field_type == "list":
-            if isinstance(value, list):
-                scores[field_name] = verify_list_items_in_quote(value, quote)
-            else:
-                scores[field_name] = verify_string_in_quote(str(value), quote)
-        else:
-            # string, enum, and any other type
-            scores[field_name] = verify_string_in_quote(value, quote)
+        scores[field_name] = score_field(value, quote, field_type)
 
     return scores
 

@@ -108,10 +108,6 @@ class ConsolidationService:
 
         Returns: {"source_groups": N, "records_created": M, "errors": E}
         """
-        project = self._project_repo.get(project_id)
-        if not project:
-            return {"error": "project_not_found"}
-
         # Get distinct source groups
         source_groups = (
             self._session.execute(
@@ -123,28 +119,7 @@ class ConsolidationService:
             .all()
         )
 
-        total_records = 0
-        errors = 0
-
-        for sg in source_groups:
-            try:
-                records = self.consolidate_source_group(project_id, sg)
-                total_records += len(records)
-            except Exception:
-                logger.exception(
-                    "consolidation_error",
-                    project_id=str(project_id),
-                    source_group=sg,
-                )
-                errors += 1
-
-        self._session.flush()
-
-        return {
-            "source_groups": len(source_groups),
-            "records_created": total_records,
-            "errors": errors,
-        }
+        return self._process_source_groups(project_id, source_groups)
 
     def reconsolidate(
         self,
@@ -153,17 +128,36 @@ class ConsolidationService:
     ) -> dict[str, int]:
         """Re-run consolidation (idempotent). Upserts replace old records."""
         if source_groups:
-            total = 0
-            for sg in source_groups:
-                records = self.consolidate_source_group(project_id, sg)
-                total += len(records)
-            self._session.flush()
-            return {
-                "source_groups": len(source_groups),
-                "records_created": total,
-                "errors": 0,
-            }
+            return self._process_source_groups(project_id, source_groups)
         return self.consolidate_project(project_id)
+
+    def _process_source_groups(
+        self,
+        project_id: UUID,
+        source_groups: list[str],
+    ) -> dict[str, int]:
+        """Process a list of source groups with per-group error isolation."""
+        total_records = 0
+        errors = 0
+
+        for sg in source_groups:
+            try:
+                records = self.consolidate_source_group(project_id, sg)
+                total_records += len(records)
+            except Exception:
+                self._session.rollback()
+                logger.exception(
+                    "consolidation_error",
+                    project_id=str(project_id),
+                    source_group=sg,
+                )
+                errors += 1
+
+        return {
+            "source_groups": len(source_groups),
+            "records_created": total_records,
+            "errors": errors,
+        }
 
     def _upsert_record(
         self,

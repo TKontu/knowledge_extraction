@@ -5,6 +5,7 @@ The JobScheduler receives a ServiceContainer and accesses services
 through typed read-only properties.
 """
 
+import asyncio
 from uuid import uuid4
 
 import structlog
@@ -110,18 +111,48 @@ class ServiceContainer:
         self._started = True
         logger.info("service_container_started")
 
-    async def stop(self) -> None:
-        """Tear down services in reverse order."""
-        if self._llm_worker:
-            await self._llm_worker.stop()
-        if self._llm_worker_task:
-            await self._llm_worker_task
-        if self._firecrawl_client:
-            await self._firecrawl_client.close()
-        if self._async_redis:
-            await self._async_redis.close()
+    async def stop(self, timeout: float = 30.0) -> None:
+        """Tear down services in reverse order with error isolation.
+
+        Each service is shut down independently — a failure or timeout
+        in one does not prevent the others from being cleaned up.
+        """
+        errors: list[str] = []
+
+        async def _stop_llm() -> None:
+            if self._llm_worker:
+                await self._llm_worker.stop()
+            if self._llm_worker_task:
+                self._llm_worker_task.cancel()
+                try:
+                    await self._llm_worker_task
+                except asyncio.CancelledError:
+                    pass
+
+        async def _close_firecrawl() -> None:
+            if self._firecrawl_client:
+                await self._firecrawl_client.close()
+
+        async def _close_redis() -> None:
+            if self._async_redis:
+                await self._async_redis.close()
+
+        for name, coro in [
+            ("llm_worker", _stop_llm()),
+            ("firecrawl", _close_firecrawl()),
+            ("redis", _close_redis()),
+        ]:
+            try:
+                await asyncio.wait_for(coro, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.error("shutdown_timeout", service=name)
+                errors.append(f"{name}: timeout")
+            except Exception as e:
+                logger.error("shutdown_error", service=name, error=str(e))
+                errors.append(f"{name}: {e}")
+
         self._started = False
-        logger.info("service_container_stopped")
+        logger.info("service_container_stopped", errors=len(errors))
 
     def _check_started(self) -> None:
         if not self._started:

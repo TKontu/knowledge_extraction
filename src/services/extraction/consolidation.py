@@ -16,6 +16,8 @@ Strategy defaults by field type:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -267,14 +269,16 @@ def effective_weight(
 ) -> float:
     """Compute effective weight from confidence and grounding.
 
-    required + score < 0.5 -> 0.0 (exclude ungrounded)
-    required + score >= 0.5 -> confidence * grounding_score
+    Continuous weighting with floor of 0.1 — grounded data dominates,
+    but ungrounded data still contributes when nothing better exists.
+    This prevents producing None when all extractions are ungrounded.
+
+    required -> confidence * max(grounding_score, 0.1)
     semantic/none -> confidence only
     """
     if grounding_mode == "required":
-        if grounding_score is None or grounding_score < 0.5:
-            return 0.0
-        return confidence * grounding_score
+        gs = grounding_score if grounding_score is not None else 0.0
+        return confidence * max(gs, 0.1)
     # semantic or none: grounding doesn't affect weight
     return confidence
 
@@ -428,15 +432,17 @@ def _dedup_strings(items: list) -> list:
 
 
 def _dedup_dicts(items: list[dict]) -> list[dict]:
-    """Deduplicate dict items by 'name' field, keeping first occurrence."""
+    """Deduplicate dict items by name field, falling back to content hash."""
     seen: set[str] = set()
     result: list[dict] = []
     for item in items:
         name = item.get("name") or item.get("product_name") or item.get("id", "")
         key = str(name).strip().lower()
-        if key and key not in seen:
+        if not key:
+            key = hashlib.sha256(
+                json.dumps(item, sort_keys=True).encode()
+            ).hexdigest()[:16]
+        if key not in seen:
             seen.add(key)
-            result.append(item)
-        elif not key:
             result.append(item)
     return result

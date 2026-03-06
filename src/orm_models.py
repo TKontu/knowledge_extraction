@@ -71,8 +71,8 @@ class Job(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
-    type: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, default=JobStatus.QUEUED)
+    type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(Text, default=JobStatus.QUEUED, index=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -279,7 +279,7 @@ class Extraction(Base):
 
     # Denormalized for indexing/queries
     extraction_type: Mapped[str] = mapped_column(Text, nullable=False)
-    source_group: Mapped[str] = mapped_column(Text, nullable=False)
+    source_group: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Provenance

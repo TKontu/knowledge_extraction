@@ -11,7 +11,11 @@ from uuid import UUID
 import structlog
 
 from services.extraction.field_groups import FieldGroup
-from services.extraction.grounding import compute_grounding_scores
+from services.extraction.grounding import (
+    GROUNDING_DEFAULTS,
+    _METADATA_KEYS as _GROUNDING_METADATA_KEYS,
+    score_field,
+)
 from services.extraction.page_classifier import (
     ClassificationResult,
     PageClassifier,
@@ -206,13 +210,11 @@ class SchemaExtractionOrchestrator:
                     )
                     merged, _ = validator.validate(merged, group)
 
-                group_result["data"] = merged
-
-                # Compute inline grounding scores via string-match
-                field_types = {f.name: f.field_type for f in group.fields}
-                group_result["grounding_scores"] = compute_grounding_scores(
-                    merged, field_types
+                # Extract pre-computed per-chunk grounding scores
+                group_result["grounding_scores"] = merged.pop(
+                    "_grounding_scores", {}
                 )
+                group_result["data"] = merged
 
                 raw_confidence = merged.get("confidence", 0.0)
                 is_empty, _ = self._is_empty_result(merged, group)
@@ -323,7 +325,7 @@ class SchemaExtractionOrchestrator:
         for r in chunk_results:
             v = r.get(field_name)
             if v is not None:
-                c = r.get("confidence", 0.5)
+                c = r.get("confidence") or 0.5
                 if c > best_conf:
                     best_conf = c
                     best_val = v
@@ -388,8 +390,15 @@ class SchemaExtractionOrchestrator:
             strategy = self._get_merge_strategy(field)
 
             if strategy == "majority_vote":
-                true_count = sum(1 for v in values if v is True)
-                merged[field.name] = true_count > len(values) / 2
+                # Any credible True wins at chunk level. LLMs return explicit
+                # False when a chunk lacks evidence (not when evidence
+                # contradicts), so majority vote biases toward False.
+                # See TODO_downstream_trials.md Trial 2A: any_true=86% vs
+                # majority_vote=48%.
+                if any(v is True for v in values):
+                    merged[field.name] = True
+                elif any(v is False for v in values):
+                    merged[field.name] = False
             elif strategy == "max":
                 merged[field.name] = max(values)
             elif strategy == "min":
@@ -426,9 +435,17 @@ class SchemaExtractionOrchestrator:
                 if val is not None:
                     merged[field.name] = val
 
-        # Average confidence (0.5 fallback: conservative when LLM omits confidence)
-        confidences = [r.get("confidence", 0.5) for r in chunk_results]
-        merged["confidence"] = sum(confidences) / len(confidences)
+        # Average confidence from chunks that actually returned it.
+        # Skip chunks where LLM omitted confidence to avoid diluting the
+        # average (e.g., 0.9 + missing → 0.9, not (0.9+0.5)/2 = 0.7).
+        confidences = [
+            r["confidence"]
+            for r in chunk_results
+            if r.get("confidence") is not None
+        ]
+        merged["confidence"] = (
+            sum(confidences) / len(confidences) if confidences else 0.5
+        )
 
         # Merge source quotes: keep quote from highest-confidence chunk per field
         if self._extraction.source_quoting_enabled:
@@ -453,6 +470,33 @@ class SchemaExtractionOrchestrator:
             conflicts = self._detect_conflicts(chunk_results, group, merged)
             if conflicts:
                 merged["_conflicts"] = conflicts
+
+        # Compute per-chunk grounding scores with aligned value+quote pairs.
+        # For each field, score each chunk's OWN value against its OWN quote,
+        # then keep the best score. This avoids misalignment when the merged
+        # value comes from a different chunk than the merged quote (e.g.,
+        # merge_dedupe, majority_vote strategies).
+        grounding_scores: dict[str, float] = {}
+        for field in group.fields:
+            if field.name in _GROUNDING_METADATA_KEYS:
+                continue
+            ft = field.field_type
+            grounding_mode = GROUNDING_DEFAULTS.get(ft, "required")
+            if grounding_mode in ("none", "semantic"):
+                continue
+            # Only score fields present in the merged result
+            if field.name not in merged or merged[field.name] is None:
+                continue
+            best = 0.0
+            for r in chunk_results:
+                val = r.get(field.name)
+                if val is None:
+                    continue
+                chunk_quote = (r.get("_quotes") or {}).get(field.name, "")
+                if chunk_quote:
+                    best = max(best, score_field(val, chunk_quote, ft))
+            grounding_scores[field.name] = best
+        merged["_grounding_scores"] = grounding_scores
 
         return merged
 
@@ -517,9 +561,15 @@ class SchemaExtractionOrchestrator:
                         seen_ids.add(entity_hash)
                         all_entities.append(entity)
 
-        # 0.5 fallback: conservative when LLM omits confidence
-        confidences = [r.get("confidence", 0.5) for r in chunk_results]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
+        # Average confidence from chunks that actually returned it
+        confidences = [
+            r["confidence"]
+            for r in chunk_results
+            if r.get("confidence") is not None
+        ]
+        avg_confidence = (
+            sum(confidences) / len(confidences) if confidences else 0.5
+        )
 
         return {
             entity_key: all_entities,

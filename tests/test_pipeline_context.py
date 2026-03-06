@@ -86,6 +86,71 @@ class TestPipelineExtractSource:
         call_args = mock_orchestrator_with_context.extract_all_groups.call_args
         assert call_args.kwargs.get("source_context") == "Test Company"
 
+class TestSchemaPipelineResultObservability:
+    """Test that SchemaPipelineResult includes observability counters."""
+
+    def test_new_fields_have_defaults(self):
+        from services.extraction.pipeline import SchemaPipelineResult
+
+        result = SchemaPipelineResult(
+            project_id="test",
+            sources_processed=10,
+            sources_failed=1,
+            total_extractions=50,
+            field_groups=3,
+            schema_name="test",
+        )
+        assert result.sources_skipped == 0
+        assert result.sources_no_content == 0
+        assert result.total_embedded == 0
+        assert result.embedding_errors == 0
+
+    def test_new_fields_settable(self):
+        from services.extraction.pipeline import SchemaPipelineResult
+
+        result = SchemaPipelineResult(
+            project_id="test",
+            sources_processed=10,
+            sources_failed=1,
+            total_extractions=50,
+            field_groups=3,
+            schema_name="test",
+            sources_skipped=3,
+            sources_no_content=2,
+            total_embedded=40,
+            embedding_errors=1,
+        )
+        assert result.sources_skipped == 3
+        assert result.sources_no_content == 2
+        assert result.total_embedded == 40
+        assert result.embedding_errors == 1
+
+
+class TestEmbeddingPipelineEmptyTextDiagnostic:
+    """Test that embedding pipeline reports when all texts are empty."""
+
+    @pytest.mark.asyncio
+    async def test_all_empty_texts_reports_error(self):
+        from services.extraction.embedding_pipeline import ExtractionEmbeddingService
+
+        mock_embedding = MagicMock()
+        mock_qdrant = MagicMock()
+        service = ExtractionEmbeddingService(mock_embedding, mock_qdrant)
+
+        # Create extractions with empty data → empty text
+        ext1 = MagicMock()
+        ext1.extraction_type = None
+        ext1.data = {}
+        ext2 = MagicMock()
+        ext2.extraction_type = None
+        ext2.data = {}
+
+        result = await service.embed_and_upsert([ext1, ext2])
+        assert result.embedded_count == 0
+        assert len(result.errors) == 1
+        assert "2 extractions produced empty text" in result.errors[0]
+
+
 class TestParseTemplateInPipeline:
     """Test that pipeline uses parse_template to get context."""
 

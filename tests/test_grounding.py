@@ -36,8 +36,12 @@ class TestVerifyNumericInQuote:
         assert verify_numeric_in_quote(5000, "over 500 employees") == 0.0
 
     def test_zero_value(self):
-        """Zero is never grounded — too common in text."""
-        assert verify_numeric_in_quote(0, "0 errors found in the system") == 0.0
+        """Zero is a valid numeric value and should ground when present."""
+        assert verify_numeric_in_quote(0, "0 errors found in the system") == 1.0
+
+    def test_zero_not_in_quote(self):
+        """Zero should not ground when absent from quote."""
+        assert verify_numeric_in_quote(0, "no numbers here") == 0.0
 
     def test_float_value(self):
         assert verify_numeric_in_quote(2.9, "rated at 2.9 kW output") == 1.0
