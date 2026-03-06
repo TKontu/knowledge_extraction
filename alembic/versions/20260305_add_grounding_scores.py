@@ -19,20 +19,37 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "extractions",
-        sa.Column(
-            "grounding_scores",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=True,
-        ),
+    conn = op.get_bind()
+    # Idempotent: skip if column already exists
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='extractions' AND column_name='grounding_scores'"
+        )
     )
-    op.create_index(
-        "ix_extractions_grounding_scores",
-        "extractions",
-        ["grounding_scores"],
-        postgresql_using="gin",
+    if not result.fetchone():
+        op.add_column(
+            "extractions",
+            sa.Column(
+                "grounding_scores",
+                postgresql.JSONB(astext_type=sa.Text()),
+                nullable=True,
+            ),
+        )
+    # Idempotent: skip if index already exists
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM pg_indexes "
+            "WHERE indexname='ix_extractions_grounding_scores'"
+        )
     )
+    if not result.fetchone():
+        op.create_index(
+            "ix_extractions_grounding_scores",
+            "extractions",
+            ["grounding_scores"],
+            postgresql_using="gin",
+        )
 
 
 def downgrade() -> None:

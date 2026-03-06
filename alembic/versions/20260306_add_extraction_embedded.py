@@ -18,6 +18,15 @@ depends_on = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='extractions' AND column_name='embedded'"
+        )
+    )
+    if result.fetchone():
+        return
     op.add_column(
         "extractions",
         sa.Column("embedded", sa.Boolean(), nullable=False, server_default="false"),
