@@ -98,6 +98,7 @@ class SchemaExtractor:
         content: str,
         field_group: FieldGroup,
         source_context: str | None = None,
+        strict_quoting: bool = False,
     ) -> dict[str, Any]:
         """Extract fields for a specific field group.
 
@@ -105,6 +106,7 @@ class SchemaExtractor:
             content: Markdown content to extract from.
             field_group: Field group definition.
             source_context: Optional source context (e.g., company name, website name).
+            strict_quoting: If True, use stricter quoting instructions (retry mode).
 
         Returns:
             Dictionary of extracted field values.
@@ -115,15 +117,20 @@ class SchemaExtractor:
         context_value = source_context
 
         if self.llm_queue is not None:
-            return await self._extract_via_queue(content, field_group, context_value)
+            return await self._extract_via_queue(
+                content, field_group, context_value, strict_quoting=strict_quoting
+            )
         else:
-            return await self._extract_direct(content, field_group, context_value)
+            return await self._extract_direct(
+                content, field_group, context_value, strict_quoting=strict_quoting
+            )
 
     async def _extract_via_queue(
         self,
         content: str,
         field_group: FieldGroup,
         source_context: str | None,
+        strict_quoting: bool = False,
     ) -> dict[str, Any]:
         """Extract via LLM request queue.
 
@@ -131,6 +138,7 @@ class SchemaExtractor:
             content: Markdown content.
             field_group: Field group definition.
             source_context: Optional source context.
+            strict_quoting: If True, use stricter quoting instructions.
 
         Returns:
             Extracted field values.
@@ -141,7 +149,7 @@ class SchemaExtractor:
         from services.llm.models import LLMRequest
 
         # Build prompts first (for consistency with direct extraction)
-        system_prompt = self._build_system_prompt(field_group)
+        system_prompt = self._build_system_prompt(field_group, strict_quoting=strict_quoting)
         user_prompt = self._build_user_prompt(content, field_group, source_context)
 
         # Build request
@@ -215,6 +223,7 @@ class SchemaExtractor:
         content: str,
         field_group: FieldGroup,
         source_context: str | None,
+        strict_quoting: bool = False,
     ) -> dict[str, Any]:
         """Extract via direct LLM call with retry and variation.
 
@@ -225,6 +234,7 @@ class SchemaExtractor:
             content: Markdown content.
             field_group: Field group definition.
             source_context: Optional source context.
+            strict_quoting: If True, use stricter quoting instructions.
 
         Returns:
             Extracted field values.
@@ -246,7 +256,7 @@ class SchemaExtractor:
             temperature = base_temp + (attempt - 1) * temp_increment
 
             # Build prompts (add conciseness hint on retries)
-            system_prompt = self._build_system_prompt(field_group)
+            system_prompt = self._build_system_prompt(field_group, strict_quoting=strict_quoting)
             if attempt > 1:
                 system_prompt += LLM_RETRY_HINT
 
@@ -366,10 +376,14 @@ class SchemaExtractor:
             f"Schema extraction failed after {max_retries} attempts: {last_error}"
         ) from last_error
 
-    def _build_system_prompt(self, field_group: FieldGroup) -> str:
+    def _build_system_prompt(
+        self, field_group: FieldGroup, strict_quoting: bool = False
+    ) -> str:
         """Build system prompt for field group extraction."""
         if field_group.is_entity_list:
-            return self._build_entity_list_system_prompt(field_group)
+            return self._build_entity_list_system_prompt(
+                field_group, strict_quoting=strict_quoting
+            )
 
         # Build field descriptions
         field_specs = []
@@ -385,7 +399,16 @@ class SchemaExtractor:
 
         quoting_instruction = ""
         if self._source_quoting_enabled:
-            quoting_instruction = """
+            if strict_quoting:
+                quoting_instruction = """
+CRITICAL QUOTING REQUIREMENT:
+Include a "_quotes" object mapping each non-null field to an EXACT verbatim excerpt (15-50 chars) copied directly from the source text.
+The quote MUST appear word-for-word in the source content. Do NOT paraphrase, translate, or fabricate quotes.
+If you cannot find an exact quote in the source for a field, set that field to null rather than inventing a quote.
+Example: "_quotes": {"field_name": "exact text copied from source"}
+"""
+            else:
+                quoting_instruction = """
 Include a "_quotes" object mapping each non-null field to a brief verbatim excerpt (15-50 chars) from the source that supports the value.
 Example: "_quotes": {"field_name": "exact text from source"}
 """
@@ -410,7 +433,9 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
 - 0.8-1.0 if the content is clearly relevant with good data
 {quoting_instruction}"""
 
-    def _build_entity_list_system_prompt(self, field_group: FieldGroup) -> str:
+    def _build_entity_list_system_prompt(
+        self, field_group: FieldGroup, strict_quoting: bool = False
+    ) -> str:
         """Build system prompt for entity list extraction.
 
         Uses the field group name as the output key (e.g., "employees", "locations")
@@ -448,10 +473,22 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
 
         quoting_instruction = ""
         if self._source_quoting_enabled:
-            quoting_instruction = (
-                '\nFor each entity, include a "_quote" field with a brief verbatim '
-                "excerpt (15-50 chars) from the source that identifies this entity.\n"
-            )
+            if strict_quoting:
+                quoting_instruction = (
+                    '\nCRITICAL QUOTING REQUIREMENT:\n'
+                    'For each entity, include a "_quote" field with an EXACT verbatim '
+                    "excerpt (15-50 chars) copied directly from the source text that "
+                    "identifies this entity.\n"
+                    "The quote MUST appear word-for-word in the source content. "
+                    "Do NOT paraphrase, translate, or fabricate quotes.\n"
+                    "If you cannot find an exact quote for an entity, omit that entity "
+                    "entirely rather than inventing a quote.\n"
+                )
+            else:
+                quoting_instruction = (
+                    '\nFor each entity, include a "_quote" field with a brief verbatim '
+                    "excerpt (15-50 chars) from the source that identifies this entity.\n"
+                )
 
         max_items = field_group.max_items or 20
 

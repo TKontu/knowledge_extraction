@@ -6,10 +6,14 @@ TDD: Tests written first, implementation follows.
 from services.extraction.grounding import (
     GROUNDING_DEFAULTS,
     _coerce_quote,
+    compute_entity_list_grounding_scores,
     compute_grounding_scores,
+    compute_source_grounding_scores,
+    extract_entity_list_groups,
     score_field,
     verify_list_items_in_quote,
     verify_numeric_in_quote,
+    verify_quote_in_source,
     verify_string_in_quote,
 )
 
@@ -455,3 +459,212 @@ class TestComputeGroundingScoresNonStringQuotes:
         assert scores["employee_count"] == 1.0
         # products quote is None → score 0.0
         assert scores["products"] == 0.0
+
+
+class TestVerifyQuoteInSource:
+    """Test source-grounding: does the quote exist in the source content?"""
+
+    SOURCE = (
+        "ABB Ltd is a leading technology company headquartered in Zurich, Switzerland. "
+        "The company has approximately 105,000 employees worldwide across 100+ countries. "
+        "ABB specializes in electrification, robotics, automation, and motion products."
+    )
+
+    def test_exact_substring(self):
+        quote = "approximately 105,000 employees worldwide"
+        assert verify_quote_in_source(quote, self.SOURCE) == 1.0
+
+    def test_case_insensitive(self):
+        quote = "ABB LTD IS A LEADING TECHNOLOGY COMPANY"
+        assert verify_quote_in_source(quote, self.SOURCE) == 1.0
+
+    def test_extra_whitespace(self):
+        quote = "approximately  105,000   employees  worldwide"
+        assert verify_quote_in_source(quote, self.SOURCE) == 1.0
+
+    def test_missing_comma(self):
+        """Punctuation-stripped tier catches minor punctuation differences."""
+        quote = "approximately 105000 employees worldwide"
+        assert verify_quote_in_source(quote, self.SOURCE) >= 0.9
+
+    def test_fabricated_quote(self):
+        quote = "ABB is the world's largest automation company with 200,000 employees"
+        assert verify_quote_in_source(quote, self.SOURCE) < 0.8
+
+    def test_partial_match_high_overlap(self):
+        """Most words present but not all — should score high."""
+        quote = "leading technology company headquartered in Zurich"
+        assert verify_quote_in_source(quote, self.SOURCE) >= 0.8
+
+    def test_completely_unrelated(self):
+        quote = "Founded in 1886 by Charles Brown and Walter Boveri"
+        assert verify_quote_in_source(quote, self.SOURCE) < 0.3
+
+    def test_empty_quote(self):
+        assert verify_quote_in_source("", self.SOURCE) == 0.0
+
+    def test_empty_content(self):
+        assert verify_quote_in_source("some quote", "") == 0.0
+
+    def test_none_inputs(self):
+        assert verify_quote_in_source("", "") == 0.0
+
+    def test_multilingual_quote_not_in_english_source(self):
+        """A translated quote should not match the English source."""
+        quote = "environ 105 000 employés dans le monde"
+        assert verify_quote_in_source(quote, self.SOURCE) < 0.5
+
+    def test_short_quote(self):
+        """Short quotes that do exist should match."""
+        quote = "ABB Ltd"
+        assert verify_quote_in_source(quote, self.SOURCE) == 1.0
+
+
+class TestComputeSourceGroundingScores:
+    """Test compute_source_grounding_scores end-to-end."""
+
+    SOURCE = (
+        "Siemens AG is a global technology powerhouse. "
+        "The company has around 300,000 employees in more than 200 countries. "
+        "Siemens focuses on electrification, automation, and digitalization."
+    )
+
+    def test_all_quotes_grounded(self):
+        data = {
+            "company_name": "Siemens",
+            "employee_count": 300000,
+            "_quotes": {
+                "company_name": "Siemens AG is a global technology powerhouse",
+                "employee_count": "around 300,000 employees",
+            },
+        }
+        field_types = {"company_name": "string", "employee_count": "integer"}
+        scores = compute_source_grounding_scores(data, self.SOURCE, field_types)
+        assert scores["company_name"] == 1.0
+        assert scores["employee_count"] == 1.0
+
+    def test_fabricated_quote_scores_low(self):
+        data = {
+            "company_name": "Siemens",
+            "_quotes": {
+                "company_name": "Siemens was founded in Berlin in 1847 by Werner von Siemens",
+            },
+        }
+        field_types = {"company_name": "string"}
+        scores = compute_source_grounding_scores(data, self.SOURCE, field_types)
+        assert scores["company_name"] < 0.5
+
+    def test_no_quotes_returns_empty(self):
+        data = {"company_name": "Siemens"}
+        field_types = {"company_name": "string"}
+        scores = compute_source_grounding_scores(data, self.SOURCE, field_types)
+        assert scores == {}
+
+    def test_skips_semantic_fields(self):
+        data = {
+            "is_public": True,
+            "_quotes": {"is_public": "Siemens AG"},
+        }
+        field_types = {"is_public": "boolean"}
+        scores = compute_source_grounding_scores(data, self.SOURCE, field_types)
+        # boolean has "semantic" grounding mode — skipped
+        assert "is_public" not in scores
+
+
+class TestComputeEntityListGroundingScores:
+    """Test grounding scores for entity list data shape."""
+
+    def test_entities_with_matching_quotes(self):
+        data = {
+            "products": [
+                {"name": "Motor X", "_quote": "Motor X series"},
+                {"name": "Drive Y", "_quote": "Drive Y controller"},
+            ],
+            "confidence": 0.9,
+        }
+        field_types = {"name": "string", "type": "string"}
+        scores = compute_entity_list_grounding_scores(data, "products", field_types)
+        assert scores == {"products": 1.0}
+
+    def test_entities_without_quotes(self):
+        data = {
+            "products": [{"name": "Motor X"}, {"name": "Drive Y"}],
+            "confidence": 0.9,
+        }
+        field_types = {"name": "string"}
+        scores = compute_entity_list_grounding_scores(data, "products", field_types)
+        # No quotes → 0.0 per entity → average 0.0
+        assert scores == {"products": 0.0}
+
+    def test_mixed_grounded_and_ungrounded(self):
+        data = {
+            "products": [
+                {"name": "ABB", "_quote": "ABB Corporation"},
+                {"name": "Siemens", "_quote": "completely unrelated text"},
+            ],
+            "confidence": 0.8,
+        }
+        field_types = {"name": "string"}
+        scores = compute_entity_list_grounding_scores(data, "products", field_types)
+        # ABB matches → 1.0, Siemens doesn't → 0.0, average 0.5
+        assert scores["products"] == 0.5
+
+    def test_empty_entity_list(self):
+        data = {"products": [], "confidence": 0.5}
+        field_types = {"name": "string"}
+        scores = compute_entity_list_grounding_scores(data, "products", field_types)
+        assert scores == {}
+
+    def test_missing_entity_key(self):
+        data = {"confidence": 0.5}
+        field_types = {"name": "string"}
+        scores = compute_entity_list_grounding_scores(data, "products", field_types)
+        assert scores == {}
+
+    def test_entity_with_non_string_quote(self):
+        data = {
+            "products": [
+                {"name": "Motor X", "_quote": ["Motor X", "series"]},
+            ],
+            "confidence": 0.8,
+        }
+        field_types = {"name": "string"}
+        scores = compute_entity_list_grounding_scores(data, "products", field_types)
+        # Coerced to "Motor X series" → "Motor X" found → 1.0
+        assert scores == {"products": 1.0}
+
+    def test_entity_no_id_field_with_quote(self):
+        """Entity with _quote but no recognized ID field → assume grounded."""
+        data = {
+            "items": [
+                {"description": "A motor", "_quote": "industrial motor"},
+            ],
+            "confidence": 0.8,
+        }
+        field_types = {"description": "text"}
+        scores = compute_entity_list_grounding_scores(data, "items", field_types)
+        assert scores == {"items": 1.0}
+
+
+class TestExtractEntityListGroups:
+    def test_extracts_entity_list_groups(self):
+        schema = {
+            "field_groups": [
+                {"name": "company_info", "fields": [], "is_entity_list": False},
+                {"name": "products", "fields": [], "is_entity_list": True},
+                {"name": "services", "fields": [], "is_entity_list": True},
+            ]
+        }
+        assert extract_entity_list_groups(schema) == {"products", "services"}
+
+    def test_no_entity_lists(self):
+        schema = {
+            "field_groups": [
+                {"name": "company_info", "fields": []},
+            ]
+        }
+        assert extract_entity_list_groups(schema) == set()
+
+    def test_empty_schema(self):
+        assert extract_entity_list_groups({}) == set()
+        assert extract_entity_list_groups({"field_groups": []}) == set()

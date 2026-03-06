@@ -351,6 +351,7 @@ def consolidate_extractions(
     field_definitions: list[dict],
     source_group: str,
     extraction_type: str,
+    entity_list_key: str | None = None,
 ) -> ConsolidatedRecord:
     """Produce one consolidated record from N extractions.
 
@@ -361,6 +362,9 @@ def consolidate_extractions(
             optional consolidation_strategy.
         source_group: Source group identifier.
         extraction_type: Extraction type name.
+        entity_list_key: If set, data is entity list format:
+            {"key": [entity_dicts], "confidence": ...}. Consolidation
+            unions all entity lists weighted by extraction quality.
 
     Returns:
         ConsolidatedRecord with one ConsolidatedField per field.
@@ -372,6 +376,11 @@ def consolidate_extractions(
 
     if not extractions or not field_definitions:
         return record
+
+    if entity_list_key:
+        return _consolidate_entity_list(
+            extractions, field_definitions, record, entity_list_key
+        )
 
     for field_def in field_definitions:
         field_name = field_def["name"]
@@ -404,6 +413,55 @@ def consolidate_extractions(
 
         result = consolidate_field(weighted_values, strategy)
         record.fields[field_name] = result
+
+    return record
+
+
+def _consolidate_entity_list(
+    extractions: list[dict],
+    field_definitions: list[dict],
+    record: ConsolidatedRecord,
+    entity_key: str,
+) -> ConsolidatedRecord:
+    """Consolidate entity list extractions via weighted union_dedup.
+
+    Entity list data shape: {"products": [{"name": "X", ...}, ...], "confidence": 0.8}
+
+    Strategy: collect entity lists from all extractions, weight each
+    extraction's entities by confidence * grounding, then union_dedup
+    the combined list. Produces a single consolidated field keyed by
+    entity_key containing the deduped entity list.
+    """
+    weighted_values: list[WeightedValue] = []
+
+    for ext in extractions:
+        data = ext.get("data", {})
+        entities = data.get(entity_key)
+        if not entities or not isinstance(entities, list):
+            continue
+
+        confidence = ext.get("confidence", 0.5)
+        grounding_scores = ext.get("grounding_scores") or {}
+        # Entity list grounding is stored under the list key (e.g., "products")
+        grounding_score = grounding_scores.get(entity_key)
+        source_id = ext.get("source_id", "")
+
+        weight = effective_weight(confidence, grounding_score, "required")
+
+        # Strip _quote metadata from entities before consolidation
+        cleaned = [
+            {k: v for k, v in entity.items() if k != "_quote"}
+            for entity in entities
+            if isinstance(entity, dict)
+        ]
+        if cleaned:
+            weighted_values.append(WeightedValue(cleaned, weight, str(source_id)))
+
+    if not weighted_values:
+        return record
+
+    result = consolidate_field(weighted_values, "union_dedup")
+    record.fields[entity_key] = result
 
     return record
 

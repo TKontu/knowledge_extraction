@@ -67,6 +67,7 @@ class ExtractionConfig:
     domain_dedup_threshold_pct: float
     domain_dedup_min_pages: int
     domain_dedup_min_block_chars: int
+    source_grounding_min_ratio: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -601,6 +602,15 @@ class Settings(BaseSettings):
         description="Minimum characters for a content block to be considered",
     )
 
+    # Source Grounding (quote-in-content verification)
+    source_grounding_min_ratio: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum ratio of source-grounded quotes before re-extraction is triggered. "
+        "0.5 means retry if fewer than half the quotes exist in the source content.",
+    )
+
     # Grounding Verification
     grounding_llm_verify_enabled: bool = Field(
         default=True,
@@ -863,6 +873,7 @@ class Settings(BaseSettings):
                 domain_dedup_threshold_pct=self.domain_dedup_threshold_pct,
                 domain_dedup_min_pages=self.domain_dedup_min_pages,
                 domain_dedup_min_block_chars=self.domain_dedup_min_block_chars,
+                source_grounding_min_ratio=self.source_grounding_min_ratio,
             ),
         )
 

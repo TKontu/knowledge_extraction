@@ -51,7 +51,7 @@ class ConsolidationService:
         if not schema or not schema.get("field_groups"):
             return []
 
-        field_defs_by_group = _extract_field_definitions(schema)
+        field_defs_by_group, entity_list_groups = _extract_field_definitions(schema)
 
         # Delete existing consolidated records for this source group so that
         # removed extraction types don't leave stale rows behind.
@@ -99,8 +99,10 @@ class ConsolidationService:
                 for ext in type_extractions
             ]
 
+            is_entity_list = ext_type in entity_list_groups
             record = consolidate_extractions(
-                ext_dicts, field_defs, source_group, ext_type
+                ext_dicts, field_defs, source_group, ext_type,
+                entity_list_key=ext_type if is_entity_list else None,
             )
             records.append(record)
 
@@ -223,11 +225,21 @@ class ConsolidationService:
         self._session.flush()
 
 
-def _extract_field_definitions(schema: dict) -> dict[str, list[dict]]:
-    """Extract field definitions from extraction_schema, keyed by group name."""
+def _extract_field_definitions(
+    schema: dict,
+) -> tuple[dict[str, list[dict]], set[str]]:
+    """Extract field definitions from extraction_schema, keyed by group name.
+
+    Returns:
+        Tuple of (field_defs_by_group, entity_list_groups).
+        entity_list_groups is the set of group names with is_entity_list=True.
+    """
     result: dict[str, list[dict]] = {}
+    entity_list_groups: set[str] = set()
     for fg in schema.get("field_groups", []):
         name = fg.get("name", "")
         if name:
             result[name] = fg.get("fields", [])
-    return result
+            if fg.get("is_entity_list", False):
+                entity_list_groups.add(name)
+    return result, entity_list_groups

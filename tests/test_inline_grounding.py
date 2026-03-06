@@ -383,3 +383,237 @@ class TestZeroValueGrounding:
 
     def test_zero_string_in_quote(self):
         assert verify_numeric_in_quote("0", "reduced to 0 units") == 1.0
+
+
+class TestCollectQuotes:
+    """Test _collect_quotes extracts quotes from both result structures."""
+
+    def test_field_group_quotes(self):
+        from services.extraction.schema_orchestrator import _collect_quotes
+
+        result = {
+            "company_name": "ABB",
+            "_quotes": {"company_name": "ABB Corp", "revenue": "1.2 billion"},
+        }
+        quotes = _collect_quotes(result)
+        assert set(quotes) == {"ABB Corp", "1.2 billion"}
+
+    def test_entity_list_quotes(self):
+        from services.extraction.schema_orchestrator import _collect_quotes
+
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": "Motor X series"},
+                {"name": "Drive Y", "_quote": "Drive Y controller"},
+            ],
+            "confidence": 0.8,
+        }
+        quotes = _collect_quotes(result)
+        assert set(quotes) == {"Motor X series", "Drive Y controller"}
+
+    def test_entity_list_missing_quotes(self):
+        from services.extraction.schema_orchestrator import _collect_quotes
+
+        result = {
+            "products": [
+                {"name": "Motor X"},  # no _quote
+                {"name": "Drive Y", "_quote": "Drive Y controller"},
+            ],
+            "confidence": 0.8,
+        }
+        quotes = _collect_quotes(result)
+        assert quotes == ["Drive Y controller"]
+
+    def test_empty_result(self):
+        from services.extraction.schema_orchestrator import _collect_quotes
+
+        assert _collect_quotes({}) == []
+        assert _collect_quotes({"confidence": 0.5}) == []
+
+    def test_non_string_entity_quote_coerced(self):
+        from services.extraction.schema_orchestrator import _collect_quotes
+
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": ["Motor X", "series"]},
+            ],
+            "confidence": 0.8,
+        }
+        quotes = _collect_quotes(result)
+        assert quotes == ["Motor X series"]
+
+    def test_field_group_takes_priority_over_entity_scan(self):
+        """If _quotes exists at top level, entity _quote fields are not scanned."""
+        from services.extraction.schema_orchestrator import _collect_quotes
+
+        result = {
+            "company_name": "ABB",
+            "_quotes": {"company_name": "ABB Corp"},
+            "products": [{"name": "Motor", "_quote": "Motor line"}],
+        }
+        quotes = _collect_quotes(result)
+        assert quotes == ["ABB Corp"]
+
+
+class TestSourceGroundingRatio:
+    """Test _source_grounding_ratio used by orchestrator for retry decisions."""
+
+    def test_all_quotes_grounded(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "ABB Ltd has approximately 105,000 employees worldwide."
+        result = {
+            "company_name": "ABB",
+            "employee_count": 105000,
+            "_quotes": {
+                "company_name": "ABB Ltd has approximately",
+                "employee_count": "approximately 105,000 employees",
+            },
+        }
+        assert _source_grounding_ratio(result, content) == 1.0
+
+    def test_all_quotes_fabricated(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "ABB Ltd has approximately 105,000 employees worldwide."
+        result = {
+            "company_name": "ABB",
+            "employee_count": 105000,
+            "_quotes": {
+                "company_name": "Founded in 1988 in Sweden by Percy Barnevik",
+                "employee_count": "over 200,000 staff members globally",
+            },
+        }
+        assert _source_grounding_ratio(result, content) == 0.0
+
+    def test_no_quotes_returns_one(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        assert _source_grounding_ratio({"company_name": "ABB"}, "content") == 1.0
+        assert _source_grounding_ratio({"_quotes": {}}, "content") == 1.0
+
+    def test_mixed_grounded_and_fabricated(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "ABB Ltd has approximately 105,000 employees worldwide."
+        result = {
+            "company_name": "ABB",
+            "employee_count": 105000,
+            "_quotes": {
+                "company_name": "ABB Ltd has approximately",  # grounded
+                "employee_count": "over 200,000 staff members globally",  # fabricated
+            },
+        }
+        ratio = _source_grounding_ratio(result, content)
+        assert ratio == 0.5
+
+    def test_entity_list_all_grounded(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "We produce the Motor X series and the Drive Y controller."
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": "Motor X series"},
+                {"name": "Drive Y", "_quote": "Drive Y controller"},
+            ],
+            "confidence": 0.8,
+        }
+        assert _source_grounding_ratio(result, content) == 1.0
+
+    def test_entity_list_all_fabricated(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "We produce the Motor X series and the Drive Y controller."
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": "advanced robotics platform"},
+                {"name": "Drive Y", "_quote": "hydraulic pump system"},
+            ],
+            "confidence": 0.8,
+        }
+        assert _source_grounding_ratio(result, content) == 0.0
+
+    def test_entity_list_mixed(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "We produce the Motor X series and the Drive Y controller."
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": "Motor X series"},  # grounded
+                {"name": "Drive Y", "_quote": "hydraulic pump system"},  # fabricated
+            ],
+            "confidence": 0.8,
+        }
+        assert _source_grounding_ratio(result, content) == 0.5
+
+    def test_entity_list_no_quotes(self):
+        from services.extraction.schema_orchestrator import _source_grounding_ratio
+
+        content = "We produce motors."
+        result = {
+            "products": [{"name": "Motor X"}],
+            "confidence": 0.8,
+        }
+        # No _quote fields → nothing to verify → 1.0
+        assert _source_grounding_ratio(result, content) == 1.0
+
+
+class TestEntityListGroundingScores:
+    """Test that _merge_entity_lists computes grounding scores for entities."""
+
+    @pytest.fixture
+    def orchestrator(self):
+        from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+
+        return SchemaExtractionOrchestrator(MagicMock())
+
+    def test_entity_list_merge_has_grounding_scores(self, orchestrator):
+        group = _make_field_group([("name", "string"), ("type", "string")])
+        group = FieldGroup(
+            name="products",
+            description="Product list",
+            fields=group.fields,
+            prompt_hint="",
+            is_entity_list=True,
+        )
+        chunk_results = [
+            {
+                "products": [
+                    {"name": "Motor X", "_quote": "Motor X line"},
+                    {"name": "Drive Y", "_quote": "Drive Y unit"},
+                ],
+                "confidence": 0.9,
+            }
+        ]
+        merged = orchestrator._merge_entity_lists(chunk_results, group)
+        assert "_grounding_scores" in merged
+        assert merged["_grounding_scores"]["products"] == 1.0
+
+    def test_entity_list_no_quotes_scores_zero(self, orchestrator):
+        group = FieldGroup(
+            name="products",
+            description="Product list",
+            fields=[FieldDefinition(name="name", field_type="string", description="")],
+            prompt_hint="",
+            is_entity_list=True,
+        )
+        chunk_results = [
+            {
+                "products": [{"name": "Motor X"}],
+                "confidence": 0.9,
+            }
+        ]
+        merged = orchestrator._merge_entity_lists(chunk_results, group)
+        assert merged["_grounding_scores"]["products"] == 0.0
+
+    def test_entity_list_empty_has_empty_scores(self, orchestrator):
+        group = FieldGroup(
+            name="products",
+            description="Product list",
+            fields=[FieldDefinition(name="name", field_type="string", description="")],
+            prompt_hint="",
+            is_entity_list=True,
+        )
+        chunk_results = [{"products": [], "confidence": 0.5}]
+        merged = orchestrator._merge_entity_lists(chunk_results, group)
+        assert merged["_grounding_scores"] == {}

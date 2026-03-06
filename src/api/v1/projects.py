@@ -315,7 +315,9 @@ async def backfill_grounding(
     from collections import defaultdict
 
     from services.extraction.grounding import (
+        compute_entity_list_grounding_scores,
         compute_grounding_scores,
+        extract_entity_list_groups,
         extract_field_types_from_schema,
     )
     from services.storage.repositories.extraction import (
@@ -339,6 +341,7 @@ async def backfill_grounding(
         )
 
     field_types_by_group = extract_field_types_from_schema(schema)
+    entity_list_groups = extract_entity_list_groups(schema)
     ext_repo = ExtractionRepository(db)
     filters = ExtractionFilters(project_id=project_id)
     total_count = ext_repo.count(filters)
@@ -361,7 +364,12 @@ async def backfill_grounding(
                 skipped += 1
                 continue
 
-            scores = compute_grounding_scores(ext.data, field_types)
+            if ext.extraction_type in entity_list_groups:
+                scores = compute_entity_list_grounding_scores(
+                    ext.data, ext.extraction_type, field_types
+                )
+            else:
+                scores = compute_grounding_scores(ext.data, field_types)
             if scores:
                 updates.append((ext.id, scores))
                 for field_name, score in scores.items():

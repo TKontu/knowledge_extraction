@@ -17,6 +17,7 @@ from services.extraction.consolidation import (
     weighted_frequency,
     weighted_median,
 )
+from services.extraction.consolidation_service import _extract_field_definitions
 
 # ── Strategy: frequency ──
 
@@ -751,3 +752,172 @@ class TestPerFieldOverrides:
         )
         assert record_override.fields["count"].strategy == "frequency"
         assert record_override.fields["count"].value == 100
+
+
+class TestEntityListConsolidation:
+    """Test consolidation of entity list extraction types."""
+
+    def test_entity_lists_union_deduped(self):
+        """Entity lists from multiple extractions are unioned and deduped."""
+        extractions = [
+            {
+                "data": {
+                    "products": [
+                        {"name": "Motor X", "type": "AC"},
+                        {"name": "Drive Y", "type": "VFD"},
+                    ],
+                    "confidence": 0.9,
+                },
+                "confidence": 0.9,
+                "grounding_scores": {"products": 1.0},
+                "source_id": "s1",
+            },
+            {
+                "data": {
+                    "products": [
+                        {"name": "Motor X", "type": "AC"},  # duplicate
+                        {"name": "Pump Z", "type": "centrifugal"},
+                    ],
+                    "confidence": 0.8,
+                },
+                "confidence": 0.8,
+                "grounding_scores": {"products": 0.5},
+                "source_id": "s2",
+            },
+        ]
+        field_defs = [
+            {"name": "name", "field_type": "string"},
+            {"name": "type", "field_type": "string"},
+        ]
+        record = consolidate_extractions(
+            extractions, field_defs, "abb", "products",
+            entity_list_key="products",
+        )
+        assert "products" in record.fields
+        entities = record.fields["products"].value
+        names = {e["name"] for e in entities}
+        assert names == {"Motor X", "Drive Y", "Pump Z"}
+
+    def test_entity_list_strips_quote_metadata(self):
+        """_quote fields are stripped from consolidated entities."""
+        extractions = [
+            {
+                "data": {
+                    "products": [
+                        {"name": "Motor X", "_quote": "Motor X series"},
+                    ],
+                    "confidence": 0.9,
+                },
+                "confidence": 0.9,
+                "grounding_scores": {"products": 1.0},
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "string"}]
+        record = consolidate_extractions(
+            extractions, field_defs, "abb", "products",
+            entity_list_key="products",
+        )
+        entities = record.fields["products"].value
+        assert "_quote" not in entities[0]
+        assert entities[0]["name"] == "Motor X"
+
+    def test_entity_list_weighted_by_grounding(self):
+        """Extractions with higher grounding scores get more weight."""
+        extractions = [
+            {
+                "data": {
+                    "products": [{"name": "Motor X"}],
+                    "confidence": 0.9,
+                },
+                "confidence": 0.9,
+                "grounding_scores": {"products": 1.0},
+                "source_id": "s1",
+            },
+            {
+                "data": {
+                    "products": [{"name": "Motor Y"}],
+                    "confidence": 0.9,
+                },
+                "confidence": 0.9,
+                "grounding_scores": {},  # no grounding score
+                "source_id": "s2",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "string"}]
+        record = consolidate_extractions(
+            extractions, field_defs, "abb", "products",
+            entity_list_key="products",
+        )
+        # Both contribute (weight floor = 0.1), so both entities appear
+        entities = record.fields["products"].value
+        assert len(entities) == 2
+
+    def test_entity_list_empty_extractions(self):
+        """Empty entity lists produce empty record."""
+        extractions = [
+            {
+                "data": {"products": [], "confidence": 0.5},
+                "confidence": 0.5,
+                "grounding_scores": {},
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "string"}]
+        record = consolidate_extractions(
+            extractions, field_defs, "abb", "products",
+            entity_list_key="products",
+        )
+        assert "products" not in record.fields
+
+    def test_entity_list_key_none_uses_field_path(self):
+        """Without entity_list_key, uses standard field-level consolidation."""
+        extractions = [
+            {
+                "data": {"company_name": "ABB", "confidence": 0.9},
+                "confidence": 0.9,
+                "grounding_scores": {"company_name": 1.0},
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "company_name", "field_type": "string"}]
+        record = consolidate_extractions(
+            extractions, field_defs, "abb", "company_info",
+        )
+        assert record.fields["company_name"].value == "ABB"
+
+
+class TestExtractFieldDefinitions:
+    """Test _extract_field_definitions returns entity list groups."""
+
+    def test_returns_field_defs_and_entity_groups(self):
+        schema = {
+            "field_groups": [
+                {
+                    "name": "company_info",
+                    "fields": [{"name": "company_name", "field_type": "string"}],
+                },
+                {
+                    "name": "products",
+                    "fields": [{"name": "name", "field_type": "string"}],
+                    "is_entity_list": True,
+                },
+            ]
+        }
+        field_defs, entity_groups = _extract_field_definitions(schema)
+        assert "company_info" in field_defs
+        assert "products" in field_defs
+        assert entity_groups == {"products"}
+
+    def test_no_entity_lists(self):
+        schema = {
+            "field_groups": [
+                {
+                    "name": "company_info",
+                    "fields": [{"name": "company_name", "field_type": "string"}],
+                },
+            ]
+        }
+        field_defs, entity_groups = _extract_field_definitions(schema)
+        assert entity_groups == set()
+        assert "company_info" in field_defs

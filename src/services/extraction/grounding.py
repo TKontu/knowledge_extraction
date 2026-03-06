@@ -209,6 +209,64 @@ def compute_grounding_scores(
     return scores
 
 
+def compute_entity_list_grounding_scores(
+    data: dict,
+    entity_key: str,
+    field_types: dict[str, str],
+) -> dict[str, float]:
+    """Score entity list extractions via string-match.
+
+    Entity list data has shape: {"products": [{"name": "X", "_quote": "..."}, ...]}
+    Each entity has a per-entity _quote. Scores each entity's identifying field
+    against its _quote, returns average as the score for the entity list field.
+
+    Args:
+        data: Extraction data dict with entity list.
+        entity_key: Key containing the entity list (e.g., "products").
+        field_types: Map of entity field_name -> type string.
+
+    Returns:
+        Dict with single key (entity_key) -> average grounding score.
+    """
+    entities = data.get(entity_key)
+    if not entities or not isinstance(entities, list):
+        return {}
+
+    # Determine which fields to use as identity for scoring
+    id_field_names = ("entity_id", "name", "id")
+    scores: list[float] = []
+
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+
+        raw_quote = entity.get("_quote")
+        quote = _coerce_quote(raw_quote)
+        if not quote:
+            scores.append(0.0)
+            continue
+
+        # Score the entity's identifying field against its quote
+        id_value = None
+        id_type = "string"
+        for id_field in id_field_names:
+            id_value = entity.get(id_field)
+            if id_value is not None:
+                id_type = field_types.get(id_field, "string")
+                break
+
+        if id_value is not None:
+            scores.append(score_field(id_value, quote, id_type))
+        else:
+            # No ID field found but quote exists — assume grounded
+            scores.append(1.0)
+
+    if not scores:
+        return {}
+
+    return {entity_key: round(sum(scores) / len(scores), 4)}
+
+
 def extract_field_types_from_schema(
     extraction_schema: dict,
 ) -> dict[str, dict[str, str]]:
@@ -235,6 +293,22 @@ def extract_field_types_from_schema(
         if field_types:
             result[group_name] = field_types
     return result
+
+
+def extract_entity_list_groups(extraction_schema: dict) -> set[str]:
+    """Return set of group names that are entity lists.
+
+    Args:
+        extraction_schema: Project extraction_schema JSONB with field_groups.
+
+    Returns:
+        Set of group names where is_entity_list is True.
+    """
+    return {
+        fg["name"]
+        for fg in extraction_schema.get("field_groups", [])
+        if fg.get("name") and fg.get("is_entity_list", False)
+    }
 
 
 # ── Internal helpers ──
@@ -356,3 +430,150 @@ def _numbers_match(target: float, found: float) -> bool:
     if abs(target) > 0:
         return abs(target - found) / abs(target) < 1e-6
     return False
+
+
+# ── Source grounding (quote-in-content verification) ──
+
+# Punctuation to strip for lenient matching (keep alphanumeric + spaces)
+_STRIP_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+
+
+def verify_quote_in_source(quote: str, source_content: str) -> float:
+    """Check if a claimed quote actually exists in the source content.
+
+    Uses multi-tier matching with increasing leniency:
+    1. Normalized substring (lowercase, collapsed whitespace) → 1.0
+    2. Punctuation-stripped substring → 0.95
+    3. Word-level sliding window → best overlap ratio
+
+    Args:
+        quote: The claimed quote string.
+        source_content: The full source text (content or cleaned_content).
+
+    Returns:
+        Similarity score 0.0-1.0. ≥0.8 means the quote is source-grounded.
+    """
+    if not quote or not source_content:
+        return 0.0
+
+    norm_quote = _normalize_string(quote)
+    norm_content = _normalize_string(source_content)
+
+    if not norm_quote:
+        return 0.0
+
+    # Tier 1: exact normalized substring
+    if norm_quote in norm_content:
+        return 1.0
+
+    # Tier 2: strip punctuation and retry
+    stripped_quote = _STRIP_PUNCT_RE.sub("", norm_quote)
+    stripped_quote = re.sub(r"\s+", " ", stripped_quote).strip()
+    stripped_content = _STRIP_PUNCT_RE.sub("", norm_content)
+    stripped_content = re.sub(r"\s+", " ", stripped_content).strip()
+
+    if stripped_quote and stripped_quote in stripped_content:
+        return 0.95
+
+    # Tier 3: word-level sliding window
+    return _word_window_similarity(stripped_quote, stripped_content)
+
+
+def _word_window_similarity(quote: str, content: str) -> float:
+    """Slide a word window over content and find best overlap with quote.
+
+    For a quote of N words, slides an N-word window across content and
+    computes what fraction of quote words match at each position.
+
+    Returns best ratio found (0.0-1.0).
+    """
+    quote_words = quote.split()
+    content_words = content.split()
+
+    if not quote_words or not content_words:
+        return 0.0
+
+    n = len(quote_words)
+    if n > len(content_words):
+        return 0.0
+
+    quote_set = set(quote_words)
+    best = 0.0
+
+    # Build initial window
+    window_counts: dict[str, int] = {}
+    for w in content_words[:n]:
+        window_counts[w] = window_counts.get(w, 0) + 1
+
+    # Count matches in initial window
+    matching = sum(1 for w in quote_words if window_counts.get(w, 0) > 0)
+    best = matching / n
+
+    # Early exit if perfect
+    if best >= 0.95:
+        return best
+
+    # Slide window across content
+    for i in range(1, len(content_words) - n + 1):
+        # Remove word leaving the window
+        leaving = content_words[i - 1]
+        window_counts[leaving] -= 1
+        if window_counts[leaving] == 0:
+            del window_counts[leaving]
+
+        # Add word entering the window
+        entering = content_words[i + n - 1]
+        window_counts[entering] = window_counts.get(entering, 0) + 1
+
+        # Only recount if entering/leaving words are in the quote
+        if leaving in quote_set or entering in quote_set:
+            matching = sum(1 for w in quote_words if window_counts.get(w, 0) > 0)
+            ratio = matching / n
+            if ratio > best:
+                best = ratio
+                if best >= 0.95:
+                    return best
+
+    return round(best, 4)
+
+
+def compute_source_grounding_scores(
+    data: dict,
+    source_content: str,
+    field_types: dict[str, str],
+) -> dict[str, float]:
+    """Check which quotes in an extraction actually exist in the source content.
+
+    Args:
+        data: Extraction data dict with _quotes.
+        source_content: The source text that was sent to the LLM.
+        field_types: Map of field_name -> type string.
+
+    Returns:
+        Dict of field_name -> source_grounding_score (0.0-1.0).
+        Only includes fields with non-empty quotes and "required" grounding mode.
+    """
+    if not data or not source_content:
+        return {}
+
+    quotes = data.get("_quotes", {}) or {}
+    scores: dict[str, float] = {}
+
+    for field_name, field_type in field_types.items():
+        if field_name in _METADATA_KEYS:
+            continue
+        if field_name not in data or data[field_name] is None:
+            continue
+
+        grounding_mode = GROUNDING_DEFAULTS.get(field_type, "required")
+        if grounding_mode in ("none", "semantic"):
+            continue
+
+        raw_quote = quotes.get(field_name)
+        quote = _coerce_quote(raw_quote)
+        if not quote:
+            continue
+
+        scores[field_name] = verify_quote_in_source(quote, source_content)
+
+    return scores

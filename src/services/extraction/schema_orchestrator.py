@@ -14,7 +14,9 @@ from services.extraction.field_groups import FieldGroup
 from services.extraction.grounding import (
     GROUNDING_DEFAULTS,
     _METADATA_KEYS as _GROUNDING_METADATA_KEYS,
+    _coerce_quote,
     score_field,
+    verify_quote_in_source,
 )
 from services.extraction.page_classifier import (
     ClassificationResult,
@@ -31,6 +33,71 @@ if TYPE_CHECKING:
     from services.extraction.smart_classifier import SmartClassifier
 
 logger = structlog.get_logger(__name__)
+
+# Source-grounding threshold for quote-in-content verification
+_SOURCE_GROUNDING_THRESHOLD = 0.8  # quote must be ≥80% word-match in source
+
+# Reserved keys that are metadata, not entity list data
+_ENTITY_RESERVED_KEYS = frozenset(
+    {"confidence", "_quotes", "_truncated", "_conflicts", "_validation"}
+)
+
+
+def _collect_quotes(result: dict) -> list[str]:
+    """Extract all quote strings from a result dict.
+
+    Handles both structures:
+    - Field groups: top-level ``_quotes`` dict mapping field names to quotes
+    - Entity lists: per-entity ``_quote`` strings inside list values
+
+    Returns list of non-empty coerced quote strings.
+    """
+    quotes: list[str] = []
+
+    # Field group structure: {"_quotes": {"field_name": "quote text"}}
+    top_quotes = result.get("_quotes", {}) or {}
+    if isinstance(top_quotes, dict):
+        for raw_quote in top_quotes.values():
+            coerced = _coerce_quote(raw_quote)
+            if coerced:
+                quotes.append(coerced)
+
+    # Entity list structure: {"products": [{"name": "X", "_quote": "..."}, ...]}
+    # Only scan if no top-level quotes found (entity lists don't have _quotes)
+    if not quotes:
+        for key, value in result.items():
+            if key in _ENTITY_RESERVED_KEYS or not isinstance(value, list):
+                continue
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                raw_quote = item.get("_quote")
+                coerced = _coerce_quote(raw_quote)
+                if coerced:
+                    quotes.append(coerced)
+
+    return quotes
+
+
+def _source_grounding_ratio(result: dict, content: str) -> float:
+    """Compute fraction of quoted fields whose quotes exist in the source content.
+
+    Handles both field group results (top-level ``_quotes`` dict) and entity list
+    results (per-entity ``_quote`` strings).
+
+    Returns ratio of source-grounded quotes (score >= threshold) to total quotes.
+    Returns 1.0 if no quotes exist (nothing to verify).
+    """
+    quotes = _collect_quotes(result)
+    if not quotes:
+        return 1.0
+
+    grounded = sum(
+        1
+        for quote in quotes
+        if verify_quote_in_source(quote, content) >= _SOURCE_GROUNDING_THRESHOLD
+    )
+    return grounded / len(quotes)
 
 
 class SchemaExtractionOrchestrator:
@@ -263,12 +330,13 @@ class SchemaExtractionOrchestrator:
         async def extract_chunk_with_semaphore(chunk, chunk_idx: int) -> dict | None:
             """Extract from a single chunk with semaphore-controlled concurrency.
 
-            No retry here — extract_field_group → _extract_direct already
-            retries with backoff and temperature variation (llm_max_retries).
+            After extraction, verifies that LLM-provided quotes actually exist
+            in the chunk content. If too many quotes are fabricated, re-extracts
+            once with a stricter quoting prompt.
             """
             async with semaphore:
                 try:
-                    return await self._extractor.extract_field_group(
+                    result = await self._extractor.extract_field_group(
                         content=chunk.content,
                         field_group=group,
                         source_context=source_context,
@@ -281,6 +349,43 @@ class SchemaExtractionOrchestrator:
                         error=str(e),
                     )
                     return None
+
+                # Source-grounding: verify quotes exist in chunk content
+                if not self._extraction.source_quoting_enabled:
+                    return result
+
+                sg_ratio = _source_grounding_ratio(result, chunk.content)
+                if sg_ratio >= self._extraction.source_grounding_min_ratio:
+                    return result
+
+                # Too many fabricated quotes — retry with stricter prompt
+                logger.info(
+                    "source_grounding_retry",
+                    group=group.name,
+                    chunk_idx=chunk_idx,
+                    source_grounding_ratio=sg_ratio,
+                )
+                try:
+                    retry_result = await self._extractor.extract_field_group(
+                        content=chunk.content,
+                        field_group=group,
+                        source_context=source_context,
+                        strict_quoting=True,
+                    )
+                except Exception:
+                    return result  # keep original on retry failure
+
+                retry_ratio = _source_grounding_ratio(retry_result, chunk.content)
+                if retry_ratio > sg_ratio:
+                    logger.info(
+                        "source_grounding_retry_improved",
+                        group=group.name,
+                        chunk_idx=chunk_idx,
+                        before=sg_ratio,
+                        after=retry_ratio,
+                    )
+                    return retry_result
+                return result
 
         logger.debug(
             "processing_chunks_continuous",
@@ -588,6 +693,44 @@ class SchemaExtractionOrchestrator:
         # Propagate truncation flag if any chunk was truncated
         if any(r.get("_truncated") for r in chunk_results):
             merged["_truncated"] = True
+
+        # Compute entity-level grounding scores.
+        # For entity lists, each entity has its own _quote. We score each
+        # entity's ID field value against its _quote, then report the average
+        # as the grounding score for the entity list field.
+        if all_entities and group is not None:
+            id_field_names = self._context.entity_id_fields
+            entity_scores: list[float] = []
+            for entity in all_entities:
+                if not isinstance(entity, dict):
+                    continue
+                raw_quote = entity.get("_quote")
+                quote = _coerce_quote(raw_quote)
+                if not quote:
+                    entity_scores.append(0.0)
+                    continue
+                # Find the entity's identifying value to score against quote
+                id_value = None
+                for id_field in id_field_names:
+                    id_value = entity.get(id_field)
+                    if id_value is not None:
+                        break
+                if id_value is not None:
+                    entity_scores.append(
+                        score_field(id_value, quote, "string")
+                    )
+                else:
+                    # No ID field — quote exists, assume grounded
+                    entity_scores.append(1.0)
+
+            if entity_scores:
+                merged["_grounding_scores"] = {
+                    entity_key: sum(entity_scores) / len(entity_scores)
+                }
+            else:
+                merged["_grounding_scores"] = {}
+        else:
+            merged["_grounding_scores"] = {}
 
         return merged
 

@@ -98,6 +98,32 @@ class TestPromptQuoting:
             prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
             assert "_quote" not in prompt
 
+    def test_entity_prompt_strict_quoting(self, llm_config):
+            """strict_quoting=True adds stricter quoting instructions for entity lists."""
+            extractor = SchemaExtractor(llm_config, source_quoting=True)
+            prompt = extractor._build_entity_list_system_prompt(
+                PRODUCTS_GROUP, strict_quoting=True
+            )
+            assert "CRITICAL QUOTING REQUIREMENT" in prompt
+            assert "word-for-word" in prompt
+
+    def test_entity_prompt_normal_quoting(self, llm_config):
+            """strict_quoting=False uses standard quoting instructions."""
+            extractor = SchemaExtractor(llm_config, source_quoting=True)
+            prompt = extractor._build_entity_list_system_prompt(
+                PRODUCTS_GROUP, strict_quoting=False
+            )
+            assert "CRITICAL QUOTING REQUIREMENT" not in prompt
+            assert "verbatim excerpt" in prompt
+
+    def test_strict_quoting_routed_to_entity_list(self, llm_config):
+            """_build_system_prompt passes strict_quoting to entity list builder."""
+            extractor = SchemaExtractor(llm_config, source_quoting=True)
+            prompt = extractor._build_system_prompt(
+                PRODUCTS_GROUP, strict_quoting=True
+            )
+            assert "CRITICAL QUOTING REQUIREMENT" in prompt
+
 
 class TestQuoteMerge:
     """Test that quotes merge correctly in orchestrator."""

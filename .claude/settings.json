@@ -73,7 +73,8 @@
       "Bash(gh pr create --title * --body *)",
       "Bash(gh pr view * --json title,url,state | python3 -m json.tool)",
       "Bash(npx gitnexus analyze)",
-      "gitnexus - query(*)"
+      "Gitnexus - query(*)",
+      "Bash(.venv/bin/python -m pytest --tb=short -q 2>&1 | tail -10)"
     ],
     "deny": [
       "Bash(cd * && python *)",
