@@ -126,6 +126,7 @@ class SchemaExtractionPipeline:
                 extraction_type=result["extraction_type"],
                 source_group=context_value,
                 confidence=result.get("confidence"),
+                grounding_scores=result.get("grounding_scores"),
                 profile_used=schema_name,
             )
             self._db.add(extraction)

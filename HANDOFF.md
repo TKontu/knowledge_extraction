@@ -1,6 +1,6 @@
 # Handoff: Knowledge Extraction Orchestrator
 
-**Last updated:** 2026-03-04
+**Last updated:** 2026-03-05
 
 ## Recently Completed
 
@@ -35,7 +35,7 @@
 - [x] **Enable Phase 1A extraction reliability** — chunk overlap, source quoting, conflict detection, schema validation, confidence gating (commit `89b4284`)
 - [x] **Exception hierarchy** — `AppError` with `TransientError`/`PermanentError` branches (commit `f2c98ce`)
 - [x] **Fix dual import paths** — `from src.X` → `from X` (commit `d567f96`)
-- [x] **Domain boilerplate dedup** — Phases A-E complete, section-aware two-pass (commit `91a7f1d`)
+- [x] **Domain boilerplate dedup** — All phases (A-F) complete, section-aware two-pass (commit `91a7f1d`). Validated on 249 production domains (2026-03-04).
 
 ## Already Enabled (no action needed)
 
@@ -52,17 +52,32 @@
 
 ## In Progress
 
-- **Nothing in progress**
+- **Grounding & Consolidation** — Implementation plan ready. See `docs/TODO_grounding_and_consolidation.md`. 6 increments, ~1100 new lines, ~100 tests.
 
 ## Next Steps (prioritized)
 
-### Validation on Real Data (operational, no code changes)
-- [ ] **Validate domain dedup** (Phase F) — run `analyze_boilerplate` on drivetrain project (`99a19141-...`), inspect stats, spot-check cleaned_content
-- [ ] **Validate classification + extraction quality** — re-extract David Brown Santasalo, verify page_type populated, product pages don't get company_meta, HQ = "Jyväskylä, Finland" not "Santasalo"
+### Completed Validation
+- [x] **Validate domain dedup** (Phase F) — ✅ Validated 2026-03-04.
+- [x] **Full re-extraction** — 12,068 sources, 46,949 extractions, zero failures.
+- [x] **Classification quality assessment** — 57.7% zero-confidence waste confirmed. LLM skip-gate trials done.
+- [x] **Downstream pipeline trials** (Trials 1-2A, 4A) — See `docs/TODO_downstream_trials.md`.
+- [x] **Grounding & verification trials** — 10+ trials, 5 models tested. Quote-based verification with Qwen3-30B: 80-100% detection, 100% recall. Full-content verification rejected (dead end). Prompt-based grounding rejected (47-80% recall loss). See `docs/TODO_grounded_extraction.md`.
+- [x] **Multilingual product dedup** — Batched LLM dedup validated (Rossi: 3.6x dedup, 6.2s). Prompt tuning needed for edge cases.
 
 ### Code Tasks (by priority)
-- [ ] **Scheduler burst limiting** (Phase 3 from scheduler TODO) — configurable limit on queued jobs per worker in first N seconds after startup (deferred, lower priority)
-- [ ] **Schema update safety** — block schema updates when extractions exist, or require `force=true` (see `docs/TODO_production_readiness.md`)
+- [ ] **Grounding verification + consolidation** — #1 PRIORITY. 6 increments. See `docs/TODO_grounding_and_consolidation.md`.
+  - [ ] Increment 1: Grounding pure functions (string-match)
+  - [ ] Increment 2: DB schema + retroactive scoring (47K extractions)
+  - [ ] Increment 3: LLM quote verification (Qwen3-30B, unresolved fields)
+  - [ ] Increment 4: Consolidation pure functions (6 strategies)
+  - [ ] Increment 5: Consolidation service + DB + API
+  - [ ] Increment 6: Pipeline integration (inline grounding)
+- [ ] **LLM skip-gate classification** — Replace embedding classifier with binary LLM gate. See `docs/TODO_classification_robustness.md`.
+- [ ] **Report integration with consolidation** — Reports read consolidated records instead of raw per-URL extractions.
+- [ ] **Multilingual product dedup** — Enhancement to union_dedup strategy. Batched LLM grouping during consolidation.
+- [ ] **Global sources architecture** — Decouple sources from projects. See `docs/TODO_global_sources.md`.
+- [ ] **Search fix + reranking** — Fix 500 errors, add bge-reranker-v2-m3.
+- [ ] **Entity extraction wiring** — Connect existing infrastructure to pipeline (run on consolidated records).
 
 ## Key Files
 
@@ -83,19 +98,37 @@
 |-----|--------|
 | `docs/review_extraction_pipeline_design.md` | ✅ All 32 issues implemented (6 phases) |
 | `docs/TODO_pipeline_fixes.md` | ✅ All 5 phases complete |
-| `docs/TODO_extraction_reliability.md` | ✅ All phases complete (validation pending) |
-| `docs/TODO_domain_dedup.md` | ✅ Phases A-E complete (Phase F validation pending) |
+| `docs/TODO_extraction_reliability.md` | ✅ All phases complete (extraction quality validation pending) |
+| `docs/TODO_domain_dedup.md` | ✅ All phases (A-F) complete, validated on production data |
 | `docs/TODO_scheduler_startup_resilience.md` | ✅ Phases 1-2 + ServiceContainer done |
 | `docs/TODO-fix-dual-import-paths.md` | ✅ Complete |
 | `docs/TODO_smart_crawl.md` | ✅ Complete |
 | `docs/TODO_report_table_grouping.md` | ✅ Complete |
+| `docs/TODO_classification_robustness.md` | ⬜ v3 spec with trial results, ready to implement |
+| `docs/TODO_global_sources.md` | ⬜ Full spec with migration plan |
+| `docs/TODO_downstream_trials.md` | ✅ Trials 1, 2A, 4A complete. Findings feed into grounding plan. |
+| `docs/TODO_grounded_extraction.md` | ✅ All trials complete. Design doc with model comparison results. |
+| `docs/TODO_grounding_and_consolidation.md` | ⬜ Implementation plan (6 increments). Ready to start. |
 
 ## Context
 
-- All work committed on `main` (not yet pushed to remote)
+- Code changes on `main` (HANDOFF.md, TODO docs modified/new — not yet committed)
 - Test suite: 1738 tests passing
 - GitNexus index behind HEAD — run `npx gitnexus analyze` before using graph queries
-- All reliability features enabled in code defaults — not yet validated on real extraction data
-- Typed config facade migration complete — services use `LLMConfig`, `ExtractionConfig`, `ClassificationConfig` etc. instead of `Settings`
-- 10-issue fix complete — `SchemaPipelineResult` typed return, orchestrator accepts config facades, drivetrain-specific defaults removed
-- 32-issue design review fix complete — source_groups plumbed end-to-end, EmbeddingResult typed return, facade caching, backoff jitter, CJK chunking, entity dedup normalization
+- **Full re-extraction completed** (2026-03-05): 12,068 sources, 46,949 extractions, zero failures. Confirmed 57.7% zero-confidence waste from embedding classifier.
+- **LLM classification trials completed** (2026-03-05): 4 trials across 6 models (gemma3-4B/12b/27B, Qwen3-4B/8B/30B), 30-80 pages each. Key findings:
+  - Binary "extract or skip?" >> group selection (92% vs 34-53% recall)
+  - gemma3-4B best for classification: 92.6% recall, 0.18s/page, ~1100 tokens
+  - Schema-agnostic design works: pass schema as context, no hardcoded domain knowledge
+  - GT from extraction confidence is noisy: ~38% of "should skip" pages have relevant data the extraction model failed on
+  - Architecture: permissive skip-gate + downstream confidence gating in reports
+- **vLLM model names updated** (2026-03-05): gemma3-12b-awq → gemma3-12b-it-qat-awq, Qwen3-30B-A3B-Instruct-4bit → Qwen3-30B-A3B-it-4bit, etc. qwen3-8B broken (100% parse errors), Qwen3.5-27B-4bit broken (won't load).
+- Trial scripts at `/tmp/llm_classify_compare.py`, `/tmp/llm_classify_compare2.py`, `/tmp/llm_skip_gate_trial.py`, `/tmp/llm_skip_gate_v3.py`, `/tmp/llm_skip_gate_v4.py`
+- Two new TODO specs ready for implementation: `TODO_classification_robustness.md` (v3, LLM skip-gate) and `TODO_global_sources.md` (decouple sources from projects)
+- **Grounding trial results** (2026-03-05): 10+ trials across 5 models. Key findings:
+  - Quote-based verification with Qwen3-30B: 80% detection / 100% recall (employee counts), 100% / 67% (product specs)
+  - Full-content verification: dead end regardless of model/context (20% recall with larger models)
+  - Prompt-based grounding: rejected (47-80% recall loss)
+  - gemma3-4B for classification, Qwen3-30B for verification (faster + better on this task)
+  - Multilingual dedup: batched at 10 names/call works (Rossi 3.6x dedup in 6.2s)
+  - Trial scripts: `/tmp/trial_quote_verification.py`, `/tmp/trial_model_comparison_v2.py`, `/tmp/trial_spec_verification_models.py`, `/tmp/trial_multilingual_dedup_v2.py`, `/tmp/trial_fullcontent_verify_v2.py`

@@ -47,6 +47,7 @@ class ExtractionRepository:
         chunk_index: int | None = None,
         chunk_context: dict | None = None,
         embedding_id: str | None = None,
+        grounding_scores: dict[str, float] | None = None,
     ) -> Extraction:
         """Create a new extraction.
 
@@ -61,6 +62,7 @@ class ExtractionRepository:
             chunk_index: Optional chunk index in source document
             chunk_context: Optional context around the chunk
             embedding_id: Optional vector embedding ID
+            grounding_scores: Optional per-field grounding scores (0.0-1.0)
 
         Returns:
             Created Extraction instance
@@ -76,6 +78,7 @@ class ExtractionRepository:
             chunk_index=chunk_index,
             chunk_context=chunk_context or {},
             embedding_id=embedding_id,
+            grounding_scores=grounding_scores,
         )
 
         self._session.add(extraction)
@@ -399,6 +402,51 @@ class ExtractionRepository:
 
         self._session.flush()
         return result.rowcount
+
+    def update_grounding_scores(
+        self, extraction_id: UUID, scores: dict[str, float]
+    ) -> None:
+        """Update grounding scores for a single extraction.
+
+        Args:
+            extraction_id: Extraction UUID
+            scores: Per-field grounding scores (0.0-1.0)
+        """
+        from sqlalchemy import update
+
+        self._session.execute(
+            update(Extraction)
+            .where(Extraction.id == extraction_id)
+            .values(grounding_scores=scores)
+        )
+        self._session.flush()
+
+    def update_grounding_scores_batch(
+        self, updates: list[tuple[UUID, dict[str, float]]]
+    ) -> int:
+        """Batch update grounding scores for multiple extractions.
+
+        Args:
+            updates: List of (extraction_id, scores) tuples
+
+        Returns:
+            Number of extractions updated
+        """
+        if not updates:
+            return 0
+
+        from sqlalchemy import update
+
+        count = 0
+        for extraction_id, scores in updates:
+            result = self._session.execute(
+                update(Extraction)
+                .where(Extraction.id == extraction_id)
+                .values(grounding_scores=scores)
+            )
+            count += result.rowcount
+        self._session.flush()
+        return count
 
     def find_orphaned(
         self,

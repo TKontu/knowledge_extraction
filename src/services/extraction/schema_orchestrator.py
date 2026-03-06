@@ -11,6 +11,7 @@ from uuid import UUID
 import structlog
 
 from services.extraction.field_groups import FieldGroup
+from services.extraction.grounding import compute_grounding_scores
 from services.extraction.page_classifier import (
     ClassificationResult,
     PageClassifier,
@@ -184,6 +185,7 @@ class SchemaExtractionOrchestrator:
                 "source_group": context_value,
                 "data": {},
                 "confidence": 0.0,
+                "grounding_scores": {},
             }
 
             # Extract from chunks in parallel batches
@@ -205,6 +207,12 @@ class SchemaExtractionOrchestrator:
                     merged, _ = validator.validate(merged, group)
 
                 group_result["data"] = merged
+
+                # Compute inline grounding scores via string-match
+                field_types = {f.name: f.field_type for f in group.fields}
+                group_result["grounding_scores"] = compute_grounding_scores(
+                    merged, field_types
+                )
 
                 raw_confidence = merged.get("confidence", 0.0)
                 is_empty, _ = self._is_empty_result(merged, group)

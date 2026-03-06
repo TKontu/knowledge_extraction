@@ -290,6 +290,9 @@ class Extraction(Base):
     # Vector reference
     embedding_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Grounding verification scores per field (string-match + LLM)
+    grounding_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Flag indicating if entity extraction completed successfully
     entities_extracted: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=True
@@ -407,3 +410,46 @@ class DomainBoilerplate(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+
+class ConsolidatedExtraction(Base):
+    """One consolidated record per (project, source_group, extraction_type)."""
+
+    __tablename__ = "consolidated_extractions"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "source_group",
+            "extraction_type",
+            name="uq_consolidated_project_sg_type",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    source_group: Mapped[str] = mapped_column(Text, nullable=False)
+    extraction_type: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Consolidated field values
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    # Per-field provenance metadata
+    provenance: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    # Counts
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    grounded_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    # Relationships
+    project: Mapped["Project"] = relationship("Project")

@@ -298,3 +298,42 @@ async def create_from_template(
     db.refresh(db_project)
 
     return ProjectResponse.model_validate(db_project)
+
+
+@router.post("/{project_id}/consolidate")
+async def consolidate_project(
+    project_id: UUID,
+    source_group: str | None = Query(
+        default=None, description="Consolidate a single source group"
+    ),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Trigger consolidation for a project (or single source_group).
+
+    Merges multiple raw extractions per entity into one consolidated record
+    with grounding-weighted strategies and provenance tracking.
+    """
+    from services.extraction.consolidation_service import ConsolidationService
+
+    repo = ProjectRepository(db)
+    project = repo.get(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    service = ConsolidationService(db, repo)
+
+    if source_group:
+        records = service.consolidate_source_group(project_id, source_group)
+        db.commit()
+        return {
+            "source_groups": 1,
+            "records_created": len(records),
+            "errors": 0,
+        }
+
+    result = service.consolidate_project(project_id)
+    db.commit()
+    return result

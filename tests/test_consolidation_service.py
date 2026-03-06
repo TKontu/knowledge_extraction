@@ -1,0 +1,372 @@
+"""Tests for consolidation service (DB integration layer)."""
+
+import pytest
+from sqlalchemy.orm import Session
+
+from database import engine
+from orm_models import ConsolidatedExtraction, Project, Source
+from services.extraction.consolidation_service import ConsolidationService
+from services.projects.repository import ProjectRepository
+from services.storage.repositories.extraction import ExtractionRepository
+
+
+@pytest.fixture
+def db_session():
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def test_project(db_session):
+    project = Project(
+        name="test_consolidation_project",
+        extraction_schema={
+            "field_groups": [
+                {
+                    "name": "company_info",
+                    "description": "Company information",
+                    "fields": [
+                        {"name": "company_name", "field_type": "string"},
+                        {"name": "employee_count", "field_type": "integer"},
+                        {"name": "description", "field_type": "text"},
+                    ],
+                    "prompt_hint": "",
+                },
+            ]
+        },
+    )
+    db_session.add(project)
+    db_session.flush()
+    return project
+
+
+@pytest.fixture
+def test_source(db_session, test_project):
+    source = Source(
+        project_id=test_project.id,
+        uri="https://example.com/test1",
+        source_group="abb",
+    )
+    db_session.add(source)
+    db_session.flush()
+    return source
+
+
+@pytest.fixture
+def test_source_2(db_session, test_project):
+    source = Source(
+        project_id=test_project.id,
+        uri="https://example.com/test2",
+        source_group="abb",
+    )
+    db_session.add(source)
+    db_session.flush()
+    return source
+
+
+@pytest.fixture
+def extraction_repo(db_session):
+    return ExtractionRepository(db_session)
+
+
+@pytest.fixture
+def project_repo(db_session):
+    return ProjectRepository(db_session)
+
+
+@pytest.fixture
+def service(db_session, project_repo):
+    return ConsolidationService(db_session, project_repo)
+
+
+def _create_extraction(
+    repo,
+    project,
+    source,
+    data,
+    source_group="abb",
+    confidence=0.9,
+    grounding_scores=None,
+):
+    return repo.create(
+        project_id=project.id,
+        source_id=source.id,
+        data=data,
+        extraction_type="company_info",
+        source_group=source_group,
+        confidence=confidence,
+        grounding_scores=grounding_scores,
+    )
+
+
+class TestConsolidateSourceGroup:
+    def test_creates_consolidated_record(
+        self,
+        service,
+        extraction_repo,
+        test_project,
+        test_source,
+        test_source_2,
+        db_session,
+    ):
+        """Basic consolidation creates a record in the DB."""
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={
+                "company_name": "ABB",
+                "employee_count": 105000,
+                "_quotes": {
+                    "company_name": "ABB Corp",
+                    "employee_count": "105,000 employees",
+                },
+            },
+            grounding_scores={"company_name": 1.0, "employee_count": 1.0},
+        )
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source_2,
+            data={
+                "company_name": "ABB",
+                "employee_count": 105000,
+                "_quotes": {
+                    "company_name": "ABB Ltd",
+                    "employee_count": "about 105,000",
+                },
+            },
+            confidence=0.85,
+            grounding_scores={"company_name": 1.0, "employee_count": 1.0},
+        )
+
+        records = service.consolidate_source_group(test_project.id, "abb")
+        assert len(records) == 1
+
+        # Verify DB record
+        from sqlalchemy import select
+
+        result = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+                ConsolidatedExtraction.source_group == "abb",
+            )
+        )
+        db_record = result.scalar_one()
+        assert db_record.data["company_name"] == "ABB"
+        assert db_record.data["employee_count"] == 105000
+        assert db_record.source_count == 2
+
+    def test_handles_no_extractions(self, service, test_project, db_session):
+        """Source group with 0 extractions returns empty list."""
+        records = service.consolidate_source_group(test_project.id, "nonexistent")
+        assert records == []
+
+    def test_provenance_stored(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB", "_quotes": {"company_name": "ABB Corp"}},
+            grounding_scores={"company_name": 1.0},
+        )
+
+        service.consolidate_source_group(test_project.id, "abb")
+
+        from sqlalchemy import select
+
+        db_record = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalar_one()
+
+        assert db_record.provenance is not None
+        assert "company_name" in db_record.provenance
+
+    def test_source_count_correct(
+        self,
+        service,
+        extraction_repo,
+        test_project,
+        test_source,
+        test_source_2,
+        db_session,
+    ):
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+        )
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source_2,
+            data={"company_name": "ABB"},
+        )
+
+        service.consolidate_source_group(test_project.id, "abb")
+
+        from sqlalchemy import select
+
+        db_record = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalar_one()
+        assert db_record.source_count == 2
+
+    def test_grounded_count_correct(
+        self,
+        service,
+        extraction_repo,
+        test_project,
+        test_source,
+        test_source_2,
+        db_session,
+    ):
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB", "_quotes": {"company_name": "ABB Corp"}},
+            grounding_scores={"company_name": 1.0},
+        )
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source_2,
+            data={"company_name": "ABB"},
+            grounding_scores={"company_name": 0.0},
+        )
+
+        service.consolidate_source_group(test_project.id, "abb")
+
+        from sqlalchemy import select
+
+        db_record = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalar_one()
+        assert db_record.grounded_count >= 1
+
+
+class TestConsolidateProject:
+    def test_all_source_groups_processed(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+            source_group="abb",
+        )
+
+        # Create second source group
+        source2 = Source(
+            project_id=test_project.id,
+            uri="https://example.com/siemens",
+            source_group="siemens",
+        )
+        db_session.add(source2)
+        db_session.flush()
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            source2,
+            data={"company_name": "Siemens"},
+            source_group="siemens",
+        )
+
+        result = service.consolidate_project(test_project.id)
+        assert result["source_groups"] >= 2
+        assert result["records_created"] >= 2
+        assert result["errors"] == 0
+
+    def test_project_not_found(self, service):
+        from uuid import uuid4
+
+        result = service.consolidate_project(uuid4())
+        assert "error" in result
+
+
+class TestReconsolidate:
+    def test_idempotent(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        """Running twice produces same result, updated_at changes."""
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+        )
+
+        service.consolidate_source_group(test_project.id, "abb")
+
+        from sqlalchemy import select
+
+        first = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalar_one()
+        first_data = dict(first.data)
+        first_id = first.id
+
+        # Reconsolidate
+        service.reconsolidate(test_project.id)
+
+        db_session.expire_all()
+        second = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalar_one()
+
+        assert second.data == first_data
+        # Same record (upsert), not a new one
+        assert second.id == first_id
+
+    def test_specific_source_groups(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+            source_group="abb",
+        )
+        service.consolidate_source_group(test_project.id, "abb")
+
+        result = service.reconsolidate(test_project.id, source_groups=["abb"])
+        assert result["records_created"] >= 1
+
+
+class TestConsolidateEndpoint:
+    """Test the API endpoint via direct function call (no HTTP)."""
+
+    def test_trigger_consolidation(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+        )
+
+        result = service.consolidate_project(test_project.id)
+        assert "source_groups" in result
+        assert "records_created" in result

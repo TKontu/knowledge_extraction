@@ -601,6 +601,16 @@ class Settings(BaseSettings):
         description="Minimum characters for a content block to be considered",
     )
 
+    # Grounding Verification
+    grounding_llm_verify_enabled: bool = Field(
+        default=True,
+        description="Enable LLM verification for unresolved grounding scores",
+    )
+    grounding_llm_verify_model: str = Field(
+        default="",
+        description="Model for LLM grounding verification (empty = use LLM_MODEL)",
+    )
+
     # Page Classification (extraction optimization)
     classification_enabled: bool = Field(
         default=True,
