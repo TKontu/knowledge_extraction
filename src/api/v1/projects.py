@@ -300,6 +300,94 @@ async def create_from_template(
     return ProjectResponse.model_validate(db_project)
 
 
+@router.post("/{project_id}/backfill-grounding")
+async def backfill_grounding(
+    project_id: UUID,
+    dry_run: bool = Query(default=False, description="Compute scores without writing to DB"),
+    batch_size: int = Query(default=500, ge=1, le=5000, description="Batch size"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Backfill string-match grounding scores for all extractions in a project.
+
+    Computes grounding scores by matching extracted values against source quotes.
+    This is a CPU-only operation (no LLM calls) and runs synchronously.
+    """
+    from collections import defaultdict
+
+    from services.extraction.grounding import (
+        compute_grounding_scores,
+        extract_field_types_from_schema,
+    )
+    from services.storage.repositories.extraction import (
+        ExtractionFilters,
+        ExtractionRepository,
+    )
+
+    repo = ProjectRepository(db)
+    project = repo.get(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    schema = project.extraction_schema
+    if not schema or not schema.get("field_groups"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project has no extraction schema with field_groups",
+        )
+
+    field_types_by_group = extract_field_types_from_schema(schema)
+    ext_repo = ExtractionRepository(db)
+    filters = ExtractionFilters(project_id=project_id)
+    total_count = ext_repo.count(filters)
+
+    stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    processed = 0
+    updated = 0
+    skipped = 0
+    offset = 0
+
+    while offset < total_count:
+        extractions = ext_repo.list(filters, limit=batch_size, offset=offset)
+        if not extractions:
+            break
+
+        updates: list[tuple[UUID, dict[str, float]]] = []
+        for ext in extractions:
+            field_types = field_types_by_group.get(ext.extraction_type, {})
+            if not field_types:
+                skipped += 1
+                continue
+
+            scores = compute_grounding_scores(ext.data, field_types)
+            if scores:
+                updates.append((ext.id, scores))
+                for field_name, score in scores.items():
+                    bucket = "grounded" if score >= 0.5 else "ungrounded"
+                    stats[field_name][bucket] += 1
+
+            processed += 1
+
+        if updates and not dry_run:
+            updated += ext_repo.update_grounding_scores_batch(updates)
+            db.commit()
+
+        offset += batch_size
+
+    return {
+        "total_extractions": total_count,
+        "processed": processed,
+        "updated": updated,
+        "skipped_no_field_types": skipped,
+        "dry_run": dry_run,
+        "field_stats": {
+            field: dict(counts) for field, counts in sorted(stats.items())
+        },
+    }
+
+
 @router.post("/{project_id}/consolidate")
 async def consolidate_project(
     project_id: UUID,
