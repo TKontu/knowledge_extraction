@@ -95,7 +95,7 @@ class LLMGroundingVerifier:
             supported = response.get("supported")
             reason = response.get("reason", "")
 
-            if supported is None:
+            if not isinstance(supported, bool):
                 return LLMGroundingResult(
                     supported=None,
                     reason=f"Malformed LLM response: {response}",

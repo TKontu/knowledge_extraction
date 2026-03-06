@@ -481,7 +481,7 @@ class SchemaExtractionOrchestrator:
             if field.name in _GROUNDING_METADATA_KEYS:
                 continue
             ft = field.field_type
-            grounding_mode = GROUNDING_DEFAULTS.get(ft, "required")
+            grounding_mode = field.grounding_mode or GROUNDING_DEFAULTS.get(ft, "required")
             if grounding_mode in ("none", "semantic"):
                 continue
             # Only score fields present in the merged result
@@ -495,6 +495,15 @@ class SchemaExtractionOrchestrator:
                 chunk_quote = (r.get("_quotes") or {}).get(field.name, "")
                 if chunk_quote:
                     best = max(best, score_field(val, chunk_quote, ft))
+
+            # Fallback: if no chunk scored > 0 (e.g. winning chunk had value
+            # but no quote while a different chunk contributed the quote),
+            # try scoring the merged value against the best available quote.
+            if best == 0.0 and field.name in merged and merged[field.name] is not None:
+                merged_quote = (merged.get("_quotes") or {}).get(field.name, "")
+                if merged_quote:
+                    best = score_field(merged[field.name], merged_quote, ft)
+
             grounding_scores[field.name] = best
         merged["_grounding_scores"] = grounding_scores
 
@@ -571,10 +580,16 @@ class SchemaExtractionOrchestrator:
             sum(confidences) / len(confidences) if confidences else 0.5
         )
 
-        return {
+        merged = {
             entity_key: all_entities,
             "confidence": avg_confidence,
         }
+
+        # Propagate truncation flag if any chunk was truncated
+        if any(r.get("_truncated") for r in chunk_results):
+            merged["_truncated"] = True
+
+        return merged
 
     def _detect_conflicts(
         self,

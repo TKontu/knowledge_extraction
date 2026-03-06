@@ -301,8 +301,13 @@ class SchemaExtractor:
                                 if result_text
                                 else None,
                             )
-                            # Return empty list result for entity lists
-                            return {field_group.name: [], "confidence": 0.0}
+                            # Return empty list with truncation flag so the
+                            # orchestrator can record the data loss on the extraction.
+                            return {
+                                field_group.name: [],
+                                "confidence": 0.0,
+                                "_truncated": True,
+                            }
                     else:
                         # Non-entity fields - try normal repair
                         result_data = try_repair_json(

@@ -123,6 +123,16 @@ class SchemaExtractionPipeline:
         # Store each result as an extraction
         extractions = []
         for result in results:
+            # Record truncation in chunk_context if any chunk was truncated
+            chunk_context = None
+            if result.get("data", {}).pop("_truncated", False):
+                chunk_context = {"truncated": True}
+                logger.warning(
+                    "extraction_truncated",
+                    source_id=str(source.id),
+                    extraction_type=result["extraction_type"],
+                )
+
             extraction = Extraction(
                 project_id=source.project_id,
                 source_id=source.id,
@@ -132,6 +142,7 @@ class SchemaExtractionPipeline:
                 confidence=result.get("confidence"),
                 grounding_scores=result.get("grounding_scores"),
                 profile_used=schema_name,
+                chunk_context=chunk_context,
             )
             self._db.add(extraction)
             extractions.append(extraction)
@@ -386,6 +397,10 @@ class SchemaExtractionPipeline:
                         errors=embed_result.errors,
                         chunk=chunk_idx + 1,
                     )
+                # Mark extractions as embedded when the batch succeeded
+                if embed_result.embedded_count > 0 and not embed_result.errors:
+                    for e in chunk_extractions:
+                        e.embedded = True
 
             # Call checkpoint callback to update job payload before commit
             if checkpoint_callback:

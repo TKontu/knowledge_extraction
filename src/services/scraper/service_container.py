@@ -104,8 +104,6 @@ class ServiceContainer:
             content_limit=settings.extraction_content_limit,
         )
         await self._llm_worker.initialize()
-        import asyncio
-
         self._llm_worker_task = asyncio.create_task(self._llm_worker.start())
 
         self._started = True

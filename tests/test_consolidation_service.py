@@ -337,8 +337,8 @@ class TestReconsolidate:
         ).scalar_one()
 
         assert second.data == first_data
-        # Same record (upsert), not a new one
-        assert second.id == first_id
+        # Reconsolidation produces equivalent data (delete+insert, not upsert)
+        assert second.source_group == first.source_group
 
     def test_specific_source_groups(
         self, service, extraction_repo, test_project, test_source, db_session
@@ -413,6 +413,108 @@ class TestConsolidateProjectSessionRollback:
 
         row = db_session.execute(text("SELECT 1")).scalar()
         assert row == 1
+
+
+class TestSavepointIsolation:
+    """C1: Verify that a failure in one source group preserves others."""
+
+    def test_successful_group_survives_later_failure(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        """Group A succeeds, group B fails — group A's record must survive."""
+        # Create extractions in two source groups
+        source_b = Source(
+            project_id=test_project.id,
+            uri="https://example.com/group_b",
+            source_group="group_b",
+        )
+        db_session.add(source_b)
+        db_session.flush()
+
+        _create_extraction(
+            extraction_repo, test_project, test_source,
+            data={"company_name": "ABB"}, source_group="group_a",
+        )
+        _create_extraction(
+            extraction_repo, test_project, source_b,
+            data={"company_name": "Siemens"}, source_group="group_b",
+        )
+        db_session.flush()
+
+        # Make group_b fail during upsert by patching
+        original_upsert = service._upsert_record
+        call_count = 0
+
+        def fail_on_second_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise RuntimeError("simulated failure on group B")
+            return original_upsert(*args, **kwargs)
+
+        service._upsert_record = fail_on_second_call
+
+        result = service._process_source_groups(
+            test_project.id, ["group_a", "group_b"]
+        )
+        assert result["errors"] == 1
+        assert result["records_created"] >= 1
+
+        # Group A's consolidated record must be present
+        from sqlalchemy import select
+
+        records = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalars().all()
+        assert len(records) == 1
+        assert records[0].source_group == "group_a"
+
+
+class TestStaleRecordCleanup:
+    """H2: Verify that reconsolidation removes stale records."""
+
+    def test_removed_extraction_type_is_cleaned_up(
+        self, service, extraction_repo, test_project, test_source, db_session
+    ):
+        """If an extraction type disappears, its consolidated record is deleted."""
+        # First, create a consolidated record by consolidating normally
+        _create_extraction(
+            extraction_repo, test_project, test_source,
+            data={"company_name": "ABB"},
+        )
+        service.consolidate_source_group(test_project.id, "abb")
+
+        from sqlalchemy import select
+
+        records = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalars().all()
+        assert len(records) == 1
+
+        # Now delete all extractions and reconsolidate — stale record should be gone
+        from sqlalchemy import delete
+        from orm_models import Extraction
+
+        db_session.execute(
+            delete(Extraction).where(Extraction.project_id == test_project.id)
+        )
+        db_session.flush()
+
+        # consolidate_source_group returns [] when no extractions exist,
+        # but the delete happens before the early-return check, so stale
+        # records ARE cleaned up even when there's nothing to consolidate.
+        service.consolidate_source_group(test_project.id, "abb")
+
+        records = db_session.execute(
+            select(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == test_project.id,
+            )
+        ).scalars().all()
+        assert len(records) == 0
 
 
 class TestConsolidateEndpoint:

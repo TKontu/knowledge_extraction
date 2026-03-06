@@ -275,3 +275,30 @@ class TestLLMGroundingResult:
         assert r.supported is None
         assert r.reason == "error"
         assert r.latency == 1.2
+
+
+class TestNonBoolSupportedHandling:
+    """M4: Non-bool 'supported' values are treated as malformed."""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        from unittest.mock import AsyncMock
+
+        return AsyncMock()
+
+    @pytest.fixture
+    def verifier(self, mock_llm_client):
+        return LLMGroundingVerifier(llm_client=mock_llm_client)
+
+    @pytest.mark.asyncio
+    async def test_string_supported_treated_as_malformed(self, verifier, mock_llm_client):
+        mock_llm_client.complete.return_value = {"supported": "yes", "reason": "looks good"}
+        result = await verifier.verify_quote("name", "ABB", "ABB Corp")
+        assert result.supported is None
+        assert "Malformed" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_int_supported_treated_as_malformed(self, verifier, mock_llm_client):
+        mock_llm_client.complete.return_value = {"supported": 1, "reason": "confirmed"}
+        result = await verifier.verify_quote("name", "ABB", "ABB Corp")
+        assert result.supported is None

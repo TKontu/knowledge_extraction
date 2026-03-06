@@ -20,6 +20,8 @@ class FieldDefinition:
     default: Any = None
     enum_values: list[str] | None = None
     merge_strategy: str | None = None  # Override type-based merge default
+    grounding_mode: str | None = None  # "required", "semantic", "none" (None = use type default)
+    consolidation_strategy: str | None = None  # Override type-based consolidation default
 
 
 @dataclass

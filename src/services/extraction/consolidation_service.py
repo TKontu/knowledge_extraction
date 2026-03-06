@@ -9,7 +9,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from sqlalchemy import distinct, func, select
+from sqlalchemy import delete, distinct, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,15 @@ class ConsolidationService:
             return []
 
         field_defs_by_group = _extract_field_definitions(schema)
+
+        # Delete existing consolidated records for this source group so that
+        # removed extraction types don't leave stale rows behind.
+        self._session.execute(
+            delete(ConsolidatedExtraction).where(
+                ConsolidatedExtraction.project_id == project_id,
+                ConsolidatedExtraction.source_group == source_group,
+            )
+        )
 
         # Load all extractions for this source group
         extractions = (
@@ -136,16 +145,22 @@ class ConsolidationService:
         project_id: UUID,
         source_groups: list[str],
     ) -> dict[str, int]:
-        """Process a list of source groups with per-group error isolation."""
+        """Process a list of source groups with per-group error isolation.
+
+        Uses SAVEPOINTs so that a failure in one group does not roll back
+        previously successful groups within the same outer transaction.
+        """
         total_records = 0
         errors = 0
 
         for sg in source_groups:
+            savepoint = self._session.begin_nested()
             try:
                 records = self.consolidate_source_group(project_id, sg)
+                savepoint.commit()
                 total_records += len(records)
             except Exception:
-                self._session.rollback()
+                savepoint.rollback()
                 logger.exception(
                     "consolidation_error",
                     project_id=str(project_id),
@@ -180,6 +195,8 @@ class ConsolidationService:
                 "agreement": field.agreement,
                 "top_sources": field.top_sources,
             }
+            # Record-level grounded_count = max across fields. Per-field
+            # breakdown is in the provenance JSONB for detailed queries.
             total_grounded = max(total_grounded, field.grounded_count)
 
         # PostgreSQL upsert (INSERT ... ON CONFLICT UPDATE)

@@ -210,9 +210,23 @@ class TestAnyTrue:
     def test_empty(self):
         assert any_true([]) is None
 
-    def test_default_min_count_is_2(self):
-        values = [WeightedValue(True, 0.9), WeightedValue(False, 0.8)]
-        assert any_true(values) is None  # only 1 True, min_count=2 default
+    def test_default_min_count_is_3(self):
+        """Default min_count=3 matches trial findings (86% accuracy)."""
+        values = [
+            WeightedValue(True, 0.9),
+            WeightedValue(True, 0.8),
+            WeightedValue(False, 0.7),
+        ]
+        assert any_true(values) is None  # only 2 True, min_count=3 default
+
+    def test_default_min_count_met(self):
+        values = [
+            WeightedValue(True, 0.9),
+            WeightedValue(True, 0.8),
+            WeightedValue(True, 0.7),
+            WeightedValue(False, 0.6),
+        ]
+        assert any_true(values) is True  # 3 True, min_count=3 default
 
 
 # ── Strategy: longest_top_k ──
@@ -373,6 +387,7 @@ class TestConsolidateField:
         values = [
             WeightedValue(True, 0.9),
             WeightedValue(True, 0.8),
+            WeightedValue(True, 0.7),
         ]
         result = consolidate_field(values, "any_true")
         assert result.value is True
@@ -545,6 +560,15 @@ class TestConsolidateExtractions:
                 },
                 "source_id": "s2",
             },
+            {
+                "data": {
+                    "company_name": "ABB",
+                    "is_public": True,
+                },
+                "confidence": 0.8,
+                "grounding_scores": {"company_name": 1.0},
+                "source_id": "s3",
+            },
         ]
         field_definitions = [
             {"name": "company_name", "field_type": "string"},
@@ -621,3 +645,109 @@ class TestDedupDictsContentHash:
         ]
         result = _dedup_dicts(items)
         assert len(result) == 1
+
+    def test_merges_attributes_across_duplicates(self):
+        """H1: Duplicate entities merge attributes from later occurrences."""
+        items = [
+            {"name": "Product X", "power": "100 kW"},
+            {"name": "Product X", "power": "100 kW", "efficiency": "92%"},
+            {"name": "Product X", "weight": "50 kg"},
+        ]
+        result = _dedup_dicts(items)
+        assert len(result) == 1
+        assert result[0]["name"] == "Product X"
+        assert result[0]["power"] == "100 kW"  # from first occurrence
+        assert result[0]["efficiency"] == "92%"  # filled from second
+        assert result[0]["weight"] == "50 kg"  # filled from third
+
+    def test_first_occurrence_value_wins(self):
+        """First non-null value for a key is kept; later values don't overwrite."""
+        items = [
+            {"name": "X", "power": "100 kW"},
+            {"name": "X", "power": "200 kW"},
+        ]
+        result = _dedup_dicts(items)
+        assert result[0]["power"] == "100 kW"
+
+    def test_fills_none_values(self):
+        """None values in first occurrence are filled from later ones."""
+        items = [
+            {"name": "X", "power": None, "weight": "50 kg"},
+            {"name": "X", "power": "100 kW", "weight": None},
+        ]
+        result = _dedup_dicts(items)
+        assert result[0]["power"] == "100 kW"
+        assert result[0]["weight"] == "50 kg"
+
+
+# ── Per-field grounding_mode and consolidation_strategy override ──
+
+
+class TestPerFieldOverrides:
+    def test_grounding_mode_override_in_consolidation(self):
+        """Field-level grounding_mode overrides type default."""
+        extractions = [
+            {
+                "data": {"description": "A great company"},
+                "confidence": 0.9,
+                "grounding_scores": {"description": 0.0},
+                "source_id": "s1",
+            },
+        ]
+        # Default: string -> required, so weight = 0.9 * max(0.0, 0.1) = 0.09
+        field_defs_default = [{"name": "description", "field_type": "string"}]
+        record_default = consolidate_extractions(
+            extractions, field_defs_default, "g", "t"
+        )
+        default_weight = record_default.fields["description"].grounded_count
+
+        # Override: grounding_mode=none -> weight = confidence only = 0.9
+        field_defs_override = [
+            {"name": "description", "field_type": "string", "grounding_mode": "none"},
+        ]
+        record_override = consolidate_extractions(
+            extractions, field_defs_override, "g", "t"
+        )
+        # With mode=none, grounding_score doesn't affect weight
+        assert record_override.fields["description"].value == "A great company"
+        # grounded_count should still be 1 (weight > 0 in both cases)
+        assert record_override.fields["description"].grounded_count == 1
+
+    def test_consolidation_strategy_override(self):
+        """Field-level consolidation_strategy overrides type default."""
+        extractions = [
+            {
+                "data": {"count": 100},
+                "confidence": 0.9,
+                "grounding_scores": {"count": 1.0},
+                "source_id": "s1",
+            },
+            {
+                "data": {"count": 100},
+                "confidence": 0.8,
+                "grounding_scores": {"count": 1.0},
+                "source_id": "s2",
+            },
+            {
+                "data": {"count": 200},
+                "confidence": 0.7,
+                "grounding_scores": {"count": 1.0},
+                "source_id": "s3",
+            },
+        ]
+        # Default for integer: weighted_median -> 100
+        field_defs_default = [{"name": "count", "field_type": "integer"}]
+        record_default = consolidate_extractions(
+            extractions, field_defs_default, "g", "t"
+        )
+        assert record_default.fields["count"].strategy == "weighted_median"
+
+        # Override: frequency -> 100 (most common)
+        field_defs_override = [
+            {"name": "count", "field_type": "integer", "consolidation_strategy": "frequency"},
+        ]
+        record_override = consolidate_extractions(
+            extractions, field_defs_override, "g", "t"
+        )
+        assert record_override.fields["count"].strategy == "frequency"
+        assert record_override.fields["count"].value == 100

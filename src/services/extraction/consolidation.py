@@ -24,6 +24,10 @@ from typing import Any
 from services.extraction.grounding import GROUNDING_DEFAULTS
 
 # Default consolidation strategy per field type
+VALID_CONSOLIDATION_STRATEGIES = frozenset(
+    {"frequency", "weighted_frequency", "weighted_median", "any_true", "longest_top_k", "union_dedup"}
+)
+
 STRATEGY_DEFAULTS: dict[str, str] = {
     "string": "frequency",
     "integer": "weighted_median",
@@ -189,7 +193,7 @@ def weighted_median(values: list[WeightedValue]) -> float | int | None:
     return weighted[-1][0]
 
 
-def any_true(values: list[WeightedValue], min_count: int = 2) -> bool | None:
+def any_true(values: list[WeightedValue], min_count: int = 3) -> bool | None:
     """True if min_count+ values are True with weight > 0.
 
     Returns None if insufficient evidence (fewer than min_count weighted
@@ -375,7 +379,9 @@ def consolidate_extractions(
         strategy = field_def.get("consolidation_strategy") or STRATEGY_DEFAULTS.get(
             field_type, "frequency"
         )
-        grounding_mode = GROUNDING_DEFAULTS.get(field_type, "required")
+        grounding_mode = field_def.get("grounding_mode") or GROUNDING_DEFAULTS.get(
+            field_type, "required"
+        )
 
         # Build weighted values from all extractions
         weighted_values: list[WeightedValue] = []
@@ -432,9 +438,14 @@ def _dedup_strings(items: list) -> list:
 
 
 def _dedup_dicts(items: list[dict]) -> list[dict]:
-    """Deduplicate dict items by name field, falling back to content hash."""
-    seen: set[str] = set()
-    result: list[dict] = []
+    """Deduplicate dict items by name, merging attributes across occurrences.
+
+    When duplicates are found, attributes from later occurrences fill in
+    keys that were None or missing in the first occurrence.
+    """
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+
     for item in items:
         name = item.get("name") or item.get("product_name") or item.get("id", "")
         key = str(name).strip().lower()
@@ -442,7 +453,22 @@ def _dedup_dicts(items: list[dict]) -> list[dict]:
             key = hashlib.sha256(
                 json.dumps(item, sort_keys=True).encode()
             ).hexdigest()[:16]
-        if key not in seen:
-            seen.add(key)
-            result.append(item)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+
+    result: list[dict] = []
+    for key in order:
+        occurrences = groups[key]
+        if len(occurrences) == 1:
+            result.append(occurrences[0])
+        else:
+            # Merge: first occurrence is canonical, fill gaps from others
+            merged = dict(occurrences[0])
+            for occ in occurrences[1:]:
+                for k, v in occ.items():
+                    if merged.get(k) is None and v is not None:
+                        merged[k] = v
+            result.append(merged)
     return result

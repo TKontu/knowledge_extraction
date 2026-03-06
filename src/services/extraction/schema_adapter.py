@@ -364,6 +364,28 @@ class SchemaAdapter:
                             f"'{field['merge_strategy']}'. Valid: {sorted(VALID_MERGE_STRATEGIES)}"
                         )
 
+                # Validate grounding_mode if provided
+                if "grounding_mode" in field:
+                    valid_modes = {"required", "semantic", "none"}
+                    if field["grounding_mode"] not in valid_modes:
+                        errors.append(
+                            f"field_groups[{i}]['fields'][{j}] has invalid grounding_mode: "
+                            f"'{field['grounding_mode']}'. Valid: {sorted(valid_modes)}"
+                        )
+
+                # Validate consolidation_strategy if provided
+                if "consolidation_strategy" in field:
+                    from services.extraction.consolidation import (
+                        VALID_CONSOLIDATION_STRATEGIES,
+                    )
+
+                    if field["consolidation_strategy"] not in VALID_CONSOLIDATION_STRATEGIES:
+                        errors.append(
+                            f"field_groups[{i}]['fields'][{j}] has invalid consolidation_strategy: "
+                            f"'{field['consolidation_strategy']}'. "
+                            f"Valid: {sorted(VALID_CONSOLIDATION_STRATEGIES)}"
+                        )
+
             # Validate max_items if provided
             if "max_items" in fg:
                 max_items = fg["max_items"]
@@ -425,6 +447,8 @@ class SchemaAdapter:
                         default=f_def.get("default"),
                         enum_values=f_def.get("enum_values"),
                         merge_strategy=f_def.get("merge_strategy"),
+                        grounding_mode=f_def.get("grounding_mode"),
+                        consolidation_strategy=f_def.get("consolidation_strategy"),
                     )
                 )
 

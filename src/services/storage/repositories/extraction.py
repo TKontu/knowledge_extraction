@@ -426,6 +426,8 @@ class ExtractionRepository:
     ) -> int:
         """Batch update grounding scores for multiple extractions.
 
+        Uses bulk_update_mappings for efficient single-round-trip updates.
+
         Args:
             updates: List of (extraction_id, scores) tuples
 
@@ -435,18 +437,15 @@ class ExtractionRepository:
         if not updates:
             return 0
 
-        from sqlalchemy import update
-
-        count = 0
-        for extraction_id, scores in updates:
-            result = self._session.execute(
-                update(Extraction)
-                .where(Extraction.id == extraction_id)
-                .values(grounding_scores=scores)
-            )
-            count += result.rowcount
+        mappings = [
+            {"id": extraction_id, "grounding_scores": scores}
+            for extraction_id, scores in updates
+        ]
+        self._session.bulk_update_mappings(Extraction, mappings)
         self._session.flush()
-        return count
+        # Expire cached ORM objects so subsequent reads see updated values
+        self._session.expire_all()
+        return len(mappings)
 
     def find_orphaned(
         self,
@@ -468,3 +467,23 @@ class ExtractionRepository:
         query = query.order_by(Extraction.created_at.asc()).limit(limit)
         result = self._session.execute(query)
         return list(result.scalars().all())
+
+    def get_unembedded(
+        self,
+        project_id: UUID | None = None,
+        limit: int = 1000,
+    ) -> list[Extraction]:
+        """Find extractions that were not successfully embedded.
+
+        Args:
+            project_id: Optional project UUID to filter by.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of Extraction instances where embedded=False.
+        """
+        query = select(Extraction).where(Extraction.embedded == False)  # noqa: E712
+        if project_id:
+            query = query.where(Extraction.project_id == project_id)
+        query = query.order_by(Extraction.created_at.asc()).limit(limit)
+        return list(self._session.execute(query).scalars().all())

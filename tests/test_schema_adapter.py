@@ -750,3 +750,75 @@ class TestParseTemplateWithClassificationConfig:
 
         field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
         assert classification_config.skip_patterns == []
+
+
+class TestGroundingAndConsolidationValidation:
+    """Validate per-field grounding_mode and consolidation_strategy."""
+
+    def _make_schema(self, **field_overrides):
+        field = {
+            "name": "test_field",
+            "field_type": "text",
+            "description": "A test field",
+            **field_overrides,
+        }
+        return {
+            "name": "test",
+            "field_groups": [
+                {"name": "group", "description": "desc", "fields": [field]},
+            ],
+        }
+
+    def test_valid_grounding_mode_accepted(self):
+        adapter = SchemaAdapter()
+        for mode in ("required", "semantic", "none"):
+            result = adapter.validate_extraction_schema(
+                self._make_schema(grounding_mode=mode)
+            )
+            assert result.is_valid, f"grounding_mode={mode} should be valid"
+
+    def test_invalid_grounding_mode_rejected(self):
+        adapter = SchemaAdapter()
+        result = adapter.validate_extraction_schema(
+            self._make_schema(grounding_mode="strict")
+        )
+        assert not result.is_valid
+        assert any("grounding_mode" in e for e in result.errors)
+
+    def test_valid_consolidation_strategy_accepted(self):
+        adapter = SchemaAdapter()
+        for strategy in (
+            "frequency", "weighted_frequency", "weighted_median",
+            "any_true", "longest_top_k", "union_dedup",
+        ):
+            result = adapter.validate_extraction_schema(
+                self._make_schema(consolidation_strategy=strategy)
+            )
+            assert result.is_valid, f"consolidation_strategy={strategy} should be valid"
+
+    def test_invalid_consolidation_strategy_rejected(self):
+        adapter = SchemaAdapter()
+        result = adapter.validate_extraction_schema(
+            self._make_schema(consolidation_strategy="magic_vote")
+        )
+        assert not result.is_valid
+        assert any("consolidation_strategy" in e for e in result.errors)
+
+    def test_convert_passes_overrides_to_field_definition(self):
+        adapter = SchemaAdapter()
+        schema = self._make_schema(
+            grounding_mode="none",
+            consolidation_strategy="longest_top_k",
+        )
+        field_groups = adapter.convert_to_field_groups(schema)
+        field = field_groups[0].fields[0]
+        assert field.grounding_mode == "none"
+        assert field.consolidation_strategy == "longest_top_k"
+
+    def test_convert_defaults_to_none_when_not_set(self):
+        adapter = SchemaAdapter()
+        schema = self._make_schema()
+        field_groups = adapter.convert_to_field_groups(schema)
+        field = field_groups[0].fields[0]
+        assert field.grounding_mode is None
+        assert field.consolidation_strategy is None
