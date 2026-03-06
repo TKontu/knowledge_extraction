@@ -125,27 +125,45 @@ def verify_list_items_in_quote(items: list, quote: str | None) -> float:
     return round(found / len(string_items), 4)
 
 
-def score_field(value: Any, quote: str, field_type: str) -> float:
+def _coerce_quote(quote: Any) -> str | None:
+    """Coerce a quote value to a string.
+
+    LLM extraction sometimes produces non-string quotes (lists, dicts, ints).
+    Normalizes them to a single string suitable for grounding comparison.
+    Returns None for empty/missing values.
+    """
+    if quote is None:
+        return None
+    if isinstance(quote, str):
+        return quote or None
+    if isinstance(quote, list):
+        parts = [str(q) for q in quote if q is not None]
+        return " ".join(parts) or None
+    return str(quote) or None
+
+
+def score_field(value: Any, quote: Any, field_type: str) -> float:
     """Score a single field value against its quote via string-match.
 
     Args:
         value: The extracted field value.
-        quote: The source quote for this field.
+        quote: The source quote for this field (coerced to str if needed).
         field_type: Type string ("integer", "string", "list", etc.)
 
     Returns:
         Grounding score 0.0-1.0.
     """
-    if not quote:
+    coerced = _coerce_quote(quote)
+    if not coerced:
         return 0.0
     if field_type in ("integer", "float"):
-        return verify_numeric_in_quote(value, quote)
+        return verify_numeric_in_quote(value, coerced)
     if field_type == "list":
         if isinstance(value, list):
-            return verify_list_items_in_quote(value, quote)
-        return verify_string_in_quote(str(value), quote)
+            return verify_list_items_in_quote(value, coerced)
+        return verify_string_in_quote(str(value), coerced)
     # string, enum, and any other type
-    return verify_string_in_quote(value, quote)
+    return verify_string_in_quote(value, coerced)
 
 
 def compute_grounding_scores(

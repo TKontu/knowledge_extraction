@@ -302,3 +302,62 @@ class TestNonBoolSupportedHandling:
         mock_llm_client.complete.return_value = {"supported": 1, "reason": "confirmed"}
         result = await verifier.verify_quote("name", "ABB", "ABB Corp")
         assert result.supported is None
+
+
+class TestNonStringQuoteCoercion:
+    """Verify that non-string quotes in _quotes dict don't crash LLM verification."""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        from unittest.mock import AsyncMock
+
+        return AsyncMock()
+
+    @pytest.fixture
+    def verifier(self, mock_llm_client):
+        return LLMGroundingVerifier(llm_client=mock_llm_client)
+
+    @pytest.mark.asyncio
+    async def test_list_quote_coerced_to_string(self, verifier, mock_llm_client):
+        """A list quote is joined into a string before sending to LLM."""
+        mock_llm_client.complete.return_value = {
+            "supported": True,
+            "reason": "confirmed",
+        }
+        data = {
+            "employee_count": 5000,
+            "_quotes": {"employee_count": ["about 5,000 employees", "worldwide"]},
+        }
+        grounding_scores = {"employee_count": 0.0}
+        field_types = {"employee_count": "integer"}
+
+        updated = await verifier.verify_extraction(data, grounding_scores, field_types)
+        # Should have called LLM with the coerced string, not crashed
+        assert mock_llm_client.complete.call_count == 1
+        assert updated["employee_count"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_none_quote_skipped(self, verifier, mock_llm_client):
+        """None quote is skipped (no LLM call)."""
+        data = {
+            "employee_count": 5000,
+            "_quotes": {"employee_count": None},
+        }
+        grounding_scores = {"employee_count": 0.0}
+        field_types = {"employee_count": "integer"}
+
+        await verifier.verify_extraction(data, grounding_scores, field_types)
+        mock_llm_client.complete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_list_quote_skipped(self, verifier, mock_llm_client):
+        """Empty list quote is skipped (no LLM call)."""
+        data = {
+            "employee_count": 5000,
+            "_quotes": {"employee_count": []},
+        }
+        grounding_scores = {"employee_count": 0.0}
+        field_types = {"employee_count": "integer"}
+
+        await verifier.verify_extraction(data, grounding_scores, field_types)
+        mock_llm_client.complete.assert_not_called()

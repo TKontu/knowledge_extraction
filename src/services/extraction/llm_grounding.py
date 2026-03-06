@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from services.extraction.grounding import GROUNDING_DEFAULTS
+from services.extraction.grounding import GROUNDING_DEFAULTS, _coerce_quote
 
 if TYPE_CHECKING:
     from services.llm.client import LLMClient
@@ -152,7 +152,7 @@ class LLMGroundingVerifier:
                 continue
 
             # Must have a quote to verify against
-            quote = quotes.get(field_name, "")
+            quote = _coerce_quote(quotes.get(field_name))
             if not quote:
                 continue
 

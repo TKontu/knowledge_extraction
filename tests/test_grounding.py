@@ -5,7 +5,9 @@ TDD: Tests written first, implementation follows.
 
 from services.extraction.grounding import (
     GROUNDING_DEFAULTS,
+    _coerce_quote,
     compute_grounding_scores,
+    score_field,
     verify_list_items_in_quote,
     verify_numeric_in_quote,
     verify_string_in_quote,
@@ -351,3 +353,105 @@ class TestGroundingDefaults:
 
     def test_enum_required(self):
         assert GROUNDING_DEFAULTS["enum"] == "required"
+
+
+class TestCoerceQuote:
+    """Test _coerce_quote handles all JSON types from extraction data."""
+
+    def test_string_passthrough(self):
+        assert _coerce_quote("hello world") == "hello world"
+
+    def test_none_returns_none(self):
+        assert _coerce_quote(None) is None
+
+    def test_empty_string_returns_none(self):
+        assert _coerce_quote("") is None
+
+    def test_list_of_strings(self):
+        result = _coerce_quote(["first quote", "second quote"])
+        assert result == "first quote second quote"
+
+    def test_list_with_none(self):
+        result = _coerce_quote(["quote text", None, "more text"])
+        assert result == "quote text more text"
+
+    def test_empty_list_returns_none(self):
+        assert _coerce_quote([]) is None
+
+    def test_list_of_only_none_returns_none(self):
+        assert _coerce_quote([None, None]) is None
+
+    def test_int_coerced(self):
+        assert _coerce_quote(42) == "42"
+
+    def test_dict_coerced(self):
+        result = _coerce_quote({"text": "a quote"})
+        assert isinstance(result, str)
+        assert "a quote" in result
+
+
+class TestScoreFieldNonStringQuotes:
+    """Test that score_field handles non-string quotes without crashing."""
+
+    def test_list_quote_with_string_field(self):
+        score = score_field("Siemens", ["Siemens AG is a company"], "string")
+        assert score > 0.0
+
+    def test_list_quote_with_numeric_field(self):
+        score = score_field(140000, ["approximately 140,000 employees"], "integer")
+        assert score == 1.0
+
+    def test_list_quote_with_list_field(self):
+        score = score_field(["motors", "drives"], ["motors and drives division"], "list")
+        assert score > 0.0
+
+    def test_none_quote_returns_zero(self):
+        assert score_field("value", None, "string") == 0.0
+
+    def test_empty_list_quote_returns_zero(self):
+        assert score_field("value", [], "string") == 0.0
+
+    def test_dict_quote(self):
+        # Should not crash, returns some score
+        score = score_field("keyword", {"text": "keyword here"}, "string")
+        assert isinstance(score, float)
+
+    def test_int_quote(self):
+        score = score_field("500", 500, "string")
+        assert isinstance(score, float)
+
+
+class TestComputeGroundingScoresNonStringQuotes:
+    """Test compute_grounding_scores with non-string quotes in _quotes dict."""
+
+    def test_list_quote_does_not_crash(self):
+        data = {
+            "company_name": "Siemens",
+            "_quotes": {"company_name": ["Siemens AG is a global company"]},
+        }
+        field_types = {"company_name": "string"}
+        scores = compute_grounding_scores(data, field_types)
+        assert "company_name" in scores
+        assert scores["company_name"] > 0.0
+
+    def test_mixed_quote_types(self):
+        data = {
+            "company_name": "ABB",
+            "employee_count": 105000,
+            "products": ["motors", "drives"],
+            "_quotes": {
+                "company_name": "ABB Ltd is a technology company",
+                "employee_count": ["about 105,000 employees worldwide"],
+                "products": None,
+            },
+        }
+        field_types = {
+            "company_name": "string",
+            "employee_count": "integer",
+            "products": "list",
+        }
+        scores = compute_grounding_scores(data, field_types)
+        assert scores["company_name"] > 0.0
+        assert scores["employee_count"] == 1.0
+        # products quote is None → score 0.0
+        assert scores["products"] == 0.0

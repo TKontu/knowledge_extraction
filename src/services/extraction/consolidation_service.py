@@ -92,7 +92,7 @@ class ConsolidationService:
             ext_dicts = [
                 {
                     "data": ext.data,
-                    "confidence": ext.confidence or 0.5,
+                    "confidence": ext.confidence if ext.confidence is not None else 0.5,
                     "grounding_scores": ext.grounding_scores or {},
                     "source_id": str(ext.source_id),
                 }

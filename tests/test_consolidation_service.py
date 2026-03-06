@@ -533,3 +533,42 @@ class TestConsolidateEndpoint:
         result = service.consolidate_project(test_project.id)
         assert "source_groups" in result
         assert "records_created" in result
+
+
+class TestZeroConfidenceHandling:
+    """Verify that confidence=0.0 is not treated as None (falsy bug)."""
+
+    def test_zero_confidence_produces_zero_weight(
+        self,
+        service,
+        extraction_repo,
+        test_project,
+        test_source,
+        test_source_2,
+        db_session,
+    ):
+        """confidence=0.0 should produce near-zero weight, not 0.5."""
+        # High-confidence extraction says "ABB"
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB", "_quotes": {"company_name": "ABB Corp"}},
+            confidence=0.9,
+            grounding_scores={"company_name": 1.0},
+        )
+        # Zero-confidence extraction says "Siemens" — should be outweighed
+        _create_extraction(
+            extraction_repo,
+            test_project,
+            test_source_2,
+            data={"company_name": "Siemens", "_quotes": {"company_name": "Siemens AG"}},
+            confidence=0.0,
+            grounding_scores={"company_name": 1.0},
+        )
+
+        records = service.consolidate_source_group(test_project.id, "abb")
+        assert len(records) == 1
+        # With the fix, 0.0 confidence → near-zero weight → ABB wins
+        # Before the fix, 0.0 was treated as 0.5 → could flip the result
+        assert records[0].fields["company_name"].value == "ABB"
