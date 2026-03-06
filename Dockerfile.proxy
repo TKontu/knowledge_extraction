@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir \
 # Copy only necessary files
 COPY src/services/proxy/ /app/proxy/
 COPY src/config.py /app/
+COPY src/exceptions.py /app/
 COPY src/logging_config.py /app/
 
 # Run server
