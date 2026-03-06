@@ -221,9 +221,9 @@ class TestProductionTemplates:
         templates_dir = Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
         _registry.load_templates(templates_dir)
 
-        # Verify all 7 templates loaded
+        # Verify all 9 templates loaded
         names = _registry.list_names()
-        assert len(names) == 7
+        assert len(names) == 9
 
         expected_names = [
             "company_analysis",
@@ -233,6 +233,8 @@ class TestProductionTemplates:
             "drivetrain_company_analysis",
             "drivetrain_company_simple",
             "default",
+            "wikipedia_articles",
+            "job_listings",
         ]
 
         for expected_name in expected_names:

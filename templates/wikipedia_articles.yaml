@@ -1,0 +1,94 @@
+name: wikipedia_articles
+description: Extract structured facts from Wikipedia articles
+source_config:
+  type: web
+  group_by: domain
+extraction_context:
+  source_type: Wikipedia article
+  source_label: Article
+  entity_id_fields:
+    - name
+    - entity_id
+    - id
+extraction_schema:
+  name: wikipedia_facts
+  version: "1.0"
+  field_groups:
+    - name: article_info
+      description: Basic article information
+      is_entity_list: false
+      fields:
+        - name: title
+          field_type: text
+          required: true
+          default: ""
+          description: Article title or subject name
+        - name: category
+          field_type: enum
+          required: false
+          enum_values:
+            - person
+            - place
+            - event
+            - concept
+            - organism
+            - object
+            - organization
+          description: Primary topic category
+        - name: inception_date
+          field_type: text
+          required: false
+          description: Date of birth, founding, creation, or first occurrence
+        - name: location
+          field_type: text
+          required: false
+          description: Primary location, country, or geographic context
+        - name: population_or_count
+          field_type: integer
+          required: false
+          description: Population, membership count, or other primary numeric measure
+        - name: is_active
+          field_type: boolean
+          required: false
+          description: Whether the subject currently exists, is alive, or is active
+
+    - name: key_facts
+      description: Key factual claims from the article
+      is_entity_list: false
+      fields:
+        - name: notable_for
+          field_type: text
+          required: false
+          description: What the subject is best known for
+        - name: dimensions_or_measurements
+          field_type: text
+          required: false
+          description: Any physical measurements, sizes, distances, or quantities mentioned
+        - name: time_period
+          field_type: text
+          required: false
+          description: Primary time period or era the article covers
+        - name: official_website
+          field_type: text
+          required: false
+          description: Official website URL if mentioned
+
+    - name: related_entities
+      description: Notable people, places, or things mentioned in the article
+      is_entity_list: true
+      max_items: 15
+      fields:
+        - name: name
+          field_type: text
+          required: true
+          default: ""
+          description: Name of the related entity
+        - name: relationship
+          field_type: text
+          required: false
+          description: How this entity relates to the article subject
+entity_types:
+  - name: entity
+    description: A notable person, place, organization, or thing
+prompt_templates: {}
+is_template: true

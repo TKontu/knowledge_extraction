@@ -274,12 +274,14 @@ services:
       SMART_CRAWL_DEFAULT_RELEVANCE_THRESHOLD: ${SMART_CRAWL_DEFAULT_RELEVANCE_THRESHOLD:-0.4}
       SMART_CRAWL_MAP_LIMIT: ${SMART_CRAWL_MAP_LIMIT:-5000}
       SMART_CRAWL_BATCH_MAX_CONCURRENCY: ${SMART_CRAWL_BATCH_MAX_CONCURRENCY:-10}
+      TEMPLATES_DIR: /app/templates
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
     volumes:
       - ./prompts:/app/prompts:ro
       - ./reports:/app/reports
+      - ${TEMPLATES_HOST_DIR:-./templates}:/app/templates:ro
     depends_on:
       redis:
         condition: service_healthy

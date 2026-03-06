@@ -1,5 +1,6 @@
 """Template loader module for loading templates from YAML files."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -44,38 +45,65 @@ class TemplateRegistry:
         self._adapter = SchemaAdapter()
 
     def load_templates(self, templates_dir: Path | None = None) -> None:
-        """Load all YAML templates from directory.
+        """Load YAML templates from built-in and optional external directories.
+
+        When called without arguments (production path): loads built-in templates,
+        then overlays with templates from TEMPLATES_DIR env var if set.
+
+        When called with an explicit templates_dir (test path): loads only from
+        that directory (backward-compatible override).
 
         Args:
-            templates_dir: Directory containing template YAML files.
-                          Defaults to templates/ subdirectory.
+            templates_dir: Explicit directory to load from (overrides built-in).
+                          If None, loads built-in + TEMPLATES_DIR overlay.
 
         Raises:
             TemplateLoadError: If any template fails validation.
         """
-        if templates_dir is None:
-            templates_dir = Path(__file__).parent / "templates"
+        if templates_dir is not None:
+            # Explicit directory: load only from there (backward-compatible)
+            if isinstance(templates_dir, str):
+                templates_dir = Path(templates_dir)
+            if templates_dir.exists():
+                self._load_from_directory(templates_dir)
+            else:
+                logger.warning("templates_directory_not_found", path=str(templates_dir))
+        else:
+            # Production path: built-in + optional external overlay
+            builtin_dir = Path(__file__).parent / "templates"
+            if builtin_dir.exists():
+                self._load_from_directory(builtin_dir)
 
-        # Convert to Path if string
-        if isinstance(templates_dir, str):
-            templates_dir = Path(templates_dir)
+            env_dir = os.environ.get("TEMPLATES_DIR")
+            if env_dir:
+                external_dir = Path(env_dir)
+                if external_dir.exists() and external_dir != builtin_dir:
+                    self._load_from_directory(external_dir)
+                elif not external_dir.exists():
+                    logger.warning(
+                        "external_templates_dir_not_found", path=str(env_dir)
+                    )
 
-        if not templates_dir.exists():
-            logger.warning("templates_directory_not_found", path=str(templates_dir))
-            return
+        self._loaded = True
+        logger.info("templates_loaded", count=len(self._templates))
 
-        # Load all YAML files
-        yaml_files = list(templates_dir.glob("*.yaml"))
-        logger.info("loading_templates", directory=str(templates_dir), count=len(yaml_files))
+    def _load_from_directory(self, directory: Path) -> None:
+        """Load all YAML templates from a directory.
+
+        Args:
+            directory: Directory containing template YAML files.
+
+        Raises:
+            TemplateLoadError: If any template fails validation.
+        """
+        yaml_files = list(directory.glob("*.yaml"))
+        logger.info("loading_templates", directory=str(directory), count=len(yaml_files))
 
         for yaml_file in yaml_files:
             template = self._load_and_validate(yaml_file)
             template_name = template["name"]
             self._templates[template_name] = template
             logger.debug("template_loaded", name=template_name, file=yaml_file.name)
-
-        self._loaded = True
-        logger.info("templates_loaded", count=len(self._templates))
 
     def _load_and_validate(self, yaml_file: Path) -> dict[str, Any]:
         """Load single template file and validate.

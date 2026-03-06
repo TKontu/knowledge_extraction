@@ -1,0 +1,103 @@
+name: job_listings
+description: Extract structured information from job listing pages
+source_config:
+  type: web
+  group_by: domain
+extraction_context:
+  source_type: job listing page
+  source_label: Job Listing
+  entity_id_fields:
+    - name
+    - entity_id
+    - id
+extraction_schema:
+  name: job_listing_facts
+  version: "1.0"
+  field_groups:
+    - name: job_overview
+      description: Core job listing information
+      is_entity_list: false
+      fields:
+        - name: job_title
+          field_type: text
+          required: true
+          default: ""
+          description: Exact job title as posted
+        - name: company_name
+          field_type: text
+          required: true
+          default: ""
+          description: Hiring company name
+        - name: location
+          field_type: text
+          required: false
+          description: Job location (city, state, or Remote)
+        - name: salary_range
+          field_type: text
+          required: false
+          description: Salary or compensation range if stated
+        - name: employment_type
+          field_type: enum
+          required: false
+          enum_values:
+            - full-time
+            - part-time
+            - contract
+            - internship
+            - temporary
+          description: Type of employment
+        - name: experience_years
+          field_type: integer
+          required: false
+          description: Minimum years of experience required
+        - name: is_remote
+          field_type: boolean
+          required: false
+          description: Whether the position is remote or allows remote work
+        - name: education_requirement
+          field_type: text
+          required: false
+          description: Minimum education level required
+
+    - name: job_requirements
+      description: Skills and qualifications required for the position
+      is_entity_list: true
+      max_items: 20
+      fields:
+        - name: name
+          field_type: text
+          required: true
+          default: ""
+          description: Skill, technology, or qualification name
+        - name: importance
+          field_type: enum
+          required: false
+          enum_values:
+            - required
+            - preferred
+            - nice-to-have
+          description: Whether this skill is required or preferred
+
+    - name: job_benefits
+      description: Compensation and benefits information
+      is_entity_list: false
+      fields:
+        - name: benefits_list
+          field_type: list
+          required: false
+          description: Listed benefits (health insurance, 401k, PTO, etc.)
+        - name: has_equity
+          field_type: boolean
+          required: false
+          description: Whether stock options or equity compensation are offered
+        - name: has_remote_flexibility
+          field_type: boolean
+          required: false
+          description: Whether flexible or hybrid remote work is mentioned
+entity_types:
+  - name: skill
+    description: A technical skill or technology
+  - name: company
+    description: The hiring company
+prompt_templates: {}
+is_template: true
