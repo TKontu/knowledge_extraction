@@ -55,7 +55,7 @@ class ExtractionEmbeddingService:
         from services.extraction.extraction_items import safe_data_version
 
         if safe_data_version(extraction) >= 2:
-            return EmbeddingPipeline._extraction_to_text_v2(
+            return ExtractionEmbeddingService._extraction_to_text_v2(
                 extraction.data, extraction.extraction_type
             )
 

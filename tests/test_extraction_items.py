@@ -67,11 +67,13 @@ class TestListValueItem:
     def test_creation(self):
         item = ListValueItem(
             value="ISO 9001",
+            confidence=0.8,
             quote="certified to ISO 9001",
             grounding=1.0,
             location=None,
         )
         assert item.value == "ISO 9001"
+        assert item.confidence == 0.8
         assert item.grounding == 1.0
 
 
@@ -102,7 +104,7 @@ class TestChunkExtractionResult:
                 "name": FieldItem("Acme", 0.9, "Acme Corp", 1.0, None),
             },
             list_items={
-                "certs": [ListValueItem("ISO 9001", "ISO 9001 cert", 1.0, None)],
+                "certs": [ListValueItem("ISO 9001", 0.8, "ISO 9001 cert", 1.0, None)],
             },
         )
         assert "name" in result.field_items
@@ -202,8 +204,8 @@ class TestToV2Data:
     def test_list_fields(self):
         lists = {
             "certs": [
-                ListValueItem("ISO 9001", "ISO 9001 cert", 1.0, None),
-                ListValueItem("ISO 14001", None, 0.5, None),
+                ListValueItem("ISO 9001", 0.8, "ISO 9001 cert", 1.0, None),
+                ListValueItem("ISO 14001", 0.7, None, 0.5, None),
             ]
         }
         result = to_v2_data({}, lists, {}, "info")
@@ -300,7 +302,7 @@ class TestV2ToFlat:
             "name": FieldItem("Acme", 0.9, "Acme Corp", 1.0, None),
         }
         list_items = {
-            "certs": [ListValueItem("ISO", "ISO cert", 1.0, None)],
+            "certs": [ListValueItem("ISO", 0.8, "ISO cert", 1.0, None)],
         }
         v2 = to_v2_data(field_items, list_items, {}, "test")
         flat = v2_to_flat(v2)

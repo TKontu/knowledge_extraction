@@ -136,8 +136,8 @@ class TestMergeListValues:
                 0,
                 list_items={
                     "certs": [
-                        ListValueItem("ISO 9001", "ISO 9001 cert", 1.0, None),
-                        ListValueItem("ISO 14001", "ISO 14001 cert", 0.9, None),
+                        ListValueItem("ISO 9001", 0.8, "ISO 9001 cert", 1.0, None),
+                        ListValueItem("ISO 14001", 0.8, "ISO 14001 cert", 0.9, None),
                     ]
                 },
             ),
@@ -146,9 +146,9 @@ class TestMergeListValues:
                 list_items={
                     "certs": [
                         ListValueItem(
-                            "ISO 9001", "another ISO ref", 0.8, None
+                            "ISO 9001", 0.8, "another ISO ref", 0.8, None
                         ),  # duplicate
-                        ListValueItem("ATEX", "ATEX certified", 1.0, None),
+                        ListValueItem("ATEX", 0.8, "ATEX certified", 1.0, None),
                     ]
                 },
             ),
@@ -172,8 +172,8 @@ class TestMergeListValues:
                 0,
                 list_items={
                     "certs": [
-                        ListValueItem(None, None, 0.0, None),
-                        ListValueItem("ISO", "ISO", 1.0, None),
+                        ListValueItem(None, 0.0, None, 0.0, None),
+                        ListValueItem("ISO", 0.8, "ISO", 1.0, None),
                     ]
                 },
             ),
@@ -311,7 +311,7 @@ class TestMergeChunkResults:
                     "is_mfg": _item(True, confidence=0.8, grounding=0.9),
                 },
                 list_items={
-                    "certs": [ListValueItem("ISO", "ISO cert", 1.0, None)],
+                    "certs": [ListValueItem("ISO", 0.8, "ISO cert", 1.0, None)],
                 },
             ),
         ]

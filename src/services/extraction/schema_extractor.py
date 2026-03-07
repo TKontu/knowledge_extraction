@@ -102,6 +102,7 @@ class SchemaExtractor:
         field_group: FieldGroup,
         source_context: str | None = None,
         strict_quoting: bool = False,
+        already_found: list[str] | None = None,
     ) -> dict[str, Any]:
         """Extract fields for a specific field group.
 
@@ -110,6 +111,7 @@ class SchemaExtractor:
             field_group: Field group definition.
             source_context: Optional source context (e.g., company name, website name).
             strict_quoting: If True, use stricter quoting instructions (retry mode).
+            already_found: Entity IDs already extracted (for pagination exclusion).
 
         Returns:
             Dictionary of extracted field values.
@@ -121,11 +123,13 @@ class SchemaExtractor:
 
         if self.llm_queue is not None:
             return await self._extract_via_queue(
-                content, field_group, context_value, strict_quoting=strict_quoting
+                content, field_group, context_value, strict_quoting=strict_quoting,
+                already_found=already_found,
             )
         else:
             return await self._extract_direct(
-                content, field_group, context_value, strict_quoting=strict_quoting
+                content, field_group, context_value, strict_quoting=strict_quoting,
+                already_found=already_found,
             )
 
     async def _extract_via_queue(
@@ -134,6 +138,7 @@ class SchemaExtractor:
         field_group: FieldGroup,
         source_context: str | None,
         strict_quoting: bool = False,
+        already_found: list[str] | None = None,
     ) -> dict[str, Any]:
         """Extract via LLM request queue.
 
@@ -142,6 +147,7 @@ class SchemaExtractor:
             field_group: Field group definition.
             source_context: Optional source context.
             strict_quoting: If True, use stricter quoting instructions.
+            already_found: Entity IDs already extracted (for pagination exclusion).
 
         Returns:
             Extracted field values.
@@ -152,7 +158,9 @@ class SchemaExtractor:
         from services.llm.models import LLMRequest
 
         # Build prompts first (for consistency with direct extraction)
-        system_prompt = self._build_system_prompt(field_group, strict_quoting=strict_quoting)
+        system_prompt = self._build_system_prompt(
+            field_group, strict_quoting=strict_quoting, already_found=already_found
+        )
         user_prompt = self._build_user_prompt(content, field_group, source_context)
 
         # Build request
@@ -227,6 +235,7 @@ class SchemaExtractor:
         field_group: FieldGroup,
         source_context: str | None,
         strict_quoting: bool = False,
+        already_found: list[str] | None = None,
     ) -> dict[str, Any]:
         """Extract via direct LLM call with retry and variation.
 
@@ -238,6 +247,7 @@ class SchemaExtractor:
             field_group: Field group definition.
             source_context: Optional source context.
             strict_quoting: If True, use stricter quoting instructions.
+            already_found: Entity IDs already extracted (for pagination exclusion).
 
         Returns:
             Extracted field values.
@@ -259,7 +269,9 @@ class SchemaExtractor:
             temperature = base_temp + (attempt - 1) * temp_increment
 
             # Build prompts (add conciseness hint on retries)
-            system_prompt = self._build_system_prompt(field_group, strict_quoting=strict_quoting)
+            system_prompt = self._build_system_prompt(
+                field_group, strict_quoting=strict_quoting, already_found=already_found
+            )
             if attempt > 1:
                 system_prompt += LLM_RETRY_HINT
 
@@ -380,13 +392,17 @@ class SchemaExtractor:
         ) from last_error
 
     def _build_system_prompt(
-        self, field_group: FieldGroup, strict_quoting: bool = False
+        self,
+        field_group: FieldGroup,
+        strict_quoting: bool = False,
+        already_found: list[str] | None = None,
     ) -> str:
         """Build system prompt for field group extraction (version dispatcher)."""
         if self._data_version >= 2:
             if field_group.is_entity_list:
                 return self._build_entity_list_system_prompt_v2(
-                    field_group, strict_quoting=strict_quoting
+                    field_group, strict_quoting=strict_quoting,
+                    already_found=already_found,
                 )
             return self._build_system_prompt_v2(
                 field_group, strict_quoting=strict_quoting

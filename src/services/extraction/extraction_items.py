@@ -39,6 +39,7 @@ class ListValueItem:
     """One item from a multi-value list field."""
 
     value: Any
+    confidence: float
     quote: str | None
     grounding: float
     location: SourceLocation | None
@@ -63,6 +64,7 @@ class ChunkExtractionResult:
     field_items: dict[str, FieldItem] = field(default_factory=dict)
     list_items: dict[str, list[ListValueItem]] = field(default_factory=dict)
     entity_items: dict[str, list[EntityItem]] = field(default_factory=dict)
+    truncated: bool = False
 
 
 def safe_data_version(obj: Any) -> int:
@@ -260,6 +262,8 @@ def v2_to_flat(data: dict) -> dict:
                         if quotes[key]:
                             quotes[key] += " | "
                         quotes[key] += item["quote"]
+                    if "confidence" in item:
+                        confidences.append(item["confidence"])
             else:
                 # Value list
                 flat[key] = [item.get("value") for item in items]
@@ -269,6 +273,8 @@ def v2_to_flat(data: dict) -> dict:
                         if quotes[key]:
                             quotes[key] += " | "
                         quotes[key] += item["quote"]
+                    if "confidence" in item:
+                        confidences.append(item["confidence"])
         else:
             # Single-value field
             flat[key] = value.get("value")
@@ -313,6 +319,7 @@ def _field_item_to_dict(item: FieldItem) -> dict:
 def _list_value_to_dict(item: ListValueItem) -> dict:
     d: dict[str, Any] = {
         "value": item.value,
+        "confidence": item.confidence,
         "grounding": item.grounding,
     }
     if item.quote is not None:

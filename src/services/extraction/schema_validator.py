@@ -11,6 +11,15 @@ logger = structlog.get_logger(__name__)
 # Keys that are metadata, not extracted fields
 _METADATA_KEYS = {"confidence", "_quotes", "_conflicts", "_validation"}
 
+# Keys in v2 storage format that are metadata, not field data
+_V2_METADATA_KEYS = {"_meta", "_validation"}
+
+
+def _is_v2_storage_format(data: dict) -> bool:
+    """Detect v2 storage format via _meta.data_version marker."""
+    meta = data.get("_meta")
+    return isinstance(meta, dict) and meta.get("data_version") == 2
+
 
 class SchemaValidator:
     """Validates and coerces extraction results against field group schemas.
@@ -30,7 +39,10 @@ class SchemaValidator:
     ) -> tuple[dict[str, Any], list[dict[str, str]]]:
         """Validate and coerce data against field group schema.
 
-        Auto-detects v1 (flat) or v2 (per-field structured) format.
+        Auto-detects format:
+        - v2 storage: top-level field keys + _meta.data_version == 2
+        - v2 response: {"fields": {...}} wrapper from LLM parse
+        - v1 flat: {field: value, confidence: X, _quotes: {...}}
 
         Args:
             data: Extraction result dict (v1 or v2 format).
@@ -39,9 +51,11 @@ class SchemaValidator:
         Returns:
             Tuple of (cleaned_data, violations). Metadata keys are preserved.
         """
-        # v2 format detection
+        if _is_v2_storage_format(data):
+            return self._validate_v2_storage(data, group)
+
         if "fields" in data and isinstance(data.get("fields"), dict):
-            return self._validate_v2(data, group)
+            return self._validate_v2_response(data, group)
 
         return self._validate_v1(data, group)
 
@@ -90,14 +104,167 @@ class SchemaValidator:
 
         return cleaned, violations
 
-    def _validate_v2(
+    def _validate_v2_storage(
         self, data: dict[str, Any], group: FieldGroup
     ) -> tuple[dict[str, Any], list[dict[str, str]]]:
-        """Validate v2 per-field structured format.
+        """Validate v2 storage format (from to_v2_data / merge_chunk_results).
 
-        Coerces data["fields"][name]["value"] for each field, validates
-        confidence is 0.0-1.0.
+        Storage format has field data at top level:
+        - Single fields: {field_name: {value, confidence, grounding, quote?, location?}}
+        - List fields: {field_name: {items: [{value, grounding, quote?}, ...]}}
+        - Entity lists: {field_name: {items: [{fields, confidence, grounding, quote?}, ...]}}
+        - Metadata: {_meta: {group, data_version}}
         """
+        violations: list[dict[str, str]] = []
+        cleaned: dict[str, Any] = {}
+
+        # Preserve _meta
+        if "_meta" in data:
+            cleaned["_meta"] = data["_meta"]
+
+        if group.is_entity_list:
+            return self._validate_v2_entity_list(data, group, violations, cleaned)
+
+        for field_def in group.fields:
+            entry = data.get(field_def.name)
+            if entry is None:
+                continue
+
+            if not isinstance(entry, dict):
+                # Unexpected non-dict — pass through
+                cleaned[field_def.name] = entry
+                continue
+
+            if "items" in entry:
+                # List field — validate each item's value
+                cleaned[field_def.name] = self._validate_v2_list_items(
+                    entry, field_def, violations
+                )
+            else:
+                # Single-value field — validate value, clamp confidence
+                cleaned[field_def.name] = self._validate_v2_field_entry(
+                    entry, field_def, violations
+                )
+
+        if violations:
+            cleaned["_validation"] = violations
+            logger.info(
+                "schema_validation_violations",
+                group=group.name,
+                count=len(violations),
+            )
+
+        return cleaned, violations
+
+    def _validate_v2_field_entry(
+        self,
+        entry: dict,
+        field_def: FieldDefinition,
+        violations: list[dict[str, str]],
+    ) -> dict:
+        """Validate a single v2 field entry {value, confidence, grounding, ...}."""
+        result = dict(entry)  # shallow copy to preserve quote, location, etc.
+
+        value = entry.get("value")
+        if value is not None:
+            coerced, violation = self._coerce_value(value, field_def)
+            if violation:
+                violations.append(violation)
+            result["value"] = coerced
+
+        # Clamp confidence to 0.0-1.0
+        confidence = entry.get("confidence", 0.5)
+        try:
+            result["confidence"] = max(0.0, min(1.0, float(confidence)))
+        except (TypeError, ValueError):
+            result["confidence"] = 0.5
+            violations.append(
+                {
+                    "field": field_def.name,
+                    "issue": "invalid_confidence",
+                    "detail": "non-numeric confidence, defaulting to 0.5",
+                }
+            )
+
+        return result
+
+    def _validate_v2_list_items(
+        self,
+        entry: dict,
+        field_def: FieldDefinition,
+        violations: list[dict[str, str]],
+    ) -> dict:
+        """Validate a v2 list field entry {items: [{value, grounding, ...}, ...]}."""
+        items = entry.get("items", [])
+        if not isinstance(items, list):
+            return entry
+
+        # List items don't have individual type coercion (they're already
+        # the right type from the LLM). Preserve structure as-is.
+        return dict(entry)
+
+    def _validate_v2_entity_list(
+        self,
+        data: dict[str, Any],
+        group: FieldGroup,
+        violations: list[dict[str, str]],
+        cleaned: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+        """Validate v2 entity list: {entity_key: {items: [{fields, confidence, ...}]}}."""
+        entity_key = group.name
+        entity_data = data.get(entity_key)
+
+        if not isinstance(entity_data, dict) or "items" not in entity_data:
+            # No entity data or wrong shape — pass through
+            if entity_data is not None:
+                cleaned[entity_key] = entity_data
+            return cleaned, violations
+
+        items = entity_data.get("items", [])
+        if not isinstance(items, list):
+            cleaned[entity_key] = entity_data
+            return cleaned, violations
+
+        validated_items = []
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            validated = dict(item)  # preserve confidence, grounding, quote, location
+
+            # Coerce entity field values
+            fields = item.get("fields", {})
+            if isinstance(fields, dict):
+                cleaned_fields = {}
+                for field_def in group.fields:
+                    value = fields.get(field_def.name)
+                    if value is None:
+                        cleaned_fields[field_def.name] = value
+                        continue
+                    coerced, violation = self._coerce_value(value, field_def)
+                    cleaned_fields[field_def.name] = coerced
+                    if violation:
+                        violation["entity_index"] = str(i)
+                        violations.append(violation)
+                validated["fields"] = cleaned_fields
+
+            validated_items.append(validated)
+
+        cleaned[entity_key] = {"items": validated_items}
+
+        if violations:
+            cleaned["_validation"] = violations
+            logger.info(
+                "schema_validation_violations",
+                group=group.name,
+                count=len(violations),
+            )
+
+        return cleaned, violations
+
+    def _validate_v2_response(
+        self, data: dict[str, Any], group: FieldGroup
+    ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+        """Validate v2 LLM response format: {"fields": {name: {value, confidence, quote}}}."""
         violations: list[dict[str, str]] = []
         fields = data.get("fields", {})
         cleaned_fields: dict[str, Any] = {}
@@ -159,7 +326,7 @@ class SchemaValidator:
         group: FieldGroup,
         violations: list[dict[str, str]],
     ) -> tuple[dict[str, Any], list[dict[str, str]]]:
-        """Validate entity list results."""
+        """Validate v1 entity list results."""
         cleaned = {}
         for key in _METADATA_KEYS:
             if key in data:

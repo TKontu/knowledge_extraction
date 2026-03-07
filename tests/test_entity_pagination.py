@@ -92,13 +92,14 @@ class TestEntityPagination:
         extractor.extract_field_group = AsyncMock(side_effect=responses)
         orch = _make_orchestrator(extractor)
 
-        entities, capped = await orch._extract_entities_paginated(
+        entities, capped, truncated = await orch._extract_entities_paginated(
             "content", group, "ctx"
         )
         names = [e.get("fields", e).get("name") for e in entities]
         assert len(names) == 4
         assert "A" in names and "D" in names
         assert not capped
+        assert not truncated
 
     async def test_stall_detection(self):
         """LLM returns same entities twice → stops."""
@@ -121,7 +122,7 @@ class TestEntityPagination:
         )
         orch = _make_orchestrator(extractor)
 
-        entities, _ = await orch._extract_entities_paginated("content", group, "ctx")
+        entities, _, _ = await orch._extract_entities_paginated("content", group, "ctx")
         assert len(entities) == 1  # Only first A kept
 
     async def test_empty_response_stops(self):
@@ -136,7 +137,7 @@ class TestEntityPagination:
         )
         orch = _make_orchestrator(extractor)
 
-        entities, _ = await orch._extract_entities_paginated("content", group, "ctx")
+        entities, _, _ = await orch._extract_entities_paginated("content", group, "ctx")
         assert entities == []
 
     async def test_max_items_cap(self):
@@ -161,7 +162,7 @@ class TestEntityPagination:
         )
         orch = _make_orchestrator(extractor)
 
-        entities, capped = await orch._extract_entities_paginated(
+        entities, capped, _ = await orch._extract_entities_paginated(
             "content", group, "ctx"
         )
         assert len(entities) == 3
@@ -174,5 +175,5 @@ class TestEntityPagination:
         extractor.extract_field_group = AsyncMock(side_effect=Exception("LLM error"))
         orch = _make_orchestrator(extractor)
 
-        entities, _ = await orch._extract_entities_paginated("content", group, "ctx")
+        entities, _, _ = await orch._extract_entities_paginated("content", group, "ctx")
         assert entities == []

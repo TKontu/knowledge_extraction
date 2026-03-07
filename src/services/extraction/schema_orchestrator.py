@@ -55,6 +55,20 @@ _ENTITY_RESERVED_KEYS = frozenset(
 )
 
 
+def _avg_chunk_grounding(result: ChunkExtractionResult) -> float:
+    """Compute average grounding score across all items in a chunk result."""
+    scores: list[float] = []
+    for item in result.field_items.values():
+        scores.append(item.grounding)
+    for items in result.list_items.values():
+        for item in items:
+            scores.append(item.grounding)
+    for entities in result.entity_items.values():
+        for entity in entities:
+            scores.append(entity.grounding)
+    return sum(scores) / len(scores) if scores else 1.0
+
+
 def _collect_quotes(result: dict) -> list[str]:
     """Extract all quote strings from a result dict.
 
@@ -810,13 +824,22 @@ class SchemaExtractionOrchestrator:
 
         Extracts from chunks, parses to ChunkExtractionResult, grounds each
         item inline, then merges using cardinality-based strategies.
+
+        For entity lists, uses pagination within each chunk to handle large
+        entity counts beyond the per-call limit.
         """
         max_concurrent = self._extraction.max_concurrent_chunks
         semaphore = asyncio.Semaphore(max_concurrent)
+        sg_min_ratio = self._extraction.source_grounding_min_ratio
 
         async def extract_chunk_v2(chunk, chunk_idx: int) -> ChunkExtractionResult | None:
             async with semaphore:
                 try:
+                    if group.is_entity_list:
+                        return await self._extract_entity_chunk_v2(
+                            chunk, chunk_idx, group, source_context, full_content
+                        )
+
                     raw = await self._extractor.extract_field_group(
                         content=chunk.content,
                         field_group=group,
@@ -831,7 +854,45 @@ class SchemaExtractionOrchestrator:
                     )
                     return None
 
-                return self._parse_chunk_to_v2(raw, group, chunk, chunk_idx, full_content)
+                result = self._parse_chunk_to_v2(
+                    raw, group, chunk, chunk_idx, full_content
+                )
+
+                # Source-grounding retry: if too many fields have low
+                # grounding, re-extract with strict quoting
+                if self._extraction.source_quoting_enabled:
+                    avg_grounding = _avg_chunk_grounding(result)
+                    if avg_grounding < sg_min_ratio:
+                        logger.info(
+                            "v2_source_grounding_retry",
+                            group=group.name,
+                            chunk_idx=chunk_idx,
+                            avg_grounding=avg_grounding,
+                        )
+                        try:
+                            retry_raw = await self._extractor.extract_field_group(
+                                content=chunk.content,
+                                field_group=group,
+                                source_context=source_context,
+                                strict_quoting=True,
+                            )
+                            retry_result = self._parse_chunk_to_v2(
+                                retry_raw, group, chunk, chunk_idx, full_content
+                            )
+                            retry_avg = _avg_chunk_grounding(retry_result)
+                            if retry_avg > avg_grounding:
+                                logger.info(
+                                    "v2_source_grounding_retry_improved",
+                                    group=group.name,
+                                    chunk_idx=chunk_idx,
+                                    before=avg_grounding,
+                                    after=retry_avg,
+                                )
+                                return retry_result
+                        except Exception:
+                            pass  # keep original on retry failure
+
+                return result
 
         tasks = [extract_chunk_v2(chunk, idx) for idx, chunk in enumerate(chunks)]
         results = await asyncio.gather(*tasks)
@@ -852,6 +913,10 @@ class SchemaExtractionOrchestrator:
             )
             merged, _ = validator.validate(merged, group)
 
+        # Propagate truncation flag if any chunk was truncated
+        if any(r.truncated for r in chunk_results):
+            merged["_truncated"] = True
+
         group_result["data"] = merged
         group_result["grounding_scores"] = None  # Grounding is inside data for v2
 
@@ -861,6 +926,47 @@ class SchemaExtractionOrchestrator:
             group_result["confidence"] = sum(confidences) / len(confidences)
 
         return group_result
+
+    async def _extract_entity_chunk_v2(
+        self,
+        chunk,
+        chunk_idx: int,
+        group: FieldGroup,
+        source_context: str,
+        full_content: str,
+    ) -> ChunkExtractionResult:
+        """Extract entities from a single chunk with pagination.
+
+        Uses _extract_entities_paginated to handle entity lists that exceed
+        the per-call limit, then converts to ChunkExtractionResult with
+        inline grounding.
+        """
+        all_entities, _, any_truncated = await self._extract_entities_paginated(
+            chunk.content, group, source_context,
+        )
+
+        entities: list[EntityItem] = []
+        for entity_data in all_entities:
+            fields = entity_data.get("fields", {})
+            confidence = float(entity_data.get("_confidence", 0.5))
+            quote = entity_data.get("_quote")
+
+            grounding = ground_entity_item(quote, chunk.content)
+            location = locate_in_source(quote, full_content, chunk)
+
+            entities.append(EntityItem(
+                fields=fields,
+                confidence=confidence,
+                quote=quote,
+                grounding=grounding,
+                location=location,
+            ))
+
+        return ChunkExtractionResult(
+            chunk_index=chunk_idx,
+            entity_items={group.name: entities},
+            truncated=any_truncated,
+        )
 
     def _parse_chunk_to_v2(
         self,
@@ -896,7 +1002,7 @@ class SchemaExtractionOrchestrator:
                         field_def.name, v, quote, chunk.content, field_def.field_type
                     )
                     location = locate_in_source(quote, full_content, chunk)
-                    items.append(ListValueItem(v, quote, grounding, location))
+                    items.append(ListValueItem(v, confidence, quote, grounding, location))
                 list_items[field_def.name] = items
             else:
                 # Single, boolean, summary
@@ -957,29 +1063,28 @@ class SchemaExtractionOrchestrator:
         chunk_content: str,
         field_group: FieldGroup,
         source_context: str | None,
-    ) -> tuple[list[dict], bool]:
-        """Iterative entity extraction with stall/convergence detection.
+    ) -> tuple[list[dict], bool, bool]:
+        """Iterative entity extraction with dedup and convergence detection.
 
         Safety controls:
         1. has_more=False from LLM → stop
-        2. Empty response (0 new entities) → stop
-        3. Consecutive stall (same entities returned 2x) → stop
-        4. Total entities >= max_items → stop
-        5. Max iterations safety cap
+        2. Empty response (0 new entities after dedup) → stop
+        3. Total entities >= max_items → stop
+        4. Max iterations safety cap
 
         Returns:
-            Tuple of (all_entities, has_more_flag).
+            Tuple of (all_entities, hit_max_items, any_truncated).
         """
         max_items = field_group.max_items or 50
         batch_size = min(max_items, 20)
         max_iterations = (max_items // batch_size) + 3  # safety margin
-        MAX_CONSECUTIVE_STALLS = 2
 
         all_entities: list[dict] = []
         already_found_ids: list[str] = []
-        consecutive_stalls = 0
+        any_truncated = False
 
         id_fields = self._context.entity_id_fields
+        found_set: set[str] = set()
 
         for iteration in range(max_iterations):
             try:
@@ -987,6 +1092,7 @@ class SchemaExtractionOrchestrator:
                     content=chunk_content,
                     field_group=field_group,
                     source_context=source_context,
+                    already_found=already_found_ids or None,
                 )
             except Exception as e:
                 logger.error(
@@ -997,6 +1103,10 @@ class SchemaExtractionOrchestrator:
                 )
                 break
 
+            # Detect truncation from extractor (finish_reason=length, repair failed)
+            if raw.get("_truncated"):
+                any_truncated = True
+
             parsed = SchemaExtractor.parse_v2_entity_response(raw, field_group)
             new_raw_entities = parsed.get(field_group.name, [])
             has_more = parsed.get("has_more", False)
@@ -1005,30 +1115,12 @@ class SchemaExtractionOrchestrator:
             new_entities = []
             for ent in new_raw_entities:
                 ent_id = self._extract_entity_id(ent.get("fields", {}), id_fields)
-                if ent_id and ent_id in {x.lower() for x in already_found_ids}:
+                if ent_id and ent_id.lower() in found_set:
                     continue
                 new_entities.append(ent)
 
             if not new_entities:
                 break
-
-            # Stall detection: all "new" entities are actually duplicates
-            new_ids = [
-                self._extract_entity_id(e.get("fields", {}), id_fields)
-                for e in new_entities
-            ]
-            existing_ids = {x.lower() for x in already_found_ids}
-            if all(nid and nid in existing_ids for nid in new_ids):
-                consecutive_stalls += 1
-                if consecutive_stalls >= MAX_CONSECUTIVE_STALLS:
-                    logger.info(
-                        "entity_pagination_stalled",
-                        group=field_group.name,
-                        total=len(all_entities),
-                    )
-                    break
-            else:
-                consecutive_stalls = 0
 
             all_entities.extend(new_entities)
 
@@ -1037,13 +1129,14 @@ class SchemaExtractionOrchestrator:
                 eid = self._extract_entity_id(ent.get("fields", {}), id_fields)
                 if eid:
                     already_found_ids.append(eid)
+                    found_set.add(eid.lower())
 
             if not has_more:
                 break
             if len(all_entities) >= max_items:
                 break
 
-        return all_entities, len(all_entities) >= max_items
+        return all_entities, len(all_entities) >= max_items, any_truncated
 
     @staticmethod
     def _extract_entity_id(fields: dict, id_fields: list[str]) -> str | None:
