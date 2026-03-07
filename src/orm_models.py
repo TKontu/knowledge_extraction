@@ -293,8 +293,13 @@ class Extraction(Base):
         Boolean, default=False, server_default="false", nullable=False
     )
 
-    # Grounding verification scores per field (string-match + LLM)
+    # Grounding verification scores per field (string-match + LLM) — v1 only
     grounding_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Data format version: 1=flat, 2=per-field structured with inline grounding
+    data_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
 
     # Flag indicating if entity extraction completed successfully
     entities_extracted: Mapped[bool] = mapped_column(

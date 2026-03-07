@@ -68,6 +68,7 @@ class ExtractionConfig:
     domain_dedup_min_pages: int
     domain_dedup_min_block_chars: int
     source_grounding_min_ratio: float
+    data_version: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -611,6 +612,14 @@ class Settings(BaseSettings):
         "0.5 means retry if fewer than half the quotes exist in the source content.",
     )
 
+    # Extraction data format version
+    extraction_data_version: int = Field(
+        default=1,
+        ge=1,
+        le=2,
+        description="Extraction data format version. 1=flat, 2=per-field structured with inline grounding.",
+    )
+
     # Grounding Verification
     grounding_llm_verify_enabled: bool = Field(
         default=True,
@@ -874,6 +883,7 @@ class Settings(BaseSettings):
                 domain_dedup_min_pages=self.domain_dedup_min_pages,
                 domain_dedup_min_block_chars=self.domain_dedup_min_block_chars,
                 source_grounding_min_ratio=self.source_grounding_min_ratio,
+                data_version=self.extraction_data_version,
             ),
         )
 

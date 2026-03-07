@@ -30,18 +30,27 @@ class SchemaValidator:
     ) -> tuple[dict[str, Any], list[dict[str, str]]]:
         """Validate and coerce data against field group schema.
 
+        Auto-detects v1 (flat) or v2 (per-field structured) format.
+
         Args:
-            data: Extraction result dict (may contain _quotes, _conflicts, confidence).
+            data: Extraction result dict (v1 or v2 format).
             group: Field group definition.
 
         Returns:
             Tuple of (cleaned_data, violations). Metadata keys are preserved.
         """
+        # v2 format detection
+        if "fields" in data and isinstance(data.get("fields"), dict):
+            return self._validate_v2(data, group)
+
+        return self._validate_v1(data, group)
+
+    def _validate_v1(
+        self, data: dict[str, Any], group: FieldGroup
+    ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+        """Validate v1 flat format data."""
         violations: list[dict[str, str]] = []
 
-        # Confidence gating: record violation but preserve data for
-        # consolidation weighting. Don't nullify — downstream uses
-        # confidence as weight signal, not a filter.
         confidence = data.get("confidence", 1.0)
         if self.min_confidence > 0 and confidence < self.min_confidence:
             violations.append(
@@ -56,7 +65,6 @@ class SchemaValidator:
             return self._validate_entity_list(data, group, violations)
 
         cleaned = {}
-        # Preserve metadata keys
         for key in _METADATA_KEYS:
             if key in data:
                 cleaned[key] = data[key]
@@ -72,6 +80,69 @@ class SchemaValidator:
             if violation:
                 violations.append(violation)
 
+        if violations:
+            cleaned["_validation"] = violations
+            logger.info(
+                "schema_validation_violations",
+                group=group.name,
+                count=len(violations),
+            )
+
+        return cleaned, violations
+
+    def _validate_v2(
+        self, data: dict[str, Any], group: FieldGroup
+    ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+        """Validate v2 per-field structured format.
+
+        Coerces data["fields"][name]["value"] for each field, validates
+        confidence is 0.0-1.0.
+        """
+        violations: list[dict[str, str]] = []
+        fields = data.get("fields", {})
+        cleaned_fields: dict[str, Any] = {}
+
+        for field_def in group.fields:
+            entry = fields.get(field_def.name)
+            if entry is None or not isinstance(entry, dict):
+                cleaned_fields[field_def.name] = {
+                    "value": None,
+                    "confidence": 0.0,
+                    "quote": None,
+                }
+                continue
+
+            value = entry.get("value")
+            confidence = entry.get("confidence", 0.5)
+            quote = entry.get("quote")
+
+            # Coerce value
+            if value is not None:
+                coerced, violation = self._coerce_value(value, field_def)
+                if violation:
+                    violations.append(violation)
+                value = coerced
+
+            # Validate confidence range
+            try:
+                confidence = max(0.0, min(1.0, float(confidence)))
+            except (TypeError, ValueError):
+                confidence = 0.5
+                violations.append(
+                    {
+                        "field": field_def.name,
+                        "issue": "invalid_confidence",
+                        "detail": "non-numeric confidence, defaulting to 0.5",
+                    }
+                )
+
+            cleaned_fields[field_def.name] = {
+                "value": value,
+                "confidence": confidence,
+                "quote": quote,
+            }
+
+        cleaned: dict[str, Any] = {"fields": cleaned_fields}
         if violations:
             cleaned["_validation"] = violations
             logger.info(
@@ -154,7 +225,7 @@ class SchemaValidator:
             return self._coerce_enum(value, field)
         elif field.field_type == "list":
             return self._coerce_list(value, field)
-        # text: pass through as-is
+        # text, summary: pass through as-is (string content)
         return value, None
 
     def _coerce_bool(
@@ -276,5 +347,5 @@ class SchemaValidator:
         return [value], {
             "field": field.name,
             "issue": "type_coerced",
-            "detail": f"single value wrapped in list",
+            "detail": "single value wrapped in list",
         }

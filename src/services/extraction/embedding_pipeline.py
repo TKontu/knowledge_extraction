@@ -52,6 +52,13 @@ class ExtractionEmbeddingService:
         Returns:
             Text representation for embedding.
         """
+        from services.extraction.extraction_items import safe_data_version
+
+        if safe_data_version(extraction) >= 2:
+            return EmbeddingPipeline._extraction_to_text_v2(
+                extraction.data, extraction.extraction_type
+            )
+
         parts = []
         if extraction.extraction_type:
             parts.append(f"Type: {extraction.extraction_type}")
@@ -73,6 +80,35 @@ class ExtractionEmbeddingService:
                                 parts.append(str(item))
                     else:
                         parts.append(f"{key}: {value}")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _extraction_to_text_v2(data: dict, extraction_type: str | None = None) -> str:
+        """Convert v2 structured extraction data to embeddable text."""
+        from services.extraction.extraction_items import v2_to_flat
+
+        parts = []
+        if extraction_type:
+            parts.append(f"Type: {extraction_type}")
+
+        flat = v2_to_flat(data)
+        for key, value in flat.items():
+            if key.startswith("_") or key == "confidence":
+                continue
+            if value is not None:
+                if isinstance(value, list):
+                    for item in value[:EMBEDDING_MAX_LIST_ITEMS]:
+                        if isinstance(item, dict):
+                            item_parts = [
+                                f"{k}: {v}"
+                                for k, v in item.items()
+                                if not str(k).startswith("_") and v is not None
+                            ]
+                            parts.append("; ".join(item_parts))
+                        else:
+                            parts.append(str(item))
+                else:
+                    parts.append(f"{key}: {value}")
         return "\n".join(parts)
 
     async def embed_and_upsert(self, extractions: list) -> EmbeddingResult:

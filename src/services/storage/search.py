@@ -114,11 +114,20 @@ class SearchService:
             source_uri = source.uri if source else ""
 
             # Build enriched result
+            # Flatten v2 data for search result compatibility
+            data = extraction.data
+            from services.extraction.extraction_items import safe_data_version
+
+            if safe_data_version(extraction) >= 2:
+                from services.extraction.extraction_items import v2_to_flat
+
+                data = v2_to_flat(data)
+
             enriched_results.append(
                 ExtractionSearchResult(
                     extraction_id=result.extraction_id,
                     score=result.score,
-                    data=extraction.data,
+                    data=data,
                     source_group=extraction.source_group,
                     source_uri=source_uri,
                     confidence=extraction.confidence,

@@ -17,6 +17,7 @@ from models import (
     TemplateResponse,
 )
 from orm_models import Extraction
+from services.extraction.extraction_items import safe_data_version
 from services.projects.repository import ProjectRepository
 from services.projects.template_loader import (
     get_all_templates,
@@ -359,6 +360,11 @@ async def backfill_grounding(
 
         updates: list[tuple[UUID, dict[str, float]]] = []
         for ext in extractions:
+            # v2 extractions have inline grounding — skip backfill
+            if safe_data_version(ext) >= 2:
+                skipped += 1
+                continue
+
             field_types = field_types_by_group.get(ext.extraction_type, {})
             if not field_types:
                 skipped += 1

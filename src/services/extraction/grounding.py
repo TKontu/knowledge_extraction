@@ -24,6 +24,7 @@ GROUNDING_DEFAULTS: dict[str, str] = {
     "text": "none",
     "enum": "required",
     "list": "required",
+    "summary": "none",
 }
 
 # Keys in extraction data that are metadata, not fields
@@ -535,6 +536,141 @@ def _word_window_similarity(quote: str, content: str) -> float:
                     return best
 
     return round(best, 4)
+
+
+def ground_field_item(
+    field_name: str,
+    value: Any,
+    quote: str | None,
+    chunk_content: str,
+    field_type: str,
+) -> float:
+    """Complete inline grounding for one field item.
+
+    Combines Layer A (quote-in-source) and Layer B (value-in-quote):
+      grounding = min(quote_in_source, value_in_quote)
+
+    Args:
+        field_name: Name of the field (for logging).
+        value: The extracted value.
+        quote: The quote string claimed to support the value.
+        chunk_content: The source text that was sent to the LLM.
+        field_type: Type string (determines grounding mode).
+
+    Returns:
+        Grounding score 0.0-1.0.
+    """
+    grounding_mode = GROUNDING_DEFAULTS.get(field_type, "required")
+
+    if grounding_mode == "none":
+        return 1.0
+
+    coerced = _coerce_quote(quote)
+
+    if grounding_mode == "semantic":
+        # Semantic: only check quote-in-source (Layer A)
+        if not coerced or not chunk_content:
+            return 0.5  # No quote available, assume neutral
+        return verify_quote_in_source(coerced, chunk_content)
+
+    # Required: min(Layer A, Layer B)
+    if not coerced:
+        return 0.0  # No quote → ungrounded
+
+    layer_a = verify_quote_in_source(coerced, chunk_content) if chunk_content else 0.0
+    layer_b = score_field(value, coerced, field_type)
+    return min(layer_a, layer_b)
+
+
+def ground_entity_item(
+    quote: str | None,
+    chunk_content: str,
+) -> float:
+    """Inline grounding for one entity. Quote-in-source check only.
+
+    Entity-level grounding verifies that the entity's identifying quote
+    actually exists in the source content. Field-level grounding within
+    the entity is handled separately per field.
+
+    Args:
+        quote: The entity's quote string.
+        chunk_content: The source text that was sent to the LLM.
+
+    Returns:
+        Grounding score 0.0-1.0.
+    """
+    coerced = _coerce_quote(quote)
+    if not coerced or not chunk_content:
+        return 0.0
+    return verify_quote_in_source(coerced, chunk_content)
+
+
+def compute_chunk_grounding(result: dict, chunk_content: str) -> dict[str, float]:
+    """Score each field's quote against the chunk source content.
+
+    Unlike score_field (value vs quote), this verifies quote vs source.
+    All field types are scored — values can be synthesized, quotes must be real.
+
+    Args:
+        result: Extraction result dict with ``_quotes``.
+        chunk_content: The source text that was sent to the LLM.
+
+    Returns:
+        Dict of field_name -> grounding score (0.0-1.0) for all fields
+        with non-empty quotes. No field-type filtering.
+    """
+    if not result or not chunk_content:
+        return {}
+
+    quotes = result.get("_quotes", {}) or {}
+    if not isinstance(quotes, dict):
+        return {}
+
+    scores: dict[str, float] = {}
+    for field_name, raw_quote in quotes.items():
+        quote = _coerce_quote(raw_quote)
+        if not quote:
+            continue
+        scores[field_name] = verify_quote_in_source(quote, chunk_content)
+
+    return scores
+
+
+def compute_chunk_grounding_entities(
+    result: dict, chunk_content: str
+) -> dict[str, float]:
+    """Score each entity's quote against the chunk source content.
+
+    For entity list results where each entity has a per-entity ``_quote``.
+
+    Args:
+        result: Extraction result dict with entity lists.
+        chunk_content: The source text that was sent to the LLM.
+
+    Returns:
+        Dict mapping entity key to average grounding score.
+    """
+    if not result or not chunk_content:
+        return {}
+
+    scores: dict[str, float] = {}
+    for key, value in result.items():
+        if key in _METADATA_KEYS or not isinstance(value, list):
+            continue
+        entity_scores: list[float] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            raw_quote = item.get("_quote")
+            quote = _coerce_quote(raw_quote)
+            if not quote:
+                entity_scores.append(0.0)
+                continue
+            entity_scores.append(verify_quote_in_source(quote, chunk_content))
+        if entity_scores:
+            scores[key] = round(sum(entity_scores) / len(entity_scores), 4)
+
+    return scores
 
 
 def compute_source_grounding_scores(

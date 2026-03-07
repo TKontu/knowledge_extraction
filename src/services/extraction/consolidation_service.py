@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from orm_models import ConsolidatedExtraction, Extraction
+from services.extraction.extraction_items import safe_data_version
 from services.extraction.consolidation import (
     ConsolidatedRecord,
     consolidate_extractions,
@@ -92,6 +93,7 @@ class ConsolidationService:
             ext_dicts = [
                 {
                     "data": ext.data,
+                    "data_version": safe_data_version(ext),
                     "confidence": ext.confidence if ext.confidence is not None else 0.5,
                     "grounding_scores": ext.grounding_scores or {},
                     "source_id": str(ext.source_id),

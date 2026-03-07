@@ -60,6 +60,7 @@ class SchemaExtractor:
         source_quoting: bool = True,
         request_timeout: int = 300,
         context: "ExtractionContext | None" = None,
+        data_version: int = 1,
     ):
         """Initialize SchemaExtractor.
 
@@ -70,6 +71,7 @@ class SchemaExtractor:
             source_quoting: Whether to include source quotes in extraction.
             request_timeout: Timeout in seconds for queued LLM requests.
             context: Optional extraction context for prompt customization.
+            data_version: Extraction data format version (1=flat, 2=per-field structured).
         """
         from services.extraction.schema_adapter import ExtractionContext
 
@@ -82,6 +84,7 @@ class SchemaExtractor:
         self._content_limit = content_limit
         self._source_quoting_enabled = source_quoting
         self._request_timeout = request_timeout
+        self._data_version = data_version
 
         # Only create direct client if not using queue
         if llm_queue is None:
@@ -379,12 +382,27 @@ class SchemaExtractor:
     def _build_system_prompt(
         self, field_group: FieldGroup, strict_quoting: bool = False
     ) -> str:
-        """Build system prompt for field group extraction."""
-        if field_group.is_entity_list:
-            return self._build_entity_list_system_prompt(
+        """Build system prompt for field group extraction (version dispatcher)."""
+        if self._data_version >= 2:
+            if field_group.is_entity_list:
+                return self._build_entity_list_system_prompt_v2(
+                    field_group, strict_quoting=strict_quoting
+                )
+            return self._build_system_prompt_v2(
                 field_group, strict_quoting=strict_quoting
             )
+        if field_group.is_entity_list:
+            return self._build_entity_list_system_prompt_v1(
+                field_group, strict_quoting=strict_quoting
+            )
+        return self._build_system_prompt_v1(
+            field_group, strict_quoting=strict_quoting
+        )
 
+    def _build_system_prompt_v1(
+        self, field_group: FieldGroup, strict_quoting: bool = False
+    ) -> str:
+        """Build v1 system prompt for field group extraction (flat format)."""
         # Build field descriptions
         field_specs = []
         for f in field_group.fields:
@@ -433,17 +451,80 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
 - 0.8-1.0 if the content is clearly relevant with good data
 {quoting_instruction}"""
 
+    def _build_system_prompt_v2(
+        self, field_group: FieldGroup, strict_quoting: bool = False
+    ) -> str:
+        """Build v2 system prompt: per-field {value, confidence, quote}."""
+        field_specs = []
+        for f in field_group.fields:
+            spec = f'- "{f.name}" ({f.field_type}): {f.description}'
+            if f.enum_values:
+                spec += f" [options: {', '.join(f.enum_values)}]"
+            if f.required:
+                spec += " [REQUIRED]"
+            field_specs.append(spec)
+
+        fields_str = "\n".join(field_specs)
+
+        # Build example showing per-field structure
+        example_field = field_group.fields[0].name if field_group.fields else "field"
+        quoting_note = ""
+        if self._source_quoting_enabled:
+            if strict_quoting:
+                quoting_note = (
+                    '\nCRITICAL: The "quote" for each field MUST be an EXACT verbatim excerpt '
+                    "(15-50 chars) copied directly from the source text. "
+                    "Do NOT paraphrase, translate, or fabricate quotes. "
+                    "If you cannot find an exact quote, set the field to null."
+                )
+            else:
+                quoting_note = (
+                    '\nInclude a "quote" with each field: a brief verbatim excerpt '
+                    "(15-50 chars) from the source that supports the value."
+                )
+
+        return f"""You are extracting {field_group.description} from {self.context.source_type}.
+
+Fields to extract:
+{fields_str}
+
+{field_group.prompt_hint}
+
+RULES:
+- Extract ONLY from the content provided below. Do NOT use outside knowledge.
+- If the content does not contain information for a field, set it to null.
+- If the content is not relevant to {field_group.description}, set ALL fields to null.
+- For boolean fields, return true ONLY if there is explicit evidence. Default to false.
+- For list fields, return empty list [] if no items found.
+
+Output JSON with per-field structure. Each field has its own value, confidence, and quote:
+{{
+  "fields": {{
+    "{example_field}": {{"value": <extracted_value>, "confidence": 0.0-1.0, "quote": "exact text from source"}},
+    ...
+  }}
+}}
+
+Confidence per field:
+- 0.0 if no information found for this field
+- 0.5-0.7 if partial/uncertain information
+- 0.8-1.0 if clear, well-supported data
+{quoting_note}"""
+
     def _build_entity_list_system_prompt(
         self, field_group: FieldGroup, strict_quoting: bool = False
     ) -> str:
-        """Build system prompt for entity list extraction.
+        """Build entity list system prompt (backward-compatible alias for v1)."""
+        return self._build_entity_list_system_prompt_v1(
+            field_group, strict_quoting=strict_quoting
+        )
 
-        Uses the field group name as the output key (e.g., "employees", "locations")
-        instead of hardcoding "products".
-        """
+    def _build_entity_list_system_prompt_v1(
+        self, field_group: FieldGroup, strict_quoting: bool = False
+    ) -> str:
+        """Build v1 system prompt for entity list extraction."""
         field_specs = []
         id_field = None
-        # Use context entity_id_fields for ID field detection
         id_field_names = (
             self.context.entity_id_fields
             if self.context
@@ -452,23 +533,18 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
         for f in field_group.fields:
             spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'
             field_specs.append(spec)
-            # Find the ID field for the example
             if f.name in id_field_names and id_field is None:
                 id_field = f.name
 
         fields_str = "\n".join(field_specs)
-
-        # Use group name as output key
         output_key = field_group.name
 
-        # Build example using actual ID field or first field
         if id_field:
             example_fields = f'"{id_field}": "...", ...'
         else:
             first_field = field_group.fields[0].name if field_group.fields else "field"
             example_fields = f'"{first_field}": "...", ...'
 
-        # Singular form for "each X" phrasing
         entity_singular = _singularize(field_group.name)
 
         quoting_instruction = ""
@@ -523,6 +599,82 @@ Only include items you find clear evidence for. Return empty list if none found.
 Keep output concise - quality over quantity.
 {quoting_instruction}"""
 
+    def _build_entity_list_system_prompt_v2(
+        self,
+        field_group: FieldGroup,
+        strict_quoting: bool = False,
+        already_found: list[str] | None = None,
+    ) -> str:
+        """Build v2 system prompt for entity list extraction with per-entity provenance."""
+        field_specs = []
+        id_field = None
+        id_field_names = (
+            self.context.entity_id_fields
+            if self.context
+            else ("entity_id", "name", "id")
+        )
+        for f in field_group.fields:
+            spec = f'- "{f.name}" ({f.field_type}): {f.description or ""}'
+            field_specs.append(spec)
+            if f.name in id_field_names and id_field is None:
+                id_field = f.name
+
+        fields_str = "\n".join(field_specs)
+        output_key = field_group.name
+        entity_singular = _singularize(field_group.name)
+        max_items = field_group.max_items or 20
+
+        quoting_note = ""
+        if self._source_quoting_enabled:
+            if strict_quoting:
+                quoting_note = (
+                    '\nCRITICAL: "_quote" MUST be an EXACT verbatim excerpt (15-50 chars) '
+                    "copied from the source. Do NOT paraphrase or fabricate. "
+                    "Omit entity entirely if no exact quote found."
+                )
+            else:
+                quoting_note = (
+                    '\nFor each entity, include "_quote": a brief verbatim excerpt '
+                    "(15-50 chars) from the source identifying this entity."
+                )
+
+        exclusion_block = ""
+        if already_found:
+            exclusion_list = ", ".join(already_found[:50])
+            exclusion_block = f"""
+Already extracted entities (DO NOT repeat these): [{exclusion_list}]
+Extract ONLY entities NOT in this list.
+"""
+
+        return f"""You are extracting {field_group.description} from {self.context.source_type}.
+
+For each {entity_singular} found, extract:
+{fields_str}
+
+{field_group.prompt_hint}
+{exclusion_block}
+IMPORTANT RULES:
+- Extract ONLY from the content provided below. Do NOT use outside knowledge.
+- Extract ONLY the most relevant/significant items (max {max_items} items)
+- If no {entity_singular} information found, return an empty list.
+- Skip generic navigation/coverage lists, not actual entities.
+
+Output JSON with per-entity confidence and quote:
+{{
+  "{output_key}": [
+    {{<fields>, "_confidence": 0.0-1.0, "_quote": "exact text from source"}},
+    ...
+  ],
+  "has_more": true/false
+}}
+
+Set "has_more" to true if there are more entities in the content not yet extracted.
+
+Confidence per entity:
+- 0.5-0.7 if sparse detail
+- 0.8-1.0 if well-supported with clear evidence
+{quoting_note}"""
+
     def _build_user_prompt(
         self,
         content: str,
@@ -552,7 +704,7 @@ Keep output concise - quality over quantity.
     def _apply_defaults(
         self, result: dict[str, Any], field_group: FieldGroup
     ) -> dict[str, Any]:
-        """Apply default values for missing fields."""
+        """Apply default values for missing fields (v1 format only)."""
         for f in field_group.fields:
             if f.name not in result or result[f.name] is None:
                 if f.default is not None:
@@ -563,3 +715,108 @@ Keep output concise - quality over quantity.
                     result[f.name] = []
 
         return result
+
+    @staticmethod
+    def detect_response_format(raw: dict) -> int:
+        """Detect if LLM returned v1 (flat) or v2 (structured) format.
+
+        Returns:
+            1 for flat format, 2 for per-field structured format.
+        """
+        if "fields" in raw and isinstance(raw["fields"], dict):
+            # Check that at least one nested value looks like {value: ..., confidence: ...}
+            for _k, v in raw["fields"].items():
+                if isinstance(v, dict) and "value" in v:
+                    return 2
+        return 1
+
+    @staticmethod
+    def parse_v2_response(raw: dict, field_group: FieldGroup) -> dict:
+        """Parse v2 per-field structured response into normalized format.
+
+        Handles both proper v2 ({"fields": {"name": {"value": ..., ...}}})
+        and graceful fallback to v1 flat format if LLM ignores the format.
+
+        Args:
+            raw: Raw parsed JSON from LLM response.
+            field_group: Field group definition.
+
+        Returns:
+            Normalized v2 dict with "fields" key containing per-field data.
+        """
+        detected = SchemaExtractor.detect_response_format(raw)
+
+        if detected == 2:
+            # Already v2 format — normalize field names
+            fields = raw["fields"]
+            normalized: dict[str, Any] = {}
+            for f in field_group.fields:
+                if f.name in fields:
+                    entry = fields[f.name]
+                    if isinstance(entry, dict) and "value" in entry:
+                        normalized[f.name] = {
+                            "value": entry.get("value"),
+                            "confidence": float(entry.get("confidence", 0.5)),
+                            "quote": entry.get("quote"),
+                        }
+                    else:
+                        # Field present but not structured — wrap it
+                        normalized[f.name] = {
+                            "value": entry,
+                            "confidence": 0.5,
+                            "quote": None,
+                        }
+                else:
+                    normalized[f.name] = {
+                        "value": None,
+                        "confidence": 0.0,
+                        "quote": None,
+                    }
+            return {"fields": normalized}
+
+        # Fallback: v1 flat format — convert to v2 structure
+        quotes = raw.get("_quotes", {}) or {}
+        group_confidence = float(raw.get("confidence", 0.5))
+        normalized = {}
+        for f in field_group.fields:
+            value = raw.get(f.name)
+            normalized[f.name] = {
+                "value": value,
+                "confidence": group_confidence if value is not None else 0.0,
+                "quote": quotes.get(f.name),
+            }
+        return {"fields": normalized}
+
+    @staticmethod
+    def parse_v2_entity_response(raw: dict, field_group: FieldGroup) -> dict:
+        """Parse v2 entity list response with per-entity confidence.
+
+        Args:
+            raw: Raw parsed JSON from LLM response.
+            field_group: Field group definition.
+
+        Returns:
+            Dict with entity_key list and has_more flag.
+        """
+        entity_key = field_group.name
+        entities = raw.get(entity_key, [])
+        if not isinstance(entities, list):
+            entities = []
+
+        normalized = []
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+            fields = {}
+            for f in field_group.fields:
+                fields[f.name] = entity.get(f.name)
+            normalized.append({
+                "fields": fields,
+                "_confidence": float(entity.get("_confidence", entity.get("confidence", 0.5))),
+                "_quote": entity.get("_quote", entity.get("quote")),
+            })
+
+        return {
+            entity_key: normalized,
+            "has_more": bool(raw.get("has_more", False)),
+        }

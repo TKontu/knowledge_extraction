@@ -6,6 +6,8 @@ TDD: Tests written first, implementation follows.
 from services.extraction.grounding import (
     GROUNDING_DEFAULTS,
     _coerce_quote,
+    compute_chunk_grounding,
+    compute_chunk_grounding_entities,
     compute_entity_list_grounding_scores,
     compute_grounding_scores,
     compute_source_grounding_scores,
@@ -644,6 +646,114 @@ class TestComputeEntityListGroundingScores:
         field_types = {"description": "text"}
         scores = compute_entity_list_grounding_scores(data, "items", field_types)
         assert scores == {"items": 1.0}
+
+
+class TestComputeChunkGrounding:
+    """Test compute_chunk_grounding: all field types scored (quote vs source)."""
+
+    SOURCE = (
+        "ABB Ltd is a leading technology company headquartered in Zurich, Switzerland. "
+        "The company has approximately 105,000 employees worldwide. "
+        "ABB is a publicly traded manufacturer of industrial equipment."
+    )
+
+    def test_all_field_types_scored(self):
+        """String, integer, text, boolean — all get scored."""
+        result = {
+            "company_name": "ABB",
+            "employee_count": 105000,
+            "description": "A global tech leader",
+            "is_public": True,
+            "_quotes": {
+                "company_name": "ABB Ltd is a leading technology company",
+                "employee_count": "approximately 105,000 employees",
+                "description": "leading technology company headquartered in Zurich",
+                "is_public": "publicly traded manufacturer",
+            },
+        }
+        scores = compute_chunk_grounding(result, self.SOURCE)
+        # All quotes exist in source → all scored high
+        assert scores["company_name"] == 1.0
+        assert scores["employee_count"] == 1.0
+        assert scores["description"] == 1.0
+        assert scores["is_public"] == 1.0
+
+    def test_fabricated_quote_scores_low(self):
+        result = {
+            "company_name": "ABB",
+            "_quotes": {
+                "company_name": "Founded in 1988 by Percy Barnevik in Sweden",
+            },
+        }
+        scores = compute_chunk_grounding(result, self.SOURCE)
+        assert scores["company_name"] < 0.5
+
+    def test_empty_result(self):
+        assert compute_chunk_grounding({}, self.SOURCE) == {}
+
+    def test_empty_content(self):
+        result = {"_quotes": {"x": "some quote"}}
+        assert compute_chunk_grounding(result, "") == {}
+
+    def test_no_quotes(self):
+        result = {"company_name": "ABB"}
+        assert compute_chunk_grounding(result, self.SOURCE) == {}
+
+    def test_empty_quote_skipped(self):
+        result = {"_quotes": {"company_name": "", "employee_count": None}}
+        scores = compute_chunk_grounding(result, self.SOURCE)
+        assert scores == {}
+
+    def test_non_string_quote_coerced(self):
+        result = {
+            "_quotes": {"company_name": ["ABB Ltd", "is a leading"]},
+        }
+        scores = compute_chunk_grounding(result, self.SOURCE)
+        assert scores["company_name"] >= 0.9
+
+
+class TestComputeChunkGroundingEntities:
+    """Test compute_chunk_grounding_entities: entity quotes vs source."""
+
+    SOURCE = "We produce the Motor X series and the Drive Y controller."
+
+    def test_all_entities_grounded(self):
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": "Motor X series"},
+                {"name": "Drive Y", "_quote": "Drive Y controller"},
+            ],
+            "confidence": 0.8,
+        }
+        scores = compute_chunk_grounding_entities(result, self.SOURCE)
+        assert scores["products"] == 1.0
+
+    def test_mixed_grounded_and_fabricated(self):
+        result = {
+            "products": [
+                {"name": "Motor X", "_quote": "Motor X series"},
+                {"name": "Drive Y", "_quote": "hydraulic pump system"},
+            ],
+            "confidence": 0.8,
+        }
+        scores = compute_chunk_grounding_entities(result, self.SOURCE)
+        # Motor X grounded (1.0), Drive Y fabricated (<0.8)
+        assert 0.3 < scores["products"] < 0.8
+
+    def test_no_quotes_scores_zero(self):
+        result = {
+            "products": [{"name": "Motor X"}],
+            "confidence": 0.8,
+        }
+        scores = compute_chunk_grounding_entities(result, self.SOURCE)
+        assert scores["products"] == 0.0
+
+    def test_empty_result(self):
+        assert compute_chunk_grounding_entities({}, self.SOURCE) == {}
+
+    def test_empty_content(self):
+        result = {"products": [{"name": "X", "_quote": "X"}]}
+        assert compute_chunk_grounding_entities(result, "") == {}
 
 
 class TestExtractEntityListGroups:

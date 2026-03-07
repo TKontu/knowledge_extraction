@@ -11,11 +11,23 @@ from uuid import UUID
 import structlog
 
 from services.extraction.field_groups import FieldGroup
+from services.extraction.chunk_merge import (
+    field_cardinality,
+    merge_chunk_results as merge_chunk_results_v2,
+)
+from services.extraction.extraction_items import (
+    ChunkExtractionResult,
+    EntityItem,
+    FieldItem,
+    ListValueItem,
+    locate_in_source,
+)
 from services.extraction.grounding import (
-    GROUNDING_DEFAULTS,
-    _METADATA_KEYS as _GROUNDING_METADATA_KEYS,
     _coerce_quote,
-    score_field,
+    compute_chunk_grounding,
+    compute_chunk_grounding_entities,
+    ground_entity_item,
+    ground_field_item,
     verify_quote_in_source,
 )
 from services.extraction.page_classifier import (
@@ -227,6 +239,9 @@ class SchemaExtractionOrchestrator:
 
         groups = field_groups
         results = []
+        from services.extraction.extraction_items import safe_data_version
+
+        data_version = safe_data_version(self._extraction)
 
         # Chunk document for large content
         # Reduce max_tokens by overlap so chunk + prepended overlap fits
@@ -245,6 +260,7 @@ class SchemaExtractionOrchestrator:
             source=context_value,
             groups=len(groups),
             chunks=len(chunks),
+            data_version=data_version,
         )
 
         # Extract all field groups in parallel for better KV cache utilization
@@ -257,27 +273,30 @@ class SchemaExtractionOrchestrator:
                 "data": {},
                 "confidence": 0.0,
                 "grounding_scores": {},
+                "data_version": data_version,
             }
 
-            # Extract from chunks in parallel batches
+            if data_version >= 2:
+                return await self._extract_group_v2(
+                    chunks, group, context_value, markdown, group_result
+                )
+
+            # v1 path (unchanged)
             chunk_results = await self._extract_chunks_batched(
                 chunks=chunks,
                 group=group,
                 source_context=context_value,
             )
 
-            # Merge chunk results
             if chunk_results:
                 merged = self._merge_chunk_results(chunk_results, group)
 
-                # Schema-aware validation (before confidence pop)
                 if self._extraction.validation_enabled:
                     validator = SchemaValidator(
                         min_confidence=self._extraction.validation_min_confidence,
                     )
                     merged, _ = validator.validate(merged, group)
 
-                # Extract pre-computed per-chunk grounding scores
                 group_result["grounding_scores"] = merged.pop(
                     "_grounding_scores", {}
                 )
@@ -350,6 +369,14 @@ class SchemaExtractionOrchestrator:
                     )
                     return None
 
+                # Compute per-field source grounding scores for this chunk
+                # (quote vs source content, all field types)
+                chunk_sg = compute_chunk_grounding(result, chunk.content)
+                entity_sg = compute_chunk_grounding_entities(
+                    result, chunk.content
+                )
+                result["_source_grounding"] = {**chunk_sg, **entity_sg}
+
                 # Source-grounding: verify quotes exist in chunk content
                 if not self._extraction.source_quoting_enabled:
                     return result
@@ -374,6 +401,16 @@ class SchemaExtractionOrchestrator:
                     )
                 except Exception:
                     return result  # keep original on retry failure
+
+                # Compute source grounding for retry result
+                retry_sg = compute_chunk_grounding(retry_result, chunk.content)
+                retry_entity_sg = compute_chunk_grounding_entities(
+                    retry_result, chunk.content
+                )
+                retry_result["_source_grounding"] = {
+                    **retry_sg,
+                    **retry_entity_sg,
+                }
 
                 retry_ratio = _source_grounding_ratio(retry_result, chunk.content)
                 if retry_ratio > sg_ratio:
@@ -576,40 +613,22 @@ class SchemaExtractionOrchestrator:
             if conflicts:
                 merged["_conflicts"] = conflicts
 
-        # Compute per-chunk grounding scores with aligned value+quote pairs.
-        # For each field, score each chunk's OWN value against its OWN quote,
-        # then keep the best score. This avoids misalignment when the merged
-        # value comes from a different chunk than the merged quote (e.g.,
-        # merge_dedupe, majority_vote strategies).
+        # Propagate source grounding scores from chunks.
+        # For each field, use the score from the chunk whose quote was selected
+        # (highest confidence). All field types are scored — quote vs source.
         grounding_scores: dict[str, float] = {}
-        for field in group.fields:
-            if field.name in _GROUNDING_METADATA_KEYS:
-                continue
-            ft = field.field_type
-            grounding_mode = field.grounding_mode or GROUNDING_DEFAULTS.get(ft, "required")
-            if grounding_mode in ("none", "semantic"):
-                continue
-            # Only score fields present in the merged result
-            if field.name not in merged or merged[field.name] is None:
-                continue
-            best = 0.0
-            for r in chunk_results:
-                val = r.get(field.name)
-                if val is None:
-                    continue
-                chunk_quote = (r.get("_quotes") or {}).get(field.name, "")
-                if chunk_quote:
-                    best = max(best, score_field(val, chunk_quote, ft))
-
-            # Fallback: if no chunk scored > 0 (e.g. winning chunk had value
-            # but no quote while a different chunk contributed the quote),
-            # try scoring the merged value against the best available quote.
-            if best == 0.0 and field.name in merged and merged[field.name] is not None:
-                merged_quote = (merged.get("_quotes") or {}).get(field.name, "")
-                if merged_quote:
-                    best = score_field(merged[field.name], merged_quote, ft)
-
-            grounding_scores[field.name] = best
+        merged_quotes = merged.get("_quotes", {}) or {}
+        for field_name, quote in merged_quotes.items():
+            # Find the chunk this quote came from
+            for result in chunk_results:
+                chunk_quotes = result.get("_quotes", {}) or {}
+                if chunk_quotes.get(field_name) == quote:
+                    sg = result.get("_source_grounding", {})
+                    grounding_scores[field_name] = sg.get(field_name, 0.0)
+                    break
+            else:
+                # Quote not matched to any chunk — score 0.0
+                grounding_scores[field_name] = 0.0
         merged["_grounding_scores"] = grounding_scores
 
         return merged
@@ -694,38 +713,20 @@ class SchemaExtractionOrchestrator:
         if any(r.get("_truncated") for r in chunk_results):
             merged["_truncated"] = True
 
-        # Compute entity-level grounding scores.
-        # For entity lists, each entity has its own _quote. We score each
-        # entity's ID field value against its _quote, then report the average
-        # as the grounding score for the entity list field.
+        # Propagate entity-level source grounding scores from chunks.
+        # Each chunk has _source_grounding with entity key -> average score.
+        # Combine scores from all chunks that contributed entities.
         if all_entities and group is not None:
-            id_field_names = self._context.entity_id_fields
-            entity_scores: list[float] = []
-            for entity in all_entities:
-                if not isinstance(entity, dict):
-                    continue
-                raw_quote = entity.get("_quote")
-                quote = _coerce_quote(raw_quote)
-                if not quote:
-                    entity_scores.append(0.0)
-                    continue
-                # Find the entity's identifying value to score against quote
-                id_value = None
-                for id_field in id_field_names:
-                    id_value = entity.get(id_field)
-                    if id_value is not None:
-                        break
-                if id_value is not None:
-                    entity_scores.append(
-                        score_field(id_value, quote, "string")
-                    )
-                else:
-                    # No ID field — quote exists, assume grounded
-                    entity_scores.append(1.0)
-
-            if entity_scores:
+            chunk_entity_scores: list[float] = []
+            for result in chunk_results:
+                sg = result.get("_source_grounding", {})
+                if entity_key in sg:
+                    chunk_entity_scores.append(sg[entity_key])
+            if chunk_entity_scores:
                 merged["_grounding_scores"] = {
-                    entity_key: sum(entity_scores) / len(entity_scores)
+                    entity_key: round(
+                        sum(chunk_entity_scores) / len(chunk_entity_scores), 4
+                    )
                 }
             else:
                 merged["_grounding_scores"] = {}
@@ -796,6 +797,279 @@ class SchemaExtractionOrchestrator:
                 }
 
         return conflicts
+
+    async def _extract_group_v2(
+        self,
+        chunks: list,
+        group: FieldGroup,
+        source_context: str,
+        full_content: str,
+        group_result: dict,
+    ) -> dict:
+        """v2 extraction: per-field structured data with inline grounding.
+
+        Extracts from chunks, parses to ChunkExtractionResult, grounds each
+        item inline, then merges using cardinality-based strategies.
+        """
+        max_concurrent = self._extraction.max_concurrent_chunks
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def extract_chunk_v2(chunk, chunk_idx: int) -> ChunkExtractionResult | None:
+            async with semaphore:
+                try:
+                    raw = await self._extractor.extract_field_group(
+                        content=chunk.content,
+                        field_group=group,
+                        source_context=source_context,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "v2_chunk_extraction_failed",
+                        group=group.name,
+                        chunk_idx=chunk_idx,
+                        error=str(e),
+                    )
+                    return None
+
+                return self._parse_chunk_to_v2(raw, group, chunk, chunk_idx, full_content)
+
+        tasks = [extract_chunk_v2(chunk, idx) for idx, chunk in enumerate(chunks)]
+        results = await asyncio.gather(*tasks)
+        chunk_results = [r for r in results if r is not None]
+
+        if not chunk_results:
+            return group_result
+
+        # Merge using cardinality-based strategies
+        merged = merge_chunk_results_v2(
+            chunk_results, group, self._context.entity_id_fields
+        )
+
+        # Validate v2 format
+        if self._extraction.validation_enabled:
+            validator = SchemaValidator(
+                min_confidence=self._extraction.validation_min_confidence,
+            )
+            merged, _ = validator.validate(merged, group)
+
+        group_result["data"] = merged
+        group_result["grounding_scores"] = None  # Grounding is inside data for v2
+
+        # Compute aggregate confidence from field items
+        confidences = self._extract_v2_confidences(merged)
+        if confidences:
+            group_result["confidence"] = sum(confidences) / len(confidences)
+
+        return group_result
+
+    def _parse_chunk_to_v2(
+        self,
+        raw: dict,
+        group: FieldGroup,
+        chunk: Any,
+        chunk_idx: int,
+        full_content: str,
+    ) -> ChunkExtractionResult:
+        """Parse raw LLM response into ChunkExtractionResult with inline grounding."""
+        if group.is_entity_list:
+            return self._parse_entity_chunk_v2(raw, group, chunk, chunk_idx, full_content)
+
+        # Parse via SchemaExtractor's v2 parser (handles fallback from v1)
+        parsed = SchemaExtractor.parse_v2_response(raw, group)
+        fields_data = parsed.get("fields", {})
+
+        field_items: dict[str, FieldItem] = {}
+        list_items: dict[str, list[ListValueItem]] = {}
+
+        for field_def in group.fields:
+            entry = fields_data.get(field_def.name, {})
+            value = entry.get("value") if isinstance(entry, dict) else None
+            confidence = float(entry.get("confidence", 0.5)) if isinstance(entry, dict) else 0.5
+            quote = entry.get("quote") if isinstance(entry, dict) else None
+
+            card = field_cardinality(field_def)
+
+            if card == "multi_value" and isinstance(value, list):
+                items = []
+                for v in value:
+                    grounding = ground_field_item(
+                        field_def.name, v, quote, chunk.content, field_def.field_type
+                    )
+                    location = locate_in_source(quote, full_content, chunk)
+                    items.append(ListValueItem(v, quote, grounding, location))
+                list_items[field_def.name] = items
+            else:
+                # Single, boolean, summary
+                grounding = ground_field_item(
+                    field_def.name, value, quote, chunk.content, field_def.field_type
+                )
+                location = locate_in_source(quote, full_content, chunk)
+                field_items[field_def.name] = FieldItem(
+                    value=value,
+                    confidence=confidence,
+                    quote=quote,
+                    grounding=grounding,
+                    location=location,
+                )
+
+        return ChunkExtractionResult(
+            chunk_index=chunk_idx,
+            field_items=field_items,
+            list_items=list_items,
+        )
+
+    def _parse_entity_chunk_v2(
+        self,
+        raw: dict,
+        group: FieldGroup,
+        chunk: Any,
+        chunk_idx: int,
+        full_content: str,
+    ) -> ChunkExtractionResult:
+        """Parse entity list LLM response into ChunkExtractionResult."""
+        parsed = SchemaExtractor.parse_v2_entity_response(raw, group)
+        entity_list = parsed.get(group.name, [])
+
+        entities: list[EntityItem] = []
+        for entity_data in entity_list:
+            fields = entity_data.get("fields", {})
+            confidence = float(entity_data.get("_confidence", 0.5))
+            quote = entity_data.get("_quote")
+
+            grounding = ground_entity_item(quote, chunk.content)
+            location = locate_in_source(quote, full_content, chunk)
+
+            entities.append(EntityItem(
+                fields=fields,
+                confidence=confidence,
+                quote=quote,
+                grounding=grounding,
+                location=location,
+            ))
+
+        return ChunkExtractionResult(
+            chunk_index=chunk_idx,
+            entity_items={group.name: entities},
+        )
+
+    async def _extract_entities_paginated(
+        self,
+        chunk_content: str,
+        field_group: FieldGroup,
+        source_context: str | None,
+    ) -> tuple[list[dict], bool]:
+        """Iterative entity extraction with stall/convergence detection.
+
+        Safety controls:
+        1. has_more=False from LLM → stop
+        2. Empty response (0 new entities) → stop
+        3. Consecutive stall (same entities returned 2x) → stop
+        4. Total entities >= max_items → stop
+        5. Max iterations safety cap
+
+        Returns:
+            Tuple of (all_entities, has_more_flag).
+        """
+        max_items = field_group.max_items or 50
+        batch_size = min(max_items, 20)
+        max_iterations = (max_items // batch_size) + 3  # safety margin
+        MAX_CONSECUTIVE_STALLS = 2
+
+        all_entities: list[dict] = []
+        already_found_ids: list[str] = []
+        consecutive_stalls = 0
+
+        id_fields = self._context.entity_id_fields
+
+        for iteration in range(max_iterations):
+            try:
+                raw = await self._extractor.extract_field_group(
+                    content=chunk_content,
+                    field_group=field_group,
+                    source_context=source_context,
+                )
+            except Exception as e:
+                logger.error(
+                    "entity_pagination_extraction_failed",
+                    group=field_group.name,
+                    iteration=iteration,
+                    error=str(e),
+                )
+                break
+
+            parsed = SchemaExtractor.parse_v2_entity_response(raw, field_group)
+            new_raw_entities = parsed.get(field_group.name, [])
+            has_more = parsed.get("has_more", False)
+
+            # Filter to truly new entities
+            new_entities = []
+            for ent in new_raw_entities:
+                ent_id = self._extract_entity_id(ent.get("fields", {}), id_fields)
+                if ent_id and ent_id in {x.lower() for x in already_found_ids}:
+                    continue
+                new_entities.append(ent)
+
+            if not new_entities:
+                break
+
+            # Stall detection: all "new" entities are actually duplicates
+            new_ids = [
+                self._extract_entity_id(e.get("fields", {}), id_fields)
+                for e in new_entities
+            ]
+            existing_ids = {x.lower() for x in already_found_ids}
+            if all(nid and nid in existing_ids for nid in new_ids):
+                consecutive_stalls += 1
+                if consecutive_stalls >= MAX_CONSECUTIVE_STALLS:
+                    logger.info(
+                        "entity_pagination_stalled",
+                        group=field_group.name,
+                        total=len(all_entities),
+                    )
+                    break
+            else:
+                consecutive_stalls = 0
+
+            all_entities.extend(new_entities)
+
+            # Track found IDs for next iteration
+            for ent in new_entities:
+                eid = self._extract_entity_id(ent.get("fields", {}), id_fields)
+                if eid:
+                    already_found_ids.append(eid)
+
+            if not has_more:
+                break
+            if len(all_entities) >= max_items:
+                break
+
+        return all_entities, len(all_entities) >= max_items
+
+    @staticmethod
+    def _extract_entity_id(fields: dict, id_fields: list[str]) -> str | None:
+        """Extract entity ID string for dedup tracking."""
+        for field in id_fields:
+            val = fields.get(field)
+            if val is not None and str(val).strip():
+                return str(val).strip().lower()
+        return None
+
+    @staticmethod
+    def _extract_v2_confidences(data: dict) -> list[float]:
+        """Extract confidence values from v2 structured data."""
+        confidences: list[float] = []
+        for key, value in data.items():
+            if key.startswith("_"):
+                continue
+            if not isinstance(value, dict):
+                continue
+            if "confidence" in value:
+                confidences.append(float(value["confidence"]))
+            elif "items" in value:
+                for item in value["items"]:
+                    if isinstance(item, dict) and "confidence" in item:
+                        confidences.append(float(item["confidence"]))
+        return confidences
 
     def _is_empty_result(self, data: dict, group: FieldGroup) -> tuple[bool, float]:
         """Check if extraction result is empty or default-only.

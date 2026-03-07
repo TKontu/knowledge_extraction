@@ -20,6 +20,7 @@ from models import (
 )
 from orm_models import Job
 from services.projects.repository import ProjectRepository
+from services.extraction.extraction_items import safe_data_version
 from services.storage.repositories.extraction import (
     ExtractionFilters,
     ExtractionRepository,
@@ -247,6 +248,7 @@ async def list_extractions(
                 "id": str(extraction.id),
                 "source_id": str(extraction.source_id),
                 "data": extraction.data,
+                "data_version": safe_data_version(extraction),
                 "extraction_type": extraction.extraction_type,
                 "source_group": extraction.source_group,
                 "confidence": extraction.confidence,

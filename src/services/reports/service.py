@@ -12,6 +12,7 @@ import structlog
 from config import settings
 from models import ReportRequest, ReportType
 from orm_models import Extraction, Report
+from services.extraction.extraction_items import safe_data_version
 from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
 from services.reports.excel_formatter import ExcelFormatter
@@ -210,9 +211,16 @@ class ReportService:
 
             extraction_dicts = []
             for ext in extractions:
+                # Flatten v2 data for report generation (reports expect flat format)
+                report_data = ext.data
+                if safe_data_version(ext) >= 2 and ext.data:
+                    from services.extraction.extraction_items import v2_to_flat
+
+                    report_data = v2_to_flat(ext.data)
+
                 ext_dict = {
                     "id": str(ext.id),
-                    "data": ext.data,
+                    "data": report_data,
                     "confidence": ext.confidence,
                     "extraction_type": ext.extraction_type,
                     "source_id": str(ext.source_id),

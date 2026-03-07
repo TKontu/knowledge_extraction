@@ -74,7 +74,8 @@
       "Bash(gh pr view * --json title,url,state | python3 -m json.tool)",
       "Bash(npx gitnexus analyze)",
       "Gitnexus - query(*)",
-      "Bash(.venv/bin/python -m pytest --tb=short -q 2>&1 | tail -10)"
+      "Bash(.venv/bin/python -m pytest --tb=short -q 2>&1 | tail -10)",
+      "Bash(.venv/bin/python -m pytest tests/* -v 2>&1 | tail -*)"
     ],
     "deny": [
       "Bash(cd * && python *)",

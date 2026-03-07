@@ -133,14 +133,16 @@ class SchemaExtractionPipeline:
                     extraction_type=result["extraction_type"],
                 )
 
+            data_version = result.get("data_version", 1)
             extraction = Extraction(
                 project_id=source.project_id,
                 source_id=source.id,
                 data=result["data"],
+                data_version=data_version,
                 extraction_type=result["extraction_type"],
                 source_group=context_value,
                 confidence=result.get("confidence"),
-                grounding_scores=result.get("grounding_scores"),
+                grounding_scores=result.get("grounding_scores") if data_version < 2 else None,
                 profile_used=schema_name,
                 chunk_context=chunk_context,
             )

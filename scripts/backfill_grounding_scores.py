@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from database import engine  # noqa: E402
 from orm_models import Project  # noqa: E402
+from services.extraction.extraction_items import safe_data_version  # noqa: E402
 from services.extraction.grounding import (  # noqa: E402
     compute_grounding_scores,
     extract_field_types_from_schema,
@@ -91,6 +92,11 @@ def backfill_project(
             updates: list[tuple[UUID, dict[str, float]]] = []
 
             for ext in extractions:
+                # v2 extractions have inline grounding — skip backfill
+                if safe_data_version(ext) >= 2:
+                    skipped += 1
+                    continue
+
                 field_types = field_types_by_group.get(ext.extraction_type, {})
                 if not field_types:
                     skipped += 1

@@ -36,6 +36,7 @@ STRATEGY_DEFAULTS: dict[str, str] = {
     "text": "longest_top_k",
     "list": "union_dedup",
     "enum": "frequency",
+    "summary": "longest_top_k",
 }
 
 
@@ -396,14 +397,27 @@ def consolidate_extractions(
         weighted_values: list[WeightedValue] = []
         for ext in extractions:
             data = ext.get("data", {})
-            value = data.get(field_name)
-            if value is None:
-                continue
-
-            confidence = ext.get("confidence", 0.5)
-            grounding_scores = ext.get("grounding_scores") or {}
-            grounding_score = grounding_scores.get(field_name)
+            data_version = ext.get("data_version", 1)
             source_id = ext.get("source_id", "")
+
+            if data_version >= 2:
+                # v2: per-field confidence and grounding inside data
+                field_data = data.get(field_name)
+                if not isinstance(field_data, dict):
+                    continue
+                value = field_data.get("value")
+                if value is None:
+                    continue
+                confidence = float(field_data.get("confidence", 0.5))
+                grounding_score = float(field_data.get("grounding", 1.0))
+            else:
+                # v1: flat format
+                value = data.get(field_name)
+                if value is None:
+                    continue
+                confidence = ext.get("confidence", 0.5)
+                grounding_scores = ext.get("grounding_scores") or {}
+                grounding_score = grounding_scores.get(field_name)
 
             weight = effective_weight(confidence, grounding_score, grounding_mode)
             weighted_values.append(WeightedValue(value, weight, str(source_id)))
@@ -436,26 +450,48 @@ def _consolidate_entity_list(
 
     for ext in extractions:
         data = ext.get("data", {})
-        entities = data.get(entity_key)
-        if not entities or not isinstance(entities, list):
-            continue
-
-        confidence = ext.get("confidence", 0.5)
-        grounding_scores = ext.get("grounding_scores") or {}
-        # Entity list grounding is stored under the list key (e.g., "products")
-        grounding_score = grounding_scores.get(entity_key)
+        data_version = ext.get("data_version", 1)
         source_id = ext.get("source_id", "")
 
-        weight = effective_weight(confidence, grounding_score, "required")
+        if data_version >= 2:
+            # v2: entities are in data[entity_key]["items"]
+            entity_data = data.get(entity_key, {})
+            items = entity_data.get("items", []) if isinstance(entity_data, dict) else []
+            if not items:
+                continue
+            # Extract fields from v2 entity items and compute weight per entity
+            cleaned = []
+            weights: list[float] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                fields = item.get("fields", item)
+                cleaned.append({k: v for k, v in fields.items() if not str(k).startswith("_")})
+                conf = float(item.get("confidence", 0.5))
+                gnd = float(item.get("grounding", 1.0))
+                weights.append(effective_weight(conf, gnd, "required"))
+            if cleaned:
+                avg_weight = sum(weights) / len(weights) if weights else 0.5
+                weighted_values.append(WeightedValue(cleaned, avg_weight, str(source_id)))
+        else:
+            # v1: flat entity list
+            entities = data.get(entity_key)
+            if not entities or not isinstance(entities, list):
+                continue
 
-        # Strip _quote metadata from entities before consolidation
-        cleaned = [
-            {k: v for k, v in entity.items() if k != "_quote"}
-            for entity in entities
-            if isinstance(entity, dict)
-        ]
-        if cleaned:
-            weighted_values.append(WeightedValue(cleaned, weight, str(source_id)))
+            confidence = ext.get("confidence", 0.5)
+            grounding_scores = ext.get("grounding_scores") or {}
+            grounding_score = grounding_scores.get(entity_key)
+
+            weight = effective_weight(confidence, grounding_score, "required")
+
+            cleaned = [
+                {k: v for k, v in entity.items() if k != "_quote"}
+                for entity in entities
+                if isinstance(entity, dict)
+            ]
+            if cleaned:
+                weighted_values.append(WeightedValue(cleaned, weight, str(source_id)))
 
     if not weighted_values:
         return record

@@ -5,7 +5,10 @@ from typing import Any
 
 # Valid merge strategies for field definitions
 VALID_MERGE_STRATEGIES = frozenset(
-    {"highest_confidence", "max", "min", "concat", "majority_vote", "merge_dedupe"}
+    {
+        "highest_confidence", "max", "min", "concat", "majority_vote",
+        "merge_dedupe", "longest_confident", "llm_synthesize",
+    }
 )
 
 
@@ -14,7 +17,7 @@ class FieldDefinition:
     """Definition of a single extraction field."""
 
     name: str
-    field_type: str  # "boolean", "integer", "text", "list", "float", "enum"
+    field_type: str  # "boolean", "integer", "text", "list", "float", "enum", "summary"
     description: str
     required: bool = False
     default: Any = None

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from api.dependencies import get_project_or_404
 from database import get_db
 from orm_models import Entity, Extraction, Project, Source
+from services.extraction.extraction_items import safe_data_version
 
 logger = structlog.get_logger(__name__)
 
@@ -319,6 +320,7 @@ def _export_extractions_json(
                 "source_id": str(e.source_id) if e.source_id else None,
                 "extraction_type": e.extraction_type,
                 "data": e.data,
+                "data_version": safe_data_version(e),
                 "source_group": e.source_group,
                 "confidence": e.confidence,
                 "profile_used": e.profile_used,
@@ -361,12 +363,18 @@ def _export_extractions_csv(
 
     # Data rows
     for e in extractions:
+        # Flatten v2 data for tabular export
+        export_data = e.data
+        if safe_data_version(e) >= 2 and e.data:
+            from services.extraction.extraction_items import v2_to_flat
+
+            export_data = v2_to_flat(e.data)
         writer.writerow(
             [
                 str(e.id),
                 str(e.source_id) if e.source_id else "",
                 e.extraction_type,
-                json.dumps(e.data) if e.data else "",
+                json.dumps(export_data) if export_data else "",
                 e.source_group,
                 e.confidence,
                 e.profile_used,

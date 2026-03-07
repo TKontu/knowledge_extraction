@@ -118,9 +118,8 @@ class TestExtractGroupInlineGrounding:
             classification_config=mock_classification_config,
         )
 
-        # Mock _extract_chunks_batched to return chunk data with quotes.
-        # Let _merge_chunk_results run naturally so per-chunk grounding
-        # scores are computed with aligned value+quote pairs.
+        # Mock _extract_chunks_batched to return chunk data with quotes
+        # and pre-computed _source_grounding (attached during chunk extraction).
         chunk_result = {
             "company_name": "ABB",
             "employee_count": 105000,
@@ -128,6 +127,10 @@ class TestExtractGroupInlineGrounding:
             "_quotes": {
                 "company_name": "ABB is a global company",
                 "employee_count": "approximately 105,000",
+            },
+            "_source_grounding": {
+                "company_name": 1.0,
+                "employee_count": 1.0,
             },
         }
         orchestrator._extract_chunks_batched = AsyncMock(return_value=[chunk_result])
@@ -199,125 +202,124 @@ class TestPerChunkGroundingAlignment:
         return SchemaExtractionOrchestrator(MagicMock())
 
     def test_single_chunk_scores_aligned(self, orchestrator):
-        """Single chunk: value and quote from same chunk → correct score."""
+        """Single chunk: source grounding score propagated to merged result."""
         group = _make_field_group([("company_name", "string")])
         chunk_results = [
             {
                 "company_name": "ABB",
                 "confidence": 0.9,
                 "_quotes": {"company_name": "ABB Corp is a leader"},
+                "_source_grounding": {"company_name": 1.0},
             },
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
         assert scores["company_name"] == 1.0
 
-    def test_multi_chunk_best_score_wins(self, orchestrator):
-        """Multiple chunks: best per-chunk score is kept."""
+    def test_multi_chunk_winning_quote_score_used(self, orchestrator):
+        """Multiple chunks: score from winning quote's chunk is used."""
         group = _make_field_group([("employee_count", "integer")])
         chunk_results = [
             {
                 "employee_count": 2500,
                 "confidence": 0.8,
                 "_quotes": {"employee_count": "about 2,500 employees"},
+                "_source_grounding": {"employee_count": 1.0},
             },
             {
                 "employee_count": 2500,
                 "confidence": 0.7,
                 "_quotes": {"employee_count": "no employee info here"},
+                "_source_grounding": {"employee_count": 0.3},
             },
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
-        # Chunk 1 has value 2500 with quote mentioning 2,500 → 1.0
-        # Chunk 2 has value 2500 with quote NOT mentioning it → 0.0
-        # Best = 1.0
+        # Chunk 1 has higher confidence → its quote wins → its score (1.0) used
         assert scores["employee_count"] == 1.0
 
-    def test_list_field_scored_per_chunk(self, orchestrator):
-        """List fields: each chunk's items scored against its own quote."""
+    def test_list_field_scored_from_source_grounding(self, orchestrator):
+        """List fields: source grounding propagated from winning chunk."""
         group = _make_field_group([("products", "list")])
-        # merge_dedupe strategy: items from both chunks merged
         chunk_results = [
             {
                 "products": ["Gear A", "Gear B"],
                 "confidence": 0.9,
                 "_quotes": {"products": "We make Gear A and Gear B"},
+                "_source_grounding": {"products": 1.0},
             },
             {
                 "products": ["Motor X"],
                 "confidence": 0.8,
                 "_quotes": {"products": "Introducing Motor X"},
+                "_source_grounding": {"products": 1.0},
             },
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
-        # Both chunks have their items grounded in their own quotes
         assert scores["products"] == 1.0
 
-    def test_misaligned_quote_does_not_inflate_score(self, orchestrator):
-        """Value from chunk A, quote from chunk B → per-chunk scoring avoids
-        inflating the score from accidental matches."""
+    def test_winning_chunk_score_propagated(self, orchestrator):
+        """Score from the chunk that contributed the winning quote is used."""
         group = _make_field_group([("employee_count", "integer")])
         chunk_results = [
             {
                 "employee_count": 5000,
                 "confidence": 0.7,
-                # Quote says 5000 but this chunk's value is 5000 → grounded
                 "_quotes": {"employee_count": "employs 5,000 people"},
+                "_source_grounding": {"employee_count": 1.0},
             },
             {
                 "employee_count": 140000,
                 "confidence": 0.9,
-                # Quote says 140-year history, NOT 140000 employees
                 "_quotes": {"employee_count": "over 140-year history"},
+                "_source_grounding": {"employee_count": 0.4},
             },
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
-        # highest_confidence picks 140000 from chunk 2
-        # But chunk 2's own value (140000) against own quote → 0.0
-        # Chunk 1's own value (5000) against own quote → 1.0
-        # Best per-chunk = 1.0 (chunk 1 was grounded)
-        assert scores["employee_count"] == 1.0
+        # Chunk 2 has higher confidence → its quote wins → its score (0.4) used
+        assert scores["employee_count"] == 0.4
 
-    def test_no_quotes_gives_zero(self, orchestrator):
-        """No quotes in any chunk → score 0.0."""
+    def test_no_quotes_gives_empty_scores(self, orchestrator):
+        """No quotes in any chunk → no grounding scores."""
         group = _make_field_group([("company_name", "string")])
         chunk_results = [
             {"company_name": "ABB", "confidence": 0.9},
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
-        assert scores["company_name"] == 0.0
+        assert scores == {}
 
-    def test_text_fields_excluded(self, orchestrator):
-        """Text fields (grounding mode 'none') are excluded from scores."""
+    def test_text_fields_now_scored(self, orchestrator):
+        """Text fields are now scored via source grounding (quote vs source)."""
         group = _make_field_group([("description", "text")])
         chunk_results = [
             {
                 "description": "A tech company",
                 "confidence": 0.9,
                 "_quotes": {"description": "A tech company"},
+                "_source_grounding": {"description": 1.0},
             },
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
-        assert "description" not in scores
+        assert scores["description"] == 1.0
 
-    def test_boolean_fields_excluded(self, orchestrator):
-        """Boolean fields (grounding mode 'semantic') are excluded."""
+    def test_boolean_fields_now_scored(self, orchestrator):
+        """Boolean fields are now scored via source grounding (quote vs source)."""
         group = _make_field_group([("has_factory", "boolean")])
         chunk_results = [
             {
                 "has_factory": True,
                 "confidence": 0.9,
                 "_quotes": {"has_factory": "our manufacturing facility"},
+                "_source_grounding": {"has_factory": 1.0},
             },
         ]
         merged = orchestrator._merge_chunk_results(chunk_results, group)
         scores = merged["_grounding_scores"]
-        assert "has_factory" not in scores
+        assert scores["has_factory"] == 1.0
 
     def test_null_field_excluded(self, orchestrator):
         """Fields with None merged value are excluded from scores."""
@@ -583,13 +585,14 @@ class TestEntityListGroundingScores:
                     {"name": "Drive Y", "_quote": "Drive Y unit"},
                 ],
                 "confidence": 0.9,
+                "_source_grounding": {"products": 1.0},
             }
         ]
         merged = orchestrator._merge_entity_lists(chunk_results, group)
         assert "_grounding_scores" in merged
         assert merged["_grounding_scores"]["products"] == 1.0
 
-    def test_entity_list_no_quotes_scores_zero(self, orchestrator):
+    def test_entity_list_no_source_grounding_empty(self, orchestrator):
         group = FieldGroup(
             name="products",
             description="Product list",
@@ -604,7 +607,7 @@ class TestEntityListGroundingScores:
             }
         ]
         merged = orchestrator._merge_entity_lists(chunk_results, group)
-        assert merged["_grounding_scores"]["products"] == 0.0
+        assert merged["_grounding_scores"] == {}
 
     def test_entity_list_empty_has_empty_scores(self, orchestrator):
         group = FieldGroup(

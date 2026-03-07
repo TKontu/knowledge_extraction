@@ -215,7 +215,7 @@ class ExtractionContext:
 class SchemaAdapter:
     """Converts extraction_schema JSONB to FieldGroup objects."""
 
-    VALID_FIELD_TYPES = {"boolean", "integer", "float", "text", "list", "enum"}
+    VALID_FIELD_TYPES = {"boolean", "integer", "float", "text", "list", "enum", "summary"}
     MAX_FIELD_GROUPS = 20
     MAX_FIELDS_PER_GROUP = 30
 
