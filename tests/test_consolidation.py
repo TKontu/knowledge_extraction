@@ -330,28 +330,34 @@ class TestUnionDedup:
 
 class TestEffectiveWeight:
     def test_required_grounded(self):
+        """min(0.9, 1.0) = 0.9."""
         assert effective_weight(0.9, 1.0, "required") == pytest.approx(0.9)
 
-    def test_required_ungrounded_has_floor(self):
-        """Ungrounded data gets floor weight (0.1), not zero."""
-        assert effective_weight(0.9, 0.0, "required") == pytest.approx(0.09)
+    def test_required_ungrounded_is_zero(self):
+        """Ungrounded data gets zero weight: min(0.9, 0.0) = 0.0."""
+        assert effective_weight(0.9, 0.0, "required") == pytest.approx(0.0)
 
     def test_required_partial_grounding(self):
-        assert effective_weight(0.9, 0.6, "required") == pytest.approx(0.54)
+        """min(0.9, 0.6) = 0.6."""
+        assert effective_weight(0.9, 0.6, "required") == pytest.approx(0.6)
 
-    def test_required_below_old_threshold_still_contributes(self):
-        """Score < 0.5 now contributes (no cliff). 0.9 * 0.4 = 0.36."""
-        assert effective_weight(0.9, 0.4, "required") == pytest.approx(0.36)
+    def test_required_grounding_caps_confidence(self):
+        """Grounding caps weight: min(0.9, 0.4) = 0.4."""
+        assert effective_weight(0.9, 0.4, "required") == pytest.approx(0.4)
 
-    def test_required_none_score_gets_floor(self):
-        """None grounding score treated as 0.0, gets floor of 0.1."""
-        assert effective_weight(0.9, None, "required") == pytest.approx(0.09)
+    def test_required_none_score_uses_confidence(self):
+        """None grounding (v1 data, not computed) → no penalty, use confidence."""
+        assert effective_weight(0.9, None, "required") == pytest.approx(0.9)
 
     def test_grounded_dominates_ungrounded(self):
-        """High-conf ungrounded (0.08) < low-conf grounded (0.36)."""
+        """Low-conf grounded (0.45) > high-conf ungrounded (0.0)."""
         ungrounded = effective_weight(0.8, 0.0, "required")
         grounded = effective_weight(0.45, 1.0, "required")
         assert grounded > ungrounded
+
+    def test_confidence_caps_weight(self):
+        """When confidence < grounding, confidence is the cap: min(0.3, 1.0) = 0.3."""
+        assert effective_weight(0.3, 1.0, "required") == pytest.approx(0.3)
 
     def test_semantic_no_grounding(self):
         assert effective_weight(0.9, None, "semantic") == 0.9

@@ -12,6 +12,7 @@ from services.extraction.grounding import (
     compute_grounding_scores,
     compute_source_grounding_scores,
     extract_entity_list_groups,
+    is_negation_quote,
     score_field,
     verify_list_items_in_quote,
     verify_numeric_in_quote,
@@ -778,3 +779,56 @@ class TestExtractEntityListGroups:
     def test_empty_schema(self):
         assert extract_entity_list_groups({}) == set()
         assert extract_entity_list_groups({"field_groups": []}) == set()
+
+
+class TestIsNegationQuote:
+    """Test is_negation_quote detects LLM 'not found' fabrications."""
+
+    def test_no_mention(self):
+        assert is_negation_quote("No mention of employee count in the text") is True
+
+    def test_not_specified(self):
+        assert is_negation_quote("Not specified in the source") is True
+
+    def test_not_found(self):
+        assert is_negation_quote("Not found in the document") is True
+
+    def test_na(self):
+        assert is_negation_quote("N/A - no information available") is True
+
+    def test_na_lowercase(self):
+        assert is_negation_quote("n/a no data provided") is True
+
+    def test_none_mentioned(self):
+        assert is_negation_quote("None of the certifications mentioned") is True
+
+    def test_no_explicit_information(self):
+        assert is_negation_quote("No explicit information about this field") is True
+
+    def test_not_explicitly_mentioned(self):
+        assert is_negation_quote("Not explicitly mentioned in the provided data") is True
+
+    def test_no_details(self):
+        assert is_negation_quote("No details available in the source") is True
+
+    # Negatives — real quotes that happen to contain "no"
+    def test_real_quote_with_no(self):
+        assert is_negation_quote("The company has 500 employees") is False
+
+    def test_real_quote_norway(self):
+        assert is_negation_quote("Norway-based manufacturer") is False
+
+    def test_real_quote_innovation(self):
+        assert is_negation_quote("Notable for their innovation in gearboxes") is False
+
+    def test_real_quote_number(self):
+        assert is_negation_quote("500 employees worldwide") is False
+
+    def test_none_input(self):
+        assert is_negation_quote(None) is False
+
+    def test_empty_string(self):
+        assert is_negation_quote("") is False
+
+    def test_whitespace_only(self):
+        assert is_negation_quote("   ") is False

@@ -23,11 +23,13 @@ from services.extraction.extraction_items import (
     locate_in_source,
 )
 from services.extraction.grounding import (
+    GROUNDING_DEFAULTS,
     _coerce_quote,
     compute_chunk_grounding,
     compute_chunk_grounding_entities,
     ground_entity_item,
     ground_field_item,
+    is_negation_quote,
     verify_quote_in_source,
 )
 from services.extraction.page_classifier import (
@@ -41,6 +43,7 @@ from services.llm.chunking import chunk_document
 if TYPE_CHECKING:
     from config import ClassificationConfig, ExtractionConfig
     from services.extraction.field_groups import FieldDefinition
+    from services.extraction.llm_grounding import LLMGroundingVerifier
     from services.extraction.schema_adapter import ExtractionContext
     from services.extraction.smart_classifier import SmartClassifier
 
@@ -126,6 +129,162 @@ def _source_grounding_ratio(result: dict, content: str) -> float:
     return grounded / len(quotes)
 
 
+async def apply_grounding_gate(
+    result: ChunkExtractionResult,
+    chunk_content: str,
+    verifier: "LLMGroundingVerifier",
+    *,
+    field_types: dict[str, str] | None = None,
+    keep_threshold: float = 0.8,
+    rescue_threshold: float = 0.3,
+) -> ChunkExtractionResult:
+    """Post-parse async gate that filters/rescues borderline-grounded fields.
+
+    Three tiers:
+    1. grounding >= keep_threshold → KEEP as-is
+    2. grounding < rescue_threshold → DROP (remove from result)
+    3. In between AND grounding_mode == "required" → LLM rescue attempt
+       (non-required fields in the borderline band are kept as-is)
+
+    Args:
+        result: Parsed chunk extraction result with grounding scores.
+        chunk_content: Source text for rescue LLM calls.
+        verifier: LLM grounding verifier for rescue attempts.
+        field_types: Map of field_name → field_type string. Used to determine
+            grounding mode per field. If None, all fields treated as "required".
+        keep_threshold: Minimum grounding to keep without question.
+        rescue_threshold: Below this, drop without rescue attempt.
+
+    Returns:
+        New ChunkExtractionResult with filtered/rescued items.
+    """
+    rescue_sem = asyncio.Semaphore(3)
+    ft = field_types or {}
+
+    def _grounding_mode(name: str) -> str:
+        """Look up the effective grounding mode for a field."""
+        ftype = ft.get(name, "string")
+        return GROUNDING_DEFAULTS.get(ftype, "required")
+
+    async def _maybe_rescue_field(
+        name: str, item: FieldItem
+    ) -> tuple[str, FieldItem] | None:
+        if item.grounding >= keep_threshold:
+            return (name, item)
+        if item.grounding < rescue_threshold:
+            return None
+        # Borderline: only rescue "required" fields. Non-required fields
+        # (boolean/semantic, text/none) use different grounding semantics
+        # and should be kept as-is in the borderline band.
+        mode = _grounding_mode(name)
+        if mode != "required":
+            return (name, item)
+        async with rescue_sem:
+            rescue = await verifier.rescue_quote(name, item.value, chunk_content)
+        if rescue.quote and rescue.grounding >= keep_threshold:
+            return (name, FieldItem(
+                value=item.value,
+                confidence=item.confidence,
+                quote=rescue.quote,
+                grounding=rescue.grounding,
+                location=item.location,
+            ))
+        return None
+
+    async def _maybe_rescue_list_item(
+        name: str, item: ListValueItem
+    ) -> tuple[str, ListValueItem] | None:
+        if item.grounding >= keep_threshold:
+            return (name, item)
+        if item.grounding < rescue_threshold:
+            return None
+        mode = _grounding_mode(name)
+        if mode != "required":
+            return (name, item)
+        async with rescue_sem:
+            rescue = await verifier.rescue_quote(name, item.value, chunk_content)
+        if rescue.quote and rescue.grounding >= keep_threshold:
+            return (name, ListValueItem(
+                value=item.value,
+                confidence=item.confidence,
+                quote=rescue.quote,
+                grounding=rescue.grounding,
+                location=item.location,
+            ))
+        return None
+
+    async def _maybe_rescue_entity(
+        group_name: str, entity: EntityItem
+    ) -> tuple[str, EntityItem] | None:
+        if entity.grounding >= keep_threshold:
+            return (group_name, entity)
+        if entity.grounding < rescue_threshold:
+            return None
+        # Use entity's identifying field for rescue prompt.
+        # Skip rescue if no clear identifier — dict repr produces bad prompts.
+        entity_name = (
+            entity.fields.get("name")
+            or entity.fields.get("entity_id")
+            or entity.fields.get("id")
+        )
+        if not entity_name:
+            return None  # No identifiable field → drop borderline entity
+        async with rescue_sem:
+            rescue = await verifier.rescue_quote(
+                group_name, entity_name, chunk_content
+            )
+        if rescue.quote and rescue.grounding >= keep_threshold:
+            return (group_name, EntityItem(
+                fields=entity.fields,
+                confidence=entity.confidence,
+                quote=rescue.quote,
+                grounding=rescue.grounding,
+                location=entity.location,
+            ))
+        return None
+
+    # Process field_items
+    field_tasks = [
+        _maybe_rescue_field(name, item)
+        for name, item in result.field_items.items()
+    ]
+    field_results = await asyncio.gather(*field_tasks)
+    new_fields: dict[str, FieldItem] = {}
+    for r in field_results:
+        if r is not None:
+            new_fields[r[0]] = r[1]
+
+    # Process list_items
+    list_tasks = []
+    for name, items in result.list_items.items():
+        for item in items:
+            list_tasks.append(_maybe_rescue_list_item(name, item))
+    list_results = await asyncio.gather(*list_tasks)
+    new_lists: dict[str, list[ListValueItem]] = {}
+    for r in list_results:
+        if r is not None:
+            new_lists.setdefault(r[0], []).append(r[1])
+
+    # Process entity_items
+    entity_tasks = []
+    for group_name, entities in result.entity_items.items():
+        for entity in entities:
+            entity_tasks.append(_maybe_rescue_entity(group_name, entity))
+    entity_results = await asyncio.gather(*entity_tasks)
+    new_entities: dict[str, list[EntityItem]] = {}
+    for r in entity_results:
+        if r is not None:
+            new_entities.setdefault(r[0], []).append(r[1])
+
+    return ChunkExtractionResult(
+        chunk_index=result.chunk_index,
+        field_items=new_fields,
+        list_items=new_lists,
+        entity_items=new_entities,
+        truncated=result.truncated,
+    )
+
+
 class SchemaExtractionOrchestrator:
     """Orchestrates extraction across all field groups for a source."""
 
@@ -137,6 +296,7 @@ class SchemaExtractionOrchestrator:
         classification_config: "ClassificationConfig | None" = None,
         context: "ExtractionContext | None" = None,
         smart_classifier: "SmartClassifier | None" = None,
+        grounding_verifier: "LLMGroundingVerifier | None" = None,
     ):
         """Initialize the orchestrator.
 
@@ -166,6 +326,7 @@ class SchemaExtractionOrchestrator:
         self._classification = classification_config
         self._context = context or ExtractionContext()
         self._smart_classifier = smart_classifier
+        self._grounding_verifier = grounding_verifier
 
     async def extract_all_groups(
         self,
@@ -832,19 +993,62 @@ class SchemaExtractionOrchestrator:
         semaphore = asyncio.Semaphore(max_concurrent)
         sg_min_ratio = self._extraction.source_grounding_min_ratio
 
+        # Build field_types map once for the gate (field_name → field_type)
+        gate_field_types: dict[str, str] = {
+            f.name: f.field_type for f in group.fields
+        }
+
         async def extract_chunk_v2(chunk, chunk_idx: int) -> ChunkExtractionResult | None:
+            # Phase 1: Extract (semaphore-limited for LLM concurrency)
             async with semaphore:
                 try:
                     if group.is_entity_list:
-                        return await self._extract_entity_chunk_v2(
+                        result = await self._extract_entity_chunk_v2(
                             chunk, chunk_idx, group, source_context, full_content
                         )
+                    else:
+                        raw = await self._extractor.extract_field_group(
+                            content=chunk.content,
+                            field_group=group,
+                            source_context=source_context,
+                        )
+                        result = self._parse_chunk_to_v2(
+                            raw, group, chunk, chunk_idx, full_content
+                        )
 
-                    raw = await self._extractor.extract_field_group(
-                        content=chunk.content,
-                        field_group=group,
-                        source_context=source_context,
-                    )
+                        # Source-grounding retry: if too many fields have low
+                        # grounding, re-extract with strict quoting
+                        if self._extraction.source_quoting_enabled:
+                            avg_grounding = _avg_chunk_grounding(result)
+                            if avg_grounding < sg_min_ratio:
+                                logger.info(
+                                    "v2_source_grounding_retry",
+                                    group=group.name,
+                                    chunk_idx=chunk_idx,
+                                    avg_grounding=avg_grounding,
+                                )
+                                try:
+                                    retry_raw = await self._extractor.extract_field_group(
+                                        content=chunk.content,
+                                        field_group=group,
+                                        source_context=source_context,
+                                        strict_quoting=True,
+                                    )
+                                    retry_result = self._parse_chunk_to_v2(
+                                        retry_raw, group, chunk, chunk_idx, full_content
+                                    )
+                                    retry_avg = _avg_chunk_grounding(retry_result)
+                                    if retry_avg > avg_grounding:
+                                        logger.info(
+                                            "v2_source_grounding_retry_improved",
+                                            group=group.name,
+                                            chunk_idx=chunk_idx,
+                                            before=avg_grounding,
+                                            after=retry_avg,
+                                        )
+                                        result = retry_result
+                                except Exception:
+                                    pass  # keep original on retry failure
                 except Exception as e:
                     logger.error(
                         "v2_chunk_extraction_failed",
@@ -854,45 +1058,15 @@ class SchemaExtractionOrchestrator:
                     )
                     return None
 
-                result = self._parse_chunk_to_v2(
-                    raw, group, chunk, chunk_idx, full_content
+            # Phase 2: Grounding gate (outside semaphore — rescue LLM calls
+            # don't need to hold an extraction concurrency slot)
+            if self._grounding_verifier is not None:
+                result = await apply_grounding_gate(
+                    result, chunk.content, self._grounding_verifier,
+                    field_types=gate_field_types,
                 )
 
-                # Source-grounding retry: if too many fields have low
-                # grounding, re-extract with strict quoting
-                if self._extraction.source_quoting_enabled:
-                    avg_grounding = _avg_chunk_grounding(result)
-                    if avg_grounding < sg_min_ratio:
-                        logger.info(
-                            "v2_source_grounding_retry",
-                            group=group.name,
-                            chunk_idx=chunk_idx,
-                            avg_grounding=avg_grounding,
-                        )
-                        try:
-                            retry_raw = await self._extractor.extract_field_group(
-                                content=chunk.content,
-                                field_group=group,
-                                source_context=source_context,
-                                strict_quoting=True,
-                            )
-                            retry_result = self._parse_chunk_to_v2(
-                                retry_raw, group, chunk, chunk_idx, full_content
-                            )
-                            retry_avg = _avg_chunk_grounding(retry_result)
-                            if retry_avg > avg_grounding:
-                                logger.info(
-                                    "v2_source_grounding_retry_improved",
-                                    group=group.name,
-                                    chunk_idx=chunk_idx,
-                                    before=avg_grounding,
-                                    after=retry_avg,
-                                )
-                                return retry_result
-                        except Exception:
-                            pass  # keep original on retry failure
-
-                return result
+            return result
 
         tasks = [extract_chunk_v2(chunk, idx) for idx, chunk in enumerate(chunks)]
         results = await asyncio.gather(*tasks)
@@ -951,6 +1125,10 @@ class SchemaExtractionOrchestrator:
             confidence = float(entity_data.get("_confidence", 0.5))
             quote = entity_data.get("_quote")
 
+            # Skip entities with negation quotes ("No mention of...", etc.)
+            if quote and is_negation_quote(quote):
+                continue
+
             grounding = ground_entity_item(quote, chunk.content)
             location = locate_in_source(quote, full_content, chunk)
 
@@ -976,10 +1154,11 @@ class SchemaExtractionOrchestrator:
         chunk_idx: int,
         full_content: str,
     ) -> ChunkExtractionResult:
-        """Parse raw LLM response into ChunkExtractionResult with inline grounding."""
-        if group.is_entity_list:
-            return self._parse_entity_chunk_v2(raw, group, chunk, chunk_idx, full_content)
+        """Parse raw LLM response into ChunkExtractionResult with inline grounding.
 
+        Only handles non-entity-list groups. Entity lists use
+        _extract_entity_chunk_v2 (pagination path) instead.
+        """
         # Parse via SchemaExtractor's v2 parser (handles fallback from v1)
         parsed = SchemaExtractor.parse_v2_response(raw, group)
         fields_data = parsed.get("fields", {})
@@ -992,6 +1171,10 @@ class SchemaExtractionOrchestrator:
             value = entry.get("value") if isinstance(entry, dict) else None
             confidence = float(entry.get("confidence", 0.5)) if isinstance(entry, dict) else 0.5
             quote = entry.get("quote") if isinstance(entry, dict) else None
+
+            # Skip fields with negation quotes ("No mention of...", "N/A", etc.)
+            if quote and is_negation_quote(quote):
+                continue
 
             card = field_cardinality(field_def)
 
@@ -1022,40 +1205,6 @@ class SchemaExtractionOrchestrator:
             chunk_index=chunk_idx,
             field_items=field_items,
             list_items=list_items,
-        )
-
-    def _parse_entity_chunk_v2(
-        self,
-        raw: dict,
-        group: FieldGroup,
-        chunk: Any,
-        chunk_idx: int,
-        full_content: str,
-    ) -> ChunkExtractionResult:
-        """Parse entity list LLM response into ChunkExtractionResult."""
-        parsed = SchemaExtractor.parse_v2_entity_response(raw, group)
-        entity_list = parsed.get(group.name, [])
-
-        entities: list[EntityItem] = []
-        for entity_data in entity_list:
-            fields = entity_data.get("fields", {})
-            confidence = float(entity_data.get("_confidence", 0.5))
-            quote = entity_data.get("_quote")
-
-            grounding = ground_entity_item(quote, chunk.content)
-            location = locate_in_source(quote, full_content, chunk)
-
-            entities.append(EntityItem(
-                fields=fields,
-                confidence=confidence,
-                quote=quote,
-                grounding=grounding,
-                location=location,
-            ))
-
-        return ChunkExtractionResult(
-            chunk_index=chunk_idx,
-            entity_items={group.name: entities},
         )
 
     async def _extract_entities_paginated(

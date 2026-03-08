@@ -274,16 +274,18 @@ def effective_weight(
 ) -> float:
     """Compute effective weight from confidence and grounding.
 
-    Continuous weighting with floor of 0.1 — grounded data dominates,
-    but ungrounded data still contributes when nothing better exists.
-    This prevents producing None when all extractions are ungrounded.
+    Uses min(confidence, grounding) so that poorly grounded data is
+    capped regardless of confidence. The grounding gate filters out
+    fabricated data before consolidation, so remaining data should
+    have grounding >= 0.8 or 0.0 (ungrounded).
 
-    required -> confidence * max(grounding_score, 0.1)
+    required -> min(confidence, grounding_score) — 0.0 if no grounding
     semantic/none -> confidence only
     """
     if grounding_mode == "required":
-        gs = grounding_score if grounding_score is not None else 0.0
-        return confidence * max(gs, 0.1)
+        if grounding_score is None:
+            return confidence  # Unknown grounding (v1 data) → no penalty
+        return min(confidence, grounding_score)
     # semantic or none: grounding doesn't affect weight
     return confidence
 

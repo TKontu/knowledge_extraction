@@ -538,6 +538,25 @@ def _word_window_similarity(quote: str, content: str) -> float:
     return round(best, 4)
 
 
+_NEGATION_RE = re.compile(
+    r"^(no|not|n/?a|none)\b.{0,50}"
+    r"(mention|explicit|specified|found|available|provided|information|data|details|certif)",
+    re.IGNORECASE,
+)
+
+
+def is_negation_quote(quote: str | None) -> bool:
+    """Check if a quote is a negation (LLM saying 'not found' rather than quoting source).
+
+    Returns True for quotes like "No mention of...", "N/A", "Not specified".
+    These indicate the LLM fabricated a 'not found' response rather than
+    quoting actual source text.
+    """
+    if not quote:
+        return False
+    return bool(_NEGATION_RE.match(quote.strip()))
+
+
 def ground_field_item(
     field_name: str,
     value: Any,
@@ -549,6 +568,8 @@ def ground_field_item(
 
     Combines Layer A (quote-in-source) and Layer B (value-in-quote):
       grounding = min(quote_in_source, value_in_quote)
+
+    Negation quotes (e.g. "No mention of...") are immediately scored 0.0.
 
     Args:
         field_name: Name of the field (for logging).
@@ -566,6 +587,10 @@ def ground_field_item(
         return 1.0
 
     coerced = _coerce_quote(quote)
+
+    # Negation quotes are fabricated "not found" responses → always 0.0
+    if coerced and is_negation_quote(coerced):
+        return 0.0
 
     if grounding_mode == "semantic":
         # Semantic: only check quote-in-source (Layer A)

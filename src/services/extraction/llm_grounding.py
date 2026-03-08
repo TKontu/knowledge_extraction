@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+_RESCUE_SYSTEM_PROMPT = """You are a source verification assistant. You will be given:
+1. A field name and its claimed value (from a data extraction)
+2. The source text that the value was supposedly extracted from
+
+Your task: find the EXACT verbatim passage in the source text that supports the claimed value.
+
+Rules:
+- The passage must be copied EXACTLY from the source text (verbatim, word-for-word)
+- Do NOT paraphrase, summarize, or modify the passage in any way
+- The passage should directly contain or strongly imply the claimed value
+- If no supporting passage exists in the source text, say found=false
+
+Respond with JSON: {"found": true/false, "quote": "exact verbatim passage from source"}
+If not found, respond: {"found": false, "quote": null}"""
+
 _SYSTEM_PROMPT = """You are a fact verification assistant. You will be given:
 1. A field name and its claimed value (from a data extraction)
 2. A verbatim quote from the source document
@@ -39,6 +54,15 @@ Rules:
 - Approximate matches are OK: "over 140,000" DOES support employee_count=140000
 
 Respond with JSON: {"supported": true/false, "reason": "brief explanation"}"""
+
+
+@dataclass(frozen=True)
+class RescueResult:
+    """Result of an LLM rescue attempt for a borderline-grounded field."""
+
+    quote: str | None  # Rescued verbatim quote, or None if not found
+    grounding: float  # Re-verified grounding score (0.0 if not found)
+    latency: float
 
 
 @dataclass(frozen=True)
@@ -63,10 +87,8 @@ class LLMGroundingVerifier:
     def __init__(
         self,
         llm_client: LLMClient,
-        model: str | None = None,
     ):
         self._llm = llm_client
-        self._model = model
 
     async def verify_quote(
         self,
@@ -121,6 +143,94 @@ class LLMGroundingVerifier:
                 reason=f"LLM error: {e}",
                 latency=latency,
             )
+
+    async def rescue_quote(
+        self,
+        field_name: str,
+        value: Any,
+        source_content: str,
+    ) -> "RescueResult":
+        """Ask LLM to find the exact verbatim passage supporting a value.
+
+        Used for borderline grounding scores (0.3-0.8) where string-match
+        may have false-positived. The LLM searches the source text for
+        the actual supporting passage, then we re-verify it.
+
+        Args:
+            field_name: Name of the field being rescued.
+            value: The extracted value to find support for.
+            source_content: Source text to search in (truncated to ~16K chars).
+
+        Returns:
+            RescueResult with rescued quote and re-verified grounding score.
+        """
+        from services.extraction.grounding import verify_quote_in_source
+
+        # Truncate source to keep prompt within LLM context budget.
+        # Chunks are ~20K chars (~5K tokens). 16K chars (~4K tokens) is safe
+        # for any model while covering most of the chunk content.
+        truncated_source = source_content[:16000] if source_content else ""
+        if not truncated_source:
+            return RescueResult(quote=None, grounding=0.0, latency=0.0)
+
+        user_prompt = (
+            f"Field: {field_name}\n"
+            f"Claimed value: {value}\n\n"
+            f"Source text:\n{truncated_source}\n\n"
+            f"Find the exact verbatim passage in the source text that supports "
+            f"this value. If no supporting passage exists, say so."
+        )
+
+        start = time.monotonic()
+        try:
+            response = await self._llm.complete(
+                system_prompt=_RESCUE_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
+            latency = time.monotonic() - start
+
+            found = response.get("found", False)
+            rescued_quote = response.get("quote")
+
+            if not found or not rescued_quote or not isinstance(rescued_quote, str):
+                return RescueResult(quote=None, grounding=0.0, latency=latency)
+
+            # Re-verify the rescued quote actually exists in source
+            re_score = verify_quote_in_source(rescued_quote, source_content)
+            if re_score < 0.8:
+                logger.info(
+                    "rescue_quote_reverify_failed",
+                    field=field_name,
+                    value=value,
+                    re_score=re_score,
+                    latency=latency,
+                )
+                return RescueResult(quote=None, grounding=0.0, latency=latency)
+
+            logger.info(
+                "rescue_quote_success",
+                field=field_name,
+                value=value,
+                re_score=re_score,
+                latency=latency,
+            )
+            return RescueResult(
+                quote=rescued_quote,
+                grounding=re_score,
+                latency=latency,
+            )
+
+        except Exception as e:
+            latency = time.monotonic() - start
+            logger.warning(
+                "rescue_quote_error",
+                field=field_name,
+                value=value,
+                error=str(e),
+            )
+            return RescueResult(quote=None, grounding=0.0, latency=latency)
 
     async def verify_extraction(
         self,

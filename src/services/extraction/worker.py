@@ -210,11 +210,25 @@ class ExtractionWorker:
                 embedding_model_name=self._embedding_service.model,
             )
 
+        # Create grounding verifier for LLM rescue of borderline fields
+        grounding_verifier = None
+        if self._llm:
+            from services.extraction.llm_grounding import LLMGroundingVerifier
+            from services.llm.client import LLMClient
+
+            llm_client = LLMClient(
+                self._llm,
+                llm_queue=self.llm_queue,
+                request_timeout=self._request_timeout,
+            )
+            grounding_verifier = LLMGroundingVerifier(llm_client=llm_client)
+
         orchestrator = SchemaExtractionOrchestrator(
             extractor,
             extraction_config=self._extraction,
             classification_config=self._classification,
             smart_classifier=smart_classifier,
+            grounding_verifier=grounding_verifier,
         )
 
         # Use shared extraction embedding service if schema embedding is enabled

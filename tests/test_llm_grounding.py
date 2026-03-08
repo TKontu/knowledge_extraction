@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.extraction.llm_grounding import LLMGroundingResult, LLMGroundingVerifier
+from services.extraction.llm_grounding import (
+    LLMGroundingResult,
+    LLMGroundingVerifier,
+    RescueResult,
+)
 
 
 @pytest.fixture
@@ -361,3 +365,94 @@ class TestNonStringQuoteCoercion:
 
         await verifier.verify_extraction(data, grounding_scores, field_types)
         mock_llm_client.complete.assert_not_called()
+
+
+class TestRescueQuote:
+    """Tests for LLM rescue of borderline-grounded fields."""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        from unittest.mock import AsyncMock
+
+        return AsyncMock()
+
+    @pytest.fixture
+    def verifier(self, mock_llm_client):
+        return LLMGroundingVerifier(llm_client=mock_llm_client)
+
+    SOURCE = (
+        "ABB Ltd is a leading technology company headquartered in Zurich, Switzerland. "
+        "The company has approximately 105,000 employees worldwide across 100+ countries."
+    )
+
+    @pytest.mark.asyncio
+    async def test_rescue_found_and_verified(self, verifier, mock_llm_client):
+        """LLM finds a valid verbatim quote in source → rescue succeeds."""
+        mock_llm_client.complete.return_value = {
+            "found": True,
+            "quote": "approximately 105,000 employees worldwide",
+        }
+        result = await verifier.rescue_quote("employee_count", 105000, self.SOURCE)
+        assert result.quote == "approximately 105,000 employees worldwide"
+        assert result.grounding >= 0.8
+
+    @pytest.mark.asyncio
+    async def test_rescue_found_but_hallucinated(self, verifier, mock_llm_client):
+        """LLM returns a quote that doesn't actually exist in source → fails re-verify."""
+        mock_llm_client.complete.return_value = {
+            "found": True,
+            "quote": "ABB employs over 200,000 people globally",
+        }
+        result = await verifier.rescue_quote("employee_count", 200000, self.SOURCE)
+        assert result.quote is None
+        assert result.grounding == 0.0
+
+    @pytest.mark.asyncio
+    async def test_rescue_not_found(self, verifier, mock_llm_client):
+        """LLM says value not found in source."""
+        mock_llm_client.complete.return_value = {
+            "found": False,
+            "quote": None,
+        }
+        result = await verifier.rescue_quote("revenue", "5 billion", self.SOURCE)
+        assert result.quote is None
+        assert result.grounding == 0.0
+
+    @pytest.mark.asyncio
+    async def test_rescue_llm_error(self, verifier, mock_llm_client):
+        """LLM error → fail-safe (no rescue)."""
+        mock_llm_client.complete.side_effect = Exception("timeout")
+        result = await verifier.rescue_quote("employee_count", 105000, self.SOURCE)
+        assert result.quote is None
+        assert result.grounding == 0.0
+
+    @pytest.mark.asyncio
+    async def test_rescue_empty_source(self, verifier, mock_llm_client):
+        """Empty source content → immediate failure without LLM call."""
+        result = await verifier.rescue_quote("field", "value", "")
+        assert result.quote is None
+        assert result.grounding == 0.0
+        mock_llm_client.complete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rescue_truncates_long_source(self, verifier, mock_llm_client):
+        """Long source content is truncated to ~16000 chars."""
+        long_source = "x" * 30000
+        mock_llm_client.complete.return_value = {"found": False, "quote": None}
+        await verifier.rescue_quote("field", "value", long_source)
+        call_args = str(mock_llm_client.complete.call_args)
+        # Prompt should NOT contain the full 30000 chars
+        assert "x" * 20000 not in call_args
+
+
+class TestRescueResultFrozen:
+    def test_frozen(self):
+        r = RescueResult(quote="test", grounding=0.9, latency=0.5)
+        with pytest.raises(AttributeError):
+            r.quote = "other"
+
+    def test_fields(self):
+        r = RescueResult(quote=None, grounding=0.0, latency=1.2)
+        assert r.quote is None
+        assert r.grounding == 0.0
+        assert r.latency == 1.2
