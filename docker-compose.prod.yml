@@ -277,6 +277,7 @@ services:
       TEMPLATES_DIR: /app/templates
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
+      EXTRACTION_DATA_VERSION: ${EXTRACTION_DATA_VERSION:-1}
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
     volumes:
       - ./prompts:/app/prompts:ro
