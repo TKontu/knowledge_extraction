@@ -1,8 +1,8 @@
 # TODO: Extraction Quality Improvements
 
-**Status**: Phase A COMPLETE & DEPLOYED (2026-03-09). Re-extraction running on all 3 projects with grounding gate active.
+**Status**: Phase A & B COMPLETE & DEPLOYED (2026-03-09). Baseline: 92.0% well-grounded, 0.4% poorly-grounded, 0 truncations.
 **Created**: 2026-03-08
-**Priority**: Phase B (prompt improvements) is next
+**Priority**: Re-extract with Phase B prompts, then consolidation
 
 ## Evidence Base
 
@@ -235,79 +235,46 @@ All 4 steps implemented and deployed. Architecture:
 
 **Grounding backfill** (`scripts/backfill_grounding_scores.py`): Not needed for new v2 extractions (grounding computed inline). Only needed if analyzing old v1 data.
 
-### Phase B: Prompt improvements — TRIAL COMPLETE, READY TO DEPLOY
+### Phase B: Prompt improvements — COMPLETE & DEPLOYED (2026-03-09)
 
-Phase A eliminates bad data post-hoc. Phase B prevents it at the source. A/B trial confirms modest but consistent improvement with zero regressions.
+Phase A eliminates bad data post-hoc. Phase B prevents it at the source.
 
-**Motivated by production observation (2026-03-09)**: `company_meta` truncation on pages with municipality lists — LLM hallucinates hundreds of cities as manufacturing locations, generating 28K+ char responses. Anti-hallucination prompt would reduce this.
+**Changes deployed** (commit `9614b3d`):
+1. `_HALLUCINATION_GUARD` — injected into `_build_system_prompt_v2()` and `_build_entity_list_system_prompt_v2()`
+2. `_QUOTE_NOT_VALUE_NOTE` — appended to quoting instructions in both v2 builders
+3. Per-prompt list hint — "Return at most 20 items per list field" in v1 and v2 RULES (advisory, not enforced)
 
-#### A/B Trial Results (2026-03-09)
+**What was NOT deployed** (considered and rejected):
+- Field-level `max_items` on FieldDefinition — silently drops legitimate data. Entity list pagination (`FieldGroup.max_items`) already handles entity extraction. Non-entity list fields get natural pagination through content chunking + `merge_dedupe`.
+- Post-extraction hard truncation — same reason: silently discards real items.
+- Context line fix (variant C) — caused 1 regression in A/B trial.
+- Confidence calibration (variant D) — caused 1 regression in A/B trial.
 
-**Trial**: `scripts/trial_prompt_ab.py` — 30 sources × 7 field groups, paired comparison on identical inputs.
+#### Baseline Results (full trial: 148 extractions, 474 fields, 3 schemas)
 
-| Metric | A (baseline) | B (anti-halluc) | Delta |
-|--------|-------------|-----------------|-------|
-| Well grounded (≥0.8) | 88.3% | **90.8%** | **+2.5pp** |
-| Poorly grounded (<0.3) | 6.4% | **5.1%** | **-1.3pp** |
-| Overconfident | 6.4% | **5.1%** | **-1.3pp** |
-| Value == quote | 2.1% | **0.5%** | **-1.6pp (4x reduction)** |
-| Avg latency | 5.81s | **5.29s** | **-0.52s** |
-| Fields extracted | 188 | 195 | +7 |
+| Metric | Phase A (pre-deploy) | Phase B (deployed) |
+|--------|---------------------|-------------------|
+| Well grounded (>=0.8) | 86.9% (drivetrain) | **92.0%** (cross-schema) |
+| Poorly grounded (<0.3) | 8.7% (drivetrain) | **0.4%** |
+| Overconfident | 6.3% (drivetrain) | **0.4%** |
+| Truncations | Observed (company_meta) | **0/148** |
 
-**Per-field highlights:**
-- `services_gearboxes`: 33% poor → 0% — negation quotes eliminated
-- `services_drivetrain_accessories`: 25% poor → 0%
-- `manufactures_drivetrain_accessories`: 12% poor → 0%
-- 3 fields fixed (A<0.3 → B≥0.8), **0 regressions** (A≥0.8 → B<0.3)
+**Per-schema (Phase B):**
 
-**Known limitation — `company_name` quoting artifact**: 8 cases where LLM quotes `"Company: X"` from the user prompt context line instead of source text. Shows as poorly grounded but is NOT a hallucination — the value is correct. This is a separate issue (the context line `Company: {source_group}` is not in the source text we verify against). Not caused or worsened by prompt changes.
+| Schema | n | Well% | Poor% |
+|--------|---|-------|-------|
+| Drivetrain | 180 | 97.2% | 0.6% |
+| Jobs | 164 | 99.4% | 0.0% |
+| Wikipedia | 130 | 75.4% | 0.8% |
 
-#### Step 6: Anti-hallucination prompt instruction
+**Key validation — truncation fix**: Multengrenagens (Brazilian city pages) now returns 20-27 legitimate locations instead of hallucinating hundreds of municipalities. Timken extracted 58 real locations from a 30K-char page (all g=1.00). The hallucination guard is the fix, not list capping.
 
-**File**: `src/services/extraction/schema_extractor.py`
-**Target**: All 4 v2 prompt builders (`_build_system_prompt_v2`, `_build_entity_list_system_prompt_v2`, and v1 equivalents)
+**Remaining artifacts** (measurement, not extraction errors):
+1. `company_name` quoting from context line — 7.7% of company_name extractions
+2. `time_period` on complex Wikipedia articles — long compound values confuse word-match scorer
 
-Inject a hallucination guard block **before** the RULES section:
-
-```
-CRITICAL CONSTRAINT: You are a text extraction tool, NOT a knowledge base.
-- ONLY extract information that is EXPLICITLY STATED in the provided text below.
-- If a field's information is not in the text, you MUST return null — do NOT guess or fill in from your training knowledge.
-- Common mistake: inventing headquarters locations, employee counts, or categories from your training data. Do NOT do this.
-- If you are unsure whether information is in the text or from your own memory, return null.
-```
-
-#### Step 7: Quote ≠ value prompt instruction
-
-Append to the existing `quoting_note` in non-strict mode:
-
-```
-The "quote" must be a VERBATIM excerpt copied directly from the source text,
-NOT a restatement of your extracted value. If your quote would be identical
-to the value, find a longer surrounding passage instead.
-```
-
-#### Implementation plan
-
-1. Add `_HALLUCINATION_GUARD` constant to `schema_extractor.py` (single source of truth)
-2. Add `_QUOTE_NOT_VALUE_NOTE` constant
-3. Insert hallucination guard into `_build_system_prompt_v2()` — before RULES block
-4. Insert hallucination guard into `_build_entity_list_system_prompt_v2()` — before RULES block
-5. Append quote-not-value to non-strict `quoting_note` in both v2 builders
-6. Keep v1 prompts consistent (they already have "Extract ONLY" rule)
-7. Run `pytest -q` — no functional changes, just prompt text
-8. Deploy and monitor grounding metrics
-
-**No architectural changes needed — prompt-only modification in 4 methods.**
-
-### Phase B verification
-
-After deploying prompt changes:
-
-1. Monitor `v2_source_grounding_retry` event frequency — should decrease (fewer low-grounding first attempts)
-2. Monitor `schema_extraction_truncated` events — should decrease (fewer municipality hallucinations)
-3. Re-run `scripts/trial_prompt_ab.py --limit 50` on next re-extraction batch to confirm at scale
-4. `pytest -q` — all tests pass
+**Full baseline**: `docs/baseline_phase_b_prompt_improvements.md`
+**Trial script**: `scripts/trial_phase_b_baseline.py`
 
 ### Phase A verification (completed)
 
@@ -350,3 +317,6 @@ After deploying prompt changes:
 | `scripts/trial_value_as_quote.py` | Value-as-quote echo deep analysis | Grounding perfectly separates legitimate (1.00) from bad (0.14) echoes |
 | `scripts/trial_grounding_middle.py` | Borderline grounding 0.3-0.8 investigation | 99 cases, only 5% have value in source — 95% are word-window false positives. Justified LLM rescue approach over hard threshold. |
 | `scripts/trial_ground_and_locate.py` | Position tracing prototype (related TODO) | 87.3% match rate with 4-tier algorithm |
+| `scripts/trial_prompt_ab.py` | A/B trial: baseline vs anti-hallucination prompt | +2.5pp well-grounded, 0 regressions |
+| `scripts/trial_prompt_variants.py` | Multi-variant (A-F) prompt trial | B best, C/D caused regressions |
+| `scripts/trial_phase_b_baseline.py` | Phase B deployed baseline: 3 schemas, targeted hard cases | 92.0% well-grounded, 0 truncations |
