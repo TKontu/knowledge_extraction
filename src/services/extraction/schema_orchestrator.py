@@ -10,9 +10,10 @@ from uuid import UUID
 
 import structlog
 
-from services.extraction.field_groups import FieldGroup
 from services.extraction.chunk_merge import (
     field_cardinality,
+)
+from services.extraction.chunk_merge import (
     merge_chunk_results as merge_chunk_results_v2,
 )
 from services.extraction.extraction_items import (
@@ -22,6 +23,7 @@ from services.extraction.extraction_items import (
     ListValueItem,
     locate_in_source,
 )
+from services.extraction.field_groups import FieldGroup
 from services.extraction.grounding import (
     GROUNDING_DEFAULTS,
     _coerce_quote,
@@ -33,6 +35,7 @@ from services.extraction.grounding import (
     verify_quote_in_source,
 )
 from services.extraction.page_classifier import (
+    ClassificationMethod,
     ClassificationResult,
     PageClassifier,
 )
@@ -44,6 +47,7 @@ if TYPE_CHECKING:
     from config import ClassificationConfig, ExtractionConfig
     from services.extraction.field_groups import FieldDefinition
     from services.extraction.llm_grounding import LLMGroundingVerifier
+    from services.extraction.llm_skip_gate import LLMSkipGate
     from services.extraction.schema_adapter import ExtractionContext
     from services.extraction.smart_classifier import SmartClassifier
 
@@ -297,6 +301,8 @@ class SchemaExtractionOrchestrator:
         context: "ExtractionContext | None" = None,
         smart_classifier: "SmartClassifier | None" = None,
         grounding_verifier: "LLMGroundingVerifier | None" = None,
+        skip_gate: "LLMSkipGate | None" = None,
+        extraction_schema: dict | None = None,
     ):
         """Initialize the orchestrator.
 
@@ -308,6 +314,8 @@ class SchemaExtractionOrchestrator:
             smart_classifier: Optional smart classifier for embedding-based
                 classification. When provided and classification is enabled,
                 uses semantic similarity for field group selection.
+            skip_gate: Optional LLM skip-gate for binary extract/skip filtering.
+            extraction_schema: Full extraction schema dict (for skip-gate context).
         """
         from services.extraction.schema_adapter import ExtractionContext
 
@@ -327,6 +335,8 @@ class SchemaExtractionOrchestrator:
         self._context = context or ExtractionContext()
         self._smart_classifier = smart_classifier
         self._grounding_verifier = grounding_verifier
+        self._skip_gate = skip_gate
+        self._extraction_schema = extraction_schema
 
     async def extract_all_groups(
         self,
@@ -363,8 +373,48 @@ class SchemaExtractionOrchestrator:
 
         # Classify page if URL is available and classification is enabled
         if source_url and self._classification.enabled:
-            # Use smart classifier if available and enabled
-            if self._smart_classifier and self._classification.smart_enabled:
+            available_group_names = [g.name for g in field_groups]
+
+            # Level 0: Rule-based (always runs first — free, instant)
+            rule_classifier = PageClassifier(available_groups=available_group_names)
+            rule_result = rule_classifier.classify(
+                url=source_url, title=source_title,
+            )
+
+            if rule_result.skip_extraction and self._classification.skip_enabled:
+                # Rule-based skip (URL patterns like /careers, /privacy)
+                classification = rule_result
+                classification_method = "rule"
+
+            elif self._skip_gate and self._classification.skip_gate_enabled:
+                # Level 1: LLM skip-gate (binary extract/skip)
+                gate_result = await self._skip_gate.should_extract(
+                    url=source_url,
+                    title=source_title,
+                    content=markdown,
+                    schema=self._extraction_schema or {},
+                )
+                if gate_result.decision == "skip":
+                    classification = ClassificationResult(
+                        page_type="skip",
+                        relevant_groups=[],
+                        skip_extraction=True,
+                        confidence=gate_result.confidence,
+                        method=ClassificationMethod.LLM,
+                        reasoning="LLM skip-gate: page does not match extraction schema",
+                    )
+                else:
+                    classification = ClassificationResult(
+                        page_type=rule_result.page_type,
+                        relevant_groups=available_group_names,
+                        skip_extraction=False,
+                        confidence=gate_result.confidence,
+                        method=ClassificationMethod.LLM,
+                    )
+                classification_method = "llm_skip_gate"
+
+            elif self._smart_classifier and self._classification.smart_enabled:
+                # Level 2: Embedding-based smart classifier (group filtering)
                 classification = await self._smart_classifier.classify(
                     url=source_url,
                     title=source_title,
@@ -372,11 +422,16 @@ class SchemaExtractionOrchestrator:
                     field_groups=field_groups,
                 )
                 classification_method = "smart"
+
             else:
-                # Fall back to rule-based classification
-                available_group_names = [g.name for g in field_groups]
-                classifier = PageClassifier(available_groups=available_group_names)
-                classification = classifier.classify(url=source_url, title=source_title)
+                # No classifier — extract all groups
+                classification = ClassificationResult(
+                    page_type=rule_result.page_type,
+                    relevant_groups=available_group_names,
+                    skip_extraction=False,
+                    confidence=0.5,
+                    method=ClassificationMethod.RULE_BASED,
+                )
                 classification_method = "rule"
 
             logger.info(
@@ -390,7 +445,7 @@ class SchemaExtractionOrchestrator:
                 method=classification_method,
             )
 
-            # Only skip if both classification says skip AND skip is enabled
+            # Skip if classification says skip and skip is enabled
             if classification.skip_extraction and self._classification.skip_enabled:
                 logger.info(
                     "skipping_extraction",

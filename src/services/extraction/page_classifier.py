@@ -14,6 +14,7 @@ class ClassificationMethod(str, Enum):
 
     RULE_BASED = "rule"
     HYBRID = "hybrid"  # Future
+    LLM = "llm"
 
 
 @dataclass

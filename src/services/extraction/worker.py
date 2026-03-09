@@ -223,12 +223,38 @@ class ExtractionWorker:
             )
             grounding_verifier = LLMGroundingVerifier(llm_client=llm_client)
 
+        # Create LLM skip-gate if enabled
+        skip_gate = None
+        if self._classification and self._classification.skip_gate_enabled and self._llm:
+            from dataclasses import replace as dc_replace
+
+            from services.extraction.llm_skip_gate import LLMSkipGate
+            from services.llm.client import LLMClient as LLMClientCls
+
+            gate_llm = self._llm
+            if self._classification.skip_gate_model:
+                gate_llm = dc_replace(
+                    self._llm, model=self._classification.skip_gate_model,
+                )
+
+            gate_client = LLMClientCls(
+                gate_llm,
+                llm_queue=self.llm_queue,
+                request_timeout=self._request_timeout,
+            )
+            skip_gate = LLMSkipGate(
+                llm_client=gate_client,
+                content_limit=self._classification.skip_gate_content_limit,
+            )
+
         orchestrator = SchemaExtractionOrchestrator(
             extractor,
             extraction_config=self._extraction,
             classification_config=self._classification,
             smart_classifier=smart_classifier,
             grounding_verifier=grounding_verifier,
+            skip_gate=skip_gate,
+            extraction_schema=project.extraction_schema if project else None,
         )
 
         # Use shared extraction embedding service if schema embedding is enabled

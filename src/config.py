@@ -83,6 +83,9 @@ class ClassificationConfig:
     cache_ttl: int
     use_default_skip_patterns: bool
     classifier_content_limit: int
+    skip_gate_enabled: bool = False
+    skip_gate_model: str = ""
+    skip_gate_content_limit: int = 2000
 
 
 @dataclass(frozen=True, slots=True)
@@ -683,6 +686,20 @@ class Settings(BaseSettings):
         le=30000,
         description="Max characters of content for classifier embedding/reranking",
     )
+    classification_skip_gate_enabled: bool = Field(
+        default=False,
+        description="Enable LLM-based skip-gate (binary extract/skip) before extraction",
+    )
+    classification_skip_gate_model: str = Field(
+        default="",
+        description="LLM model for skip-gate classification. Empty = use default LLM_MODEL",
+    )
+    classification_skip_gate_content_limit: int = Field(
+        default=2000,
+        ge=500,
+        le=5000,
+        description="Max characters of content sent to skip-gate LLM",
+    )
 
     # Extraction Pipeline Reliability
     extraction_content_limit: int = Field(
@@ -895,6 +912,9 @@ class Settings(BaseSettings):
                 enabled=self.classification_enabled,
                 skip_enabled=self.classification_skip_enabled,
                 smart_enabled=self.smart_classification_enabled,
+                skip_gate_enabled=self.classification_skip_gate_enabled,
+                skip_gate_model=self.classification_skip_gate_model,
+                skip_gate_content_limit=self.classification_skip_gate_content_limit,
                 reranker_model=self.reranker_model,
                 embedding_high_threshold=self.classification_embedding_high_threshold,
                 embedding_low_threshold=self.classification_embedding_low_threshold,
