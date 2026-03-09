@@ -386,6 +386,7 @@ class SchemaAdapter:
                             f"Valid: {sorted(VALID_CONSOLIDATION_STRATEGIES)}"
                         )
 
+
             # Validate max_items if provided
             if "max_items" in fg:
                 max_items = fg["max_items"]

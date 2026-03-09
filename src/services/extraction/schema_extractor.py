@@ -22,6 +22,20 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+_HALLUCINATION_GUARD = """
+CRITICAL CONSTRAINT: You are a text extraction tool, NOT a knowledge base.
+- ONLY extract information that is EXPLICITLY STATED in the provided text below.
+- If a field's information is not in the text, you MUST return null — do NOT guess or fill in from your training knowledge.
+- Common mistake: inventing headquarters locations, employee counts, or categories from your training data. Do NOT do this.
+- If you are unsure whether information is in the text or from your own memory, return null.
+"""
+
+_QUOTE_NOT_VALUE_NOTE = (
+    '\nThe "quote" must be a VERBATIM excerpt copied directly from the source text, '
+    "NOT a restatement of your extracted value. "
+    "If your quote would be identical to the value, find a longer surrounding passage instead."
+)
+
 
 def _singularize(word: str) -> str:
     """Naive singularization for English plural nouns.
@@ -459,7 +473,7 @@ RULES:
 - If the content does not contain information for a field, return null.
 - If the content is not relevant to {field_group.description}, return null for ALL fields.
 - For boolean fields, return true ONLY if there is explicit evidence in the content. Default to false.
-- For list fields, return empty list [] if no items found.
+- For list fields, return empty list [] if no items found. Return at most 20 items per list field — prioritize the most significant/relevant items.
 
 Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
 - 0.0 if the content has no relevant information
@@ -498,9 +512,10 @@ Output JSON with exactly these fields and a "confidence" field (0.0-1.0):
                     '\nInclude a "quote" with each field: a brief verbatim excerpt '
                     "(15-50 chars) from the source that supports the value."
                 )
+            quoting_note += _QUOTE_NOT_VALUE_NOTE
 
         return f"""You are extracting {field_group.description} from {self.context.source_type}.
-
+{_HALLUCINATION_GUARD}
 Fields to extract:
 {fields_str}
 
@@ -511,7 +526,7 @@ RULES:
 - If the content does not contain information for a field, set it to null.
 - If the content is not relevant to {field_group.description}, set ALL fields to null.
 - For boolean fields, return true ONLY if there is explicit evidence. Default to false.
-- For list fields, return empty list [] if no items found.
+- For list fields, return empty list [] if no items found. Return at most 20 items per list field — prioritize the most significant/relevant items.
 
 Output JSON with per-field structure. Each field has its own value, confidence, and quote:
 {{
@@ -653,6 +668,7 @@ Keep output concise - quality over quantity.
                     '\nFor each entity, include "_quote": a brief verbatim excerpt '
                     "(15-50 chars) from the source identifying this entity."
                 )
+            quoting_note += _QUOTE_NOT_VALUE_NOTE
 
         exclusion_block = ""
         if already_found:
@@ -663,7 +679,7 @@ Extract ONLY entities NOT in this list.
 """
 
         return f"""You are extracting {field_group.description} from {self.context.source_type}.
-
+{_HALLUCINATION_GUARD}
 For each {entity_singular} found, extract:
 {fields_str}
 
