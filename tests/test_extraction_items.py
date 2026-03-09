@@ -120,6 +120,9 @@ class TestLocateInSource:
         assert loc.heading_path == ["About"]
         assert loc.char_offset is not None
         assert loc.chunk_index == 0
+        # Verify position is correct in original content
+        span = content[loc.char_offset:loc.char_end]
+        assert "leading manufacturer" in span.lower()
 
     def test_case_insensitive(self):
         content = "ACME CORP is a Leading Manufacturer"
@@ -127,6 +130,19 @@ class TestLocateInSource:
         loc = locate_in_source("leading manufacturer", content, chunk)
         assert loc is not None
         assert loc.char_offset is not None
+        span = content[loc.char_offset:loc.char_end]
+        assert "Leading Manufacturer" in span
+
+    def test_whitespace_positions_correct(self):
+        """Bug fix: positions must be in original content, not normalized."""
+        content = "Acme   Corp   is   a   leading   manufacturer"
+        chunk = type("Chunk", (), {"header_path": [], "chunk_index": 0})()
+        loc = locate_in_source("leading manufacturer", content, chunk)
+        assert loc is not None
+        assert loc.char_offset is not None
+        span = content[loc.char_offset:loc.char_end]
+        assert "leading" in span
+        assert "manufacturer" in span
 
     def test_empty_quote_returns_none(self):
         assert locate_in_source("", "content", None) is None
@@ -134,7 +150,7 @@ class TestLocateInSource:
 
     def test_no_match_still_returns_location(self):
         chunk = type("Chunk", (), {"header_path": ["X"], "chunk_index": 3})()
-        loc = locate_in_source("nonexistent quote", "some content", chunk)
+        loc = locate_in_source("nonexistent quote xyz", "some content", chunk)
         assert loc is not None
         assert loc.char_offset is None  # Could not find position
         assert loc.chunk_index == 3
@@ -145,6 +161,14 @@ class TestLocateInSource:
         assert loc is not None
         assert loc.heading_path == []
         assert loc.chunk_index == 0
+
+    def test_match_tier_populated(self):
+        content = "Acme Corp is a leading manufacturer"
+        chunk = type("Chunk", (), {"header_path": [], "chunk_index": 0})()
+        loc = locate_in_source("leading manufacturer", content, chunk)
+        assert loc is not None
+        assert loc.match_tier >= 1
+        assert loc.match_quality > 0
 
 
 class TestReadFieldValue:

@@ -989,9 +989,14 @@ class SchemaExtractionOrchestrator:
         For entity lists, uses pagination within each chunk to handle large
         entity counts beyond the per-call limit.
         """
+        from services.extraction.grounding import precompute_content_maps
+
         max_concurrent = self._extraction.max_concurrent_chunks
         semaphore = asyncio.Semaphore(max_concurrent)
         sg_min_ratio = self._extraction.source_grounding_min_ratio
+
+        # Pre-compute content maps once for position tracing across all chunks
+        content_maps = precompute_content_maps(full_content) if full_content else None
 
         # Build field_types map once for the gate (field_name → field_type)
         gate_field_types: dict[str, str] = {
@@ -1004,7 +1009,8 @@ class SchemaExtractionOrchestrator:
                 try:
                     if group.is_entity_list:
                         result = await self._extract_entity_chunk_v2(
-                            chunk, chunk_idx, group, source_context, full_content
+                            chunk, chunk_idx, group, source_context, full_content,
+                            content_maps=content_maps,
                         )
                     else:
                         raw = await self._extractor.extract_field_group(
@@ -1013,7 +1019,8 @@ class SchemaExtractionOrchestrator:
                             source_context=source_context,
                         )
                         result = self._parse_chunk_to_v2(
-                            raw, group, chunk, chunk_idx, full_content
+                            raw, group, chunk, chunk_idx, full_content,
+                            content_maps=content_maps,
                         )
 
                         # Source-grounding retry: if too many fields have low
@@ -1035,7 +1042,8 @@ class SchemaExtractionOrchestrator:
                                         strict_quoting=True,
                                     )
                                     retry_result = self._parse_chunk_to_v2(
-                                        retry_raw, group, chunk, chunk_idx, full_content
+                                        retry_raw, group, chunk, chunk_idx, full_content,
+                                        content_maps=content_maps,
                                     )
                                     retry_avg = _avg_chunk_grounding(retry_result)
                                     if retry_avg > avg_grounding:
@@ -1108,6 +1116,7 @@ class SchemaExtractionOrchestrator:
         group: FieldGroup,
         source_context: str,
         full_content: str,
+        content_maps: Any | None = None,
     ) -> ChunkExtractionResult:
         """Extract entities from a single chunk with pagination.
 
@@ -1130,7 +1139,7 @@ class SchemaExtractionOrchestrator:
                 continue
 
             grounding = ground_entity_item(quote, chunk.content)
-            location = locate_in_source(quote, full_content, chunk)
+            location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
 
             entities.append(EntityItem(
                 fields=fields,
@@ -1153,6 +1162,7 @@ class SchemaExtractionOrchestrator:
         chunk: Any,
         chunk_idx: int,
         full_content: str,
+        content_maps: Any | None = None,
     ) -> ChunkExtractionResult:
         """Parse raw LLM response into ChunkExtractionResult with inline grounding.
 
@@ -1184,7 +1194,7 @@ class SchemaExtractionOrchestrator:
                     grounding = ground_field_item(
                         field_def.name, v, quote, chunk.content, field_def.field_type
                     )
-                    location = locate_in_source(quote, full_content, chunk)
+                    location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
                     items.append(ListValueItem(v, confidence, quote, grounding, location))
                 list_items[field_def.name] = items
             else:
@@ -1192,7 +1202,7 @@ class SchemaExtractionOrchestrator:
                 grounding = ground_field_item(
                     field_def.name, value, quote, chunk.content, field_def.field_type
                 )
-                location = locate_in_source(quote, full_content, chunk)
+                location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
                 field_items[field_def.name] = FieldItem(
                     value=value,
                     confidence=confidence,

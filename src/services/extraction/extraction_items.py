@@ -8,7 +8,6 @@ location. Used by schema_extractor (response parsing), schema_orchestrator
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,6 +20,8 @@ class SourceLocation:
     char_offset: int | None  # Start position of quote in full source content
     char_end: int | None  # End position of quote in full source content
     chunk_index: int  # Which chunk produced this value
+    match_tier: int = 0  # 1-4 match tier, 0=unmatched
+    match_quality: float = 1.0  # 0.0-1.0 match confidence
 
 
 @dataclass
@@ -82,26 +83,25 @@ def safe_data_version(obj: Any) -> int:
 
 # ── Utility functions ──
 
-_WS_RE = re.compile(r"\s+")
-
-
-def _normalize(s: str) -> str:
-    """Lowercase and collapse whitespace for matching."""
-    return _WS_RE.sub(" ", s.lower().strip())
-
 
 def locate_in_source(
     quote: str | None,
     full_content: str,
     chunk: Any,
+    content_maps: Any | None = None,
 ) -> SourceLocation | None:
     """Compute SourceLocation by finding quote in full source content.
+
+    Uses the 4-tier offset-mapped algorithm for accurate original-content
+    positions. Optionally accepts pre-computed ContentMaps for performance.
 
     Args:
         quote: The extracted quote string.
         full_content: The complete source text (pre-chunking).
         chunk: A chunk object with ``header_path`` (list[str]) and
             ``chunk_index`` (int) attributes.
+        content_maps: Optional pre-computed ContentMaps from
+            ``grounding.precompute_content_maps()``.
 
     Returns:
         SourceLocation or None if quote is empty.
@@ -109,27 +109,26 @@ def locate_in_source(
     if not quote:
         return None
 
+    from services.extraction.grounding import (
+        ground_and_locate,
+        ground_and_locate_precomputed,
+    )
+
     chunk_index = getattr(chunk, "chunk_index", 0)
     heading_path = getattr(chunk, "header_path", None) or []
 
-    # Try to find quote position in full content via normalized search
-    char_offset: int | None = None
-    char_end: int | None = None
-
-    if full_content and quote:
-        norm_quote = _normalize(quote)
-        norm_content = _normalize(full_content)
-        pos = norm_content.find(norm_quote)
-        if pos >= 0:
-            # Map back to approximate original positions
-            char_offset = pos
-            char_end = pos + len(norm_quote)
+    if content_maps is not None:
+        result = ground_and_locate_precomputed(quote, full_content, content_maps)
+    else:
+        result = ground_and_locate(quote, full_content)
 
     return SourceLocation(
         heading_path=list(heading_path),
-        char_offset=char_offset,
-        char_end=char_end,
+        char_offset=result.source_offset,
+        char_end=result.source_end,
         chunk_index=chunk_index,
+        match_tier=result.match_tier,
+        match_quality=result.score,
     )
 
 
@@ -295,12 +294,17 @@ def v2_to_flat(data: dict) -> dict:
 
 
 def _location_to_dict(loc: SourceLocation) -> dict:
-    return {
+    d: dict[str, Any] = {
         "heading_path": loc.heading_path,
         "char_offset": loc.char_offset,
         "char_end": loc.char_end,
         "chunk_index": loc.chunk_index,
     }
+    if loc.match_tier:
+        d["match_tier"] = loc.match_tier
+    if loc.match_quality != 1.0:
+        d["match_quality"] = loc.match_quality
+    return d
 
 
 def _field_item_to_dict(item: FieldItem) -> dict:
