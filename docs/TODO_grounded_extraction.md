@@ -1,9 +1,8 @@
 # TODO: Grounded Extraction & Downstream Quality
 
 **Created:** 2026-03-05
-**Status:** Proposal (trials complete, architecture revised)
+**Status:** Layers 1 + 3 DEPLOYED (2026-03-09). Three-tier grounding gate active in production. Re-extraction running on all 3 projects. Layer 2 (skip-gate) and Layers 4-5 (multilingual, reports) pending.
 **Depends on:** Findings from `docs/TODO_downstream_trials.md`
-**Trial scripts:** `/tmp/trial_grounding_verification.py`, `/tmp/trial_grounding_v2.py`, `/tmp/trial_grounded_prompt_v2.py`, `/tmp/trial_grounded_prompt_v3.py`, `/tmp/trial_grounded_products.py`, `/tmp/trial_llm_verification.py`, `/tmp/trial_quote_verification.py`, `/tmp/trial_quote_first.py`, `/tmp/trial_multilingual.py`, `/tmp/trial_fullcontent_verify_v2.py`, `/tmp/trial_model_comparison_v2.py`
 
 ## Problem Statement
 
@@ -350,15 +349,13 @@ Use both: string-match first (free), then LLM verify the ambiguous cases (string
 
 ---
 
-## Revised Architecture (v2 — after all trials)
+## Architecture (v2 — after all trials)
 
-Based on all trial results, the architecture is:
-
-- **Layer 1a: String-match verification** — free, instant, catches 83% of spec hallucinations
-- **Layer 1b: LLM quote verification** (Qwen3-30B-A3B-it-4bit) — handles multilingual + paraphrases, 80% detection / 100% recall for numerics. Same model as extraction — no extra loading overhead. 3.2s/claim.
-- **Layer 2: Skip-gate** — unchanged (gemma3-4B binary, 92.6% recall)
-- **Layer 3: Grounding-weighted consolidation** — uses verification scores as weights
-- **Layer 4: Multilingual dedup during consolidation** — language detection + LLM-based product name grouping
+- **Layer 1a: String-match verification** — DEPLOYED. Free, instant, catches 83% of spec hallucinations
+- **Layer 1b: LLM quote rescue** — DEPLOYED. Three-tier gate with `rescue_quote()` for borderline cases (0.3-0.8 grounding). `apply_grounding_gate()` as async post-parse in `schema_orchestrator.py`.
+- **Layer 2: Skip-gate** — PENDING (gemma3-4B binary, 92.6% recall). See `docs/TODO_classification_robustness.md`
+- **Layer 3: Grounding-weighted consolidation** — DEPLOYED. `effective_weight() = min(confidence, grounding_score)`. 6 strategies implemented.
+- **Layer 4: Multilingual dedup during consolidation** — PENDING. Language detection + LLM-based product name grouping.
 - ~~Grounded extraction prompts~~ → **Dropped** (47-80% recall loss, unacceptable)
 
 ## Architecture: Three Layers
@@ -663,11 +660,11 @@ Consolidation is idempotent and re-runnable:
 
 ## Revised Implementation Plan
 
-### Phase 1: Two-Tier Grounding Verification
+### Phase 1: Two-Tier Grounding Verification — DEPLOYED (2026-03-09)
 
-**Goal:** Compute grounding scores for all 47K existing extractions. No re-extraction. Zero recall loss.
+**Status:** Live in production. String-match inline during v2 extraction (`grounding.py`). LLM rescue (`llm_grounding.py`). Three-tier grounding gate (`apply_grounding_gate()` in `schema_orchestrator.py`). Re-extraction running on all 3 projects with gate active.
 
-#### Phase 1a: String-Match Verification (free, instant)
+#### Phase 1a: String-Match Verification (free, instant) — DONE
 
 1. Implement `verify_numeric_grounding()` — locale-aware number format variants (1000, 1,000, 1.000, 1 000)
 2. Implement `verify_string_grounding()` — normalized matching (case, hyphen, whitespace collapse)
@@ -677,7 +674,7 @@ Consolidation is idempotent and re-runnable:
 **What it catches:** 83% of product spec hallucinations, 37% of employee count hallucinations, 98.8% company name verification.
 **What it misses:** Multilingual numbers ("Com mais de 30.000 colaboradores"), paraphrased values ("over a thousand"), booleans.
 
-#### Phase 1b: LLM Quote Verification (Qwen3-30B-A3B-it-4bit, ~3.2s per claim)
+#### Phase 1b: LLM Quote Verification — DONE
 
 For extractions where string-match grounding = 0.0 but a quote exists, run LLM verification:
 
@@ -703,21 +700,9 @@ For extractions where string-match grounding = 0.0 but a quote exists, run LLM v
 
 **Scope:** ~300-400 lines. New file `src/services/extraction/grounding.py`.
 
-### Phase 2: Grounding-Weighted Consolidation
+### Phase 2: Grounding-Weighted Consolidation — DEPLOYED (2026-03-09)
 
-**Goal:** Produce one canonical record per (source_group, extraction_type), using grounding scores to deprioritize hallucinated values.
-
-1. Implement 6 consolidation strategies: frequency, weighted_frequency, any_true, longest_top_k, union_dedup, weighted_median
-2. Grounding-aware weighting: `effective_weight = confidence * grounding_score` for numeric fields
-3. For ungrounded numeric values: don't delete them, just weight them at 0 in consolidation (if all values are ungrounded, still pick the best one — some data > no data)
-4. Schema integration — read `consolidation_strategy` from field definitions (with sensible defaults by type)
-5. Provenance tracking per consolidated field
-6. Storage in consolidated_extractions table
-7. API endpoint to trigger consolidation per project
-
-**Key design choice from trials:** Grounding doesn't delete values — it provides a weight signal. This avoids the 47-80% recall loss seen with prompt-based approaches while still deprioritizing hallucinations.
-
-**Scope:** ~500-700 lines. New file `src/services/extraction/consolidation.py`. Database migration. API endpoint.
+**Status:** Live. 6 strategies implemented. `effective_weight() = min(confidence, grounding_score)`. API endpoint: `POST /projects/{id}/consolidate`. DB table: `consolidated_extractions`. Ready to run on completed extractions.
 
 ### Phase 3: Multilingual Handling
 
@@ -752,14 +737,16 @@ For extractions where string-match grounding = 0.0 but a quote exists, run LLM v
 
 Per `docs/TODO_classification_robustness.md` spec. Binary skip-gate with gemma3-4B, schema passed as context.
 
-### Phase 6 (Deferred): Prompt Improvements
+### Phase 6: Light Prompt Improvements — TRIAL COMPLETE, READY TO DEPLOY
 
-**Status:** Trials show prompt-based grounding causes 47-80% recall loss. Not viable as primary mechanism.
+**Status update (2026-03-09):** Earlier trials of **strict grounding prompts** (forcing LLM to prove every field) caused 47-80% recall loss — correctly dropped as primary mechanism. However, a **lighter approach** — a hallucination guard block that simply says "don't use training knowledge" — was trialed and shows consistent improvement with zero recall loss.
 
-**Possible future approaches (after consolidation + verification are live):**
-- **Targeted prompt hints** for known-problematic fields only (e.g., "employee_count: only extract if a specific number is stated")
-- **Nullable type declarations** (`float | null`) in schema
-- Revisit only if post-extraction verification + consolidation don't achieve target quality
+**A/B trial** (`scripts/trial_prompt_ab.py`, 30 sources × 7 groups):
+- Well grounded: +2.5pp, poorly grounded: -1.3pp, value-as-quote: -1.6pp (4x reduction)
+- 0 regressions, 3 fields fixed, 0.5s faster, 7 more fields extracted
+- Key: this is NOT the destructive "grounded prompt" from earlier — it's a guard block that prevents world-knowledge leakage without changing extraction format requirements
+
+**Implementation**: Add `_HALLUCINATION_GUARD` + `_QUOTE_NOT_VALUE_NOTE` constants to `schema_extractor.py`, inject into 4 v2 prompt builders. See `docs/TODO_extraction_quality.md` Phase B for exact text and plan.
 
 ---
 
