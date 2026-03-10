@@ -67,9 +67,9 @@ class TestGroundFieldItem:
         assert score >= 0.8
 
     def test_semantic_boolean_no_quote(self):
-        """Boolean with no quote → neutral 0.5."""
+        """Boolean with no quote → no grounding evidence (0.0)."""
         score = ground_field_item("is_manufacturer", True, None, self.CHUNK, "boolean")
-        assert score == 0.5
+        assert score == 0.0
 
     def test_none_grounding_mode(self):
         """Text/summary fields return 1.0 regardless."""

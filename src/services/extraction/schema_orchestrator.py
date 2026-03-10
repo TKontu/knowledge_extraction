@@ -175,14 +175,29 @@ async def apply_grounding_gate(
     ) -> tuple[str, FieldItem] | None:
         if item.grounding >= keep_threshold:
             return (name, item)
-        if item.grounding < rescue_threshold:
-            return None
-        # Borderline: only rescue "required" fields. Non-required fields
-        # (boolean/semantic, text/none) use different grounding semantics
-        # and should be kept as-is in the borderline band.
+
         mode = _grounding_mode(name)
-        if mode != "required":
-            return (name, item)
+
+        if item.grounding < rescue_threshold:
+            # Below rescue threshold: drop required fields immediately.
+            # For semantic fields (booleans), attempt rescue if confidence
+            # is high — the LLM was confident but didn't provide a quote.
+            if mode != "semantic" or item.confidence < 0.5:
+                return None
+            # Fall through to rescue below
+
+        elif mode != "required":
+            # Borderline band (0.3-0.8) for non-required fields:
+            # "none" mode (text/summary) kept as-is; semantic fields
+            # with a quote already have a real grounding score, keep.
+            if mode == "none" or item.quote:
+                return (name, item)
+            # Semantic with no quote but in borderline band — rescue
+            if item.confidence < 0.5:
+                return None
+            # Fall through to rescue below
+        # else: borderline + required — rescue (original behavior)
+
         async with rescue_sem:
             rescue = await verifier.rescue_quote(name, item.value, chunk_content)
         if rescue.quote and rescue.grounding >= keep_threshold:

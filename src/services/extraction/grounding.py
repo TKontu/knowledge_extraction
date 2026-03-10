@@ -993,7 +993,7 @@ def ground_field_item(
     if grounding_mode == "semantic":
         # Semantic: only check quote-in-source (Layer A)
         if not coerced or not chunk_content:
-            return 0.5  # No quote available, assume neutral
+            return 0.0  # No quote = no grounding evidence
         return verify_quote_in_source(coerced, chunk_content)
 
     # Required: min(Layer A, Layer B)
