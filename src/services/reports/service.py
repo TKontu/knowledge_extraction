@@ -132,6 +132,7 @@ class ReportService:
                 layout=request.layout,
                 entity_focus=request.entity_focus,
                 include_provenance=request.include_provenance,
+                provenance_sheets=request.provenance_sheets,
             )
             report_format = "xlsx" if excel_bytes else "md"
             entity_counts = summary.get("entity_counts", {})
@@ -578,6 +579,7 @@ class ReportService:
         layout: str = "multi_sheet",
         entity_focus: str | None = None,
         include_provenance: bool = False,
+        provenance_sheets: bool = False,
     ) -> tuple[str, bytes | None, dict[str, Any]]:
         """Generate table report from consolidated extractions.
 
@@ -589,6 +591,7 @@ class ReportService:
             layout: "multi_sheet" or "single_sheet".
             entity_focus: Entity group for single_sheet denormalization.
             include_provenance: Include provenance columns.
+            provenance_sheets: Add Quality and Sources companion sheets.
 
         Returns:
             Tuple of (markdown_content, excel_bytes or None, summary dict).
@@ -632,8 +635,53 @@ class ReportService:
         # Excel
         excel_bytes = None
         if output_format == "xlsx":
+            # Build provenance companion sheets if requested
+            if provenance_sheets:
+                from services.reports.consolidated_builder import build_provenance_sheets
+
+                # Build records_by_sg lookup
+                records_by_sg: dict[str, dict[str, Any]] = {}
+                for rec in records:
+                    sg = rec.source_group
+                    if sg not in records_by_sg:
+                        records_by_sg[sg] = {}
+                    records_by_sg[sg][rec.extraction_type] = rec
+
+                # Resolve source_ids to URLs
+                from orm_models import Source
+
+                all_source_ids: set[str] = set()
+                for rec in records:
+                    for prov in (rec.provenance or {}).values():
+                        if isinstance(prov, dict):
+                            all_source_ids.update(
+                                str(s) for s in prov.get("top_sources", [])
+                            )
+
+                source_url_map: dict[str, str] = {}
+                if all_source_ids:
+                    source_rows = (
+                        self._db.execute(
+                            select(Source.id, Source.uri).where(
+                                Source.id.in_(list(all_source_ids))
+                            )
+                        ).all()
+                    )
+                    source_url_map = {str(row.id): row.uri for row in source_rows}
+
+                # Interleave: Data, Quality, Sources for each sheet
+                final_sheets: list = []
+                for sheet in sheets:
+                    final_sheets.append(sheet)
+                    quality, sources = build_provenance_sheets(
+                        sheet, records_by_sg, source_url_map
+                    )
+                    final_sheets.append(quality)
+                    final_sheets.append(sources)
+                sheets = final_sheets
+
             formatter = ExcelFormatter()
-            if layout == "multi_sheet":
+            if layout == "multi_sheet" or provenance_sheets:
                 excel_bytes = formatter.create_multi_sheet_workbook(sheets)
             else:
                 sheet = sheets[0]

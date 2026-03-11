@@ -58,6 +58,7 @@ class ConsolidatedField:
     source_count: int
     grounded_count: int = 0
     agreement: float = 0.0
+    winning_weight: float = 0.0
     top_sources: list[str] = field(default_factory=list)
 
 
@@ -194,7 +195,7 @@ def weighted_median(values: list[WeightedValue]) -> float | int | None:
     return weighted[-1][0]
 
 
-def any_true(values: list[WeightedValue], min_count: int = 3) -> bool | None:
+def any_true(values: list[WeightedValue], min_count: int = 1) -> bool | None:
     """True if min_count+ values are True with weight > 0.
 
     Returns None if insufficient evidence (fewer than min_count weighted
@@ -307,6 +308,7 @@ def consolidate_field(
             source_count=0,
             grounded_count=0,
             agreement=0.0,
+            winning_weight=0.0,
         )
 
     strategies = {
@@ -337,6 +339,28 @@ def consolidate_field(
     else:
         agreement = 1.0 if result_value is not None else 0.0
 
+    # Compute winning_weight: quality signal for the chosen value
+    if result_value is not None:
+        if isinstance(result_value, list):
+            # union_dedup: average weight of all contributors
+            non_zero = [v.weight for v in values if v.weight > 0]
+            winning_weight = sum(non_zero) / len(non_zero) if non_zero else 0.0
+        else:
+            # Scalar: max weight among values matching result
+            matching_weights = [
+                v.weight
+                for v in values
+                if v.value is not None
+                and (
+                    str(v.value).strip().lower() == str(result_value).strip().lower()
+                    if isinstance(v.value, str)
+                    else v.value == result_value
+                )
+            ]
+            winning_weight = max(matching_weights) if matching_weights else 0.0
+    else:
+        winning_weight = 0.0
+
     grounded_count = sum(1 for v in values if v.weight > 0)
     top_sources = [v.source_id for v in values if v.source_id][:5]
 
@@ -346,6 +370,7 @@ def consolidate_field(
         source_count=len(values),
         grounded_count=grounded_count,
         agreement=round(agreement, 4),
+        winning_weight=round(winning_weight, 4),
         top_sources=top_sources,
     )
 

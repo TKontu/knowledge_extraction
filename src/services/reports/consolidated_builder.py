@@ -313,6 +313,99 @@ class ConsolidatedReportBuilder:
         )
 
 
+def build_provenance_sheets(
+    data_sheet: SheetData,
+    records_by_sg: dict[str, dict[str, Any]],
+    source_url_map: dict[str, str],
+) -> tuple[SheetData, SheetData]:
+    """Build Quality and Sources companion sheets for a data sheet.
+
+    Each cell in the quality sheet shows the winning_weight for the
+    corresponding data cell. Each cell in the sources sheet shows
+    the source URLs that contributed to that data cell.
+
+    Args:
+        data_sheet: The data sheet to generate companions for.
+        records_by_sg: source_group → {extraction_type → ConsolidatedExtraction}.
+        source_url_map: source_id → URL mapping.
+
+    Returns:
+        Tuple of (quality_sheet, sources_sheet).
+    """
+    quality_rows: list[dict[str, Any]] = []
+    sources_rows: list[dict[str, Any]] = []
+
+    for row in data_sheet.rows:
+        sg = row.get("source_group", "")
+        sg_records = records_by_sg.get(sg, {})
+
+        quality_row: dict[str, Any] = {"source_group": sg}
+        sources_row: dict[str, Any] = {"source_group": sg}
+
+        # For entity sheets (key set), all columns share list-level provenance
+        # keyed by the entity group name (e.g. "products"), since entity list
+        # consolidation is union_dedup at the list level, not per-field.
+        entity_prov = None
+        if data_sheet.key:
+            entity_rec = sg_records.get(data_sheet.key)
+            if entity_rec:
+                ep = (entity_rec.provenance or {}).get(data_sheet.key)
+                if isinstance(ep, dict):
+                    entity_prov = ep
+
+        for col in data_sheet.columns:
+            if col == "source_group":
+                continue
+
+            # Search across all extraction types for this field's provenance
+            prov = None
+            for _ext_type, rec in sg_records.items():
+                rec_provenance = rec.provenance or {}
+                if col in rec_provenance and isinstance(rec_provenance[col], dict):
+                    prov = rec_provenance[col]
+                    break
+
+            # Fall back to entity-level provenance for entity sheets
+            if prov is None and entity_prov is not None:
+                prov = entity_prov
+
+            if prov:
+                ww = prov.get("winning_weight")
+                quality_row[col] = round(ww, 4) if ww is not None else "N/A"
+
+                top_src_ids = prov.get("top_sources", [])
+                urls = [
+                    source_url_map.get(str(sid), str(sid))
+                    for sid in top_src_ids
+                    if str(sid) in source_url_map
+                ]
+                sources_row[col] = "\n".join(urls) if urls else "N/A"
+            else:
+                quality_row[col] = "N/A"
+                sources_row[col] = "N/A"
+
+        quality_rows.append(quality_row)
+        sources_rows.append(sources_row)
+
+    quality_sheet = SheetData(
+        name=f"{data_sheet.name} - Quality",
+        rows=quality_rows,
+        columns=list(data_sheet.columns),
+        labels=dict(data_sheet.labels),
+        key=f"{data_sheet.key}_quality" if data_sheet.key else "quality",
+    )
+
+    sources_sheet = SheetData(
+        name=f"{data_sheet.name} - Sources",
+        rows=sources_rows,
+        columns=list(data_sheet.columns),
+        labels=dict(data_sheet.labels),
+        key=f"{data_sheet.key}_sources" if data_sheet.key else "sources",
+    )
+
+    return quality_sheet, sources_sheet
+
+
 def compose_multi_sheet(data: ConsolidatedReportData) -> list[SheetData]:
     """Compose multi-sheet layout: company + entity sheets."""
     sheets = [data.company_sheet]

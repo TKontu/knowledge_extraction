@@ -211,14 +211,14 @@ class TestAnyTrue:
     def test_empty(self):
         assert any_true([]) is None
 
-    def test_default_min_count_is_3(self):
-        """Default min_count=3 matches trial findings (86% accuracy)."""
+    def test_default_min_count_is_1(self):
+        """Default min_count=1: a single grounded True is sufficient."""
         values = [
             WeightedValue(True, 0.9),
             WeightedValue(True, 0.8),
             WeightedValue(False, 0.7),
         ]
-        assert any_true(values) is None  # only 2 True, min_count=3 default
+        assert any_true(values) is True  # 2 weighted True >= 1
 
     def test_default_min_count_met(self):
         values = [
@@ -227,7 +227,19 @@ class TestAnyTrue:
             WeightedValue(True, 0.7),
             WeightedValue(False, 0.6),
         ]
-        assert any_true(values) is True  # 3 True, min_count=3 default
+        assert any_true(values) is True  # 3 True >= 1
+
+    def test_single_grounded_true_sufficient(self):
+        """One grounded True among ungrounded False → True."""
+        values = [
+            WeightedValue(True, 0.9),
+            WeightedValue(False, 0.0),
+            WeightedValue(False, 0.0),
+            WeightedValue(False, 0.0),
+            WeightedValue(False, 0.0),
+            WeightedValue(False, 0.0),
+        ]
+        assert any_true(values) is True
 
 
 # ── Strategy: longest_top_k ──
@@ -937,3 +949,77 @@ class TestExtractFieldDefinitions:
         field_defs, entity_groups = _extract_field_definitions(schema)
         assert entity_groups == set()
         assert "company_info" in field_defs
+
+
+# ── winning_weight ──
+
+
+class TestWinningWeight:
+    def test_frequency_winning_weight(self):
+        """winning_weight = max weight of most-frequent value."""
+        values = [
+            WeightedValue("ABB", 0.9),
+            WeightedValue("ABB", 0.7),
+            WeightedValue("Siemens", 0.95),
+        ]
+        result = consolidate_field(values, "frequency")
+        assert result.value == "ABB"
+        assert result.winning_weight == pytest.approx(0.9)
+
+    def test_any_true_winning_weight(self):
+        """winning_weight = max weight of True values when result is True."""
+        values = [
+            WeightedValue(True, 0.85),
+            WeightedValue(True, 0.6),
+            WeightedValue(False, 0.9),
+        ]
+        result = consolidate_field(values, "any_true")
+        assert result.value is True
+        assert result.winning_weight == pytest.approx(0.85)
+
+    def test_any_true_none_winning_weight(self):
+        """winning_weight = 0.0 when result is None."""
+        values = [
+            WeightedValue(True, 0.0),
+            WeightedValue(False, 0.9),
+        ]
+        result = consolidate_field(values, "any_true")
+        assert result.value is None
+        assert result.winning_weight == pytest.approx(0.0)
+
+    def test_weighted_median_winning_weight(self):
+        """winning_weight = weight of value matching median."""
+        values = [
+            WeightedValue(100, 0.9),
+            WeightedValue(200, 0.8),
+            WeightedValue(300, 0.7),
+        ]
+        result = consolidate_field(values, "weighted_median")
+        # Weighted median: cumulative at 100=0.9, 200=1.7; half=1.2 → picks 200
+        assert result.value == 200
+        assert result.winning_weight == pytest.approx(0.8)
+
+    def test_union_dedup_winning_weight(self):
+        """winning_weight = average of non-zero contributor weights."""
+        values = [
+            WeightedValue(["A", "B"], 0.9),
+            WeightedValue(["B", "C"], 0.6),
+            WeightedValue(["D"], 0.0),
+        ]
+        result = consolidate_field(values, "union_dedup")
+        # Non-zero weights: 0.9, 0.6 → avg = 0.75
+        assert result.winning_weight == pytest.approx(0.75)
+
+    def test_empty_values_winning_weight(self):
+        """Empty input → winning_weight=0.0."""
+        result = consolidate_field([], "frequency")
+        assert result.winning_weight == pytest.approx(0.0)
+
+    def test_all_zero_weight_union_dedup(self):
+        """All zero weights → winning_weight=0.0."""
+        values = [
+            WeightedValue(["A"], 0.0),
+            WeightedValue(["B"], 0.0),
+        ]
+        result = consolidate_field(values, "union_dedup")
+        assert result.winning_weight == pytest.approx(0.0)

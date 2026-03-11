@@ -197,6 +197,7 @@ class ConsolidationService:
                 "source_count": field.source_count,
                 "grounded_count": field.grounded_count,
                 "agreement": field.agreement,
+                "winning_weight": field.winning_weight,
                 "top_sources": field.top_sources,
             }
             # Record-level grounded_count = max across fields. Per-field
