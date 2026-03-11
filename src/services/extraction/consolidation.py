@@ -279,15 +279,16 @@ def effective_weight(
     fabricated data before consolidation, so remaining data should
     have grounding >= 0.8 or 0.0 (ungrounded).
 
-    required -> min(confidence, grounding_score) — 0.0 if no grounding
-    semantic/none -> confidence only
+    required  -> min(confidence, grounding_score)
+    semantic  -> min(confidence, grounding_score) — booleans need
+                 grounding evidence too; 0.0 means no supporting text
+    none      -> confidence only (text/summary always grounded 1.0)
     """
-    if grounding_mode == "required":
-        if grounding_score is None:
-            return confidence  # Unknown grounding (v1 data) → no penalty
-        return min(confidence, grounding_score)
-    # semantic or none: grounding doesn't affect weight
-    return confidence
+    if grounding_mode == "none":
+        return confidence
+    if grounding_score is None:
+        return confidence  # Unknown grounding (v1 data) → no penalty
+    return min(confidence, grounding_score)
 
 
 # ── Orchestrator ──

@@ -360,10 +360,20 @@ class TestEffectiveWeight:
         assert effective_weight(0.3, 1.0, "required") == pytest.approx(0.3)
 
     def test_semantic_no_grounding(self):
+        """None grounding (v1 data) → no penalty, use confidence."""
         assert effective_weight(0.9, None, "semantic") == 0.9
 
-    def test_semantic_ignores_score(self):
-        assert effective_weight(0.9, 0.0, "semantic") == 0.9
+    def test_semantic_ungrounded_is_zero(self):
+        """Boolean with grounding=0.0 (no evidence) → zero weight."""
+        assert effective_weight(0.9, 0.0, "semantic") == pytest.approx(0.0)
+
+    def test_semantic_grounded(self):
+        """Boolean with grounding=0.9 → min(conf, grounding)."""
+        assert effective_weight(0.8, 0.9, "semantic") == pytest.approx(0.8)
+
+    def test_semantic_partial_grounding(self):
+        """Boolean with grounding=0.6 → capped by grounding."""
+        assert effective_weight(0.9, 0.6, "semantic") == pytest.approx(0.6)
 
     def test_none_mode(self):
         assert effective_weight(0.9, None, "none") == 0.9
