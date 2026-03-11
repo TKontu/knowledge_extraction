@@ -453,6 +453,7 @@ class KnowledgeExtractionClient:
         layout: str = "multi_sheet",
         entity_focus: str | None = None,
         include_provenance: bool = False,
+        provenance_sheets: bool = False,
     ) -> dict[str, Any]:
         """Generate a report.
 
@@ -468,6 +469,7 @@ class KnowledgeExtractionClient:
             layout: Layout for consolidated reports (multi_sheet, single_sheet)
             entity_focus: Entity group for single_sheet denormalization
             include_provenance: Include provenance columns in consolidated reports
+            provenance_sheets: 3-sheet provenance report (Data, Quality, Sources)
         """
         return await self._request(
             "POST",
@@ -483,6 +485,7 @@ class KnowledgeExtractionClient:
                 "layout": layout,
                 "entity_focus": entity_focus,
                 "include_provenance": include_provenance,
+                "provenance_sheets": provenance_sheets,
             },
         )
 

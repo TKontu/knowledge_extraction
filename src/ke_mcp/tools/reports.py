@@ -52,6 +52,10 @@ def register_report_tools(mcp: FastMCP) -> None:
             bool,
             "Include provenance columns (source_count, avg_agreement, grounded_pct) in consolidated reports",
         ] = False,
+        provenance_sheets: Annotated[
+            bool,
+            "3-sheet provenance report (Data, Quality, Sources). Requires output_format='xlsx' and group_by='consolidated'.",
+        ] = False,
         ctx: Context = None,
     ) -> dict:
         """Generate an analysis report from extracted knowledge.
@@ -100,6 +104,7 @@ def register_report_tools(mcp: FastMCP) -> None:
                 layout=layout,
                 entity_focus=entity_focus,
                 include_provenance=include_provenance,
+                provenance_sheets=provenance_sheets,
             )
 
             return {
