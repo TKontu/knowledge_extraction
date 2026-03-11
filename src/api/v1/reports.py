@@ -66,7 +66,13 @@ async def create_report(
             project_repo=project_repo,
         )
 
-        report = await report_service.generate(project_id, request)
+        try:
+            report = await report_service.generate(project_id, request)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            ) from e
 
     # Convert to response
     metadata = report.meta_data or {}

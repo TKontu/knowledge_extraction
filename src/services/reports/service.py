@@ -11,10 +11,17 @@ import structlog
 
 from config import settings
 from models import ReportRequest, ReportType
-from orm_models import Extraction, Report
+from orm_models import ConsolidatedExtraction, Extraction, Report
 from services.extraction.extraction_items import safe_data_version
 from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
+from services.reports.consolidated_builder import (
+    ConsolidatedReportBuilder,
+    compose_multi_sheet,
+    compose_single_sheet,
+    render_markdown,
+    validate_entity_focus,
+)
 from services.reports.excel_formatter import ExcelFormatter
 from services.reports.schema_table_generator import ColumnMetadata, SchemaTableGenerator
 from services.reports.smart_merge import MergeCandidate, SmartMergeService
@@ -113,6 +120,43 @@ class ReportService:
                 project_id=str(project_id),
                 count=len(source_groups),
             )
+
+        # Short-circuit for consolidated mode — uses ConsolidatedExtraction, not raw
+        if request.type == ReportType.TABLE and request.group_by == "consolidated":
+            title = request.title or f"Table: {len(source_groups)} companies"
+            md_content, excel_bytes, summary = self._generate_consolidated_table(
+                project_id=project_id,
+                source_groups=source_groups,
+                title=title,
+                output_format=request.output_format,
+                layout=request.layout,
+                entity_focus=request.entity_focus,
+                include_provenance=request.include_provenance,
+            )
+            report_format = "xlsx" if excel_bytes else "md"
+            entity_counts = summary.get("entity_counts", {})
+            total_entities = sum(entity_counts.values())
+            report = Report(
+                project_id=project_id,
+                type=request.type.value,
+                title=title,
+                content=md_content,
+                source_groups=source_groups,
+                categories=request.categories or [],
+                extraction_ids=[],
+                format=report_format,
+                binary_content=excel_bytes,
+                meta_data={
+                    "group_by": "consolidated",
+                    "entity_count": total_entities,
+                    "entity_counts_by_type": entity_counts,
+                    "total_companies": summary.get("total_companies", 0),
+                },
+            )
+            self._db.add(report)
+            self._db.commit()
+            self._db.refresh(report)
+            return report
 
         # Gather data
         data = self._gather_data(
@@ -524,6 +568,83 @@ class ReportService:
         """
         project = self._project_repo.get(project_id)
         return project.extraction_schema if project else None
+
+    def _generate_consolidated_table(
+        self,
+        project_id: UUID,
+        source_groups: list[str],
+        title: str,
+        output_format: str,
+        layout: str = "multi_sheet",
+        entity_focus: str | None = None,
+        include_provenance: bool = False,
+    ) -> tuple[str, bytes | None, dict[str, Any]]:
+        """Generate table report from consolidated extractions.
+
+        Args:
+            project_id: Project UUID.
+            source_groups: Source groups to include.
+            title: Report title.
+            output_format: "md" or "xlsx".
+            layout: "multi_sheet" or "single_sheet".
+            entity_focus: Entity group for single_sheet denormalization.
+            include_provenance: Include provenance columns.
+
+        Returns:
+            Tuple of (markdown_content, excel_bytes or None, summary dict).
+        """
+        empty_summary: dict[str, Any] = {"total_companies": 0, "entity_counts": {}}
+
+        schema = self._get_project_schema(project_id)
+        if not schema:
+            return "# No extraction schema found\n\nCannot generate table.", None, empty_summary
+
+        # Validate entity_focus if provided
+        if entity_focus is not None:
+            validate_entity_focus(entity_focus, schema)
+
+        # Query consolidated extractions
+        from sqlalchemy import select
+
+        query = select(ConsolidatedExtraction).where(
+            ConsolidatedExtraction.project_id == project_id,
+            ConsolidatedExtraction.source_group.in_(source_groups),
+        )
+        records = self._db.execute(query).scalars().all()
+
+        if not records:
+            return "# No consolidated data\n\nRun consolidation first.", None, empty_summary
+
+        # Build report data
+        builder = ConsolidatedReportBuilder(self._schema_generator)
+        report_data = builder.gather(records, schema, include_provenance)
+
+        # Compose layout
+        if layout == "single_sheet":
+            sheet = compose_single_sheet(report_data, entity_focus, schema)
+            sheets = [sheet]
+        else:
+            sheets = compose_multi_sheet(report_data)
+
+        # Render markdown
+        md_content = f"# {title}\n\n" + render_markdown(sheets, report_data.summary)
+
+        # Excel
+        excel_bytes = None
+        if output_format == "xlsx":
+            formatter = ExcelFormatter()
+            if layout == "multi_sheet":
+                excel_bytes = formatter.create_multi_sheet_workbook(sheets)
+            else:
+                sheet = sheets[0]
+                excel_bytes = formatter.create_workbook(
+                    rows=sheet.rows,
+                    columns=sheet.columns,
+                    column_labels=sheet.labels,
+                    sheet_name=title or "Report",
+                )
+
+        return md_content, excel_bytes, report_data.summary
 
     def _aggregate_by_source(
         self,

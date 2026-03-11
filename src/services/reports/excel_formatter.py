@@ -1,11 +1,18 @@
 """Excel report generation using openpyxl."""
 
+from __future__ import annotations
+
 from io import BytesIO
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+if TYPE_CHECKING:
+    from openpyxl.worksheet.worksheet import Worksheet
+
+    from services.reports.consolidated_builder import SheetData
 
 
 class ExcelFormatter:
@@ -43,15 +50,54 @@ class ExcelFormatter:
         """
         wb = Workbook()
         ws = wb.active
-        # Sanitize sheet name - Excel doesn't allow: \ / ? * [ ] :
-        # and max length is 31 characters
-        safe_name = sheet_name
-        for char in r'\/?*[]:':
-            safe_name = safe_name.replace(char, "-")
-        ws.title = safe_name[:31]
+        ws.title = self._safe_sheet_name(sheet_name)
 
-        labels = column_labels or {}
+        self._write_sheet(ws, rows, columns, column_labels or {})
 
+        output = BytesIO()
+        wb.save(output)
+        return output.getvalue()
+
+    def create_multi_sheet_workbook(self, sheets: list[SheetData]) -> bytes:
+        """Create Excel workbook with multiple sheets.
+
+        Args:
+            sheets: List of SheetData, one per worksheet.
+
+        Returns:
+            Excel file as bytes.
+        """
+        wb = Workbook()
+        # Remove the default sheet
+        wb.remove(wb.active)
+
+        for sheet_data in sheets:
+            ws = wb.create_sheet(title=self._safe_sheet_name(sheet_data.name))
+            self._write_sheet(ws, sheet_data.rows, sheet_data.columns, sheet_data.labels)
+            # Freeze header row
+            ws.freeze_panes = "A2"
+            # Auto-filter
+            if sheet_data.columns:
+                last_col = get_column_letter(len(sheet_data.columns))
+                last_row = len(sheet_data.rows) + 1
+                ws.auto_filter.ref = f"A1:{last_col}{last_row}"
+
+        # Set first sheet as active
+        if sheets:
+            wb.active = 0
+
+        output = BytesIO()
+        wb.save(output)
+        return output.getvalue()
+
+    def _write_sheet(
+        self,
+        ws: Worksheet,
+        rows: list[dict[str, Any]],
+        columns: list[str],
+        labels: dict[str, str],
+    ) -> None:
+        """Write headers, data rows, and auto-size columns to a worksheet."""
         # Write headers
         for col_idx, col_name in enumerate(columns, 1):
             cell = ws.cell(row=1, column=col_idx)
@@ -76,7 +122,6 @@ class ExcelFormatter:
             for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
                 for cell in row:
                     if cell.value:
-                        # For multi-line values, use the longest line
                         cell_str = str(cell.value)
                         if "\n" in cell_str:
                             line_lengths = [len(line) for line in cell_str.split("\n")]
@@ -87,10 +132,13 @@ class ExcelFormatter:
                 max_length + 2, 50
             )
 
-        # Save to bytes
-        output = BytesIO()
-        wb.save(output)
-        return output.getvalue()
+    @staticmethod
+    def _safe_sheet_name(name: str) -> str:
+        """Sanitize sheet name for Excel compatibility."""
+        safe = name
+        for char in r'\/?*[]:':
+            safe = safe.replace(char, "-")
+        return safe[:31]
 
     def _humanize(self, field_name: str) -> str:
         """Convert field_name to Human Readable Label."""

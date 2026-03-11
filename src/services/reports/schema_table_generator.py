@@ -1,7 +1,6 @@
 """Schema-driven table report generation."""
 
 from dataclasses import dataclass
-from typing import Any
 
 from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_adapter import SchemaAdapter
@@ -225,6 +224,95 @@ class SchemaTableGenerator:
             if lower_name.endswith(suffix):
                 return unit
         return ""
+
+    def get_scalar_columns(
+        self, extraction_schema: dict
+    ) -> tuple[list[str], dict[str, str], dict[str, str]]:
+        """Get columns for scalar (non-entity-list) field groups.
+
+        Used for consolidated reports where each source_group gets one row
+        with all scalar fields merged.
+
+        Args:
+            extraction_schema: Project's JSONB extraction schema.
+
+        Returns:
+            Tuple of (column_names, column_labels, column_types)
+            where column_types maps name->field_type for formatting.
+        """
+        field_groups = self._adapter.convert_to_field_groups(extraction_schema)
+
+        # First pass: detect collisions among scalar fields
+        field_name_count: dict[str, int] = {}
+        for group in field_groups:
+            if not group.is_entity_list:
+                for field in group.fields:
+                    field_name_count[field.name] = (
+                        field_name_count.get(field.name, 0) + 1
+                    )
+
+        columns: list[str] = ["source_group"]
+        labels: dict[str, str] = {"source_group": "Source"}
+        col_types: dict[str, str] = {}
+
+        for group in field_groups:
+            if group.is_entity_list:
+                continue
+            for field in group.fields:
+                if field_name_count.get(field.name, 0) > 1:
+                    col_name = f"{group.name}.{field.name}"
+                else:
+                    col_name = field.name
+                columns.append(col_name)
+                label = self._get_field_label(field)
+                unit = self._infer_unit(field.name)
+                if unit and not label.endswith(unit):
+                    label = f"{label} ({unit})"
+                labels[col_name] = label
+                col_types[col_name] = field.field_type
+
+        return columns, labels, col_types
+
+    def get_entity_group_columns(
+        self, extraction_schema: dict, group_name: str
+    ) -> tuple[list[str], dict[str, str], dict[str, str]]:
+        """Get columns for a specific entity list group.
+
+        Args:
+            extraction_schema: Project's JSONB extraction schema.
+            group_name: Name of the entity list group.
+
+        Returns:
+            Tuple of (column_names, column_labels, column_types).
+
+        Raises:
+            ValueError: If group_name not found or not an entity list.
+        """
+        field_groups = self._adapter.convert_to_field_groups(extraction_schema)
+
+        target = None
+        for group in field_groups:
+            if group.name == group_name and group.is_entity_list:
+                target = group
+                break
+
+        if target is None:
+            raise ValueError(f"Entity list group '{group_name}' not found in schema")
+
+        columns: list[str] = ["source_group"]
+        labels: dict[str, str] = {"source_group": "Source"}
+        col_types: dict[str, str] = {}
+
+        for field in target.fields:
+            columns.append(field.name)
+            label = self._get_field_label(field)
+            unit = self._infer_unit(field.name)
+            if unit and not label.endswith(unit):
+                label = f"{label} ({unit})"
+            labels[field.name] = label
+            col_types[field.name] = field.field_type
+
+        return columns, labels, col_types
 
     def get_flattened_columns_for_source(
         self, extraction_schema: dict
