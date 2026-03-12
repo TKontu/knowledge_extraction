@@ -1,4 +1,4 @@
-"""Tests for consolidated table report generation."""
+"""Tests for consolidated table report generation (unified 3-sheet mode)."""
 
 from unittest.mock import MagicMock
 
@@ -6,12 +6,9 @@ import pytest
 
 from services.reports.consolidated_builder import (
     ConsolidatedReportBuilder,
-    ConsolidatedReportData,
     SheetData,
-    compose_multi_sheet,
-    compose_single_sheet,
+    build_provenance_sheets,
     render_markdown,
-    validate_entity_focus,
 )
 from services.reports.excel_formatter import ExcelFormatter
 from services.reports.schema_table_generator import SchemaTableGenerator
@@ -25,6 +22,7 @@ def sample_schema():
     """Schema with 2 scalar groups and 1 entity list."""
     return {
         "name": "drivetrain_schema",
+        "extraction_context": {"source_label": "Company"},
         "field_groups": [
             {
                 "name": "company_meta",
@@ -116,9 +114,9 @@ def sample_records():
             "founded_year": 1995,
             "is_oem": True,
         }, provenance={
-            "company_name": {"agreement": 0.9, "grounded_count": 3, "strategy": "frequency"},
-            "founded_year": {"agreement": 0.8, "grounded_count": 2, "strategy": "weighted_median"},
-            "is_oem": {"agreement": 1.0, "grounded_count": 1, "strategy": "any_true"},
+            "company_name": {"winning_weight": 0.9, "top_sources": ["s1", "s2"]},
+            "founded_year": {"winning_weight": 0.8, "top_sources": ["s1"]},
+            "is_oem": {"winning_weight": 1.0, "top_sources": ["s1"]},
         }),
         _make_record("Acme Corp", "certifications", {
             "iso_certified": True,
@@ -130,6 +128,15 @@ def sample_records():
                 {"product_name": "GearX-100", "max_torque_nm": 500.0, "gear_type": "helical"},
                 {"product_name": "GearX-200", "max_torque_nm": 1000.0, "gear_type": "planetary"},
             ]
+        }, provenance={
+            "products_gearbox": {
+                "winning_weight": 0.85,
+                "top_sources": ["s1"],
+                "entity_provenance": [
+                    {"winning_weight": 0.9, "top_sources": ["s1"]},
+                    {"winning_weight": 0.8, "top_sources": ["s1"]},
+                ],
+            },
         }),
         # Company B - scalar
         _make_record("Beta Inc", "company_meta", {
@@ -209,14 +216,52 @@ class TestGetEntityGroupColumns:
             generator.get_entity_group_columns(sample_schema, "nonexistent")
 
 
-# ── TestBuildCompanyRow ──
+# ── TestGetUnifiedColumns ──
 
 
-class TestBuildCompanyRow:
+class TestGetUnifiedColumns:
+    def test_includes_scalars_and_entity_list(self, generator, sample_schema):
+        columns, labels, col_types, entity_groups = generator.get_unified_columns(sample_schema)
+        # Scalar fields present
+        assert "company_name" in columns
+        assert "founded_year" in columns
+        assert "is_oem" in columns
+        assert "iso_certified" in columns
+        assert "cert_list" in columns
+        # Entity list as summary column
+        assert "products_gearbox_list" in columns
+        assert col_types["products_gearbox_list"] == "entity_list"
+        assert "products_gearbox_list" in entity_groups
+
+    def test_source_label_from_context(self, generator, sample_schema):
+        columns, labels, _, _ = generator.get_unified_columns(sample_schema)
+        assert labels["source_group"] == "Company"
+
+    def test_source_label_fallback(self, generator):
+        schema = {
+            "name": "test",
+            "field_groups": [
+                {"name": "g", "description": "G", "prompt_hint": "...",
+                 "fields": [{"name": "x", "field_type": "text", "description": "X"}]},
+            ],
+        }
+        _, labels, _, _ = generator.get_unified_columns(schema)
+        assert labels["source_group"] == "Source"
+
+    def test_collision_prefixing(self, generator, collision_schema):
+        columns, _, _, _ = generator.get_unified_columns(collision_schema)
+        assert "group_a.name" in columns
+        assert "group_b.name" in columns
+
+
+# ── TestBuildUnifiedRow ──
+
+
+class TestBuildUnifiedRow:
     def test_merges_scalar_groups(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        acme_row = data.company_sheet.rows[0]
+        data_sheet, summary = builder.gather(sample_records, sample_schema)
+        acme_row = data_sheet.rows[0]
         assert acme_row["source_group"] == "Acme Corp"
         assert acme_row["company_name"] == "Acme Corporation"
         assert acme_row["founded_year"] == 1995
@@ -224,9 +269,84 @@ class TestBuildCompanyRow:
 
     def test_flat_list_inline(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        acme_row = data.company_sheet.rows[0]
+        data_sheet, _ = builder.gather(sample_records, sample_schema)
+        acme_row = data_sheet.rows[0]
         assert acme_row["cert_list"] == "ISO 9001, ISO 14001"
+
+    def test_entity_list_formatted_cell(self, generator, sample_schema, sample_records):
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, _ = builder.gather(sample_records, sample_schema)
+        acme_row = data_sheet.rows[0]
+        # Entity list should be formatted string with all fields
+        entity_cell = acme_row["products_gearbox_list"]
+        assert "GearX-100" in entity_cell
+        assert "GearX-200" in entity_cell
+        assert "500.0Nm" in entity_cell
+        # New: all fields shown, including gear_type
+        assert "helical" in entity_cell
+        assert "planetary" in entity_cell
+        # Items separated by newlines
+        assert "\n" in entity_cell
+
+    def test_entity_list_filters_low_quality(self, generator, sample_schema):
+        """Entities with low winning_weight are excluded from cell."""
+        records = [
+            _make_record("FilterCorp", "company_meta", {"company_name": "FilterCorp"}),
+            _make_record("FilterCorp", "products_gearbox", {
+                "products_gearbox": [
+                    {"product_name": "Good", "max_torque_nm": 100.0, "gear_type": "spur"},
+                    {"product_name": "Bad", "max_torque_nm": 50.0, "gear_type": "worm"},
+                ]
+            }, provenance={
+                "products_gearbox": {
+                    "winning_weight": 0.5,
+                    "top_sources": ["s1"],
+                    "entity_provenance": [
+                        {"winning_weight": 0.9, "top_sources": ["s1"]},  # Good — above 0.3
+                        {"winning_weight": 0.1, "top_sources": ["s1"]},  # Bad — below 0.3
+                    ],
+                },
+            }),
+        ]
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, _ = builder.gather(records, sample_schema)
+        cell = data_sheet.rows[0]["products_gearbox_list"]
+        assert "Good" in cell
+        assert "Bad" not in cell
+
+    def test_list_of_dicts_formatted(self, generator, sample_schema):
+        """List-of-dicts scalar values are formatted as delimited items, not 'N items'."""
+        records = [
+            _make_record("LocCorp", "company_meta", {
+                "company_name": "LocCorp",
+                "founded_year": 2000,
+                "is_oem": False,
+            }),
+            _make_record("LocCorp", "certifications", {
+                "iso_certified": True,
+                "cert_list": [
+                    {"city": "Munich", "country": "Germany", "site_type": "HQ"},
+                    {"city": "Tokyo", "country": "Japan", "site_type": "Branch"},
+                ],
+            }),
+        ]
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, _ = builder.gather(records, sample_schema)
+        cell = data_sheet.rows[0]["cert_list"]
+        assert "Munich" in cell
+        assert "Germany" in cell
+        assert "Tokyo" in cell
+        assert "items" not in cell  # Not "2 items"
+
+    def test_empty_entity_list_na(self, generator, sample_schema):
+        records = [
+            _make_record("Empty Corp", "company_meta", {"company_name": "Empty"}),
+            _make_record("Empty Corp", "products_gearbox", {"products_gearbox": []}),
+        ]
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, _ = builder.gather(records, sample_schema)
+        row = data_sheet.rows[0]
+        assert row["products_gearbox_list"] == "N/A"
 
     def test_missing_extraction_type_none(self, generator, sample_schema):
         records = [
@@ -238,165 +358,250 @@ class TestBuildCompanyRow:
             # No certifications record
         ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(records, sample_schema)
-        row = data.company_sheet.rows[0]
+        data_sheet, _ = builder.gather(records, sample_schema)
+        row = data_sheet.rows[0]
         assert row.get("iso_certified") is None
 
-    def test_provenance_columns(self, generator, sample_schema, sample_records):
+    def test_gather_returns_tuple(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema, include_provenance=True)
-        acme_row = data.company_sheet.rows[0]
-        assert "source_count" in acme_row
-        assert "avg_agreement" in acme_row
-        assert "grounded_pct" in acme_row
-        assert acme_row["source_count"] == 3
+        result = builder.gather(sample_records, sample_schema)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        data_sheet, summary = result
+        assert isinstance(data_sheet, SheetData)
+        assert isinstance(summary, dict)
+        assert "total_count" in summary
 
-    def test_provenance_columns_in_sheet(self, generator, sample_schema, sample_records):
+    def test_summary_counts(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema, include_provenance=True)
-        assert "source_count" in data.company_sheet.columns
-        assert "avg_agreement" in data.company_sheet.columns
-        assert "grounded_pct" in data.company_sheet.columns
+        _, summary = builder.gather(sample_records, sample_schema)
+        assert summary["total_count"] == 2
+        assert "Products Gearbox" in summary["entity_counts"]
+        # Acme has 2 + Beta has 1 = 3
+        assert summary["entity_counts"]["Products Gearbox"] == 3
 
-
-# ── TestBuildEntityRows ──
-
-
-class TestBuildEntityRows:
-    def test_one_row_per_entity(self, generator, sample_schema, sample_records):
+    def test_sheet_name_uses_source_label(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        products_sheet = data.entity_sheets[0]
-        # Acme has 2 products, Beta has 1
-        assert len(products_sheet.rows) == 3
+        data_sheet, _ = builder.gather(sample_records, sample_schema)
+        assert data_sheet.name == "Company Data"
 
-    def test_source_group_prepended(self, generator, sample_schema, sample_records):
+
+# ── TestEntityPagination ──
+
+
+class TestEntityPagination:
+    def test_no_pagination_when_under_page_size(self, generator, sample_schema, sample_records):
+        """No extra columns when entity count < page_size."""
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        products_sheet = data.entity_sheets[0]
-        for row in products_sheet.rows:
-            assert "source_group" in row
+        data_sheet, _ = builder.gather(sample_records, sample_schema, page_size=50)
+        # Only one products_gearbox_list column, no _p2
+        entity_cols = [c for c in data_sheet.columns if "products_gearbox" in c]
+        assert entity_cols == ["products_gearbox_list"]
 
-    def test_empty_entity_list(self, generator, sample_schema):
+    def test_pagination_creates_page_columns(self, generator, sample_schema):
+        """Entity list with more items than page_size creates page columns."""
+        # Create 5 products — with page_size=2, should get 3 page columns
+        products = [
+            {"product_name": f"Gear{i}", "max_torque_nm": float(i * 100), "gear_type": "spur"}
+            for i in range(5)
+        ]
         records = [
-            _make_record("Empty Corp", "company_meta", {"company_name": "Empty"}),
-            _make_record("Empty Corp", "products_gearbox", {"products_gearbox": []}),
+            _make_record("BigCorp", "company_meta", {"company_name": "BigCorp"}),
+            _make_record("BigCorp", "products_gearbox", {
+                "products_gearbox": products,
+            }),
         ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(records, sample_schema)
-        products_sheet = data.entity_sheets[0]
-        assert len(products_sheet.rows) == 0
+        data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
-    def test_all_fields_present(self, generator, sample_schema, sample_records):
-        builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        products_sheet = data.entity_sheets[0]
-        first_row = products_sheet.rows[0]
-        assert first_row["product_name"] == "GearX-100"
-        assert first_row["max_torque_nm"] == 500.0
-        assert first_row["gear_type"] == "helical"
+        entity_cols = [c for c in data_sheet.columns if "products_gearbox" in c]
+        assert len(entity_cols) == 3  # ceil(5/2) = 3 pages
+        assert entity_cols[0] == "products_gearbox_list"
+        assert entity_cols[1] == "products_gearbox_list_p2"
+        assert entity_cols[2] == "products_gearbox_list_p3"
 
-
-# ── TestComposeMultiSheet ──
-
-
-class TestComposeMultiSheet:
-    def test_correct_sheet_count(self, generator, sample_schema, sample_records):
-        builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheets = compose_multi_sheet(data)
-        # company + 1 entity sheet with data
-        assert len(sheets) >= 2
-        assert sheets[0].name == "Companies"
-
-    def test_skip_empty_entities(self, generator, sample_schema):
+    def test_pagination_labels_show_ranges(self, generator, sample_schema):
+        """Paginated columns get range labels like 'Products Gearbox (1-2)'."""
+        products = [
+            {"product_name": f"G{i}", "max_torque_nm": float(i), "gear_type": "spur"}
+            for i in range(4)
+        ]
         records = [
             _make_record("Corp", "company_meta", {"company_name": "Corp"}),
-            _make_record("Corp", "products_gearbox", {"products_gearbox": []}),
+            _make_record("Corp", "products_gearbox", {"products_gearbox": products}),
         ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(records, sample_schema)
-        sheets = compose_multi_sheet(data)
-        # Only company sheet, entity sheet has no rows
-        assert len(sheets) == 1
+        data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
-    def test_ordering(self, generator, sample_schema, sample_records):
+        assert "(1-2)" in data_sheet.labels["products_gearbox_list"]
+        assert "(3-4)" in data_sheet.labels["products_gearbox_list_p2"]
+
+    def test_pagination_distributes_items(self, generator, sample_schema):
+        """Items are split across page columns."""
+        products = [
+            {"product_name": f"G{i}", "max_torque_nm": float(i), "gear_type": "spur"}
+            for i in range(3)
+        ]
+        records = [
+            _make_record("Corp", "company_meta", {"company_name": "Corp"}),
+            _make_record("Corp", "products_gearbox", {"products_gearbox": products}),
+        ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheets = compose_multi_sheet(data)
-        assert sheets[0].name == "Companies"
-        # Entity sheets follow
-        for s in sheets[1:]:
-            assert s.name != "Companies"
+        data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
+        row = data_sheet.rows[0]
+        # Page 1: G0, G1
+        assert "G0" in row["products_gearbox_list"]
+        assert "G1" in row["products_gearbox_list"]
+        assert "G2" not in row["products_gearbox_list"]
+        # Page 2: G2
+        assert "G2" in row["products_gearbox_list_p2"]
 
-# ── TestComposeSingleSheet ──
-
-
-class TestComposeSingleSheet:
-    def test_company_only_mode(self, generator, sample_schema, sample_records):
+    def test_pagination_short_row_fills_na(self, generator, sample_schema):
+        """Source_group with fewer entities than max gets N/A in overflow pages."""
+        products_big = [
+            {"product_name": f"G{i}", "max_torque_nm": float(i), "gear_type": "spur"}
+            for i in range(4)
+        ]
+        records = [
+            # BigCorp has 4 products
+            _make_record("BigCorp", "company_meta", {"company_name": "BigCorp"}),
+            _make_record("BigCorp", "products_gearbox", {"products_gearbox": products_big}),
+            # SmallCorp has 1 product
+            _make_record("SmallCorp", "company_meta", {"company_name": "SmallCorp"}),
+            _make_record("SmallCorp", "products_gearbox", {
+                "products_gearbox": [{"product_name": "Only", "max_torque_nm": 10.0, "gear_type": "spur"}],
+            }),
+        ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheet = compose_single_sheet(data, None, sample_schema)
-        # Should have entity count columns
-        count_cols = [c for c in sheet.columns if c.endswith("_count")]
-        assert len(count_cols) > 0
-        # Row count = number of companies
-        assert len(sheet.rows) == 2
+        data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
-    def test_entity_focused_denormalized_raw_name(self, generator, sample_schema, sample_records):
-        """Raw schema name (products_gearbox) works for entity_focus."""
+        # SmallCorp (sorted second) should have N/A in page 2
+        small_row = data_sheet.rows[1]
+        assert "Only" in small_row["products_gearbox_list"]
+        assert small_row["products_gearbox_list_p2"] == "N/A"
+
+    def test_pagination_provenance_per_page(self, generator, sample_schema):
+        """Quality sheet computes per-page entity quality averages."""
+        products = [
+            {"product_name": f"G{i}", "max_torque_nm": float(i), "gear_type": "spur"}
+            for i in range(4)
+        ]
+        entity_prov = [
+            {"winning_weight": 0.9, "top_sources": ["s1"]},
+            {"winning_weight": 0.8, "top_sources": ["s1"]},
+            {"winning_weight": 0.7, "top_sources": ["s1"]},
+            {"winning_weight": 0.6, "top_sources": ["s1"]},
+        ]
+        records = [
+            _make_record("Corp", "company_meta", {"company_name": "Corp"}),
+            _make_record("Corp", "products_gearbox", {
+                "products_gearbox": products,
+            }, provenance={
+                "products_gearbox": {
+                    "winning_weight": 0.75,
+                    "top_sources": ["s1"],
+                    "entity_provenance": entity_prov,
+                },
+            }),
+        ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheet = compose_single_sheet(data, "products_gearbox", sample_schema)
-        # Denormalized: 2 products for Acme + 1 for Beta = 3 rows
-        assert len(sheet.rows) == 3
-        assert sheet.rows[0]["company_name"] == "Acme Corporation"
-        # Second row for same company has blank company cols (except source_group)
-        assert sheet.rows[1].get("company_name") is None
+        data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
-    def test_entity_focused_denormalized_humanized_name(self, generator, sample_schema, sample_records):
-        """Humanized display name (Products Gearbox) also works for entity_focus."""
+        records_by_sg = {"Corp": {rec.extraction_type: rec for rec in records}}
+        quality, _ = build_provenance_sheets(data_sheet, records_by_sg, {"s1": "http://x"})
+
+        # Page 1 entities: weights 0.9, 0.8 → avg 0.85
+        assert quality.rows[0]["products_gearbox_list"] == pytest.approx(0.85)
+        # Page 2 entities: weights 0.7, 0.6 → avg 0.65
+        assert quality.rows[0]["products_gearbox_list_p2"] == pytest.approx(0.65)
+
+    def test_provenance_key_map(self, generator, sample_schema):
+        """Paginated columns map back to provenance key via provenance_key_map."""
+        products = [
+            {"product_name": f"G{i}", "max_torque_nm": float(i), "gear_type": "spur"}
+            for i in range(4)
+        ]
+        records = [
+            _make_record("Corp", "company_meta", {"company_name": "Corp"}),
+            _make_record("Corp", "products_gearbox", {"products_gearbox": products}),
+        ]
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheet = compose_single_sheet(data, "Products Gearbox", sample_schema)
-        assert len(sheet.rows) == 3
-        assert sheet.rows[0]["company_name"] == "Acme Corporation"
+        data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
-    def test_all_entities_superset(self, generator, sample_schema, sample_records):
+        assert data_sheet.provenance_key_map["products_gearbox_list"] == "products_gearbox"
+        assert data_sheet.provenance_key_map["products_gearbox_list_p2"] == "products_gearbox"
+
+
+# ── TestThreeSheetExcel ──
+
+
+class TestThreeSheetExcel:
+    def test_always_three_sheets(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheet = compose_single_sheet(data, "all", sample_schema)
-        assert "entity_type" in sheet.columns
-        # All entity rows
-        assert len(sheet.rows) == 3
+        data_sheet, _ = builder.gather(sample_records, sample_schema)
 
-    def test_invalid_entity_focus_raises(self, generator, sample_schema, sample_records):
-        builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        with pytest.raises(ValueError, match="Unknown entity group"):
-            compose_single_sheet(data, "nonexistent_group", sample_schema)
+        # Build records_by_sg
+        records_by_sg = {}
+        for rec in sample_records:
+            sg = rec.source_group
+            if sg not in records_by_sg:
+                records_by_sg[sg] = {}
+            records_by_sg[sg][rec.extraction_type] = rec
 
+        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
 
-# ── TestMultiSheetExcel ──
-
-
-class TestMultiSheetExcel:
-    def test_sheet_count(self, generator, sample_schema, sample_records):
-        builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheets = compose_multi_sheet(data)
         formatter = ExcelFormatter()
-        excel_bytes = formatter.create_multi_sheet_workbook(sheets)
+        excel_bytes = formatter.create_multi_sheet_workbook([data_sheet, quality, sources])
         assert isinstance(excel_bytes, bytes)
-        assert len(excel_bytes) > 0
 
-        # Verify sheet count by loading
-        from openpyxl import load_workbook
         from io import BytesIO
+        from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(excel_bytes))
-        assert len(wb.sheetnames) == len(sheets)
+        assert len(wb.sheetnames) == 3
+        assert wb.sheetnames[0] == "Company Data"
+        assert wb.sheetnames[1] == "Company Data - Quality"
+        assert wb.sheetnames[2] == "Company Data - Sources"
+
+    def test_quality_sheet_has_values(self, generator, sample_schema, sample_records):
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, _ = builder.gather(sample_records, sample_schema)
+
+        records_by_sg = {}
+        for rec in sample_records:
+            sg = rec.source_group
+            if sg not in records_by_sg:
+                records_by_sg[sg] = {}
+            records_by_sg[sg][rec.extraction_type] = rec
+
+        quality, _ = build_provenance_sheets(data_sheet, records_by_sg, {})
+        # Acme has provenance for company_name
+        acme_quality = quality.rows[0]
+        assert acme_quality["company_name"] == pytest.approx(0.9)
+
+    def test_entity_list_provenance_via_suffix_stripping(self, generator, sample_schema, sample_records):
+        """Entity list column provenance resolves via _list suffix stripping."""
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, _ = builder.gather(sample_records, sample_schema)
+
+        records_by_sg = {}
+        for rec in sample_records:
+            sg = rec.source_group
+            if sg not in records_by_sg:
+                records_by_sg[sg] = {}
+            records_by_sg[sg][rec.extraction_type] = rec
+
+        source_url_map = {"s1": "https://example.com/a", "s2": "https://example.com/b"}
+        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, source_url_map)
+
+        # products_gearbox_list should resolve via stripping _list → products_gearbox
+        # Quality is average of per-entity winning_weights (0.9 + 0.8) / 2 = 0.85
+        acme_quality = quality.rows[0]
+        assert acme_quality["products_gearbox_list"] == pytest.approx(0.85)
+
+        acme_sources = sources.rows[0]
+        assert "https://example.com/a" in acme_sources["products_gearbox_list"]
 
     def test_sheet_names_sanitized(self):
         sheets = [
@@ -410,11 +615,10 @@ class TestMultiSheetExcel:
         formatter = ExcelFormatter()
         excel_bytes = formatter.create_multi_sheet_workbook(sheets)
 
-        from openpyxl import load_workbook
         from io import BytesIO
+        from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(excel_bytes))
-        # Should not contain invalid chars
         assert "/" not in wb.sheetnames[0]
         assert ":" not in wb.sheetnames[0]
 
@@ -433,22 +637,24 @@ class TestMultiSheetExcel:
 
 
 class TestRenderMarkdown:
-    def test_section_headers(self, generator, sample_schema, sample_records):
+    def test_section_header(self, generator, sample_schema, sample_records):
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheets = compose_multi_sheet(data)
-        md = render_markdown(sheets, data.summary)
-        assert "## Companies" in md
-        assert "## Products Gearbox" in md
+        data_sheet, summary = builder.gather(sample_records, sample_schema)
+        md = render_markdown([data_sheet], summary)
+        assert "## Company Data" in md
 
     def test_no_hardcoded_title(self, generator, sample_schema, sample_records):
         """render_markdown should not inject its own H1 title."""
         builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        sheets = compose_multi_sheet(data)
-        md = render_markdown(sheets, data.summary)
-        # No H1 header — caller controls the title
+        data_sheet, summary = builder.gather(sample_records, sample_schema)
+        md = render_markdown([data_sheet], summary)
         assert not md.startswith("# ")
+
+    def test_total_count_in_summary(self, generator, sample_schema, sample_records):
+        builder = ConsolidatedReportBuilder(generator)
+        data_sheet, summary = builder.gather(sample_records, sample_schema)
+        md = render_markdown([data_sheet], summary)
+        assert "Total: 2" in md
 
     def test_pipe_escaping(self):
         sheets = [
@@ -459,34 +665,9 @@ class TestRenderMarkdown:
                 labels={"val": "Value"},
             )
         ]
-        md = render_markdown(sheets, {"total_companies": 1})
+        md = render_markdown(sheets, {"total_count": 1})
         assert "has\\|pipe" in md
-        assert "has|pipe" not in md.split("\n")[-2]  # Not raw in table row
-
-
-# ── TestValidateEntityFocus ──
-
-
-class TestEntitySheetKey:
-    def test_entity_sheets_have_key(self, generator, sample_schema, sample_records):
-        """Entity sheets store raw group name as key for reliable lookups."""
-        builder = ConsolidatedReportBuilder(generator)
-        data = builder.gather(sample_records, sample_schema)
-        products_sheet = data.entity_sheets[0]
-        assert products_sheet.key == "products_gearbox"
-        assert products_sheet.name == "Products Gearbox"
-
-
-class TestValidateEntityFocus:
-    def test_valid_group(self, sample_schema):
-        validate_entity_focus("products_gearbox", sample_schema)  # Should not raise
-
-    def test_all_accepted(self, sample_schema):
-        validate_entity_focus("all", sample_schema)  # Should not raise
-
-    def test_invalid_raises(self, sample_schema):
-        with pytest.raises(ValueError, match="Unknown entity group"):
-            validate_entity_focus("nonexistent", sample_schema)
+        assert "has|pipe" not in md.split("\n")[-2]
 
 
 # ── TestReportRequestModel ──
@@ -499,30 +680,8 @@ class TestReportRequestModel:
         req = ReportRequest(
             type=ReportType.TABLE,
             group_by="consolidated",
-            layout="multi_sheet",
         )
         assert req.group_by == "consolidated"
-
-    def test_entity_focus_requires_single_sheet(self):
-        from models import ReportRequest, ReportType
-
-        with pytest.raises(Exception):
-            ReportRequest(
-                type=ReportType.TABLE,
-                group_by="consolidated",
-                layout="multi_sheet",
-                entity_focus="products",
-            )
-
-    def test_single_sheet_requires_consolidated(self):
-        from models import ReportRequest, ReportType
-
-        with pytest.raises(Exception):
-            ReportRequest(
-                type=ReportType.TABLE,
-                group_by="source",
-                layout="single_sheet",
-            )
 
     def test_consolidated_requires_table(self):
         from models import ReportRequest, ReportType
@@ -532,3 +691,12 @@ class TestReportRequestModel:
                 type=ReportType.SINGLE,
                 group_by="consolidated",
             )
+
+    def test_removed_fields_absent(self):
+        from models import ReportRequest, ReportType
+
+        req = ReportRequest(type=ReportType.TABLE, group_by="consolidated")
+        assert not hasattr(req, "layout")
+        assert not hasattr(req, "entity_focus")
+        assert not hasattr(req, "include_provenance")
+        assert not hasattr(req, "provenance_sheets")

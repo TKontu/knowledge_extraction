@@ -40,22 +40,6 @@ def register_report_tools(mcp: FastMCP) -> None:
             int,
             "Max extractions per source_group to include (default 50, max 200). Increase for complete data.",
         ] = 50,
-        layout: Annotated[
-            Literal["multi_sheet", "single_sheet"],
-            "Layout for consolidated reports: 'multi_sheet' (separate entity tabs) or 'single_sheet' (denormalized flat)",
-        ] = "multi_sheet",
-        entity_focus: Annotated[
-            str | None,
-            "Entity group for single_sheet denormalization. None=company-only with counts, 'all'=superset, or specific group name.",
-        ] = None,
-        include_provenance: Annotated[
-            bool,
-            "Include provenance columns (source_count, avg_agreement, grounded_pct) in consolidated reports",
-        ] = False,
-        provenance_sheets: Annotated[
-            bool,
-            "3-sheet provenance report (Data, Quality, Sources). Requires output_format='xlsx' and group_by='consolidated'.",
-        ] = False,
         ctx: Context = None,
     ) -> dict:
         """Generate an analysis report from extracted knowledge.
@@ -68,24 +52,14 @@ def register_report_tools(mcp: FastMCP) -> None:
         Grouping (table reports only):
         - source: One row per URL, all field group extractions consolidated (default)
         - domain: One row per domain, LLM smart merge synthesizes values from all URLs
-        - consolidated: Pre-computed consolidated data with multi-sheet or single-sheet layout
+        - consolidated: Pre-computed consolidated data, unified 3-sheet report (Data, Quality, Sources)
 
         Example:
-            # Consolidated multi-sheet Excel report
+            # Consolidated Excel report (always 3 sheets: Data, Quality, Sources)
             create_report(
                 project_id="...",
                 report_type="table",
                 group_by="consolidated",
-                output_format="xlsx"
-            )
-
-            # Single-sheet with entity denormalization
-            create_report(
-                project_id="...",
-                report_type="table",
-                group_by="consolidated",
-                layout="single_sheet",
-                entity_focus="products_gearbox",
                 output_format="xlsx"
             )
         """
@@ -101,10 +75,6 @@ def register_report_tools(mcp: FastMCP) -> None:
                 group_by=group_by,
                 include_merge_metadata=include_merge_metadata,
                 max_extractions=max_extractions,
-                layout=layout,
-                entity_focus=entity_focus,
-                include_provenance=include_provenance,
-                provenance_sheets=provenance_sheets,
             )
 
             return {

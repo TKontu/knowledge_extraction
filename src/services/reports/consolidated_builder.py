@@ -1,14 +1,28 @@
 """Consolidated table report builder.
 
 Reads pre-computed ConsolidatedExtraction records and produces
-multi-sheet or single-sheet table data. Zero LLM calls.
+a unified 3-sheet report (Data, Quality, Sources). Zero LLM calls.
+
+Entity list columns are paginated horizontally: if a source_group has
+more entities than page_size, additional page columns are added to the
+right (e.g., "Products Gearbox (1-50)", "Products Gearbox (51-100)").
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from math import ceil
 from typing import Any
 
+from services.extraction.field_groups import FieldGroup
 from services.reports.schema_table_generator import SchemaTableGenerator
+
+# Minimum entity winning_weight to include in report
+ENTITY_MIN_QUALITY = 0.3
+
+# Default page size for entity list horizontal pagination
+ENTITY_PAGE_SIZE = 50
 
 
 @dataclass
@@ -22,19 +36,26 @@ class SheetData:
     column_types: dict[str, str] = field(default_factory=dict)
     key: str = ""  # Raw schema identifier for lookups (e.g., "products_gearbox")
 
+    # Maps paginated entity column → provenance key (e.g., "products_gearbox").
+    # Used by build_provenance_sheets() instead of suffix stripping.
+    provenance_key_map: dict[str, str] = field(default_factory=dict)
+
+    # Per-row, per-column entity provenance for quality computation.
+    # row_entity_provenance[row_idx][col] = list of per-entity prov dicts.
+    row_entity_provenance: list[dict[str, list[dict]]] = field(default_factory=list)
+
 
 @dataclass
-class ConsolidatedReportData:
-    """All sheets for a consolidated report."""
+class _EntityRaw:
+    """Raw entity data for one cell, pre-formatting."""
 
-    company_sheet: SheetData
-    entity_sheets: list[SheetData]
-    list_expansion_sheets: list[SheetData]
-    summary: dict[str, Any]
+    items: list[dict]
+    provenance: list[dict]
+    group: FieldGroup
 
 
 class ConsolidatedReportBuilder:
-    """Builds consolidated report data from ConsolidatedExtraction records."""
+    """Builds unified consolidated report data from ConsolidatedExtraction records."""
 
     def __init__(self, schema_generator: SchemaTableGenerator) -> None:
         self._gen = schema_generator
@@ -43,20 +64,26 @@ class ConsolidatedReportBuilder:
         self,
         records: list,
         schema: dict,
-        include_provenance: bool = False,
-    ) -> ConsolidatedReportData:
-        """Build report data from consolidated extraction records.
+        page_size: int = ENTITY_PAGE_SIZE,
+    ) -> tuple[SheetData, dict[str, Any]]:
+        """Build unified data sheet from consolidated extraction records.
+
+        One row per source_group with ALL fields: scalars inline,
+        entity lists formatted into paginated cells.
 
         Args:
             records: List of ConsolidatedExtraction ORM objects.
             schema: Project extraction_schema dict.
-            include_provenance: Whether to add provenance columns.
+            page_size: Max entities per cell before paginating to next column.
 
         Returns:
-            ConsolidatedReportData with company + entity sheets.
+            Tuple of (data_sheet, summary).
         """
-        scalar_columns, scalar_labels, scalar_types = self._gen.get_scalar_columns(schema)
-        entity_groups = self._gen.get_entity_list_groups(schema)
+        columns, labels, col_types, entity_groups = self._gen.get_unified_columns(schema)
+
+        # Get source_label for sheet naming
+        context = schema.get("extraction_context", {})
+        source_label = context.get("source_label", "Source")
 
         # Group records by source_group
         by_source_group: dict[str, dict[str, Any]] = {}
@@ -66,251 +93,249 @@ class ConsolidatedReportBuilder:
                 by_source_group[sg] = {}
             by_source_group[sg][rec.extraction_type] = rec
 
-        # Build company rows (scalar fields)
-        company_rows = []
+        # Phase 1: Build rows with raw entity data (unformatted)
+        rows: list[dict[str, Any]] = []
+        raw_entity_data: list[dict[str, _EntityRaw]] = []
         for sg in sorted(by_source_group.keys()):
             recs_by_type = by_source_group[sg]
-            row = self._build_company_row(
-                sg, recs_by_type, scalar_columns, scalar_types, include_provenance
+            row, entity_raw = self._build_unified_row(
+                sg, recs_by_type, columns, col_types, entity_groups
             )
-            company_rows.append(row)
-
-        # Provenance columns
-        company_cols = list(scalar_columns)
-        company_labels = dict(scalar_labels)
-        if include_provenance:
-            for pc, pl in [
-                ("source_count", "Sources"),
-                ("avg_agreement", "Avg Agreement"),
-                ("grounded_pct", "Grounded %"),
-            ]:
-                company_cols.append(pc)
-                company_labels[pc] = pl
-
-        company_sheet = SheetData(
-            name="Companies",
-            rows=company_rows,
-            columns=company_cols,
-            labels=company_labels,
-            column_types=scalar_types,
-        )
-
-        # Build entity sheets
-        entity_sheets = []
-        for group_name in entity_groups:
-            entity_cols, entity_labels, entity_types = self._gen.get_entity_group_columns(
-                schema, group_name
-            )
-            all_rows = []
-            for sg in sorted(by_source_group.keys()):
-                rec = by_source_group[sg].get(group_name)
-                if rec:
-                    rows = self._build_entity_rows(sg, rec, entity_cols)
-                    all_rows.extend(rows)
-
-            entity_sheets.append(SheetData(
-                name=self._gen._humanize(group_name),
-                rows=all_rows,
-                columns=entity_cols,
-                labels=entity_labels,
-                column_types=entity_types,
-                key=group_name,
-            ))
-
-        # Build list expansion sheets (list-of-dict fields in scalar groups)
-        list_expansion_sheets = self._build_list_expansion_sheets(
-            by_source_group, schema, entity_groups
-        )
-
-        # Summary
-        summary = {
-            "total_companies": len(by_source_group),
-            "entity_counts": {
-                s.name: len(s.rows) for s in entity_sheets
-            },
-            "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        }
-
-        return ConsolidatedReportData(
-            company_sheet=company_sheet,
-            entity_sheets=entity_sheets,
-            list_expansion_sheets=list_expansion_sheets,
-            summary=summary,
-        )
-
-    def _build_company_row(
-        self,
-        source_group: str,
-        records_by_type: dict[str, Any],
-        scalar_columns: list[str],
-        scalar_types: dict[str, str],
-        include_provenance: bool,
-    ) -> dict[str, Any]:
-        """Build one company row from scalar consolidated records."""
-        row: dict[str, Any] = {"source_group": source_group}
-
-        # Collect provenance stats
-        all_source_counts = []
-        all_agreements = []
-        all_grounded = []
-
-        for _ext_type, rec in records_by_type.items():
-            data = rec.data or {}
-            provenance = rec.provenance or {}
-
-            for col in scalar_columns:
-                if col == "source_group":
-                    continue
-                if col in data and col not in row:
-                    value = data[col]
-                    # List-of-dicts → summary placeholder
-                    if isinstance(value, list) and value and isinstance(value[0], dict):
-                        row[col] = f"{len(value)} items"
-                    # Flat list → comma-separated
-                    elif isinstance(value, list):
-                        row[col] = ", ".join(str(v) for v in value)
-                    else:
-                        row[col] = value
-
-            # Provenance tracking
-            if include_provenance:
-                all_source_counts.append(rec.source_count or 0)
-                for _field_name, prov in provenance.items():
-                    if isinstance(prov, dict):
-                        agreement = prov.get("agreement", 0.0)
-                        all_agreements.append(agreement)
-                        if prov.get("grounded_count", 0) > 0:
-                            all_grounded.append(1)
-                        else:
-                            all_grounded.append(0)
-
-        if include_provenance:
-            row["source_count"] = max(all_source_counts) if all_source_counts else 0
-            row["avg_agreement"] = (
-                round(sum(all_agreements) / len(all_agreements), 2)
-                if all_agreements
-                else None
-            )
-            row["grounded_pct"] = (
-                round(sum(all_grounded) / len(all_grounded) * 100, 1)
-                if all_grounded
-                else None
-            )
-
-        return row
-
-    def _build_entity_rows(
-        self,
-        source_group: str,
-        record: Any,
-        entity_columns: list[str],
-    ) -> list[dict[str, Any]]:
-        """Build entity rows from a consolidated entity list record."""
-        data = record.data or {}
-        # Entity data may be stored under the extraction_type key or directly as a list
-        items = data.get(record.extraction_type, [])
-        if not isinstance(items, list):
-            # Data might be stored flat — try to find any list value
-            for v in data.values():
-                if isinstance(v, list):
-                    items = v
-                    break
-            else:
-                items = []
-
-        rows = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            row: dict[str, Any] = {"source_group": source_group}
-            for col in entity_columns:
-                if col == "source_group":
-                    continue
-                row[col] = item.get(col)
             rows.append(row)
+            raw_entity_data.append(entity_raw)
 
-        return rows
+        # Phase 2: Paginate entity columns and format cells
+        columns, labels, col_types, prov_key_map, row_entity_prov = (
+            self._paginate_entities(
+                rows, raw_entity_data, columns, labels, col_types,
+                entity_groups, page_size,
+            )
+        )
 
-    def _build_list_expansion_sheets(
-        self,
-        by_source_group: dict[str, dict[str, Any]],
-        schema: dict,
-        entity_groups: dict,
-    ) -> list[SheetData]:
-        """Detect list-of-dict fields in scalar groups and expand to sheets."""
-        from services.extraction.schema_adapter import SchemaAdapter
+        # Count entities per entity group (from raw DB data, not display)
+        entity_counts: dict[str, int] = {}
+        for _group_col, group in entity_groups.items():
+            total = 0
+            for _sg, recs_by_type in by_source_group.items():
+                rec = recs_by_type.get(group.name)
+                if rec:
+                    items = (rec.data or {}).get(group.name, [])
+                    if isinstance(items, list):
+                        total += len(items)
+            entity_counts[self._gen._humanize(group.name)] = total
 
-        adapter = SchemaAdapter()
-        field_groups = adapter.convert_to_field_groups(schema)
-
-        # Find list-of-dict fields in non-entity groups
-        list_fields: dict[str, str] = {}  # field_name → group_name
-        for group in field_groups:
-            if group.is_entity_list:
-                continue
-            for fd in group.fields:
-                if fd.field_type == "list":
-                    list_fields[fd.name] = group.name
-
-        if not list_fields:
-            return []
-
-        sheets = []
-        for field_name, group_name in list_fields.items():
-            all_items: list[tuple[str, list[dict]]] = []
-            for sg, recs_by_type in by_source_group.items():
-                rec = recs_by_type.get(group_name)
-                if not rec:
-                    continue
-                data = rec.data or {}
-                value = data.get(field_name)
-                if isinstance(value, list) and value and isinstance(value[0], dict):
-                    all_items.append((sg, value))
-
-            if not all_items:
-                continue
-
-            sheet = self._expand_list_field(field_name, all_items)
-            if sheet.rows:
-                sheets.append(sheet)
-
-        return sheets
-
-    def _expand_list_field(
-        self,
-        field_name: str,
-        all_items: list[tuple[str, list[dict]]],
-    ) -> SheetData:
-        """Expand a list-of-dict field into a flat sheet."""
-        # Union all dict keys to derive columns
-        all_keys: dict[str, None] = {}  # ordered set
-        for _sg, items in all_items:
-            for item in items:
-                if isinstance(item, dict):
-                    for k in item:
-                        all_keys[k] = None
-
-        columns = ["source_group"] + list(all_keys.keys())
-        labels = {"source_group": "Source"}
-        for k in all_keys:
-            labels[k] = self._gen._humanize(k)
-
-        rows = []
-        for sg, items in all_items:
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                row: dict[str, Any] = {"source_group": sg}
-                for k in all_keys:
-                    row[k] = item.get(k)
-                rows.append(row)
-
-        return SheetData(
-            name=self._gen._humanize(field_name),
+        data_sheet = SheetData(
+            name=f"{source_label} Data",
             rows=rows,
             columns=columns,
             labels=labels,
+            column_types=col_types,
+            provenance_key_map=prov_key_map,
+            row_entity_provenance=row_entity_prov,
         )
+
+        summary = {
+            "total_count": len(by_source_group),
+            "entity_counts": entity_counts,
+            "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        }
+
+        return data_sheet, summary
+
+    def _build_unified_row(
+        self,
+        source_group: str,
+        records_by_type: dict[str, Any],
+        columns: list[str],
+        col_types: dict[str, str],
+        entity_groups: dict[str, FieldGroup],
+    ) -> tuple[dict[str, Any], dict[str, _EntityRaw]]:
+        """Build one unified row from all consolidated records for a source_group.
+
+        Returns:
+            Tuple of (row_dict, entity_raw_dict).
+            Entity list columns get placeholder "N/A" in the row; actual items
+            are in entity_raw for pagination in phase 2.
+        """
+        row: dict[str, Any] = {"source_group": source_group}
+        entity_raw: dict[str, _EntityRaw] = {}
+
+        for col in columns:
+            if col == "source_group":
+                continue
+
+            if col_types.get(col) == "entity_list":
+                group = entity_groups[col]
+                rec = records_by_type.get(group.name)
+                if rec:
+                    items = (rec.data or {}).get(group.name, [])
+                    prov = (rec.provenance or {}).get(group.name, {})
+                    entity_prov = (
+                        prov.get("entity_provenance")
+                        if isinstance(prov, dict)
+                        else None
+                    )
+                    if isinstance(items, list) and items:
+                        # Quality-filter entities
+                        filtered_items, filtered_prov = _filter_entities(
+                            items, entity_prov,
+                        )
+                        if filtered_items:
+                            entity_raw[col] = _EntityRaw(
+                                items=filtered_items,
+                                provenance=filtered_prov,
+                                group=group,
+                            )
+                            row[col] = None  # placeholder for phase 2
+                            continue
+                row[col] = "N/A"
+            else:
+                # Scalar column → look across extraction types
+                for _ext_type, rec in records_by_type.items():
+                    data = rec.data or {}
+                    if col in data and col not in row:
+                        value = data[col]
+                        if isinstance(value, list) and value and isinstance(value[0], dict):
+                            row[col] = _format_dict_list(value)
+                        elif isinstance(value, list):
+                            row[col] = ", ".join(str(v) for v in value)
+                        else:
+                            row[col] = value
+
+        return row, entity_raw
+
+    def _paginate_entities(
+        self,
+        rows: list[dict[str, Any]],
+        raw_entity_data: list[dict[str, _EntityRaw]],
+        columns: list[str],
+        labels: dict[str, str],
+        col_types: dict[str, str],
+        entity_groups: dict[str, FieldGroup],
+        page_size: int,
+    ) -> tuple[
+        list[str],
+        dict[str, str],
+        dict[str, str],
+        dict[str, str],
+        list[dict[str, list[dict]]],
+    ]:
+        """Paginate entity columns and format cells.
+
+        For each entity list column, determines max entity count across
+        all rows. If max > page_size, creates additional page columns.
+        Formats entity items into cells and slices provenance per page.
+
+        Returns:
+            (columns, labels, col_types, provenance_key_map, row_entity_provenance)
+        """
+        entity_cols = [c for c in columns if col_types.get(c) == "entity_list"]
+
+        # Find max entity count per column across all rows
+        max_counts: dict[str, int] = {}
+        for col in entity_cols:
+            max_count = 0
+            for entity_raw in raw_entity_data:
+                if col in entity_raw:
+                    max_count = max(max_count, len(entity_raw[col].items))
+            max_counts[col] = max_count
+
+        # Build expanded column list
+        new_columns: list[str] = []
+        new_labels: dict[str, str] = {}
+        new_col_types: dict[str, str] = {}
+        prov_key_map: dict[str, str] = {}
+
+        for col in columns:
+            if col not in entity_cols:
+                new_columns.append(col)
+                if col in labels:
+                    new_labels[col] = labels[col]
+                if col in col_types:
+                    new_col_types[col] = col_types[col]
+            else:
+                max_count = max_counts.get(col, 0)
+                num_pages = max(1, ceil(max_count / page_size)) if max_count > 0 else 1
+                group = entity_groups[col]
+                base_label = labels.get(col, self._gen._humanize(group.name))
+                prov_key = group.name
+
+                for page in range(num_pages):
+                    page_col = col if page == 0 else f"{col}_p{page + 1}"
+                    if num_pages == 1:
+                        page_label = base_label
+                    else:
+                        start = page * page_size + 1
+                        end = min((page + 1) * page_size, max_count)
+                        page_label = f"{base_label} ({start}-{end})"
+
+                    new_columns.append(page_col)
+                    new_labels[page_col] = page_label
+                    new_col_types[page_col] = "entity_list"
+                    prov_key_map[page_col] = prov_key
+
+        # Format cells and build per-row entity provenance
+        row_entity_prov: list[dict[str, list[dict]]] = []
+        for row, entity_raw in zip(rows, raw_entity_data, strict=True):
+            row_prov: dict[str, list[dict]] = {}
+
+            for col in entity_cols:
+                max_count = max_counts.get(col, 0)
+                num_pages = max(1, ceil(max_count / page_size)) if max_count > 0 else 1
+
+                if col not in entity_raw:
+                    # No data — fill all page columns with N/A
+                    for page in range(num_pages):
+                        page_col = col if page == 0 else f"{col}_p{page + 1}"
+                        row[page_col] = "N/A"
+                    continue
+
+                raw = entity_raw[col]
+                for page in range(num_pages):
+                    page_col = col if page == 0 else f"{col}_p{page + 1}"
+                    start = page * page_size
+                    end = (page + 1) * page_size
+
+                    page_items = raw.items[start:end]
+                    page_prov = (
+                        raw.provenance[start:end]
+                        if raw.provenance and start < len(raw.provenance)
+                        else None
+                    )
+
+                    if page_items:
+                        row[page_col] = self._gen.format_entity_list(
+                            page_items, raw.group,
+                            max_items=page_size,
+                        )
+                        if page_prov:
+                            row_prov[page_col] = page_prov
+                    else:
+                        row[page_col] = "N/A"
+
+            row_entity_prov.append(row_prov)
+
+        return new_columns, new_labels, new_col_types, prov_key_map, row_entity_prov
+
+
+def _filter_entities(
+    items: list[dict],
+    entity_provenance: list[dict] | None,
+) -> tuple[list[dict], list[dict]]:
+    """Filter entities by quality threshold.
+
+    Returns:
+        Tuple of (filtered_items, filtered_provenance).
+    """
+    if entity_provenance and len(entity_provenance) == len(items):
+        filtered_items = []
+        filtered_prov = []
+        for item, prov in zip(items, entity_provenance, strict=True):
+            if prov.get("winning_weight", 0) >= ENTITY_MIN_QUALITY:
+                filtered_items.append(item)
+                filtered_prov.append(prov)
+        return filtered_items, filtered_prov
+    return list(items), list(entity_provenance or [])
 
 
 def build_provenance_sheets(
@@ -324,6 +349,11 @@ def build_provenance_sheets(
     corresponding data cell. Each cell in the sources sheet shows
     the source URLs that contributed to that data cell.
 
+    For entity list columns (including paginated pages), uses
+    per-cell entity provenance when available, falling back to
+    record-level provenance via provenance_key_map or _list suffix
+    stripping.
+
     Args:
         data_sheet: The data sheet to generate companions for.
         records_by_sg: source_group → {extraction_type → ConsolidatedExtraction}.
@@ -335,43 +365,52 @@ def build_provenance_sheets(
     quality_rows: list[dict[str, Any]] = []
     sources_rows: list[dict[str, Any]] = []
 
-    for row in data_sheet.rows:
+    has_entity_prov = bool(data_sheet.row_entity_provenance)
+
+    for row_idx, row in enumerate(data_sheet.rows):
         sg = row.get("source_group", "")
         sg_records = records_by_sg.get(sg, {})
 
         quality_row: dict[str, Any] = {"source_group": sg}
         sources_row: dict[str, Any] = {"source_group": sg}
 
-        # For entity sheets (key set), all columns share list-level provenance
-        # keyed by the entity group name (e.g. "products"), since entity list
-        # consolidation is union_dedup at the list level, not per-field.
-        entity_prov = None
-        if data_sheet.key:
-            entity_rec = sg_records.get(data_sheet.key)
-            if entity_rec:
-                ep = (entity_rec.provenance or {}).get(data_sheet.key)
-                if isinstance(ep, dict):
-                    entity_prov = ep
-
         for col in data_sheet.columns:
             if col == "source_group":
                 continue
 
-            # Search across all extraction types for this field's provenance
-            prov = None
-            for _ext_type, rec in sg_records.items():
-                rec_provenance = rec.provenance or {}
-                if col in rec_provenance and isinstance(rec_provenance[col], dict):
-                    prov = rec_provenance[col]
-                    break
+            # Check for per-cell entity provenance (paginated entity columns)
+            if has_entity_prov and row_idx < len(data_sheet.row_entity_provenance):
+                cell_prov = data_sheet.row_entity_provenance[row_idx].get(col)
+                if cell_prov:
+                    weights = [ep.get("winning_weight", 0) for ep in cell_prov]
+                    quality_row[col] = (
+                        round(sum(weights) / len(weights), 4) if weights else "N/A"
+                    )
+                    # Sources: look up via provenance_key_map
+                    prov_key = data_sheet.provenance_key_map.get(col)
+                    sources_row[col] = _resolve_entity_sources(
+                        prov_key, sg_records, source_url_map,
+                    )
+                    continue
 
-            # Fall back to entity-level provenance for entity sheets
-            if prov is None and entity_prov is not None:
-                prov = entity_prov
+            # Scalar fields: look up provenance directly
+            prov = _find_field_provenance(col, sg_records)
 
             if prov:
-                ww = prov.get("winning_weight")
-                quality_row[col] = round(ww, 4) if ww is not None else "N/A"
+                # Check for entity_provenance (non-paginated entity column)
+                entity_prov = prov.get("entity_provenance")
+                if entity_prov and isinstance(entity_prov, list):
+                    weights = [
+                        ep.get("winning_weight", 0)
+                        for ep in entity_prov
+                        if ep.get("winning_weight", 0) >= ENTITY_MIN_QUALITY
+                    ]
+                    quality_row[col] = (
+                        round(sum(weights) / len(weights), 4) if weights else "N/A"
+                    )
+                else:
+                    ww = prov.get("winning_weight")
+                    quality_row[col] = round(ww, 4) if ww is not None else "N/A"
 
                 top_src_ids = prov.get("top_sources", [])
                 urls = [
@@ -392,7 +431,6 @@ def build_provenance_sheets(
         rows=quality_rows,
         columns=list(data_sheet.columns),
         labels=dict(data_sheet.labels),
-        key=f"{data_sheet.key}_quality" if data_sheet.key else "quality",
     )
 
     sources_sheet = SheetData(
@@ -400,189 +438,54 @@ def build_provenance_sheets(
         rows=sources_rows,
         columns=list(data_sheet.columns),
         labels=dict(data_sheet.labels),
-        key=f"{data_sheet.key}_sources" if data_sheet.key else "sources",
     )
 
     return quality_sheet, sources_sheet
 
 
-def compose_multi_sheet(data: ConsolidatedReportData) -> list[SheetData]:
-    """Compose multi-sheet layout: company + entity sheets."""
-    sheets = [data.company_sheet]
-    sheets.extend(s for s in data.entity_sheets if s.rows)
-    sheets.extend(s for s in data.list_expansion_sheets if s.rows)
-    return sheets
+def _find_field_provenance(
+    col: str,
+    sg_records: dict[str, Any],
+) -> dict | None:
+    """Find provenance for a column across extraction types.
 
-
-def compose_single_sheet(
-    data: ConsolidatedReportData,
-    entity_focus: str | None,
-    schema: dict,
-) -> SheetData:
-    """Compose single-sheet layout.
-
-    Args:
-        data: Consolidated report data.
-        entity_focus: None (company-only with entity counts),
-                      specific group name (denormalized), or "all".
-        schema: Extraction schema.
-
-    Returns:
-        Single SheetData with combined rows.
+    Tries direct match, then _list suffix stripping for entity columns.
     """
-    if entity_focus is None:
-        # Company rows + entity count summary columns
-        columns = list(data.company_sheet.columns)
-        labels = dict(data.company_sheet.labels)
+    for _ext_type, rec in sg_records.items():
+        rec_provenance = rec.provenance or {}
+        if col in rec_provenance and isinstance(rec_provenance[col], dict):
+            return rec_provenance[col]
 
-        # Add entity count columns
-        for es in data.entity_sheets:
-            count_col = f"{es.name}_count"
-            columns.append(count_col)
-            labels[count_col] = f"{es.name} Count"
+    # Fallback: strip _list suffix for entity list columns
+    stripped = col.removesuffix("_list")
+    if stripped != col:
+        for _ext_type, rec in sg_records.items():
+            rec_provenance = rec.provenance or {}
+            if stripped in rec_provenance and isinstance(rec_provenance[stripped], dict):
+                return rec_provenance[stripped]
 
-        # Build company-to-entity-count lookup
-        entity_counts_by_sg: dict[str, dict[str, int]] = {}
-        for es in data.entity_sheets:
-            for row in es.rows:
-                sg = row.get("source_group", "")
-                if sg not in entity_counts_by_sg:
-                    entity_counts_by_sg[sg] = {}
-                entity_counts_by_sg[sg][es.name] = (
-                    entity_counts_by_sg[sg].get(es.name, 0) + 1
-                )
-
-        rows = []
-        for company_row in data.company_sheet.rows:
-            row = dict(company_row)
-            sg = row.get("source_group", "")
-            for es in data.entity_sheets:
-                count_col = f"{es.name}_count"
-                row[count_col] = entity_counts_by_sg.get(sg, {}).get(es.name, 0)
-            rows.append(row)
-
-        return SheetData(
-            name="Report",
-            rows=rows,
-            columns=columns,
-            labels=labels,
-        )
-
-    if entity_focus == "all":
-        # Superset: company cols + all entity cols + entity_type discriminator
-        columns = list(data.company_sheet.columns) + ["entity_type"]
-        labels = dict(data.company_sheet.labels)
-        labels["entity_type"] = "Entity Type"
-
-        # Collect all entity columns
-        all_entity_cols: dict[str, str] = {}  # col → label
-        for es in data.entity_sheets:
-            for col in es.columns:
-                if col != "source_group" and col not in all_entity_cols:
-                    all_entity_cols[col] = es.labels.get(col, col)
-        columns.extend(all_entity_cols.keys())
-        labels.update(all_entity_cols)
-
-        rows = []
-        company_lookup = {
-            r["source_group"]: r for r in data.company_sheet.rows
-        }
-        for es in data.entity_sheets:
-            for entity_row in es.rows:
-                sg = entity_row.get("source_group", "")
-                row = dict(company_lookup.get(sg, {"source_group": sg}))
-                row["entity_type"] = es.name
-                for col in all_entity_cols:
-                    row[col] = entity_row.get(col)
-                rows.append(row)
-
-        return SheetData(name="Report", rows=rows, columns=columns, labels=labels)
-
-    # Specific entity focus — denormalized (match by key or display name)
-    target_sheet = _find_entity_sheet(data.entity_sheets, entity_focus)
-    if target_sheet is None:
-        available = [es.key or es.name for es in data.entity_sheets]
-        raise ValueError(
-            f"Unknown entity group '{entity_focus}'. "
-            f"Available: {available}"
-        )
-
-    columns = list(data.company_sheet.columns)
-    labels = dict(data.company_sheet.labels)
-    entity_cols = [c for c in target_sheet.columns if c != "source_group"]
-    columns.extend(entity_cols)
-    for c in entity_cols:
-        labels[c] = target_sheet.labels.get(c, c)
-
-    rows = []
-    company_lookup = {r["source_group"]: r for r in data.company_sheet.rows}
-
-    # Group entity rows by source_group
-    entity_by_sg: dict[str, list[dict]] = {}
-    for er in target_sheet.rows:
-        sg = er.get("source_group", "")
-        entity_by_sg.setdefault(sg, []).append(er)
-
-    for sg in sorted(entity_by_sg.keys()):
-        sg_entities = entity_by_sg[sg]
-        for i, entity_row in enumerate(sg_entities):
-            row: dict[str, Any] = {}
-            if i == 0:
-                # First row gets company data
-                row.update(company_lookup.get(sg, {"source_group": sg}))
-            else:
-                # Subsequent rows: blank company cols, keep source_group
-                row["source_group"] = sg
-            for c in entity_cols:
-                row[c] = entity_row.get(c)
-            rows.append(row)
-
-    return SheetData(name="Report", rows=rows, columns=columns, labels=labels)
-
-
-def _find_entity_sheet(
-    entity_sheets: list[SheetData], entity_focus: str
-) -> SheetData | None:
-    """Find an entity sheet by key (raw name) or display name.
-
-    Args:
-        entity_sheets: List of entity SheetData objects.
-        entity_focus: Raw group name or humanized display name.
-
-    Returns:
-        Matching SheetData, or None if not found.
-    """
-    for es in entity_sheets:
-        if es.key == entity_focus or es.name == entity_focus:
-            return es
     return None
 
 
-def validate_entity_focus(entity_focus: str, schema: dict) -> None:
-    """Validate entity_focus against schema's entity list groups.
-
-    Accepts raw schema names (e.g., "products_gearbox") or humanized
-    display names (e.g., "Products Gearbox").
-
-    Args:
-        entity_focus: Entity group name to validate.
-        schema: Extraction schema.
-
-    Raises:
-        ValueError: If entity_focus is not a valid entity list group.
-    """
-    if entity_focus == "all":
-        return
-
-    gen = SchemaTableGenerator()
-    entity_groups = gen.get_entity_list_groups(schema)
-    valid_names = set(entity_groups.keys())
-    humanized = {gen._humanize(name) for name in valid_names}
-    if entity_focus not in valid_names and entity_focus not in humanized:
-        raise ValueError(
-            f"Unknown entity group '{entity_focus}'. "
-            f"Available: {sorted(valid_names)}"
-        )
+def _resolve_entity_sources(
+    prov_key: str | None,
+    sg_records: dict[str, Any],
+    source_url_map: dict[str, str],
+) -> str:
+    """Resolve source URLs for an entity column via its provenance key."""
+    if not prov_key:
+        return "N/A"
+    for _ext_type, rec in sg_records.items():
+        rec_provenance = rec.provenance or {}
+        if prov_key in rec_provenance and isinstance(rec_provenance[prov_key], dict):
+            top_src_ids = rec_provenance[prov_key].get("top_sources", [])
+            urls = [
+                source_url_map.get(str(sid), str(sid))
+                for sid in top_src_ids
+                if str(sid) in source_url_map
+            ]
+            return "\n".join(urls) if urls else "N/A"
+    return "N/A"
 
 
 def render_markdown(
@@ -600,7 +503,7 @@ def render_markdown(
     """
     lines = [
         f"Generated: {summary.get('generated_at', '')}",
-        f"Companies: {summary.get('total_companies', 0)}",
+        f"Total: {summary.get('total_count', 0)}",
     ]
 
     entity_counts = summary.get("entity_counts", {})
@@ -638,6 +541,30 @@ def render_markdown(
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _format_dict_list(items: list[dict], max_items: int = 50) -> str:
+    """Format a list of dicts as newline-separated semicolon-delimited rows.
+
+    Args:
+        items: List of dicts to format.
+        max_items: Maximum items to include.
+
+    Returns:
+        Formatted string, or "N/A" if empty.
+    """
+    if not items:
+        return "N/A"
+
+    parts = []
+    for item in items[:max_items]:
+        values = [str(v) for v in item.values() if v is not None]
+        parts.append(" ; ".join(values) if values else "N/A")
+
+    result = "\n".join(parts)
+    if len(items) > max_items:
+        result += f"\n(+{len(items) - max_items} more)"
+    return result
 
 
 def _sanitize_md(text: str) -> str:

@@ -17,10 +17,8 @@ from services.llm.client import LLMClient
 from services.projects.repository import ProjectRepository
 from services.reports.consolidated_builder import (
     ConsolidatedReportBuilder,
-    compose_multi_sheet,
-    compose_single_sheet,
+    build_provenance_sheets,
     render_markdown,
-    validate_entity_focus,
 )
 from services.reports.excel_formatter import ExcelFormatter
 from services.reports.schema_table_generator import ColumnMetadata, SchemaTableGenerator
@@ -123,16 +121,12 @@ class ReportService:
 
         # Short-circuit for consolidated mode — uses ConsolidatedExtraction, not raw
         if request.type == ReportType.TABLE and request.group_by == "consolidated":
-            title = request.title or f"Table: {len(source_groups)} companies"
+            title = request.title or f"Table: {len(source_groups)} entries"
             md_content, excel_bytes, summary = self._generate_consolidated_table(
                 project_id=project_id,
                 source_groups=source_groups,
                 title=title,
                 output_format=request.output_format,
-                layout=request.layout,
-                entity_focus=request.entity_focus,
-                include_provenance=request.include_provenance,
-                provenance_sheets=request.provenance_sheets,
             )
             report_format = "xlsx" if excel_bytes else "md"
             entity_counts = summary.get("entity_counts", {})
@@ -151,7 +145,7 @@ class ReportService:
                     "group_by": "consolidated",
                     "entity_count": total_entities,
                     "entity_counts_by_type": entity_counts,
-                    "total_companies": summary.get("total_companies", 0),
+                    "total_count": summary.get("total_count", 0),
                 },
             )
             self._db.add(report)
@@ -576,35 +570,25 @@ class ReportService:
         source_groups: list[str],
         title: str,
         output_format: str,
-        layout: str = "multi_sheet",
-        entity_focus: str | None = None,
-        include_provenance: bool = False,
-        provenance_sheets: bool = False,
     ) -> tuple[str, bytes | None, dict[str, Any]]:
-        """Generate table report from consolidated extractions.
+        """Generate unified 3-sheet table report from consolidated extractions.
+
+        Always produces: Data, Quality, Sources sheets (for xlsx).
 
         Args:
             project_id: Project UUID.
             source_groups: Source groups to include.
             title: Report title.
             output_format: "md" or "xlsx".
-            layout: "multi_sheet" or "single_sheet".
-            entity_focus: Entity group for single_sheet denormalization.
-            include_provenance: Include provenance columns.
-            provenance_sheets: Add Quality and Sources companion sheets.
 
         Returns:
             Tuple of (markdown_content, excel_bytes or None, summary dict).
         """
-        empty_summary: dict[str, Any] = {"total_companies": 0, "entity_counts": {}}
+        empty_summary: dict[str, Any] = {"total_count": 0, "entity_counts": {}}
 
         schema = self._get_project_schema(project_id)
         if not schema:
             return "# No extraction schema found\n\nCannot generate table.", None, empty_summary
-
-        # Validate entity_focus if provided
-        if entity_focus is not None:
-            validate_entity_focus(entity_focus, schema)
 
         # Query consolidated extractions
         from sqlalchemy import select
@@ -618,81 +602,71 @@ class ReportService:
         if not records:
             return "# No consolidated data\n\nRun consolidation first.", None, empty_summary
 
-        # Build report data
+        # Build unified data sheet
         builder = ConsolidatedReportBuilder(self._schema_generator)
-        report_data = builder.gather(records, schema, include_provenance)
+        data_sheet, summary = builder.gather(records, schema)
 
-        # Compose layout
-        if layout == "single_sheet":
-            sheet = compose_single_sheet(report_data, entity_focus, schema)
-            sheets = [sheet]
-        else:
-            sheets = compose_multi_sheet(report_data)
+        # Render markdown (data sheet only)
+        md_content = f"# {title}\n\n" + render_markdown([data_sheet], summary)
 
-        # Render markdown
-        md_content = f"# {title}\n\n" + render_markdown(sheets, report_data.summary)
-
-        # Excel
+        # Excel: always 3 sheets
         excel_bytes = None
         if output_format == "xlsx":
-            # Build provenance companion sheets if requested
-            if provenance_sheets:
-                from services.reports.consolidated_builder import build_provenance_sheets
+            # Build records_by_sg lookup
+            records_by_sg = self._group_records_by_sg(records)
 
-                # Build records_by_sg lookup
-                records_by_sg: dict[str, dict[str, Any]] = {}
-                for rec in records:
-                    sg = rec.source_group
-                    if sg not in records_by_sg:
-                        records_by_sg[sg] = {}
-                    records_by_sg[sg][rec.extraction_type] = rec
+            # Resolve source URLs
+            source_url_map = self._resolve_source_urls(records)
 
-                # Resolve source_ids to URLs
-                from orm_models import Source
-
-                all_source_ids: set[str] = set()
-                for rec in records:
-                    for prov in (rec.provenance or {}).values():
-                        if isinstance(prov, dict):
-                            all_source_ids.update(
-                                str(s) for s in prov.get("top_sources", [])
-                            )
-
-                source_url_map: dict[str, str] = {}
-                if all_source_ids:
-                    source_rows = (
-                        self._db.execute(
-                            select(Source.id, Source.uri).where(
-                                Source.id.in_(list(all_source_ids))
-                            )
-                        ).all()
-                    )
-                    source_url_map = {str(row.id): row.uri for row in source_rows}
-
-                # Interleave: Data, Quality, Sources for each sheet
-                final_sheets: list = []
-                for sheet in sheets:
-                    final_sheets.append(sheet)
-                    quality, sources = build_provenance_sheets(
-                        sheet, records_by_sg, source_url_map
-                    )
-                    final_sheets.append(quality)
-                    final_sheets.append(sources)
-                sheets = final_sheets
+            # Build provenance companion sheets
+            quality, sources = build_provenance_sheets(
+                data_sheet, records_by_sg, source_url_map
+            )
 
             formatter = ExcelFormatter()
-            if layout == "multi_sheet" or provenance_sheets:
-                excel_bytes = formatter.create_multi_sheet_workbook(sheets)
-            else:
-                sheet = sheets[0]
-                excel_bytes = formatter.create_workbook(
-                    rows=sheet.rows,
-                    columns=sheet.columns,
-                    column_labels=sheet.labels,
-                    sheet_name=title or "Report",
-                )
+            excel_bytes = formatter.create_multi_sheet_workbook(
+                [data_sheet, quality, sources]
+            )
 
-        return md_content, excel_bytes, report_data.summary
+        return md_content, excel_bytes, summary
+
+    def _group_records_by_sg(
+        self, records: list,
+    ) -> dict[str, dict[str, Any]]:
+        """Group records by source_group → extraction_type."""
+        records_by_sg: dict[str, dict[str, Any]] = {}
+        for rec in records:
+            sg = rec.source_group
+            if sg not in records_by_sg:
+                records_by_sg[sg] = {}
+            records_by_sg[sg][rec.extraction_type] = rec
+        return records_by_sg
+
+    def _resolve_source_urls(self, records: list) -> dict[str, str]:
+        """Resolve source_ids from provenance to URLs."""
+        from sqlalchemy import select
+
+        from orm_models import Source
+
+        all_source_ids: set[str] = set()
+        for rec in records:
+            for prov in (rec.provenance or {}).values():
+                if isinstance(prov, dict):
+                    all_source_ids.update(
+                        str(s) for s in prov.get("top_sources", [])
+                    )
+
+        if not all_source_ids:
+            return {}
+
+        source_rows = (
+            self._db.execute(
+                select(Source.id, Source.uri).where(
+                    Source.id.in_(list(all_source_ids))
+                )
+            ).all()
+        )
+        return {str(row.id): row.uri for row in source_rows}
 
     def _aggregate_by_source(
         self,

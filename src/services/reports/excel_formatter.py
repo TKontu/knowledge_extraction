@@ -18,17 +18,26 @@ if TYPE_CHECKING:
 class ExcelFormatter:
     """Formats tabular data into Excel workbooks."""
 
+    # Header fill colors by sheet style
+    _HEADER_FILLS = {
+        "data": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
+        "quality": PatternFill(start_color="548235", end_color="548235", fill_type="solid"),
+        "sources": PatternFill(start_color="808080", end_color="808080", fill_type="solid"),
+    }
+
     def __init__(self) -> None:
         self._header_font = Font(bold=True, color="FFFFFF")
-        self._header_fill = PatternFill(
-            start_color="4472C4", end_color="4472C4", fill_type="solid"
-        )
+        self._header_fill = self._HEADER_FILLS["data"]
         self._border = Border(
             left=Side(style="thin"),
             right=Side(style="thin"),
             top=Side(style="thin"),
             bottom=Side(style="thin"),
         )
+        # Conditional formatting fills for quality sheets
+        self._quality_green = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        self._quality_yellow = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+        self._quality_red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 
     def create_workbook(
         self,
@@ -73,7 +82,16 @@ class ExcelFormatter:
 
         for sheet_data in sheets:
             ws = wb.create_sheet(title=self._safe_sheet_name(sheet_data.name))
-            self._write_sheet(ws, sheet_data.rows, sheet_data.columns, sheet_data.labels)
+            # Detect sheet style from name suffix
+            sheet_style = "data"
+            if sheet_data.name.endswith(" - Quality"):
+                sheet_style = "quality"
+            elif sheet_data.name.endswith(" - Sources"):
+                sheet_style = "sources"
+            self._write_sheet(ws, sheet_data.rows, sheet_data.columns, sheet_data.labels, sheet_style)
+            # Apply quality conditional formatting
+            if sheet_style == "quality":
+                self._apply_quality_formatting(ws, sheet_data.columns)
             # Freeze header row
             ws.freeze_panes = "A2"
             # Auto-filter
@@ -96,14 +114,17 @@ class ExcelFormatter:
         rows: list[dict[str, Any]],
         columns: list[str],
         labels: dict[str, str],
+        sheet_style: str = "data",
     ) -> None:
         """Write headers, data rows, and auto-size columns to a worksheet."""
+        header_fill = self._HEADER_FILLS.get(sheet_style, self._header_fill)
+
         # Write headers
         for col_idx, col_name in enumerate(columns, 1):
             cell = ws.cell(row=1, column=col_idx)
             cell.value = labels.get(col_name, self._humanize(col_name))
             cell.font = self._header_font
-            cell.fill = self._header_fill
+            cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
             cell.border = self._border
 
@@ -132,6 +153,22 @@ class ExcelFormatter:
                 max_length + 2, 50
             )
 
+    def _apply_quality_formatting(self, ws: Worksheet, columns: list[str]) -> None:
+        """Apply conditional formatting to quality sheet cells.
+
+        Colors: green >= 0.7, yellow 0.3-0.7, red < 0.3.
+        Skips the source_group column.
+        """
+        for row in ws.iter_rows(min_row=2, min_col=2, max_col=len(columns)):
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    if cell.value >= 0.7:
+                        cell.fill = self._quality_green
+                    elif cell.value >= 0.3:
+                        cell.fill = self._quality_yellow
+                    else:
+                        cell.fill = self._quality_red
+
     @staticmethod
     def _safe_sheet_name(name: str) -> str:
         """Sanitize sheet name for Excel compatibility."""
@@ -144,12 +181,18 @@ class ExcelFormatter:
         """Convert field_name to Human Readable Label."""
         return field_name.replace("_", " ").title()
 
-    def _format_value(self, value: Any) -> str:
-        """Format extraction values for display."""
+    def _format_value(self, value: Any) -> Any:
+        """Format extraction values for Excel cells.
+
+        Preserves numeric types so openpyxl writes them as numbers
+        (enables sorting, formulas, conditional formatting).
+        """
         if value is None:
             return "N/A"
         if isinstance(value, bool):
             return "Yes" if value else "No"
+        if isinstance(value, (int, float)):
+            return value
         if isinstance(value, list):
             return "\n".join(str(v) for v in value)
         return str(value)

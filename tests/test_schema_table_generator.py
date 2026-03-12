@@ -333,10 +333,10 @@ class TestFormatEntityList:
         assert "5.0kW" in result
         assert "100Nm" in result
 
-    def test_multiple_items_semicolon_separated(
+    def test_multiple_items_newline_separated(
         self, generator: SchemaTableGenerator, product_field_group: FieldGroup
     ):
-        """Multiple items should be semicolon-separated."""
+        """Multiple items should be newline-separated."""
         items = [
             {"product_name": "Widget A"},
             {"product_name": "Widget B"},
@@ -344,7 +344,7 @@ class TestFormatEntityList:
         result = generator.format_entity_list(items, product_field_group)
         assert "Widget A" in result
         assert "Widget B" in result
-        assert ";" in result
+        assert "\n" in result
 
     def test_truncates_long_lists(
         self, generator: SchemaTableGenerator, product_field_group: FieldGroup
@@ -382,46 +382,28 @@ class TestInferUnit:
 
 
 class TestFindIdField:
-    """Tests for identifying field detection."""
+    """Tests for identifying field detection — uses first field in schema order."""
 
     @pytest.fixture
     def generator(self) -> SchemaTableGenerator:
         return SchemaTableGenerator()
 
-    def test_finds_product_name(self, generator: SchemaTableGenerator):
+    def test_returns_first_field(self, generator: SchemaTableGenerator):
         fields = [
-            FieldDefinition("power_kw", "float", "Power"),
             FieldDefinition("product_name", "text", "Name"),
+            FieldDefinition("power_kw", "float", "Power"),
         ]
         assert generator._find_id_field(fields) == "product_name"
 
-    def test_finds_name(self, generator: SchemaTableGenerator):
+    def test_returns_first_regardless_of_type(self, generator: SchemaTableGenerator):
         fields = [
             FieldDefinition("power_kw", "float", "Power"),
             FieldDefinition("name", "text", "Name"),
         ]
-        assert generator._find_id_field(fields) == "name"
+        assert generator._find_id_field(fields) == "power_kw"
 
-    def test_finds_entity_id(self, generator: SchemaTableGenerator):
-        fields = [
-            FieldDefinition("power_kw", "float", "Power"),
-            FieldDefinition("entity_id", "text", "ID"),
-        ]
-        assert generator._find_id_field(fields) == "entity_id"
-
-    def test_fallback_to_first_text(self, generator: SchemaTableGenerator):
-        fields = [
-            FieldDefinition("power_kw", "float", "Power"),
-            FieldDefinition("description", "text", "Description"),
-        ]
-        assert generator._find_id_field(fields) == "description"
-
-    def test_no_text_field_returns_none(self, generator: SchemaTableGenerator):
-        fields = [
-            FieldDefinition("power_kw", "float", "Power"),
-            FieldDefinition("count", "integer", "Count"),
-        ]
-        assert generator._find_id_field(fields) is None
+    def test_empty_fields_returns_none(self, generator: SchemaTableGenerator):
+        assert generator._find_id_field([]) is None
 
 
 class TestHumanize:

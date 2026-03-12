@@ -669,22 +669,6 @@ class ReportRequest(BaseModel):
         default=False,
         description="Include merge provenance metadata when group_by='domain' (sources_used, confidence per column)",
     )
-    layout: Literal["multi_sheet", "single_sheet"] = Field(
-        default="multi_sheet",
-        description="Layout for consolidated reports: 'multi_sheet' (separate entity tabs) or 'single_sheet' (denormalized flat). Only applies when group_by='consolidated'.",
-    )
-    entity_focus: str | None = Field(
-        default=None,
-        description="Entity group to denormalize in single_sheet layout. None=company-only with counts, 'all'=superset, or specific group name. Requires layout='single_sheet'.",
-    )
-    include_provenance: bool = Field(
-        default=False,
-        description="Include provenance columns (source_count, avg_agreement, grounded_pct) in consolidated reports.",
-    )
-    provenance_sheets: bool = Field(
-        default=False,
-        description="3-sheet provenance report (Data, Quality, Sources). Requires output_format='xlsx' and group_by='consolidated'.",
-    )
 
     @field_validator("source_groups")
     @classmethod
@@ -702,20 +686,6 @@ class ReportRequest(BaseModel):
         if v in ("domain", "consolidated") and report_type != ReportType.TABLE:
             raise ValueError(f"group_by='{v}' only applies to table reports")
         return v
-
-    @model_validator(mode="after")
-    def validate_consolidated_options(self):
-        """Validate consolidated-specific options."""
-        if self.entity_focus is not None and self.layout != "single_sheet":
-            raise ValueError("entity_focus requires layout='single_sheet'")
-        if self.layout == "single_sheet" and self.group_by != "consolidated":
-            raise ValueError("layout='single_sheet' requires group_by='consolidated'")
-        if self.provenance_sheets:
-            if self.output_format != "xlsx":
-                raise ValueError("provenance_sheets requires output_format='xlsx'")
-            if self.group_by != "consolidated":
-                raise ValueError("provenance_sheets requires group_by='consolidated'")
-        return self
 
 
 class ReportResponse(BaseModel):

@@ -1,8 +1,8 @@
 # TODO: 3-Sheet Provenance Report + Boolean Threshold Fix
 
 **Created**: 2026-03-11
-**Status**: Planned
-**Priority**: High — blocks report quality
+**Status**: COMPLETE
+**Completed**: 2026-03-12
 
 ## Context
 
@@ -24,67 +24,33 @@ Consolidation produces one record per (company, field_group) from N raw extracti
 
 ## Tasks
 
-### Part A: Fix boolean threshold
+### Part A: Fix boolean threshold — DONE
 
-- [ ] **A1.** `src/services/extraction/consolidation.py:197` — Change `any_true()` default `min_count=3` → `min_count=1`
-- [ ] **A2.** `tests/test_consolidation.py` — Update `test_default_min_count_is_3` → `test_default_min_count_is_1`, flip assertion. Add `test_single_grounded_true_sufficient` (1 True weight>0 + several False → True)
+- [x] **A1.** `any_true()` default changed to `min_count=1`
+- [x] **A2.** Tests updated and passing
 
-### Part B: Add winning_weight to consolidation
+### Part B: Add winning_weight to consolidation — DONE
 
-- [ ] **B1.** `src/services/extraction/consolidation.py:53` — Add `winning_weight: float = 0.0` to `ConsolidatedField` dataclass
-- [ ] **B2.** `src/services/extraction/consolidation.py:297` — Compute winning_weight in `consolidate_field()` after strategy returns result:
-  - frequency/weighted_frequency/any_true: `max(v.weight for v in values if v.value matches result_value)`
-  - weighted_median: `mean(v.weight for v in values if v.weight > 0)` (computed value, no direct match)
-  - longest_top_k: weight of the string that won
-  - union_dedup: `mean(v.weight for v in values)` across all items
-- [ ] **B3.** `src/services/extraction/consolidation_service.py:195` — Add `"winning_weight": field.winning_weight` to provenance dict in `_upsert_record()`
-- [ ] **B4.** `tests/test_consolidation.py` — Add tests for winning_weight per strategy
+- [x] **B1.** `winning_weight: float = 0.0` added to `ConsolidatedField`
+- [x] **B2.** `consolidate_field()` computes `winning_weight` per strategy
+- [x] **B3.** `consolidation_service.py` persists `winning_weight` in provenance JSONB
+- [x] **B4.** Tests added for winning_weight per strategy
 
-### Part C: 3-sheet report option
+### Part C: 3-sheet report — DONE (design changed)
 
-- [ ] **C1.** `src/models.py` (after line 682) — Add to `ReportRequest`:
-  ```python
-  provenance_sheets: bool = Field(
-      default=False,
-      description="3-sheet report: Data + Quality + Sources per group. Requires output_format='xlsx' and group_by='consolidated'.",
-  )
-  ```
-- [ ] **C2.** `src/services/reports/consolidated_builder.py` — Add `build_provenance_sheets()`:
-  ```python
-  def build_provenance_sheets(
-      data_sheet: SheetData,
-      records_by_sg: dict[str, dict[str, Any]],
-      source_url_map: dict[str, str],
-      scalar_columns: list[str],
-  ) -> tuple[SheetData, SheetData]:
-  ```
-  For each cell (row=source_group, col=field_name):
-  - Quality sheet: `provenance[field_name]["winning_weight"]` → float 0.00-1.00
-  - Sources sheet: `provenance[field_name]["top_sources"]` → resolved URLs via source_url_map
+The `provenance_sheets: bool` field was **not added** as planned. Instead, provenance sheets are **always generated** for xlsx output. The 4 API params (`layout`, `entity_focus`, `include_provenance`, `provenance_sheets`) were all removed — the report is always a unified 3-sheet (Data + Quality + Sources).
 
-  Returns (quality_sheet, sources_sheet) with identical columns/rows as data_sheet.
+- [x] **C1.** `ReportRequest` simplified — removed fields instead of adding
+- [x] **C2.** `build_provenance_sheets()` implemented with per-entity quality averaging for paginated columns
+- [x] **C3.** `service.py` always builds 3 sheets: `_resolve_source_urls()` + `_group_records_by_sg()` extracted as helpers
+- [x] **C4.** No threading needed — always on
+- [x] **C5.** Tests in `tests/test_provenance_sheets.py` — entity provenance averaging, quality filtering, source resolution
 
-- [ ] **C3.** `src/services/reports/service.py:_generate_consolidated_table()` — When `provenance_sheets=True`:
-  1. Collect all source_ids from all records' provenance top_sources
-  2. Query: `SELECT id, uri FROM sources WHERE id = ANY(:ids)` → build `source_url_map: dict[str, str]`
-  3. For each data sheet, call `build_provenance_sheets()` → (quality, sources)
-  4. Interleave sheets: `[Companies, Companies Quality, Companies Sources, Products, Products Quality, ...]`
-  5. Pass full list to `create_multi_sheet_workbook()`
-
-- [ ] **C4.** Thread `provenance_sheets` parameter from `generate()` → `_generate_consolidated_table()`
-
-- [ ] **C5.** `tests/test_provenance_sheets.py` (new) — Test:
-  - Identical dimensions between data/quality/sources sheets
-  - Correct winning_weight values in quality cells
-  - Correct URL resolution in sources cells
-  - Backward compat: old records missing winning_weight → N/A in quality cells
-  - Entity sheets get provenance companions too
-
-### Part D: Deploy + reconsolidate
+### Part D: Deploy + reconsolidate — PENDING
 
 - [ ] **D1.** Deploy code changes
-- [ ] **D2.** Reconsolidate all 3 projects (repopulates with min_count=1 + winning_weight)
-- [ ] **D3.** Generate test report with `provenance_sheets=true` and verify
+- [ ] **D2.** Reconsolidate all 3 projects
+- [ ] **D3.** Generate test report and verify
 
 ## Implementation Order
 

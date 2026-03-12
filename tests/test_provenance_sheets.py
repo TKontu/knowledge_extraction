@@ -1,8 +1,7 @@
-"""Tests for build_provenance_sheets() and provenance_sheets validation."""
+"""Tests for build_provenance_sheets() in unified 3-sheet mode."""
 
 import pytest
 
-from models import ReportRequest
 from services.reports.consolidated_builder import SheetData, build_provenance_sheets
 
 
@@ -14,11 +13,11 @@ class _FakeRecord:
 
 
 class TestBuildProvenanceSheets:
-    def _make_data_sheet(self, rows, columns=None):
+    def _make_data_sheet(self, rows, columns=None, name="Company Data"):
         columns = columns or ["source_group", "company_name", "employee_count"]
         labels = {c: c.replace("_", " ").title() for c in columns}
         return SheetData(
-            name="Companies",
+            name=name,
             rows=rows,
             columns=columns,
             labels=labels,
@@ -167,8 +166,8 @@ class TestBuildProvenanceSheets:
 
         quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
 
-        assert quality.name == "Companies - Quality"
-        assert sources.name == "Companies - Sources"
+        assert quality.name == "Company Data - Quality"
+        assert sources.name == "Company Data - Sources"
 
     def test_source_group_preserved(self):
         """source_group column is preserved in companion sheets."""
@@ -182,27 +181,23 @@ class TestBuildProvenanceSheets:
         assert quality.rows[0]["source_group"] == "sg1"
         assert sources.rows[0]["source_group"] == "sg1"
 
-    def test_entity_sheet_uses_list_level_provenance(self):
-        """Entity sheets use list-level provenance keyed by entity group name."""
-        # Entity sheet: key="products", columns are individual field names
-        entity_sheet = SheetData(
-            name="Products",
+    def test_list_suffix_stripping(self):
+        """Entity list columns (e.g., products_gearbox_list) resolve provenance via _list stripping."""
+        data_sheet = SheetData(
+            name="Company Data",
             rows=[
-                {"source_group": "sg1", "name": "Motor X", "type": "AC"},
-                {"source_group": "sg1", "name": "Drive Y", "type": "VFD"},
+                {"source_group": "sg1", "company_name": "ABB", "products_gearbox_list": "GearX (500Nm)"},
             ],
-            columns=["source_group", "name", "type"],
-            labels={"source_group": "Source", "name": "Name", "type": "Type"},
-            key="products",  # This marks it as an entity sheet
+            columns=["source_group", "company_name", "products_gearbox_list"],
+            labels={"source_group": "Source", "company_name": "Name", "products_gearbox_list": "Products"},
         )
         records_by_sg = {
             "sg1": {
-                "products": _FakeRecord(provenance={
-                    # Provenance is keyed by entity group name, not field names
-                    "products": {
-                        "winning_weight": 0.82,
-                        "top_sources": ["s1", "s2"],
-                    },
+                "company_info": _FakeRecord(provenance={
+                    "company_name": {"winning_weight": 0.9, "top_sources": ["s1"]},
+                }),
+                "products_gearbox": _FakeRecord(provenance={
+                    "products_gearbox": {"winning_weight": 0.85, "top_sources": ["s1", "s2"]},
                 }),
             },
         }
@@ -211,67 +206,84 @@ class TestBuildProvenanceSheets:
             "s2": "https://example.com/b",
         }
 
-        quality, sources = build_provenance_sheets(
-            entity_sheet, records_by_sg, source_url_map
-        )
+        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, source_url_map)
 
-        # All entity rows get the list-level provenance
-        assert quality.rows[0]["name"] == pytest.approx(0.82)
-        assert quality.rows[0]["type"] == pytest.approx(0.82)
-        assert quality.rows[1]["name"] == pytest.approx(0.82)
+        # products_gearbox_list → strip _list → products_gearbox → found in provenance
+        assert quality.rows[0]["products_gearbox_list"] == pytest.approx(0.85)
+        assert "https://example.com/a" in sources.rows[0]["products_gearbox_list"]
 
-        # Sources resolved for all entity columns
-        assert "https://example.com/a" in sources.rows[0]["name"]
-        assert "https://example.com/b" in sources.rows[0]["name"]
-
-    def test_entity_sheet_no_key_stays_na(self):
-        """Sheets without key don't use entity fallback."""
+    def test_entity_provenance_averaged(self):
+        """Entity list quality shows average of per-entity winning_weights."""
         data_sheet = SheetData(
-            name="Companies",
-            rows=[{"source_group": "sg1", "unknown_col": "X"}],
-            columns=["source_group", "unknown_col"],
-            labels={"source_group": "Source", "unknown_col": "Unknown"},
-            key="",  # No entity key
+            name="Company Data",
+            rows=[{"source_group": "sg1", "company_name": "ABB", "products_gearbox_list": "..."}],
+            columns=["source_group", "company_name", "products_gearbox_list"],
+            labels={"source_group": "Source", "company_name": "Name", "products_gearbox_list": "Products"},
         )
         records_by_sg = {
             "sg1": {
                 "company_info": _FakeRecord(provenance={
-                    "company_name": {"winning_weight": 0.9, "top_sources": []},
+                    "company_name": {"winning_weight": 0.9, "top_sources": ["s1"]},
+                }),
+                "products_gearbox": _FakeRecord(provenance={
+                    "products_gearbox": {
+                        "winning_weight": 0.85,
+                        "top_sources": ["s1"],
+                        "entity_provenance": [
+                            {"winning_weight": 0.9, "top_sources": ["s1"]},
+                            {"winning_weight": 0.7, "top_sources": ["s1"]},
+                            {"winning_weight": 0.5, "top_sources": ["s1"]},
+                        ],
+                    },
                 }),
             },
         }
 
         quality, _ = build_provenance_sheets(data_sheet, records_by_sg, {})
-        assert quality.rows[0]["unknown_col"] == "N/A"
 
+        # Scalar field uses winning_weight directly
+        assert quality.rows[0]["company_name"] == pytest.approx(0.9)
+        # Entity list uses average of per-entity weights that pass min_quality (0.3)
+        # All 3 pass: (0.9 + 0.7 + 0.5) / 3 = 0.7
+        assert quality.rows[0]["products_gearbox_list"] == pytest.approx(0.7, abs=0.001)
 
-class TestProvenanceSheetsValidation:
-    def test_rejects_provenance_sheets_with_md_format(self):
-        """provenance_sheets=True requires output_format='xlsx'."""
-        with pytest.raises(ValueError, match="provenance_sheets requires output_format='xlsx'"):
-            ReportRequest(
-                type="table",
-                group_by="consolidated",
-                output_format="md",
-                provenance_sheets=True,
-            )
-
-    def test_rejects_provenance_sheets_without_consolidated(self):
-        """provenance_sheets=True requires group_by='consolidated'."""
-        with pytest.raises(ValueError, match="provenance_sheets requires group_by='consolidated'"):
-            ReportRequest(
-                type="table",
-                group_by="source",
-                output_format="xlsx",
-                provenance_sheets=True,
-            )
-
-    def test_accepts_valid_provenance_sheets_request(self):
-        """Valid combination: xlsx + consolidated + provenance_sheets."""
-        req = ReportRequest(
-            type="table",
-            group_by="consolidated",
-            output_format="xlsx",
-            provenance_sheets=True,
+    def test_entity_provenance_filters_low_quality(self):
+        """Entity provenance average excludes entities below quality threshold."""
+        data_sheet = SheetData(
+            name="Company Data",
+            rows=[{"source_group": "sg1", "products_list": "..."}],
+            columns=["source_group", "products_list"],
+            labels={"source_group": "Source", "products_list": "Products"},
         )
-        assert req.provenance_sheets is True
+        records_by_sg = {
+            "sg1": {
+                "products": _FakeRecord(provenance={
+                    "products": {
+                        "winning_weight": 0.5,
+                        "top_sources": ["s1"],
+                        "entity_provenance": [
+                            {"winning_weight": 0.8, "top_sources": ["s1"]},
+                            {"winning_weight": 0.1, "top_sources": ["s1"]},  # Below 0.3
+                        ],
+                    },
+                }),
+            },
+        }
+
+        quality, _ = build_provenance_sheets(data_sheet, records_by_sg, {})
+
+        # Only entity with 0.8 passes, so average = 0.8
+        assert quality.rows[0]["products_list"] == pytest.approx(0.8)
+
+    def test_parametric_sheet_name(self):
+        """Sheet name is derived from data_sheet.name, not hardcoded."""
+        data_sheet = self._make_data_sheet(
+            [{"source_group": "sg1", "company_name": "ABB", "employee_count": 100}],
+            name="Job Listing Data",
+        )
+        records_by_sg = {"sg1": {"info": _FakeRecord(provenance={})}}
+
+        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
+
+        assert quality.name == "Job Listing Data - Quality"
+        assert sources.name == "Job Listing Data - Sources"

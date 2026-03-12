@@ -91,15 +91,17 @@ class SchemaTableGenerator:
         self,
         items: list[dict],
         field_group: FieldGroup,
-        max_items: int = 10,
+        max_items: int = 50,
     ) -> str:
         """Format entity list items for table cell.
 
         Generic version that works with any entity_list schema.
-        Shows identifying field + key spec fields.
+        Shows identifying field followed by ALL other fields with values.
+
+        Quality filtering should be done by the caller before passing items.
 
         Args:
-            items: List of entity dicts from extraction data.
+            items: List of entity dicts (already quality-filtered).
             field_group: The FieldGroup defining the entity structure.
             max_items: Maximum items to include in formatted output.
 
@@ -112,12 +114,8 @@ class SchemaTableGenerator:
         # Find identifying field (first text field matching common patterns)
         id_field = self._find_id_field(field_group.fields)
 
-        # Find key spec fields (numeric fields, enums) - max 3
-        spec_fields = [
-            f
-            for f in field_group.fields
-            if f.field_type in ("integer", "float", "enum") and f.name != id_field
-        ][:3]
+        # All non-id fields in schema order
+        detail_fields = [f for f in field_group.fields if f.name != id_field]
 
         parts = []
         for item in items[:max_items]:
@@ -125,22 +123,27 @@ class SchemaTableGenerator:
             if name is None:
                 name = "Unknown"
 
-            specs = []
-            for sf in spec_fields:
-                val = item.get(sf.name)
-                if val is not None:
-                    # Add unit suffix if field name suggests it
-                    unit = self._infer_unit(sf.name)
-                    specs.append(f"{val}{unit}")
+            details = []
+            for df in detail_fields:
+                val = item.get(df.name)
+                if val is None:
+                    continue
+                unit = self._infer_unit(df.name)
+                if unit:
+                    details.append(f"{val}{unit}")
+                elif isinstance(val, bool):
+                    details.append("Yes" if val else "No")
+                else:
+                    details.append(str(val))
 
-            if specs:
-                parts.append(f"{name} ({', '.join(specs)})")
+            if details:
+                parts.append(f"{name} ; {' ; '.join(details)}")
             else:
                 parts.append(str(name))
 
-        result = "; ".join(parts)
+        result = "\n".join(parts)
         if len(items) > max_items:
-            result += f" (+{len(items) - max_items} more)"
+            result += f"\n(+{len(items) - max_items} more)"
         return result
 
     def _get_field_label(self, field: FieldDefinition) -> str:
@@ -172,7 +175,9 @@ class SchemaTableGenerator:
     def _find_id_field(self, fields: list[FieldDefinition]) -> str | None:
         """Find the identifying field for an entity list.
 
-        Checks for common ID field patterns, then falls back to first text field.
+        Uses the first field in the schema definition, since template
+        authors define fields in order of importance — the first field
+        is always the identifying one.
 
         Args:
             fields: List of field definitions.
@@ -180,19 +185,7 @@ class SchemaTableGenerator:
         Returns:
             Field name to use as identifier, or None if not found.
         """
-        # Check for common ID field patterns
-        id_patterns = ["name", "product_name", "entity_id", "id", "title"]
-        for pattern in id_patterns:
-            for field in fields:
-                if field.name == pattern or field.name.endswith(f"_{pattern}"):
-                    return field.name
-
-        # Fallback to first text field
-        for field in fields:
-            if field.field_type == "text":
-                return field.name
-
-        return None
+        return fields[0].name if fields else None
 
     def _infer_unit(self, field_name: str) -> str:
         """Infer unit suffix from field name.
@@ -224,6 +217,63 @@ class SchemaTableGenerator:
             if lower_name.endswith(suffix):
                 return unit
         return ""
+
+    def get_unified_columns(
+        self, extraction_schema: dict
+    ) -> tuple[list[str], dict[str, str], dict[str, str], dict[str, FieldGroup]]:
+        """All columns for unified one-row-per-source-group report.
+
+        Includes scalars inline and entity list groups as summary columns.
+
+        Args:
+            extraction_schema: Project's JSONB extraction schema.
+
+        Returns:
+            (column_names, column_labels, column_types, entity_groups)
+            entity_groups maps column_name -> FieldGroup for entity formatting.
+        """
+        field_groups = self._adapter.convert_to_field_groups(extraction_schema)
+
+        # Get source_label from schema context
+        context = extraction_schema.get("extraction_context", {})
+        source_label = context.get("source_label", "Source")
+
+        # First pass: detect collisions among scalar fields
+        field_name_count: dict[str, int] = {}
+        for group in field_groups:
+            if not group.is_entity_list:
+                for field in group.fields:
+                    field_name_count[field.name] = (
+                        field_name_count.get(field.name, 0) + 1
+                    )
+
+        columns: list[str] = ["source_group"]
+        labels: dict[str, str] = {"source_group": source_label}
+        col_types: dict[str, str] = {}
+        entity_groups: dict[str, FieldGroup] = {}
+
+        for group in field_groups:
+            if group.is_entity_list:
+                col_name = f"{group.name}_list"
+                columns.append(col_name)
+                labels[col_name] = self._humanize(group.name)
+                col_types[col_name] = "entity_list"
+                entity_groups[col_name] = group
+            else:
+                for field in group.fields:
+                    if field_name_count.get(field.name, 0) > 1:
+                        col_name = f"{group.name}.{field.name}"
+                    else:
+                        col_name = field.name
+                    columns.append(col_name)
+                    label = self._get_field_label(field)
+                    unit = self._infer_unit(field.name)
+                    if unit and not label.endswith(unit):
+                        label = f"{label} ({unit})"
+                    labels[col_name] = label
+                    col_types[col_name] = field.field_type
+
+        return columns, labels, col_types, entity_groups
 
     def get_scalar_columns(
         self, extraction_schema: dict

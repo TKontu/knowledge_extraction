@@ -450,10 +450,6 @@ class KnowledgeExtractionClient:
         group_by: str = "source",
         include_merge_metadata: bool = False,
         max_extractions: int = 50,
-        layout: str = "multi_sheet",
-        entity_focus: str | None = None,
-        include_provenance: bool = False,
-        provenance_sheets: bool = False,
     ) -> dict[str, Any]:
         """Generate a report.
 
@@ -466,10 +462,6 @@ class KnowledgeExtractionClient:
             group_by: Grouping strategy (source, domain, consolidated)
             include_merge_metadata: Include merge provenance for domain grouping
             max_extractions: Max extractions per source_group (default 50)
-            layout: Layout for consolidated reports (multi_sheet, single_sheet)
-            entity_focus: Entity group for single_sheet denormalization
-            include_provenance: Include provenance columns in consolidated reports
-            provenance_sheets: 3-sheet provenance report (Data, Quality, Sources)
         """
         return await self._request(
             "POST",
@@ -482,10 +474,6 @@ class KnowledgeExtractionClient:
                 "group_by": group_by,
                 "include_merge_metadata": include_merge_metadata,
                 "max_extractions": max_extractions,
-                "layout": layout,
-                "entity_focus": entity_focus,
-                "include_provenance": include_provenance,
-                "provenance_sheets": provenance_sheets,
             },
         )
 

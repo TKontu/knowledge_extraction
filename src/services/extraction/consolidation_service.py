@@ -192,7 +192,7 @@ class ConsolidationService:
 
         for field_name, field in record.fields.items():
             data[field_name] = field.value
-            provenance[field_name] = {
+            prov_entry: dict = {
                 "strategy": field.strategy,
                 "source_count": field.source_count,
                 "grounded_count": field.grounded_count,
@@ -200,6 +200,9 @@ class ConsolidationService:
                 "winning_weight": field.winning_weight,
                 "top_sources": field.top_sources,
             }
+            if field.entity_provenance is not None:
+                prov_entry["entity_provenance"] = field.entity_provenance
+            provenance[field_name] = prov_entry
             # Record-level grounded_count = max across fields. Per-field
             # breakdown is in the provenance JSONB for detailed queries.
             total_grounded = max(total_grounded, field.grounded_count)

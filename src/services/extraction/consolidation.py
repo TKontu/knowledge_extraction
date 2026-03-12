@@ -60,6 +60,7 @@ class ConsolidatedField:
     agreement: float = 0.0
     winning_weight: float = 0.0
     top_sources: list[str] = field(default_factory=list)
+    entity_provenance: list[dict] | None = None
 
 
 @dataclass
@@ -362,7 +363,39 @@ def consolidate_field(
         winning_weight = 0.0
 
     grounded_count = sum(1 for v in values if v.weight > 0)
-    top_sources = [v.source_id for v in values if v.source_id][:5]
+
+    # Top sources: only grounded values that match the winning result,
+    # sorted by weight descending so the strongest evidence comes first.
+    if result_value is not None:
+        if isinstance(result_value, list):
+            # union_dedup: all grounded contributors
+            contributing = sorted(
+                (v for v in values if v.source_id and v.weight > 0),
+                key=lambda v: v.weight,
+                reverse=True,
+            )
+        else:
+            # Scalar: only sources whose value matches the winning result
+            contributing = sorted(
+                (
+                    v
+                    for v in values
+                    if v.source_id
+                    and v.weight > 0
+                    and v.value is not None
+                    and (
+                        str(v.value).strip().lower()
+                        == str(result_value).strip().lower()
+                        if isinstance(v.value, str)
+                        else v.value == result_value
+                    )
+                ),
+                key=lambda v: v.weight,
+                reverse=True,
+            )
+        top_sources = [v.source_id for v in contributing][:5]
+    else:
+        top_sources = []
 
     return ConsolidatedField(
         value=result_value,
@@ -525,12 +558,83 @@ def _consolidate_entity_list(
         return record
 
     result = consolidate_field(weighted_values, "union_dedup")
-    record.fields[entity_key] = result
+
+    # Compute per-entity provenance by tracing each deduped entity
+    # back to its source extraction(s).
+    entity_prov = _compute_entity_provenance(result.value, weighted_values)
+
+    # Replace the field with entity_provenance attached
+    record.fields[entity_key] = ConsolidatedField(
+        value=result.value,
+        strategy=result.strategy,
+        source_count=result.source_count,
+        grounded_count=result.grounded_count,
+        agreement=result.agreement,
+        winning_weight=result.winning_weight,
+        top_sources=result.top_sources,
+        entity_provenance=entity_prov,
+    )
 
     return record
 
 
 # ── Internal helpers ──
+
+
+def _entity_match_key(entity: dict) -> str:
+    """Compute a dedup key for an entity dict, matching _dedup_dicts logic."""
+    name = entity.get("name") or entity.get("product_name") or entity.get("id", "")
+    key = str(name).strip().lower()
+    if not key:
+        key = hashlib.sha256(
+            json.dumps(entity, sort_keys=True).encode()
+        ).hexdigest()[:16]
+    return key
+
+
+def _compute_entity_provenance(
+    deduped_entities: list[dict] | None,
+    weighted_values: list[WeightedValue],
+) -> list[dict]:
+    """Compute per-entity provenance by tracing each entity back to sources.
+
+    For each entity in the deduped result, find which source extraction(s)
+    contributed it and compute winning_weight as the max weight among those.
+
+    Returns:
+        List of dicts (one per entity), each with winning_weight and top_sources.
+    """
+    if not deduped_entities:
+        return []
+
+    # Build index: match_key → [(weight, source_id)] from all input extractions
+    source_index: dict[str, list[tuple[float, str]]] = {}
+    for wv in weighted_values:
+        if not isinstance(wv.value, list):
+            continue
+        for entity in wv.value:
+            if not isinstance(entity, dict):
+                continue
+            key = _entity_match_key(entity)
+            source_index.setdefault(key, []).append((wv.weight, wv.source_id))
+
+    # For each deduped entity, look up its sources
+    result: list[dict] = []
+    for entity in deduped_entities:
+        key = _entity_match_key(entity)
+        sources = source_index.get(key, [])
+        # Filter to grounded sources (weight > 0), sorted by weight desc
+        grounded = sorted(
+            ((w, sid) for w, sid in sources if w > 0 and sid),
+            key=lambda x: x[0],
+            reverse=True,
+        )
+        result.append({
+            "winning_weight": round(grounded[0][0], 4) if grounded else 0.0,
+            "top_sources": [sid for _, sid in grounded][:5],
+        })
+
+    return result
 
 
 def _median(sorted_vals: list) -> Any:

@@ -1023,3 +1023,154 @@ class TestWinningWeight:
         ]
         result = consolidate_field(values, "union_dedup")
         assert result.winning_weight == pytest.approx(0.0)
+
+
+# ── top_sources filtering ──
+
+
+class TestTopSources:
+    def test_only_matching_grounded_sources(self):
+        """top_sources includes only grounded sources matching winning value."""
+        values = [
+            WeightedValue("ABB", 0.9, "s1"),
+            WeightedValue("ABB", 0.7, "s2"),
+            WeightedValue("Siemens", 0.95, "s3"),
+            WeightedValue("ABB", 0.0, "s4"),
+        ]
+        result = consolidate_field(values, "frequency")
+        assert result.value == "ABB"
+        assert result.top_sources == ["s1", "s2"]
+
+    def test_sorted_by_weight_descending(self):
+        """Sources are sorted strongest-first."""
+        values = [
+            WeightedValue("X", 0.3, "s_low"),
+            WeightedValue("X", 0.9, "s_high"),
+            WeightedValue("X", 0.6, "s_mid"),
+        ]
+        result = consolidate_field(values, "frequency")
+        assert result.top_sources == ["s_high", "s_mid", "s_low"]
+
+    def test_none_result_empty_sources(self):
+        """No result → no sources."""
+        result = consolidate_field([], "frequency")
+        assert result.top_sources == []
+
+    def test_union_dedup_grounded_only(self):
+        """union_dedup: only grounded contributors (weight > 0)."""
+        values = [
+            WeightedValue(["A"], 0.8, "s1"),
+            WeightedValue(["B"], 0.0, "s2"),
+            WeightedValue(["C"], 0.6, "s3"),
+        ]
+        result = consolidate_field(values, "union_dedup")
+        assert result.top_sources == ["s1", "s3"]
+
+    def test_boolean_true_sources(self):
+        """any_true: only grounded True sources."""
+        values = [
+            WeightedValue(True, 0.9, "s_true"),
+            WeightedValue(False, 0.8, "s_false"),
+            WeightedValue(True, 0.0, "s_ungrounded"),
+        ]
+        result = consolidate_field(values, "any_true")
+        assert result.value is True
+        assert result.top_sources == ["s_true"]
+
+    def test_max_five_sources(self):
+        """top_sources capped at 5."""
+        values = [WeightedValue("X", 0.5 + i * 0.01, f"s{i}") for i in range(10)]
+        result = consolidate_field(values, "frequency")
+        assert len(result.top_sources) == 5
+        assert result.top_sources[0] == "s9"
+
+
+# ── entity_provenance ──
+
+
+class TestEntityProvenance:
+    def test_per_entity_provenance_computed(self):
+        """Entity list consolidation computes per-entity winning_weight."""
+        extractions = [
+            {
+                "data": {
+                    "products": [
+                        {"name": "Motor X", "type": "AC"},
+                        {"name": "Drive Y", "type": "VFD"},
+                    ],
+                },
+                "confidence": 0.9,
+                "grounding_scores": {"products": 1.0},
+                "source_id": "s1",
+            },
+            {
+                "data": {
+                    "products": [
+                        {"name": "Motor X", "type": "AC"},
+                        {"name": "Pump Z", "type": "centrifugal"},
+                    ],
+                },
+                "confidence": 0.7,
+                "grounding_scores": {"products": 0.8},
+                "source_id": "s2",
+            },
+        ]
+        field_defs = [
+            {"name": "name", "field_type": "string"},
+            {"name": "type", "field_type": "string"},
+        ]
+        record = consolidate_extractions(
+            extractions, field_defs, "abb", "products",
+            entity_list_key="products",
+        )
+        ep = record.fields["products"].entity_provenance
+        assert ep is not None
+        assert len(ep) == 3  # Motor X, Drive Y, Pump Z
+
+        # Motor X: from s1 (weight 0.9) and s2 (weight 0.7)
+        motor_prov = ep[0]
+        assert motor_prov["winning_weight"] == pytest.approx(0.9)
+        assert "s1" in motor_prov["top_sources"]
+        assert "s2" in motor_prov["top_sources"]
+
+        # Drive Y: only from s1 (weight 0.9)
+        drive_prov = ep[1]
+        assert drive_prov["winning_weight"] == pytest.approx(0.9)
+        assert drive_prov["top_sources"] == ["s1"]
+
+        # Pump Z: only from s2 (weight ~0.7)
+        pump_prov = ep[2]
+        assert pump_prov["top_sources"] == ["s2"]
+
+    def test_ungrounded_source_excluded_from_entity_prov(self):
+        """Ungrounded extraction (weight=0) excluded from entity provenance."""
+        extractions = [
+            {
+                "data": {"products": [{"name": "Motor X"}]},
+                "confidence": 0.9,
+                "grounding_scores": {"products": 0.0},  # ungrounded
+                "source_id": "s1",
+            },
+            {
+                "data": {"products": [{"name": "Motor X"}]},
+                "confidence": 0.8,
+                "grounding_scores": {"products": 1.0},
+                "source_id": "s2",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "string"}]
+        record = consolidate_extractions(
+            extractions, field_defs, "g", "products",
+            entity_list_key="products",
+        )
+        ep = record.fields["products"].entity_provenance
+        assert ep is not None
+        # s1 has weight 0 (ungrounded), so only s2 appears
+        assert ep[0]["winning_weight"] == pytest.approx(0.8)
+        assert ep[0]["top_sources"] == ["s2"]
+
+    def test_non_entity_field_has_no_entity_provenance(self):
+        """Non-entity fields should have entity_provenance=None."""
+        values = [WeightedValue("ABB", 0.9, "s1")]
+        result = consolidate_field(values, "frequency")
+        assert result.entity_provenance is None

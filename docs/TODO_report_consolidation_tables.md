@@ -1,8 +1,55 @@
 # Consolidated Table Reports
 
-## Status: PENDING
+## Status: COMPLETE — SUPERSEDED by Unified 3-Sheet + Pagination Architecture
 
 **Created:** 2026-03-10
+**Completed:** 2026-03-12
+
+> **This TODO is historical.** The multi-sheet/single-sheet layout system described below was never implemented. Instead, a unified 3-sheet architecture was built directly, then extended with horizontal entity pagination. See `docs/review_unified_3sheet_report.md` for the current design.
+
+## What Was Actually Built
+
+The final architecture diverges significantly from this plan:
+
+| This Plan Proposed | What Was Built |
+|--------------------|----------------|
+| `layout="multi_sheet"` / `"single_sheet"` param | Removed — always unified single data sheet |
+| `entity_focus` param for denormalized rows | Removed — entities are inline cells, not rows |
+| `include_provenance` opt-in columns | Removed — always 3 sheets (Data, Quality, Sources) |
+| `provenance_sheets` opt-in | Removed — provenance sheets always generated for xlsx |
+| `ConsolidatedReportData` with `entity_sheets` | Replaced by `SheetData` with `provenance_key_map` + `row_entity_provenance` |
+| Entity sub-tables (one sheet per entity type) | Entity lists formatted into cells with horizontal pagination |
+| List expansion sheets | List-of-dicts formatted as semicolon-delimited text in cells |
+| `compose_multi_sheet()` / `compose_single_sheet()` | Replaced by `gather()` (two-phase) + `_paginate_entities()` |
+| `validate_entity_focus()` | Removed (no entity_focus param) |
+
+### Key Design Decisions
+
+1. **One row per source_group** — ALL data (scalars + entities) in a single row. Entity lists are formatted into cells.
+2. **Horizontal pagination** — When entity count exceeds `page_size` (default 50), additional columns appear to the right (e.g., "Products Gearbox (1-50)", "Products Gearbox (51-100)").
+3. **Always 3 sheets** — Data + Quality + Sources. No opt-in flag. Quality sheet shows `winning_weight` per cell; for paginated entity columns, quality is the average of entities in that specific page.
+4. **Template-agnostic** — Sheet names from `source_label` in schema (e.g., "Company Data", "Job Listing Data"). Entity formatting uses first field in schema order as ID field.
+5. **Quality filtering** — Entities with `winning_weight < 0.3` excluded from display (`ENTITY_MIN_QUALITY` constant).
+6. **All entity fields shown** — `format_entity_list()` shows ID field + all non-null fields, not just top-3 numeric.
+
+### Files Actually Modified
+
+| File | What Changed |
+|------|-------------|
+| `src/services/reports/consolidated_builder.py` | Complete rewrite: `gather()`, `_build_unified_row()`, `_paginate_entities()`, `build_provenance_sheets()` |
+| `src/services/reports/schema_table_generator.py` | `get_unified_columns()`, simplified `format_entity_list()` + `_find_id_field()` |
+| `src/services/reports/excel_formatter.py` | `_apply_quality_formatting()`, sheet-type header colors |
+| `src/services/reports/service.py` | Simplified `_generate_consolidated_table()`, `_resolve_source_urls()`, `_group_records_by_sg()` |
+| `src/models.py` | Removed `layout`, `entity_focus`, `include_provenance`, `provenance_sheets` from `ReportRequest` |
+| `src/ke_mcp/tools/reports.py` | Removed 4 params |
+| `src/ke_mcp/client.py` | Removed 4 params |
+| `tests/test_report_consolidated.py` | Rewritten: `TestBuildUnifiedRow`, `TestEntityPagination`, `TestThreeSheetExcel` |
+| `tests/test_provenance_sheets.py` | Updated for entity provenance averaging |
+| `tests/test_schema_table_generator.py` | Updated for new `_find_id_field()` + entity formatting |
+
+---
+
+## Original Plan (Historical — NOT Implemented)
 
 ## Problem
 
