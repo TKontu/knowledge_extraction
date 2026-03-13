@@ -1,6 +1,11 @@
 """Tests for v2 inline grounding functions (ground_field_item, ground_entity_item)."""
 
-from services.extraction.grounding import ground_entity_item, ground_field_item
+from services.extraction.grounding import (
+    ground_entity_fields,
+    ground_entity_item,
+    ground_field_item,
+    score_entity_confidence,
+)
 
 
 class TestGroundFieldItem:
@@ -71,12 +76,40 @@ class TestGroundFieldItem:
         score = ground_field_item("is_manufacturer", True, None, self.CHUNK, "boolean")
         assert score == 0.0
 
-    def test_none_grounding_mode(self):
-        """Text/summary fields return 1.0 regardless."""
+    def test_text_required_grounding_mode(self):
+        """Text fields use required mode: value must appear in quote."""
+        # Value "Acme Corp" appears in quote → grounded
         score = ground_field_item(
-            "overview", "Some long summary", None, self.CHUNK, "text"
+            "company_name", "Acme Corp",
+            "Acme Corp has approximately",
+            self.CHUNK, "text",
         )
-        assert score == 1.0
+        assert score >= 0.8
+        # Without a quote → no grounding evidence
+        score_no_quote = ground_field_item(
+            "company_name", "Acme Corp", None, self.CHUNK, "text"
+        )
+        assert score_no_quote == 0.0
+
+    def test_text_required_multi_word_value(self):
+        """Text field with multi-word value — exact substring vs partial word match."""
+        source = "The company is headquartered in Zurich, Switzerland since 1995. It has offices in Geneva and Zurich."
+
+        # Value appears as exact substring in quote → high score
+        score = ground_field_item(
+            "location", "Zurich, Switzerland",
+            "headquartered in Zurich, Switzerland since 1995",
+            source, "text",
+        )
+        assert score >= 0.8
+
+        # Value words present but reordered in quote → partial score
+        score_partial = ground_field_item(
+            "location", "Zurich and Geneva",
+            "offices in Geneva and Zurich",
+            source, "text",
+        )
+        assert 0.3 <= score_partial < 0.8
 
     def test_summary_type_none_mode(self):
         score = ground_field_item(
@@ -124,3 +157,65 @@ class TestGroundEntityItem:
     def test_entity_exact_match(self):
         score = ground_entity_item("high-precision gearbox", self.CHUNK)
         assert score >= 0.95
+
+
+class TestEntityFieldGroundingIntegration:
+    """Integration tests: entity field grounding in extraction flow."""
+
+    CHUNK = "The FZG-500 planetary gearbox delivers 50 kW with 97% efficiency for mining applications."
+    QUOTE = "FZG-500 planetary gearbox delivers 50 kW with 97% efficiency"
+
+    FIELD_DEFS = [
+        {"name": "product_name", "field_type": "string"},
+        {"name": "subcategory", "field_type": "string"},
+        {"name": "power_rating_kw", "field_type": "float"},
+        {"name": "efficiency_percent", "field_type": "float"},
+    ]
+
+    def test_all_fields_grounded(self):
+        """All field values present in quote should score high."""
+        fields = {
+            "product_name": "FZG-500",
+            "subcategory": "planetary",
+            "power_rating_kw": 50,
+            "efficiency_percent": 97,
+        }
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert scores["product_name"] >= 0.5
+        assert scores["subcategory"] >= 0.5
+        assert scores["power_rating_kw"] == 1.0
+        assert scores["efficiency_percent"] == 1.0
+
+    def test_hallucinated_numeric_detected(self):
+        """A hallucinated numeric value (10x the real one) scores 0."""
+        fields = {
+            "product_name": "FZG-500",
+            "power_rating_kw": 500,  # Hallucinated: 10x real value
+        }
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert scores["power_rating_kw"] == 0.0
+        assert scores["product_name"] >= 0.5
+
+    def test_combined_with_entity_confidence(self):
+        """Field grounding feeds into entity confidence scoring."""
+        fields = {
+            "product_name": "FZG-500",
+            "subcategory": "planetary",
+            "power_rating_kw": 50,
+            "efficiency_percent": 97,
+        }
+        field_gnd = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+
+        conf_grounded = score_entity_confidence(
+            fields, self.FIELD_DEFS, 0.5, field_grounding=field_gnd, quote=self.QUOTE,
+        )
+
+        # Same entity but with hallucinated value
+        fields_bad = dict(fields)
+        fields_bad["power_rating_kw"] = 500
+        field_gnd_bad = ground_entity_fields(fields_bad, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        conf_bad = score_entity_confidence(
+            fields_bad, self.FIELD_DEFS, 0.5, field_grounding=field_gnd_bad, quote=self.QUOTE,
+        )
+
+        assert conf_grounded > conf_bad

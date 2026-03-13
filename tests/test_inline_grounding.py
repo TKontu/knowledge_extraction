@@ -19,7 +19,7 @@ def _make_field_group(fields: list[tuple[str, str]] | None = None) -> FieldGroup
         fields = [
             ("company_name", "string"),
             ("employee_count", "integer"),
-            ("description", "text"),
+            ("description", "summary"),
         ]
     return FieldGroup(
         name="company_info",
@@ -42,7 +42,7 @@ class TestGroundingScoresFromFieldGroup:
         assert field_types == {
             "company_name": "string",
             "employee_count": "integer",
-            "description": "text",
+            "description": "summary",
         }
 
     def test_compute_scores_with_field_group_types(self):
@@ -65,7 +65,7 @@ class TestGroundingScoresFromFieldGroup:
         assert scores["company_name"] == 1.0
         # integer 105000 in "about 105,000 employees" -> 1.0
         assert scores["employee_count"] == 1.0
-        # text fields excluded (grounding mode "none")
+        # summary fields excluded (grounding mode "none" — skipped in v1 backfill)
         assert "description" not in scores
 
     def test_empty_data_returns_empty_scores(self):

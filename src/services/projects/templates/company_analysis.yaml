@@ -20,7 +20,7 @@ extraction_schema:
       is_entity_list: false
       fields:
         - name: fact_text
-          field_type: text
+          field_type: summary
           required: true
           default: ""
           description: The extracted factual statement
@@ -42,7 +42,7 @@ extraction_schema:
           default: 0.8
           description: Confidence score of the extraction
         - name: source_quote
-          field_type: text
+          field_type: summary
           required: false
           description: Brief quote from the source document
 entity_types:

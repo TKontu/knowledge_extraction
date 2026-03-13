@@ -57,12 +57,14 @@ extraction_schema:
       is_entity_list: false
       fields:
         - name: notable_for
-          field_type: text
+          field_type: summary
           required: false
+          consolidation_strategy: llm_summarize
           description: What the subject is best known for
         - name: dimensions_or_measurements
-          field_type: text
+          field_type: summary
           required: false
+          consolidation_strategy: llm_summarize
           description: Any physical measurements, sizes, distances, or quantities mentioned
         - name: time_period
           field_type: text

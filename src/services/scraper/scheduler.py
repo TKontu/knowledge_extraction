@@ -12,6 +12,7 @@ from config import settings
 from constants import JobStatus, JobType
 from database import SessionLocal
 from orm_models import Job
+from services.extraction.consolidation_worker import ConsolidationWorker
 from services.extraction.worker import ExtractionWorker
 from services.scraper.crawl_worker import CrawlWorker
 from services.scraper.service_container import ServiceContainer
@@ -31,6 +32,7 @@ def get_stale_thresholds() -> dict[str, timedelta]:
         JobType.SCRAPE: timedelta(seconds=settings.scheduler.stale_threshold_scrape),
         JobType.EXTRACT: timedelta(seconds=settings.scheduler.stale_threshold_extract),
         JobType.CRAWL: timedelta(seconds=settings.scheduler.stale_threshold_crawl),
+        JobType.CONSOLIDATE: timedelta(seconds=1800),  # 30 minutes for LLM consolidation
         "default": timedelta(seconds=600),  # 10 minutes default
     }
 
@@ -61,6 +63,7 @@ class JobScheduler:
         self._running = False
         self._scrape_task: asyncio.Task | None = None
         self._extract_task: asyncio.Task | None = None
+        self._consolidate_task: asyncio.Task | None = None
         self._crawl_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
@@ -95,6 +98,10 @@ class JobScheduler:
             await asyncio.sleep(stagger)
         self._extract_task = asyncio.create_task(self._run_extract_worker())
 
+        if stagger > 0:
+            await asyncio.sleep(stagger)
+        self._consolidate_task = asyncio.create_task(self._run_consolidate_worker())
+
     async def stop(self) -> None:
         """Stop the background scheduler gracefully.
 
@@ -108,6 +115,8 @@ class JobScheduler:
             await asyncio.gather(*self._crawl_tasks, return_exceptions=True)
         if self._extract_task:
             await self._extract_task
+        if self._consolidate_task:
+            await self._consolidate_task
 
     async def _cleanup_stale_jobs(self) -> dict[str, int]:
         """Mark running/cancelling jobs as failed on startup.
@@ -374,6 +383,43 @@ class JobScheduler:
 
             except Exception as e:
                 logger.error("extract_worker_error", error=str(e), exc_info=True)
+                await asyncio.sleep(self.poll_interval)
+
+    async def _run_consolidate_worker(self) -> None:
+        """Main loop for processing consolidation jobs.
+
+        Continuously polls database for queued consolidation jobs and processes them.
+        """
+        shutdown = get_shutdown_manager()
+        while self._running and not shutdown.is_shutting_down:
+            try:
+                db: Session = SessionLocal()
+                try:
+                    job = (
+                        db.query(Job)
+                        .filter(
+                            Job.type == JobType.CONSOLIDATE,
+                            Job.status == JobStatus.QUEUED,
+                        )
+                        .order_by(Job.priority.desc(), Job.created_at.asc())
+                        .with_for_update(skip_locked=True)
+                        .first()
+                    )
+
+                    if job:
+                        worker = ConsolidationWorker(
+                            db=db,
+                            llm_config=settings.llm,
+                        )
+                        await worker.process_job(job)
+                    else:
+                        await asyncio.sleep(self.poll_interval)
+
+                finally:
+                    db.close()
+
+            except Exception as e:
+                logger.error("consolidate_worker_error", error=str(e), exc_info=True)
                 await asyncio.sleep(self.poll_interval)
 
 

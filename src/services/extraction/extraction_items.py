@@ -55,6 +55,7 @@ class EntityItem:
     quote: str | None
     grounding: float
     location: SourceLocation | None
+    field_grounding: dict[str, float] | None = None
 
 
 @dataclass
@@ -343,4 +344,6 @@ def _entity_to_dict(item: EntityItem) -> dict:
         d["quote"] = item.quote
     if item.location is not None:
         d["location"] = _location_to_dict(item.location)
+    if item.field_grounding:
+        d["field_grounding"] = item.field_grounding
     return d

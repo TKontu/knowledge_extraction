@@ -1,7 +1,7 @@
 # TODO: Grounding Verification & Consolidation — Implementation Plan
 
 **Created:** 2026-03-05
-**Status:** COMPLETE & DEPLOYED (2026-03-09). All 6 increments implemented, ~2055 tests passing. Three-tier grounding gate active in production. Re-extraction running on all 3 projects.
+**Status:** COMPLETE & DEPLOYED (2026-03-09, simplified 2026-03-13). All 6 increments implemented. Three-tier grounding gate active in production. Grounding simplified: `text` → `required`, descriptive fields retyped to `summary`.
 **Design doc:** `docs/TODO_grounded_extraction.md`
 **Post-implementation review:** `docs/grounding_gate_pipeline_review.md` (5 issues found and fixed)
 
@@ -67,7 +67,7 @@ def compute_grounding_scores(
 
     Returns:
         Dict of field_name → grounding_score (0.0-1.0).
-        Fields with grounding mode "none" or "semantic" are excluded.
+        Fields with grounding mode "none" or "semantic" are excluded (summary, boolean).
         Fields without quotes get 0.0.
     """
 
@@ -77,8 +77,10 @@ GROUNDING_DEFAULTS: dict[str, str] = {
     "integer": "required",
     "float": "required",
     "boolean": "semantic",  # don't string-match booleans
-    "text": "none",         # descriptions are synthesized
+    "text": "required",     # factual text fields (names, locations, identifiers)
     "enum": "required",
+    "list": "required",
+    "summary": "none",      # synthesized/descriptive content (no grounding check)
 }
 ```
 
@@ -88,7 +90,8 @@ GROUNDING_DEFAULTS: dict[str, str] = {
 - String normalization: lowercase, collapse whitespace, strip hyphens. 98.8% of company names already ground with simple matching.
 - `_quotes` dict is keyed by field name. Entity list items use `_quote` per item.
 - Boolean fields get `grounding_mode = "semantic"` → skip string-match entirely (trials showed 35% false rejection).
-- Text fields (descriptions) get `grounding_mode = "none"` → no grounding check.
+- Text fields get `grounding_mode = "required"` → full value-in-quote + quote-in-source check.
+- Summary fields (descriptive/synthesized content) get `grounding_mode = "none"` → no grounding check.
 
 ### Tests: `tests/test_grounding.py` (~25 tests)
 
@@ -119,7 +122,8 @@ TestComputeGroundingScores:
     - test_full_extraction_with_quotes (realistic company_info data)
     - test_missing_quotes (no _quotes → all 0.0)
     - test_boolean_skipped (manufactures_gears not scored)
-    - test_text_skipped (description not scored)
+    - test_summary_skipped (description not scored)
+    - test_text_scored (company_name scored)
     - test_entity_list_items (products with per-item _quote)
     - test_empty_data ({} → {})
 ```
@@ -441,7 +445,8 @@ def consolidate_extractions(
 | string | frequency |
 | integer / float | weighted_median |
 | boolean | any_true |
-| text (long) | longest_top_k |
+| text | weighted_frequency |
+| summary | longest_top_k |
 | list | union_dedup |
 | enum | frequency |
 
@@ -680,7 +685,7 @@ TestInlineGrounding:
     - test_ungrounded_extraction_has_score_0 (quote doesn't contain number)
     - test_no_quotes_all_zero
     - test_boolean_fields_excluded
-    - test_description_fields_excluded
+    - test_summary_fields_excluded
     - test_existing_pipeline_unchanged (grounding is additive, doesn't break anything)
     - test_scores_persisted_to_db
 ```

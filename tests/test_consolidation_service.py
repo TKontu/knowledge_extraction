@@ -105,7 +105,7 @@ def _create_extraction(
 
 
 class TestConsolidateSourceGroup:
-    def test_creates_consolidated_record(
+    async def test_creates_consolidated_record(
         self,
         service,
         extraction_repo,
@@ -145,7 +145,7 @@ class TestConsolidateSourceGroup:
             grounding_scores={"company_name": 1.0, "employee_count": 1.0},
         )
 
-        records = service.consolidate_source_group(test_project.id, "abb")
+        records = await service.consolidate_source_group(test_project.id, "abb")
         assert len(records) == 1
 
         # Verify DB record
@@ -162,12 +162,12 @@ class TestConsolidateSourceGroup:
         assert db_record.data["employee_count"] == 105000
         assert db_record.source_count == 2
 
-    def test_handles_no_extractions(self, service, test_project, db_session):
+    async def test_handles_no_extractions(self, service, test_project, db_session):
         """Source group with 0 extractions returns empty list."""
-        records = service.consolidate_source_group(test_project.id, "nonexistent")
+        records = await service.consolidate_source_group(test_project.id, "nonexistent")
         assert records == []
 
-    def test_provenance_stored(
+    async def test_provenance_stored(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         _create_extraction(
@@ -178,7 +178,7 @@ class TestConsolidateSourceGroup:
             grounding_scores={"company_name": 1.0},
         )
 
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
         from sqlalchemy import select
 
@@ -191,7 +191,7 @@ class TestConsolidateSourceGroup:
         assert db_record.provenance is not None
         assert "company_name" in db_record.provenance
 
-    def test_source_count_correct(
+    async def test_source_count_correct(
         self,
         service,
         extraction_repo,
@@ -213,7 +213,7 @@ class TestConsolidateSourceGroup:
             data={"company_name": "ABB"},
         )
 
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
         from sqlalchemy import select
 
@@ -224,7 +224,7 @@ class TestConsolidateSourceGroup:
         ).scalar_one()
         assert db_record.source_count == 2
 
-    def test_grounded_count_correct(
+    async def test_grounded_count_correct(
         self,
         service,
         extraction_repo,
@@ -248,7 +248,7 @@ class TestConsolidateSourceGroup:
             grounding_scores={"company_name": 0.0},
         )
 
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
         from sqlalchemy import select
 
@@ -261,7 +261,7 @@ class TestConsolidateSourceGroup:
 
 
 class TestConsolidateProject:
-    def test_all_source_groups_processed(
+    async def test_all_source_groups_processed(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         _create_extraction(
@@ -288,22 +288,22 @@ class TestConsolidateProject:
             source_group="siemens",
         )
 
-        result = service.consolidate_project(test_project.id)
+        result = await service.consolidate_project(test_project.id)
         assert result["source_groups"] >= 2
         assert result["records_created"] >= 2
         assert result["errors"] == 0
 
-    def test_project_not_found_returns_zero_counts(self, service):
+    async def test_project_not_found_returns_zero_counts(self, service):
         from uuid import uuid4
 
-        result = service.consolidate_project(uuid4())
+        result = await service.consolidate_project(uuid4())
         assert result["source_groups"] == 0
         assert result["records_created"] == 0
         assert result["errors"] == 0
 
 
 class TestReconsolidate:
-    def test_idempotent(
+    async def test_idempotent(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         """Running twice produces same result, updated_at changes."""
@@ -314,7 +314,7 @@ class TestReconsolidate:
             data={"company_name": "ABB"},
         )
 
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
         from sqlalchemy import select
 
@@ -327,7 +327,7 @@ class TestReconsolidate:
         first_id = first.id
 
         # Reconsolidate
-        service.reconsolidate(test_project.id)
+        await service.reconsolidate(test_project.id)
 
         db_session.expire_all()
         second = db_session.execute(
@@ -340,7 +340,7 @@ class TestReconsolidate:
         # Reconsolidation produces equivalent data (delete+insert, not upsert)
         assert second.source_group == first.source_group
 
-    def test_specific_source_groups(
+    async def test_specific_source_groups(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         _create_extraction(
@@ -350,12 +350,12 @@ class TestReconsolidate:
             data={"company_name": "ABB"},
             source_group="abb",
         )
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
-        result = service.reconsolidate(test_project.id, source_groups=["abb"])
+        result = await service.reconsolidate(test_project.id, source_groups=["abb"])
         assert result["records_created"] >= 1
 
-    def test_error_in_one_group_does_not_crash(
+    async def test_error_in_one_group_does_not_crash(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         """reconsolidate with explicit groups isolates per-group errors."""
@@ -372,7 +372,7 @@ class TestReconsolidate:
 
         service._upsert_record = failing_upsert
 
-        result = service.reconsolidate(test_project.id, source_groups=["abb"])
+        result = await service.reconsolidate(test_project.id, source_groups=["abb"])
         assert result["errors"] == 1
         assert result["source_groups"] == 1
 
@@ -386,7 +386,7 @@ class TestReconsolidate:
 class TestConsolidateProjectSessionRollback:
     """Verify session rollback after per-group failure keeps loop healthy."""
 
-    def test_error_in_one_group_does_not_crash_loop(
+    async def test_error_in_one_group_does_not_crash_loop(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         """If one source group fails, the loop completes and session stays usable."""
@@ -404,7 +404,7 @@ class TestConsolidateProjectSessionRollback:
 
         service._upsert_record = failing_upsert
 
-        result = service.consolidate_project(test_project.id)
+        result = await service.consolidate_project(test_project.id)
         assert result["errors"] == 1
         assert result["source_groups"] == 1
 
@@ -418,7 +418,7 @@ class TestConsolidateProjectSessionRollback:
 class TestSavepointIsolation:
     """C1: Verify that a failure in one source group preserves others."""
 
-    def test_successful_group_survives_later_failure(
+    async def test_successful_group_survives_later_failure(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         """Group A succeeds, group B fails — group A's record must survive."""
@@ -454,7 +454,7 @@ class TestSavepointIsolation:
 
         service._upsert_record = fail_on_second_call
 
-        result = service._process_source_groups(
+        result = await service._process_source_groups(
             test_project.id, ["group_a", "group_b"]
         )
         assert result["errors"] == 1
@@ -475,7 +475,7 @@ class TestSavepointIsolation:
 class TestStaleRecordCleanup:
     """H2: Verify that reconsolidation removes stale records."""
 
-    def test_removed_extraction_type_is_cleaned_up(
+    async def test_removed_extraction_type_is_cleaned_up(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         """If an extraction type disappears, its consolidated record is deleted."""
@@ -484,7 +484,7 @@ class TestStaleRecordCleanup:
             extraction_repo, test_project, test_source,
             data={"company_name": "ABB"},
         )
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
         from sqlalchemy import select
 
@@ -507,7 +507,7 @@ class TestStaleRecordCleanup:
         # consolidate_source_group returns [] when no extractions exist,
         # but the delete happens before the early-return check, so stale
         # records ARE cleaned up even when there's nothing to consolidate.
-        service.consolidate_source_group(test_project.id, "abb")
+        await service.consolidate_source_group(test_project.id, "abb")
 
         records = db_session.execute(
             select(ConsolidatedExtraction).where(
@@ -520,7 +520,7 @@ class TestStaleRecordCleanup:
 class TestConsolidateEndpoint:
     """Test the API endpoint via direct function call (no HTTP)."""
 
-    def test_trigger_consolidation(
+    async def test_trigger_consolidation(
         self, service, extraction_repo, test_project, test_source, db_session
     ):
         _create_extraction(
@@ -530,7 +530,7 @@ class TestConsolidateEndpoint:
             data={"company_name": "ABB"},
         )
 
-        result = service.consolidate_project(test_project.id)
+        result = await service.consolidate_project(test_project.id)
         assert "source_groups" in result
         assert "records_created" in result
 
@@ -538,7 +538,7 @@ class TestConsolidateEndpoint:
 class TestZeroConfidenceHandling:
     """Verify that confidence=0.0 is not treated as None (falsy bug)."""
 
-    def test_zero_confidence_produces_zero_weight(
+    async def test_zero_confidence_produces_zero_weight(
         self,
         service,
         extraction_repo,
@@ -567,8 +567,144 @@ class TestZeroConfidenceHandling:
             grounding_scores={"company_name": 1.0},
         )
 
-        records = service.consolidate_source_group(test_project.id, "abb")
+        records = await service.consolidate_source_group(test_project.id, "abb")
         assert len(records) == 1
         # With the fix, 0.0 confidence → near-zero weight → ABB wins
         # Before the fix, 0.0 was treated as 0.5 → could flip the result
         assert records[0].fields["company_name"].value == "ABB"
+
+
+class TestLLMPostProcess:
+    """Test LLM post-processing for llm_summarize strategy."""
+
+    @pytest.fixture
+    def llm_project(self, db_session):
+        project = Project(
+            name="test_llm_summarize_project",
+            extraction_schema={
+                "field_groups": [
+                    {
+                        "name": "company_info",
+                        "description": "Company information",
+                        "fields": [
+                            {"name": "company_name", "field_type": "string"},
+                            {
+                                "name": "description",
+                                "field_type": "text",
+                                "consolidation_strategy": "llm_summarize",
+                            },
+                        ],
+                        "prompt_hint": "",
+                    },
+                ]
+            },
+        )
+        db_session.add(project)
+        db_session.flush()
+        return project
+
+    @pytest.fixture
+    def llm_source(self, db_session, llm_project):
+        source = Source(
+            project_id=llm_project.id,
+            uri="https://example.com/test1",
+            source_group="abb",
+        )
+        db_session.add(source)
+        db_session.flush()
+        return source
+
+    @pytest.fixture
+    def llm_source_2(self, db_session, llm_project):
+        source = Source(
+            project_id=llm_project.id,
+            uri="https://example.com/test2",
+            source_group="abb",
+        )
+        db_session.add(source)
+        db_session.flush()
+        return source
+
+    async def test_llm_summarize_replaces_value(
+        self, service, extraction_repo, llm_project, llm_source, llm_source_2, db_session
+    ):
+        """When LLM succeeds, the synthesized text replaces longest_top_k fallback."""
+        _create_extraction(
+            extraction_repo, llm_project, llm_source,
+            data={"company_name": "ABB", "description": "ABB manufactures gearboxes"},
+            confidence=0.9, grounding_scores={"company_name": 1.0, "description": 1.0},
+        )
+        _create_extraction(
+            extraction_repo, llm_project, llm_source_2,
+            data={"company_name": "ABB", "description": "ABB is a leader in drives"},
+            confidence=0.85, grounding_scores={"company_name": 1.0, "description": 0.9},
+        )
+
+        class MockLLMClient:
+            async def complete(self, system_prompt, user_prompt, **kwargs):
+                return {"text": "ABB manufactures gearboxes and is a leader in drives."}
+
+        service_with_project = ConsolidationService(db_session, ProjectRepository(db_session))
+        records = await service_with_project.consolidate_source_group(
+            llm_project.id, "abb", llm_client=MockLLMClient(),
+        )
+        assert len(records) == 1
+        desc = records[0].fields.get("description")
+        assert desc is not None
+        assert desc.value == "ABB manufactures gearboxes and is a leader in drives."
+        assert desc.strategy == "llm_summarize"
+
+    async def test_llm_summarize_fallback_on_error(
+        self, service, extraction_repo, llm_project, llm_source, llm_source_2, db_session
+    ):
+        """When LLM fails, longest_top_k fallback is preserved."""
+        _create_extraction(
+            extraction_repo, llm_project, llm_source,
+            data={"company_name": "ABB", "description": "Short desc"},
+            confidence=0.9, grounding_scores={"company_name": 1.0, "description": 1.0},
+        )
+        _create_extraction(
+            extraction_repo, llm_project, llm_source_2,
+            data={"company_name": "ABB", "description": "A longer description than the first"},
+            confidence=0.85, grounding_scores={"company_name": 1.0, "description": 0.9},
+        )
+
+        class FailingLLMClient:
+            async def complete(self, system_prompt, user_prompt, **kwargs):
+                raise RuntimeError("LLM unavailable")
+
+        service_with_project = ConsolidationService(db_session, ProjectRepository(db_session))
+        records = await service_with_project.consolidate_source_group(
+            llm_project.id, "abb", llm_client=FailingLLMClient(),
+        )
+        assert len(records) == 1
+        desc = records[0].fields.get("description")
+        assert desc is not None
+        # Should keep longest_top_k fallback
+        assert desc.strategy == "llm_summarize"  # Strategy name from consolidate_field
+        assert "description" in desc.value.lower() or "desc" in desc.value.lower()
+
+    async def test_no_llm_client_uses_fallback(
+        self, service, extraction_repo, llm_project, llm_source, llm_source_2, db_session
+    ):
+        """Without llm_client, llm_summarize uses longest_top_k."""
+        _create_extraction(
+            extraction_repo, llm_project, llm_source,
+            data={"company_name": "ABB", "description": "Short"},
+            confidence=0.9, grounding_scores={"company_name": 1.0, "description": 1.0},
+        )
+        _create_extraction(
+            extraction_repo, llm_project, llm_source_2,
+            data={"company_name": "ABB", "description": "A longer description"},
+            confidence=0.85, grounding_scores={"company_name": 1.0, "description": 0.9},
+        )
+
+        service_with_project = ConsolidationService(db_session, ProjectRepository(db_session))
+        records = await service_with_project.consolidate_source_group(
+            llm_project.id, "abb",
+        )
+        assert len(records) == 1
+        desc = records[0].fields.get("description")
+        assert desc is not None
+        # longest_top_k picks the longest string from top-K
+        assert desc.value == "A longer description"

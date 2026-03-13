@@ -1,61 +1,50 @@
 # Handoff: Knowledge Extraction Orchestrator
 
-**Last updated:** 2026-03-09
+**Last updated:** 2026-03-13
 
 ## Current State
 
+### Uncommitted: Consolidation Quality Fixes D, F, G→I, H + Grounding Simplification
+20+ modified files + 2 new files. All tests pass.
+
+**What was implemented:**
+- **Fix D**: LLM summary consolidation — `llm_summarize` strategy, async `_llm_post_process()` in `ConsolidationService`, background job via `ConsolidationWorker` + scheduler loop. `use_llm=True` returns 202 with `job_id`.
+- **Fix F**: Entity per-field grounding — `ground_entity_fields()`, `field_grounding` on `EntityItem`, `_filter_entity_fields()` in gate
+- **Fix G→I (superseded)**: Grounding mode overrides removed — replaced by grounding simplification (see below)
+- **Fix H**: Entity confidence scoring — `score_entity_confidence()` replaces default 0.5 using completeness, ID presence, field grounding, quote quality
+- **Grounding Simplification**: `GROUNDING_DEFAULTS["text"]` changed from `"semantic"` to `"required"`. Descriptive text fields retyped to `summary` (grounding_mode=none). All 22 `grounding_mode: required` overrides removed from templates (now redundant). Net effect: field_type alone determines grounding behavior, no per-field overrides needed.
+- **Pipeline review bug fixes**: `grounding_mode` overrides were silently dropped (now fixed), LLM consolidation moved from inline HTTP to background job
+
 ### Deployed & Running
 - **v2 extraction pipeline** live with three-tier grounding gate, LLM quote rescue, negation filtering, confidence recalibration
-- **Full re-extraction in progress** (all three projects, `force=True`):
+- **Phase B prompt improvements** deployed (92.0% well-grounded baseline)
 
-| Project | Job ID | Sources | Status |
-|---------|--------|---------|--------|
-| Industrial Drivetrain | `66c9b300-3f9e-4dce-b13b-b39e1e549b4b` | 11,340 | Running |
-| Jobs Quoting Trial | `60d84d11-7ccb-4a65-934d-6dcffc7a6867` | 35 | Queued |
-| Wikipedia Quoting Trial | `e4dfc752-b58e-4be5-8dab-bb76cd0adc2d` | 20 | Queued |
+## Next Steps
 
-### Observed During Extraction
-- **Grounding gate active**: `v2_source_grounding_retry` events firing when `avg_grounding` is low (0.0, 0.35, 0.4)
-- **Truncation issue on `company_meta`**: RESOLVED by Phase B hallucination guard. Previously Brazilian company pages caused 28K+ char responses (LLM hallucinated municipality lists). Now returns 20-27 legitimate locations. Zero truncations in baseline trial (148 extractions).
+### Immediate
+- [ ] Commit all uncommitted changes
+- [ ] Deploy to production
+- [ ] Update existing project schemas via `PUT /projects/{id}` to retype descriptive text fields to `summary` (templates only affect new projects)
+- [ ] Run backfill: `POST /projects/{id}/backfill-grounding-v2?dry_run=false` on all 3 projects
+- [ ] Reconsolidate drivetrain project with `use_llm=true` (now a background job)
+- [ ] Generate reports and verify quality improvements
 
-## Completed (all deployed)
-
-- **Three-tier grounding gate** (Phase A, `docs/TODO_extraction_quality.md`):
-  - `is_negation_quote()` in `grounding.py` — regex filter for "No mention of..." / "N/A" quotes
-  - `rescue_quote()` in `llm_grounding.py` — LLM finds exact verbatim passage, re-verifies
-  - `apply_grounding_gate()` in `schema_orchestrator.py` — >=0.8 KEEP, 0.3-0.8 LLM RESCUE, <0.3 DROP
-  - `effective_weight() = min(confidence, grounding_score)` in `consolidation.py`
-- **Phase B prompt improvements** (2026-03-09): Hallucination guard + quote-not-value in v2 prompts. Baseline: 92.0% well-grounded, 0.4% poorly-grounded, 0 truncations. See `docs/baseline_phase_b_prompt_improvements.md`.
-- **Pipeline review & 5 fixes** (dead code removal, semaphore optimization, entity rescue)
-- **v2 extraction pipeline** — per-field structured data, inline grounding, cardinality-based merge, entity pagination
-- **Grounding & consolidation pipeline** — 6 increments, 164 tests, +4654 lines
-- **Domain boilerplate dedup** — all phases (A-F)
-- **DB migrations** — `grounding_scores` JSONB, `consolidated_extractions`, `data_version`
-- **All prior fixes** — pipeline fixes, extraction reliability, scheduler resilience, typed config facades
-
-## Next Steps (prioritized)
-
-### 1. Post-extraction analysis (after current jobs complete)
-- [ ] Compare grounding metrics before/after for drivetrain — quantify improvement from grounding gate
-- [ ] Check quality on jobs and wikipedia — confirm high grounding rates
-- [ ] Run consolidation: `POST /projects/{id}/consolidate` on all three projects
-
-### 2. Re-extract with Phase B prompts
-- [ ] **Trigger re-extraction** on all 3 projects with Phase B prompts deployed
-- [ ] **Compare grounding metrics** before/after to confirm at-scale improvement
-- [ ] **Run consolidation** on re-extracted data
-
-### 3. Position tracing (Phase C)
-- [ ] **Implement quote-to-source tracing** — `docs/TODO_quote_source_tracing.md`. Algorithm validated: 87.3% match rate. Reference impl: `scripts/trial_ground_and_locate.py`
-
-### 4. Classification (Phase C)
-- [ ] **LLM skip-gate** — binary with gemma3-4B, 92.6% recall. See `docs/TODO_classification_robustness.md`
-
-### 5. Later
-- [ ] Report integration with consolidation
+### Later
+- [ ] Position tracing (Phase C) — `docs/TODO_quote_source_tracing.md`, algorithm validated: 87.3% match rate
+- [ ] LLM skip-gate classification — gemma3-4B, 92.6% recall. See `docs/TODO_classification_robustness.md`
 - [ ] Search fix + reranking (bge-reranker-v2-m3)
 - [ ] Multilingual product dedup during consolidation
-- [ ] Field-specific grounding thresholds
+
+## Key Files
+
+- `src/services/extraction/grounding.py` — `GROUNDING_DEFAULTS` (text=required, summary=none), `ground_entity_fields()`, `score_entity_confidence()`
+- `src/services/extraction/schema_orchestrator.py` — `apply_grounding_gate()`, `grounding_mode_overrides` (for rare per-field overrides)
+- `src/services/extraction/consolidation_service.py` — async methods, `_llm_post_process()`
+- `src/services/extraction/consolidation_worker.py` — NEW: background worker for consolidation jobs
+- `src/services/scraper/scheduler.py` — `_run_consolidate_worker()` loop
+- `src/api/v1/projects.py` — consolidation endpoint: 202 pattern for `use_llm=True`
+- `src/services/extraction/consolidation.py` — `llm_summarize` strategy, `get_llm_summarize_candidates()`
+- `src/constants.py` — `JobType.CONSOLIDATE`
 
 ## Deployment Context
 
@@ -66,17 +55,6 @@
 - **Embeddings**: bge-m3 on `192.168.0.136:9003`
 - **DB**: `scristill:scristill@192.168.0.136:5432/scristill` (psycopg v3)
 - **Portainer env ID**: 3
-- **DB column**: `uri` not `url` on sources table
-
-## Key Files
-
-- `src/services/extraction/grounding.py` — `verify_quote_in_source()` (3-tier), `ground_field_item()`, `is_negation_quote()`
-- `src/services/extraction/llm_grounding.py` — `LLMGroundingVerifier`, `rescue_quote()`
-- `src/services/extraction/schema_orchestrator.py` — `apply_grounding_gate()`, `_parse_chunk_to_v2()`, `_extract_entity_chunk_v2()`
-- `src/services/extraction/consolidation.py` — 6 strategies, `effective_weight()`
-- `src/services/extraction/schema_extractor.py` — extraction prompts (`_HALLUCINATION_GUARD`, `_QUOTE_NOT_VALUE_NOTE` deployed)
-- `src/services/llm/chunking.py` — `chunk_document()`
-- `docker-compose.prod.yml` — `EXTRACTION_DATA_VERSION=2`
 
 ## Project IDs
 
@@ -88,17 +66,17 @@
 
 | Doc | Status |
 |-----|--------|
+| `docs/TODO_consolidation_quality.md` | COMPLETE — all fixes (0, A-H) + grounding simplification |
 | `docs/TODO_grounding_and_consolidation.md` | COMPLETE — all 6 increments |
 | `docs/TODO_extraction_quality.md` | Phase A & B COMPLETE & deployed |
-| `docs/baseline_phase_b_prompt_improvements.md` | Phase B baseline results (92.0% well-grounded) |
-| `docs/TODO_grounded_extraction.md` | Layers 1+3 COMPLETE, Layer 2 (skip-gate) + Layers 4-5 pending |
+| `docs/TODO_grounded_extraction.md` | Layers 1+3 COMPLETE, Layer 2 (skip-gate) pending |
 | `docs/TODO_classification_robustness.md` | Ready to implement (v3 spec) |
 | `docs/TODO_quote_source_tracing.md` | Ready to implement (algorithm validated) |
-| `docs/TODO_global_sources.md` | Ready to implement |
 
 ## Context
 
 - **v2 is live**: All new extractions use v2 format with inline grounding. v1 data coexists.
-- **Grounding gate deployed**: Three-tier gate drops fabricated data, rescues borderline paraphrases.
-- **Test suite**: ~2055 tests passing
-- **Content is NOT sentences**: Tables, lists, key-value specs, fragments. Block-based matching (`\n\n` then `\n`) aligns with actual content structure.
+- **Grounding model**: `text` = required (value-in-quote + quote-in-source), `summary` = none (always 1.0), `boolean` = semantic (quote-in-source only). No per-field `grounding_mode` overrides needed — field_type determines behavior.
+- **Test suite**: 2281+ tests passing
+- **Consolidation stale threshold**: 30 minutes (vs 10 min default) for LLM synthesis time
+- **Pre-existing lint warnings**: B008 (Depends) in projects.py, E402 (imports) in scheduler.py — not introduced by this work

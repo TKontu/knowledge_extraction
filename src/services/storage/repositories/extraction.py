@@ -447,6 +447,27 @@ class ExtractionRepository:
         self._session.expire_all()
         return len(mappings)
 
+    def update_v2_data_batch(self, updates: list[tuple[UUID, dict]]) -> int:
+        """Batch update data column for v2 extractions.
+
+        Args:
+            updates: List of (extraction_id, new_data_dict) tuples.
+
+        Returns:
+            Number of extractions updated.
+        """
+        if not updates:
+            return 0
+
+        mappings = [
+            {"id": extraction_id, "data": data}
+            for extraction_id, data in updates
+        ]
+        self._session.bulk_update_mappings(Extraction, mappings)
+        self._session.flush()
+        self._session.expire_all()
+        return len(mappings)
+
     def find_orphaned(
         self,
         project_id: UUID | None = None,

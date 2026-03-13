@@ -151,8 +151,8 @@ class TestFieldTypeAwareGating:
         mock_verifier.rescue_quote.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_text_borderline_kept_without_rescue(self, mock_verifier):
-        """Text fields (grounding_mode=none) with borderline score are kept as-is."""
+    async def test_summary_borderline_kept_with_quote(self, mock_verifier):
+        """Summary fields (grounding_mode=none) with borderline score are kept."""
         result = ChunkExtractionResult(
             chunk_index=0,
             field_items={
@@ -161,7 +161,7 @@ class TestFieldTypeAwareGating:
         )
         gated = await apply_grounding_gate(
             result, "source text", mock_verifier,
-            field_types={"description": "text"},
+            field_types={"description": "summary"},
         )
         assert "description" in gated.field_items
         mock_verifier.rescue_quote.assert_not_called()
@@ -362,3 +362,95 @@ class TestGatePreservesMetadata:
         assert gated.field_items == {}
         assert gated.list_items == {}
         assert gated.entity_items == {}
+
+
+class TestGroundingModeOverrides:
+    """Tests for grounding_mode_overrides parameter (Fix G)."""
+
+    @pytest.mark.asyncio
+    async def test_summary_field_with_required_override_gets_rescued(self, mock_verifier):
+        """A summary field normally uses none mode (no rescue), but with
+        grounding_mode override to 'required', it should be rescued."""
+        mock_verifier.rescue_quote.return_value = RescueResult(
+            quote="rescued quote", grounding=0.9, latency=0.1
+        )
+        result = ChunkExtractionResult(
+            chunk_index=0,
+            field_items={
+                "description": FieldItem("A description", 0.9, "q", 0.5, _loc()),
+            },
+        )
+        # Without override: summary field is none → borderline kept without rescue
+        gated_no_override = await apply_grounding_gate(
+            result, "source text", mock_verifier,
+            field_types={"description": "summary"},
+        )
+        assert "description" in gated_no_override.field_items
+        mock_verifier.rescue_quote.assert_not_called()
+
+        # With override: summary field treated as required → rescue attempted
+        gated_with_override = await apply_grounding_gate(
+            result, "source text", mock_verifier,
+            field_types={"description": "summary"},
+            grounding_mode_overrides={"description": "required"},
+        )
+        assert "description" in gated_with_override.field_items
+        mock_verifier.rescue_quote.assert_called_once()
+        assert gated_with_override.field_items["description"].grounding == 0.9
+
+    @pytest.mark.asyncio
+    async def test_summary_field_with_required_override_borderline_gets_rescued(
+        self, mock_verifier
+    ):
+        """Summary field with required override in borderline band gets rescued
+        (not kept as none mode would)."""
+        mock_verifier.rescue_quote.return_value = RescueResult(
+            quote=None, grounding=0.0, latency=0.1
+        )
+        result = ChunkExtractionResult(
+            chunk_index=0,
+            field_items={
+                "overview": FieldItem("Some text", 0.9, "q", 0.5, _loc()),
+            },
+        )
+        # Without override: summary field (none mode) in borderline → kept as-is
+        gated_no_override = await apply_grounding_gate(
+            result, "source text", mock_verifier,
+            field_types={"overview": "summary"},
+        )
+        assert "overview" in gated_no_override.field_items
+        mock_verifier.rescue_quote.assert_not_called()
+
+        # With override: required mode → rescue attempted (fails → dropped)
+        gated_with_override = await apply_grounding_gate(
+            result, "source text", mock_verifier,
+            field_types={"overview": "summary"},
+            grounding_mode_overrides={"overview": "required"},
+        )
+        assert "overview" not in gated_with_override.field_items
+        mock_verifier.rescue_quote.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_override_only_affects_specified_fields(self, mock_verifier):
+        """Override for one field doesn't affect others of the same type."""
+        mock_verifier.rescue_quote.return_value = RescueResult(
+            quote="rescued", grounding=0.9, latency=0.1
+        )
+        result = ChunkExtractionResult(
+            chunk_index=0,
+            field_items={
+                "description": FieldItem("A description", 0.9, "q1", 0.5, _loc()),
+                "overview": FieldItem("An overview", 0.9, "q2", 0.5, _loc()),
+            },
+        )
+        gated = await apply_grounding_gate(
+            result, "source text", mock_verifier,
+            field_types={"description": "summary", "overview": "summary"},
+            grounding_mode_overrides={"description": "required"},
+        )
+        # description: overridden to required → rescue attempted
+        assert "description" in gated.field_items
+        # overview: still none → kept without rescue
+        assert "overview" in gated.field_items
+        # Only one rescue call (for description)
+        mock_verifier.rescue_quote.assert_called_once()

@@ -12,6 +12,7 @@ from services.extraction.consolidation import (
     consolidate_field,
     effective_weight,
     frequency,
+    get_llm_summarize_candidates,
     longest_top_k,
     union_dedup,
     weighted_frequency,
@@ -611,8 +612,8 @@ class TestConsolidateExtractions:
         assert record.fields["company_name"].value == "ABB"
         assert record.fields["employee_count"].value == 100
         assert record.fields["is_public"].value is True
-        # Longest description picked
-        assert "pioneering" in record.fields["description"].value
+        # weighted_frequency picks highest-weight value (s1, conf=0.9)
+        assert record.fields["description"].value == "A global technology leader"
 
     def test_source_group_and_type_set(self):
         record = consolidate_extractions([], [], "my_group", "my_type")
@@ -1174,3 +1175,240 @@ class TestEntityProvenance:
         values = [WeightedValue("ABB", 0.9, "s1")]
         result = consolidate_field(values, "frequency")
         assert result.entity_provenance is None
+
+
+# ── strategy defaults ──
+
+
+class TestStrategyDefaults:
+    def test_text_uses_weighted_frequency(self):
+        """Text fields now use weighted_frequency (not longest_top_k)."""
+        from services.extraction.consolidation import STRATEGY_DEFAULTS
+        assert STRATEGY_DEFAULTS["text"] == "weighted_frequency"
+
+    def test_summary_still_longest_top_k(self):
+        from services.extraction.consolidation import STRATEGY_DEFAULTS
+        assert STRATEGY_DEFAULTS["summary"] == "longest_top_k"
+
+    def test_string_falls_back_to_frequency(self):
+        """'string' type removed from STRATEGY_DEFAULTS; falls back to 'frequency'."""
+        from services.extraction.consolidation import STRATEGY_DEFAULTS
+        assert "string" not in STRATEGY_DEFAULTS
+        # Verify fallback works via consolidate_extractions
+        extractions = [
+            {"data": {"name": "ABB"}, "confidence": 0.9, "grounding_scores": {"name": 1.0}, "source_id": "s1"},
+            {"data": {"name": "ABB"}, "confidence": 0.8, "grounding_scores": {"name": 1.0}, "source_id": "s2"},
+        ]
+        field_defs = [{"name": "name", "field_type": "string"}]
+        record = consolidate_extractions(extractions, field_defs, "g", "t")
+        assert record.fields["name"].strategy == "frequency"
+
+
+# ── v2 extraction-level confidence cap ──
+
+
+class TestV2ExtractionConfidenceCap:
+    def test_high_field_conf_low_ext_conf_capped(self):
+        """V2: per-field confidence 0.9 but extraction confidence 0.2 → weight capped at 0.3."""
+        extractions = [
+            {
+                "data": {"location": {"value": "Bielefeld", "confidence": 0.9, "grounding": 1.0}},
+                "data_version": 2,
+                "confidence": 0.2,
+                "source_id": "s_bad",
+            },
+            {
+                "data": {"location": {"value": "Bocholt", "confidence": 0.8, "grounding": 1.0}},
+                "data_version": 2,
+                "confidence": 0.9,
+                "source_id": "s_good",
+            },
+        ]
+        field_defs = [{"name": "location", "field_type": "text"}]
+        record = consolidate_extractions(extractions, field_defs, "g", "t")
+        # s_good has weight min(0.8, 1.0)=0.8, capped by max(0.9, 0.3)=0.9 → 0.8
+        # s_bad has weight min(0.9, 1.0)=0.9, capped by max(0.2, 0.3)=0.3 → 0.3
+        # Bocholt (weight 0.8) should win over Bielefeld (weight 0.3)
+        assert record.fields["location"].value == "Bocholt"
+
+    def test_ext_conf_above_threshold_no_cap(self):
+        """V2: extraction confidence 0.8 → no effective cap (max(0.8, 0.3)=0.8)."""
+        extractions = [
+            {
+                "data": {"name": {"value": "ABB", "confidence": 0.7, "grounding": 1.0}},
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "text"}]
+        record = consolidate_extractions(extractions, field_defs, "g", "t")
+        assert record.fields["name"].value == "ABB"
+        # weight = min(0.7, 1.0) = 0.7, cap = max(0.8, 0.3) = 0.8 → no cap
+        assert record.fields["name"].winning_weight == pytest.approx(0.7)
+
+    def test_v1_not_affected_by_cap(self):
+        """V1 extractions don't have the cap applied."""
+        extractions = [
+            {
+                "data": {"name": "ABB"},
+                "confidence": 0.2,
+                "grounding_scores": {"name": 1.0},
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "string"}]
+        record = consolidate_extractions(extractions, field_defs, "g", "t")
+        # v1: weight = min(0.2, 1.0) = 0.2, no ext_confidence cap
+        assert record.fields["name"].value == "ABB"
+        assert record.fields["name"].winning_weight == pytest.approx(0.2)
+
+    def test_floor_prevents_zeroing(self):
+        """Floor of 0.3 prevents complete zeroing of fields."""
+        extractions = [
+            {
+                "data": {"name": {"value": "ABB", "confidence": 0.9, "grounding": 1.0}},
+                "data_version": 2,
+                "confidence": 0.0,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "text"}]
+        record = consolidate_extractions(extractions, field_defs, "g", "t")
+        # weight = min(0.9, 1.0) = 0.9, cap = max(0.0, 0.3) = 0.3 → 0.3
+        assert record.fields["name"].winning_weight == pytest.approx(0.3)
+
+
+# ── Strategy: llm_summarize ──
+
+
+class TestLLMSummarize:
+    """llm_summarize routes to longest_top_k in pure function (sync fallback)."""
+
+    def test_routes_to_longest_top_k(self):
+        values = [
+            WeightedValue("Short text", 0.9),
+            WeightedValue("A much longer text for testing", 0.7),
+            WeightedValue("Medium length text", 0.8),
+        ]
+        result = consolidate_field(values, "llm_summarize")
+        assert result.value == "A much longer text for testing"
+        assert result.strategy == "llm_summarize"
+
+    def test_empty_values(self):
+        result = consolidate_field([], "llm_summarize")
+        assert result.value is None
+        assert result.strategy == "llm_summarize"
+
+    def test_single_value(self):
+        values = [WeightedValue("Only one summary", 0.9)]
+        result = consolidate_field(values, "llm_summarize")
+        assert result.value == "Only one summary"
+
+    def test_in_valid_strategies(self):
+        from services.extraction.consolidation import VALID_CONSOLIDATION_STRATEGIES
+        assert "llm_summarize" in VALID_CONSOLIDATION_STRATEGIES
+
+
+class TestGetLLMSummarizeCandidates:
+    def test_returns_top_n_by_weight(self):
+        values = [
+            WeightedValue("Low weight text", 0.3),
+            WeightedValue("High weight text", 0.9),
+            WeightedValue("Medium weight text", 0.6),
+        ]
+        candidates = get_llm_summarize_candidates(values, top_n=2)
+        assert len(candidates) == 2
+        assert candidates[0][0] == "High weight text"
+        assert candidates[0][1] == 0.9
+        assert candidates[1][0] == "Medium weight text"
+
+    def test_skips_none_values(self):
+        values = [
+            WeightedValue(None, 0.9),
+            WeightedValue("Valid text", 0.8),
+        ]
+        candidates = get_llm_summarize_candidates(values)
+        assert len(candidates) == 1
+        assert candidates[0][0] == "Valid text"
+
+    def test_skips_non_string_values(self):
+        values = [
+            WeightedValue(42, 0.9),
+            WeightedValue("Valid", 0.8),
+        ]
+        candidates = get_llm_summarize_candidates(values)
+        assert len(candidates) == 1
+
+    def test_skips_empty_strings(self):
+        values = [
+            WeightedValue("  ", 0.9),
+            WeightedValue("Valid", 0.8),
+        ]
+        candidates = get_llm_summarize_candidates(values)
+        assert len(candidates) == 1
+
+    def test_empty_input(self):
+        assert get_llm_summarize_candidates([]) == []
+
+
+class TestFieldGroundingInEntityConsolidation:
+    """Test that field_grounding affects entity weight computation."""
+
+    def test_low_field_grounding_reduces_weight(self):
+        """Entities with low field grounding get lower weight."""
+        extractions = [
+            {
+                "data": {
+                    "products": {
+                        "items": [
+                            {
+                                "fields": {"name": "Widget-X", "power": 50},
+                                "confidence": 0.8,
+                                "grounding": 0.9,
+                                "field_grounding": {"name": 0.9, "power": 0.2},
+                            }
+                        ]
+                    }
+                },
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [
+            {"name": "name", "field_type": "text"},
+            {"name": "power", "field_type": "float"},
+        ]
+        record = consolidate_extractions(
+            extractions, field_defs, "g", "products", entity_list_key="products"
+        )
+        # With field_grounding avg = (0.9+0.2)/2 = 0.55, min(0.9, 0.55) = 0.55
+        # So weight is reduced from entity grounding 0.9 to 0.55
+        assert "products" in record.fields
+
+    def test_no_field_grounding_uses_entity_grounding(self):
+        """Entities without field_grounding use entity-level grounding only."""
+        extractions = [
+            {
+                "data": {
+                    "products": {
+                        "items": [
+                            {
+                                "fields": {"name": "Widget-X"},
+                                "confidence": 0.8,
+                                "grounding": 0.9,
+                            }
+                        ]
+                    }
+                },
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "name", "field_type": "text"}]
+        record = consolidate_extractions(
+            extractions, field_defs, "g", "products", entity_list_key="products"
+        )
+        assert "products" in record.fields

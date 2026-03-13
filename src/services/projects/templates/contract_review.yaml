@@ -19,7 +19,7 @@ extraction_schema:
       is_entity_list: false
       fields:
         - name: term_text
-          field_type: text
+          field_type: summary
           required: true
           default: ""
           description: Contract term or clause

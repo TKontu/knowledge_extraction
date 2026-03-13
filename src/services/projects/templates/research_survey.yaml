@@ -19,7 +19,7 @@ extraction_schema:
       is_entity_list: false
       fields:
         - name: finding_text
-          field_type: text
+          field_type: summary
           required: true
           default: ""
           description: Key finding or claim
@@ -40,7 +40,7 @@ extraction_schema:
           default: 0.8
           description: Confidence score
         - name: source_quote
-          field_type: text
+          field_type: summary
           required: false
           description: Source quote
 entity_types:

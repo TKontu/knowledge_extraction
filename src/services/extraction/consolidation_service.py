@@ -2,10 +2,13 @@
 
 Reads raw extractions + grounding_scores from DB, delegates to pure
 consolidation functions, writes results to consolidated_extractions table.
+
+Supports optional LLM post-processing for fields with strategy="llm_summarize".
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
@@ -14,14 +17,28 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from orm_models import ConsolidatedExtraction, Extraction
-from services.extraction.extraction_items import safe_data_version
 from services.extraction.consolidation import (
+    ConsolidatedField,
     ConsolidatedRecord,
+    WeightedValue,
     consolidate_extractions,
+    effective_weight,
+    get_llm_summarize_candidates,
 )
+from services.extraction.extraction_items import safe_data_version
 from services.projects.repository import ProjectRepository
 
+if TYPE_CHECKING:
+    from services.llm.client import LLMClient
+
 logger = structlog.get_logger(__name__)
+
+_SUMMARIZE_PROMPT = """\
+Synthesize these summaries for '{field_name}' into one accurate, concise paragraph.
+Only include claims that appear in multiple summaries or have high confidence.
+Do NOT add information not present in the summaries.
+
+{candidates}"""
 
 
 class ConsolidationService:
@@ -31,10 +48,12 @@ class ConsolidationService:
         self._session = session
         self._project_repo = project_repo
 
-    def consolidate_source_group(
+    async def consolidate_source_group(
         self,
         project_id: UUID,
         source_group: str,
+        *,
+        llm_client: LLMClient | None = None,
     ) -> list[ConsolidatedRecord]:
         """Consolidate all extraction types for one source group.
 
@@ -42,7 +61,8 @@ class ConsolidationService:
         2. Group by extraction_type
         3. Load field definitions from project schema
         4. Call consolidate_extractions() for each type
-        5. Upsert into consolidated_extractions table
+        5. Optionally run LLM post-processing for llm_summarize fields
+        6. Upsert into consolidated_extractions table
         """
         project = self._project_repo.get(project_id)
         if not project:
@@ -106,6 +126,13 @@ class ConsolidationService:
                 ext_dicts, field_defs, source_group, ext_type,
                 entity_list_key=ext_type if is_entity_list else None,
             )
+
+            # LLM post-processing for llm_summarize fields
+            if llm_client and not is_entity_list:
+                record = await self._llm_post_process(
+                    record, ext_dicts, field_defs, llm_client,
+                )
+
             records.append(record)
 
             # Upsert to DB
@@ -113,9 +140,11 @@ class ConsolidationService:
 
         return records
 
-    def consolidate_project(
+    async def consolidate_project(
         self,
         project_id: UUID,
+        *,
+        llm_client: LLMClient | None = None,
     ) -> dict[str, int]:
         """Consolidate all source groups in a project.
 
@@ -132,22 +161,30 @@ class ConsolidationService:
             .all()
         )
 
-        return self._process_source_groups(project_id, source_groups)
+        return await self._process_source_groups(
+            project_id, source_groups, llm_client=llm_client,
+        )
 
-    def reconsolidate(
+    async def reconsolidate(
         self,
         project_id: UUID,
         source_groups: list[str] | None = None,
+        *,
+        llm_client: LLMClient | None = None,
     ) -> dict[str, int]:
         """Re-run consolidation (idempotent). Upserts replace old records."""
         if source_groups:
-            return self._process_source_groups(project_id, source_groups)
-        return self.consolidate_project(project_id)
+            return await self._process_source_groups(
+                project_id, source_groups, llm_client=llm_client,
+            )
+        return await self.consolidate_project(project_id, llm_client=llm_client)
 
-    def _process_source_groups(
+    async def _process_source_groups(
         self,
         project_id: UUID,
         source_groups: list[str],
+        *,
+        llm_client: LLMClient | None = None,
     ) -> dict[str, int]:
         """Process a list of source groups with per-group error isolation.
 
@@ -160,7 +197,9 @@ class ConsolidationService:
         for sg in source_groups:
             savepoint = self._session.begin_nested()
             try:
-                records = self.consolidate_source_group(project_id, sg)
+                records = await self.consolidate_source_group(
+                    project_id, sg, llm_client=llm_client,
+                )
                 savepoint.commit()
                 total_records += len(records)
             except Exception:
@@ -177,6 +216,116 @@ class ConsolidationService:
             "records_created": total_records,
             "errors": errors,
         }
+
+    async def _llm_post_process(
+        self,
+        record: ConsolidatedRecord,
+        ext_dicts: list[dict],
+        field_defs: list[dict],
+        llm_client: LLMClient,
+    ) -> ConsolidatedRecord:
+        """Replace llm_summarize fields with LLM-synthesized text.
+
+        Collects candidate values from extractions, builds a synthesis prompt,
+        and replaces the longest_top_k fallback with the LLM result.
+        Falls back to the existing value on LLM failure.
+        """
+        from services.extraction.grounding import GROUNDING_DEFAULTS
+
+        summarize_fields: list[dict] = [
+            fd for fd in field_defs
+            if fd.get("consolidation_strategy") == "llm_summarize"
+        ]
+        if not summarize_fields:
+            return record
+
+        for field_def in summarize_fields:
+            field_name = field_def["name"]
+            if field_name not in record.fields:
+                continue
+
+            field_type = field_def.get("field_type", "text")
+            grounding_mode = field_def.get("grounding_mode") or GROUNDING_DEFAULTS.get(
+                field_type, "required"
+            )
+
+            # Build weighted values from extractions (same logic as consolidate_extractions)
+            weighted_values: list[WeightedValue] = []
+            for ext in ext_dicts:
+                data = ext.get("data", {})
+                data_version = ext.get("data_version", 1)
+                source_id = ext.get("source_id", "")
+
+                if data_version >= 2:
+                    field_data = data.get(field_name)
+                    if not isinstance(field_data, dict):
+                        continue
+                    value = field_data.get("value")
+                    if value is None or not isinstance(value, str):
+                        continue
+                    confidence = float(field_data.get("confidence", 0.5))
+                    grounding_score = float(field_data.get("grounding", 1.0))
+                    ext_confidence = float(ext.get("confidence", 0.5))
+                    weight = effective_weight(confidence, grounding_score, grounding_mode)
+                    weight = min(weight, max(ext_confidence, 0.3))
+                else:
+                    value = data.get(field_name)
+                    if value is None or not isinstance(value, str):
+                        continue
+                    confidence = ext.get("confidence", 0.5)
+                    grounding_scores = ext.get("grounding_scores") or {}
+                    grounding_score = grounding_scores.get(field_name)
+                    weight = effective_weight(confidence, grounding_score, grounding_mode)
+
+                weighted_values.append(WeightedValue(value, weight, str(source_id)))
+
+            candidates = get_llm_summarize_candidates(weighted_values)
+            if len(candidates) < 2:
+                # Not enough distinct values to synthesize — keep fallback
+                continue
+
+            # Build synthesis prompt
+            candidate_lines = "\n".join(
+                f"{i+1}. (weight: {w}) \"{text}\""
+                for i, (text, w) in enumerate(candidates)
+            )
+            prompt = _SUMMARIZE_PROMPT.format(
+                field_name=field_name, candidates=candidate_lines,
+            )
+
+            try:
+                response = await llm_client.complete(
+                    system_prompt="You are a concise information synthesizer.",
+                    user_prompt=prompt,
+                )
+                synthesized = response.get("text", "").strip()
+                if synthesized:
+                    existing = record.fields[field_name]
+                    record.fields[field_name] = ConsolidatedField(
+                        value=synthesized,
+                        strategy="llm_summarize",
+                        source_count=existing.source_count,
+                        grounded_count=existing.grounded_count,
+                        agreement=existing.agreement,
+                        winning_weight=existing.winning_weight,
+                        top_sources=existing.top_sources,
+                    )
+                    logger.info(
+                        "llm_summarize_success",
+                        field=field_name,
+                        source_group=record.source_group,
+                        candidates=len(candidates),
+                    )
+            except Exception:
+                logger.warning(
+                    "llm_summarize_failed",
+                    field=field_name,
+                    source_group=record.source_group,
+                    exc_info=True,
+                )
+                # Keep longest_top_k fallback value
+
+        return record
 
     def _upsert_record(
         self,

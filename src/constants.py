@@ -37,6 +37,7 @@ class JobType(StrEnum):
     CRAWL = "crawl"
     SCRAPE = "scrape"
     EXTRACT = "extract"
+    CONSOLIDATE = "consolidate"
 
 
 # LLM retry hint appended to system prompts on retry attempts

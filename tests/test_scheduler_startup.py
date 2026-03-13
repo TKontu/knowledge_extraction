@@ -133,8 +133,8 @@ class TestWorkerStagger:
             await scheduler.start()
 
             # Expected sleeps: after scrape (0.5), after crawl-0 (0.5),
-            # after crawl-1 (0.5), before extract (0.5)
-            assert len(sleep_calls) == 4
+            # after crawl-1 (0.5), before extract (0.5), before consolidate (0.5)
+            assert len(sleep_calls) == 5
             assert all(d == 0.5 for d in sleep_calls)
 
     @pytest.mark.asyncio

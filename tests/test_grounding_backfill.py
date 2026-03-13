@@ -36,7 +36,7 @@ def test_project(db_session):
                     "fields": [
                         {"name": "company_name", "field_type": "string"},
                         {"name": "employee_count", "field_type": "integer"},
-                        {"name": "description", "field_type": "text"},
+                        {"name": "description", "field_type": "summary"},
                         {"name": "manufactures_gears", "field_type": "boolean"},
                     ],
                     "prompt_hint": "",
@@ -197,13 +197,13 @@ class TestBackfillLogic:
         field_types = {
             "company_name": "string",
             "employee_count": "integer",
-            "description": "text",
+            "description": "summary",
             "manufactures_gears": "boolean",
         }
         scores = compute_grounding_scores(data, field_types)
         assert scores["company_name"] == 1.0
         assert scores["employee_count"] == 1.0
-        assert "description" not in scores  # text → none
+        assert "description" not in scores  # summary → none (skipped)
         assert "manufactures_gears" not in scores  # boolean → semantic
 
     def test_backfill_idempotent(self):

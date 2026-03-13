@@ -4,6 +4,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -402,11 +403,164 @@ async def backfill_grounding(
     }
 
 
+@router.post("/{project_id}/backfill-grounding-v2")
+async def backfill_grounding_v2(
+    project_id: UUID,
+    dry_run: bool = Query(default=True, description="Compute scores without writing to DB"),
+    batch_size: int = Query(default=100, ge=1, le=5000, description="Batch size"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Backfill grounding scores for v2 extractions.
+
+    V2 extractions store per-field grounding inline in the data JSONB column.
+    This re-computes grounding using ground_field_item() with current defaults
+    (text fields now use semantic grounding instead of none).
+    """
+    from collections import defaultdict
+
+    from services.extraction.extraction_items import safe_data_version
+    from services.extraction.grounding import (
+        GROUNDING_DEFAULTS,
+        ground_field_item,
+    )
+    from services.storage.repositories.extraction import (
+        ExtractionFilters,
+        ExtractionRepository,
+    )
+
+    repo = ProjectRepository(db)
+    project = repo.get(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    schema = project.extraction_schema
+    if not schema or not schema.get("field_groups"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project has no extraction schema with field_groups",
+        )
+
+    # Build field_type and grounding_mode maps per (group, field)
+    field_info_by_group: dict[str, dict[str, tuple[str, str | None]]] = {}
+    for fg in schema.get("field_groups", []):
+        group_name = fg.get("name", "")
+        if not group_name:
+            continue
+        fields: dict[str, tuple[str, str | None]] = {}
+        for f in fg.get("fields", []):
+            name = f.get("name", "")
+            ftype = f.get("field_type", "") or f.get("type", "")
+            gmode = f.get("grounding_mode")
+            if name and ftype:
+                fields[name] = (ftype, gmode)
+        if fields:
+            field_info_by_group[group_name] = fields
+
+    ext_repo = ExtractionRepository(db)
+    filters = ExtractionFilters(project_id=project_id)
+    total_count = ext_repo.count(filters)
+
+    stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    processed = 0
+    updated = 0
+    skipped = 0
+    offset = 0
+    source_content_cache: dict[UUID, str] = {}
+
+    while offset < total_count:
+        extractions = ext_repo.list(filters, limit=batch_size, offset=offset)
+        if not extractions:
+            break
+
+        updates: list[tuple[UUID, dict]] = []
+        for ext in extractions:
+            if safe_data_version(ext) < 2:
+                skipped += 1
+                continue
+
+            field_info = field_info_by_group.get(ext.extraction_type, {})
+            if not field_info:
+                skipped += 1
+                continue
+
+            # Get source content (cached)
+            if ext.source_id not in source_content_cache:
+                source = ext.source
+                source_content_cache[ext.source_id] = (
+                    source.cleaned_content or source.content or ""
+                ) if source else ""
+            source_content = source_content_cache[ext.source_id]
+
+            data = ext.data
+            if not isinstance(data, dict):
+                skipped += 1
+                continue
+
+            changed = False
+            for field_name, (field_type, gmode_override) in field_info.items():
+                field_data = data.get(field_name)
+                if not isinstance(field_data, dict):
+                    continue
+                value = field_data.get("value")
+                if value is None:
+                    continue
+                quote = field_data.get("quote")
+
+                effective_mode = gmode_override or GROUNDING_DEFAULTS.get(field_type, "required")
+                if effective_mode == "none":
+                    continue
+
+                new_score = ground_field_item(
+                    field_name, value, quote, source_content, field_type,
+                    grounding_mode=gmode_override,
+                )
+                old_score = float(field_data.get("grounding", 1.0))
+
+                if abs(new_score - old_score) > 0.001:
+                    field_data["grounding"] = round(new_score, 4)
+                    changed = True
+                    bucket = "grounded" if new_score >= 0.5 else "ungrounded"
+                    stats[field_name][bucket] += 1
+                    if old_score >= 0.5 and new_score < 0.5:
+                        stats[field_name]["downgraded"] += 1
+
+            if changed:
+                updates.append((ext.id, data))
+            processed += 1
+
+        if updates and not dry_run:
+            updated += ext_repo.update_v2_data_batch(updates)
+            db.commit()
+        elif updates:
+            updated += len(updates)
+
+        # Clear source cache between batches to limit memory
+        source_content_cache.clear()
+        offset += batch_size
+
+    return {
+        "total_extractions": total_count,
+        "processed": processed,
+        "updated": updated,
+        "skipped": skipped,
+        "dry_run": dry_run,
+        "field_stats": {
+            field: dict(counts) for field, counts in sorted(stats.items())
+        },
+    }
+
+
 @router.post("/{project_id}/consolidate")
 async def consolidate_project(
     project_id: UUID,
     source_group: str | None = Query(
         default=None, description="Consolidate a single source group"
+    ),
+    use_llm: bool = Query(
+        default=False, description="Use LLM synthesis for llm_summarize fields"
     ),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -414,7 +568,15 @@ async def consolidate_project(
 
     Merges multiple raw extractions per entity into one consolidated record
     with grounding-weighted strategies and provenance tracking.
+
+    When use_llm=True, creates a background job and returns 202 with a job_id.
+    Poll GET /jobs/{job_id} for status. When use_llm=False, runs synchronously
+    and returns results immediately.
     """
+    from uuid import uuid4
+
+    from constants import JobStatus, JobType
+    from orm_models import Job
     from services.extraction.consolidation_service import ConsolidationService
 
     repo = ProjectRepository(db)
@@ -425,11 +587,38 @@ async def consolidate_project(
             detail=f"Project {project_id} not found",
         )
 
+    # LLM consolidation runs as a background job to avoid HTTP timeouts
+    if use_llm:
+        job = Job(
+            id=uuid4(),
+            type=JobType.CONSOLIDATE,
+            status=JobStatus.QUEUED,
+            project_id=project_id,
+            payload={
+                "project_id": str(project_id),
+                "source_group": source_group,
+                "use_llm": True,
+            },
+        )
+        db.add(job)
+        db.commit()
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={
+                "job_id": str(job.id),
+                "status": "queued",
+                "project_id": str(project_id),
+            },
+        )
+
+    # Non-LLM consolidation runs inline (fast)
     service = ConsolidationService(db, repo)
 
     try:
         if source_group:
-            records = service.consolidate_source_group(project_id, source_group)
+            records = await service.consolidate_source_group(
+                project_id, source_group,
+            )
             db.commit()
             return {
                 "source_groups": 1,
@@ -437,7 +626,7 @@ async def consolidate_project(
                 "errors": 0,
             }
 
-        result = service.consolidate_project(project_id)
+        result = await service.consolidate_project(project_id)
         db.commit()
         return result
     except Exception:

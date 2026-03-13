@@ -40,8 +40,9 @@ extraction_schema:
           default: false
           description: Whether the company manufactures drivetrain accessories (couplings, shafts, bearings, brakes, clutches, etc.)
         - name: manufacturing_details
-          field_type: text
+          field_type: summary
           required: false
+          consolidation_strategy: llm_summarize
           description: Additional details about manufacturing capabilities and specializations
     - name: services
       description: Service and repair capabilities

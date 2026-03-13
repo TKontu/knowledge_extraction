@@ -5,11 +5,10 @@ extractions per entity into 1 reliable consolidated record with
 provenance tracking.
 
 Strategy defaults by field type:
-    string   -> frequency
     integer  -> weighted_median
     float    -> weighted_median
     boolean  -> any_true
-    text     -> longest_top_k
+    text     -> weighted_frequency
     list     -> union_dedup
     enum     -> frequency
 """
@@ -25,15 +24,14 @@ from services.extraction.grounding import GROUNDING_DEFAULTS
 
 # Default consolidation strategy per field type
 VALID_CONSOLIDATION_STRATEGIES = frozenset(
-    {"frequency", "weighted_frequency", "weighted_median", "any_true", "longest_top_k", "union_dedup"}
+    {"frequency", "weighted_frequency", "weighted_median", "any_true", "longest_top_k", "union_dedup", "llm_summarize"}
 )
 
 STRATEGY_DEFAULTS: dict[str, str] = {
-    "string": "frequency",
     "integer": "weighted_median",
     "float": "weighted_median",
     "boolean": "any_true",
-    "text": "longest_top_k",
+    "text": "weighted_frequency",
     "list": "union_dedup",
     "enum": "frequency",
     "summary": "longest_top_k",
@@ -319,6 +317,7 @@ def consolidate_field(
         "any_true": any_true,
         "longest_top_k": longest_top_k,
         "union_dedup": union_dedup,
+        "llm_summarize": longest_top_k,  # Sync fallback; async LLM pass in service
     }
 
     func = strategies.get(strategy, frequency)
@@ -471,6 +470,8 @@ def consolidate_extractions(
                     continue
                 confidence = float(field_data.get("confidence", 0.5))
                 grounding_score = float(field_data.get("grounding", 1.0))
+                # Cap by extraction-level confidence (floor 0.3 to avoid zeroing)
+                ext_confidence = float(ext.get("confidence", 0.5))
             else:
                 # v1: flat format
                 value = data.get(field_name)
@@ -481,6 +482,9 @@ def consolidate_extractions(
                 grounding_score = grounding_scores.get(field_name)
 
             weight = effective_weight(confidence, grounding_score, grounding_mode)
+            # For v2 extractions, cap weight by extraction-level confidence
+            if data_version >= 2:
+                weight = min(weight, max(ext_confidence, 0.3))
             weighted_values.append(WeightedValue(value, weight, str(source_id)))
 
         if not weighted_values:
@@ -530,9 +534,19 @@ def _consolidate_entity_list(
                 cleaned.append({k: v for k, v in fields.items() if not str(k).startswith("_")})
                 conf = float(item.get("confidence", 0.5))
                 gnd = float(item.get("grounding", 1.0))
+                # Refine grounding with per-field average when available
+                field_gnd = item.get("field_grounding")
+                if field_gnd and isinstance(field_gnd, dict):
+                    gnd_vals = [v for v in field_gnd.values() if isinstance(v, (int, float))]
+                    if gnd_vals:
+                        avg_field_gnd = sum(gnd_vals) / len(gnd_vals)
+                        gnd = min(gnd, avg_field_gnd) if avg_field_gnd < gnd else gnd
                 weights.append(effective_weight(conf, gnd, "required"))
             if cleaned:
                 avg_weight = sum(weights) / len(weights) if weights else 0.5
+                # Cap by extraction-level confidence (floor 0.3)
+                ext_confidence = float(ext.get("confidence", 0.5))
+                avg_weight = min(avg_weight, max(ext_confidence, 0.3))
                 weighted_values.append(WeightedValue(cleaned, avg_weight, str(source_id)))
         else:
             # v1: flat entity list
@@ -576,6 +590,29 @@ def _consolidate_entity_list(
     )
 
     return record
+
+
+def get_llm_summarize_candidates(
+    values: list[WeightedValue],
+    top_n: int = 5,
+) -> list[tuple[str, float]]:
+    """Return top-N weighted string values for LLM synthesis.
+
+    Args:
+        values: Weighted values from multiple extractions.
+        top_n: Maximum candidates to return.
+
+    Returns:
+        List of (value_str, weight) tuples sorted by weight descending.
+    """
+    non_null = [
+        v for v in values
+        if v.value is not None and isinstance(v.value, str) and v.value.strip()
+    ]
+    if not non_null:
+        return []
+    sorted_vals = sorted(non_null, key=lambda v: v.weight, reverse=True)[:top_n]
+    return [(v.value, round(v.weight, 4)) for v in sorted_vals]
 
 
 # ── Internal helpers ──

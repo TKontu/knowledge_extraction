@@ -29,9 +29,11 @@ from services.extraction.grounding import (
     _coerce_quote,
     compute_chunk_grounding,
     compute_chunk_grounding_entities,
+    ground_entity_fields,
     ground_entity_item,
     ground_field_item,
     is_negation_quote,
+    score_entity_confidence,
     verify_quote_in_source,
 )
 from services.extraction.page_classifier import (
@@ -133,12 +135,43 @@ def _source_grounding_ratio(result: dict, content: str) -> float:
     return grounded / len(quotes)
 
 
+def _filter_entity_fields(entity: EntityItem, threshold: float) -> EntityItem:
+    """Drop individual entity fields with field_grounding below threshold.
+
+    Sets low-grounding field values to None while keeping the entity.
+    ID fields (name, entity_id, id, product_name) are never dropped.
+    """
+    if not entity.field_grounding:
+        return entity
+
+    id_fields = frozenset({"name", "entity_id", "id", "product_name"})
+    filtered_fields = dict(entity.fields)
+    for field_name, gnd_score in entity.field_grounding.items():
+        if field_name in id_fields:
+            continue
+        if gnd_score < threshold:
+            filtered_fields[field_name] = None
+
+    if filtered_fields == entity.fields:
+        return entity
+
+    return EntityItem(
+        fields=filtered_fields,
+        confidence=entity.confidence,
+        quote=entity.quote,
+        grounding=entity.grounding,
+        location=entity.location,
+        field_grounding=entity.field_grounding,
+    )
+
+
 async def apply_grounding_gate(
     result: ChunkExtractionResult,
     chunk_content: str,
     verifier: "LLMGroundingVerifier",
     *,
     field_types: dict[str, str] | None = None,
+    grounding_mode_overrides: dict[str, str] | None = None,
     keep_threshold: float = 0.8,
     rescue_threshold: float = 0.3,
 ) -> ChunkExtractionResult:
@@ -156,6 +189,9 @@ async def apply_grounding_gate(
         verifier: LLM grounding verifier for rescue attempts.
         field_types: Map of field_name → field_type string. Used to determine
             grounding mode per field. If None, all fields treated as "required".
+        grounding_mode_overrides: Per-field grounding mode overrides from schema
+            (e.g., text fields with grounding_mode: required). Takes precedence
+            over the type-based default from GROUNDING_DEFAULTS.
         keep_threshold: Minimum grounding to keep without question.
         rescue_threshold: Below this, drop without rescue attempt.
 
@@ -164,9 +200,12 @@ async def apply_grounding_gate(
     """
     rescue_sem = asyncio.Semaphore(3)
     ft = field_types or {}
+    gm_overrides = grounding_mode_overrides or {}
 
     def _grounding_mode(name: str) -> str:
         """Look up the effective grounding mode for a field."""
+        if name in gm_overrides:
+            return gm_overrides[name]
         ftype = ft.get(name, "string")
         return GROUNDING_DEFAULTS.get(ftype, "required")
 
@@ -188,7 +227,7 @@ async def apply_grounding_gate(
 
         elif mode != "required":
             # Borderline band (0.3-0.8) for non-required fields:
-            # "none" mode (text/summary) kept as-is; semantic fields
+            # "none" mode (summary) kept as-is; semantic fields (boolean)
             # with a quote already have a real grounding score, keep.
             if mode == "none" or item.quote:
                 return (name, item)
@@ -236,7 +275,9 @@ async def apply_grounding_gate(
         group_name: str, entity: EntityItem
     ) -> tuple[str, EntityItem] | None:
         if entity.grounding >= keep_threshold:
-            return (group_name, entity)
+            # Entity passes gate — still filter low-grounding fields
+            filtered = _filter_entity_fields(entity, rescue_threshold)
+            return (group_name, filtered)
         if entity.grounding < rescue_threshold:
             return None
         # Use entity's identifying field for rescue prompt.
@@ -253,13 +294,16 @@ async def apply_grounding_gate(
                 group_name, entity_name, chunk_content
             )
         if rescue.quote and rescue.grounding >= keep_threshold:
-            return (group_name, EntityItem(
+            rescued = EntityItem(
                 fields=entity.fields,
                 confidence=entity.confidence,
                 quote=rescue.quote,
                 grounding=rescue.grounding,
                 location=entity.location,
-            ))
+                field_grounding=entity.field_grounding,
+            )
+            filtered = _filter_entity_fields(rescued, rescue_threshold)
+            return (group_name, filtered)
         return None
 
     # Process field_items
@@ -1072,6 +1116,12 @@ class SchemaExtractionOrchestrator:
         gate_field_types: dict[str, str] = {
             f.name: f.field_type for f in group.fields
         }
+        # Collect per-field grounding_mode overrides from schema (Fix G)
+        gate_grounding_overrides: dict[str, str] = {
+            f.name: f.grounding_mode
+            for f in group.fields
+            if f.grounding_mode is not None
+        }
 
         async def extract_chunk_v2(chunk, chunk_idx: int) -> ChunkExtractionResult | None:
             # Phase 1: Extract (semaphore-limited for LLM concurrency)
@@ -1142,6 +1192,7 @@ class SchemaExtractionOrchestrator:
                 result = await apply_grounding_gate(
                     result, chunk.content, self._grounding_verifier,
                     field_types=gate_field_types,
+                    grounding_mode_overrides=gate_grounding_overrides,
                 )
 
             return result
@@ -1198,10 +1249,20 @@ class SchemaExtractionOrchestrator:
             chunk.content, group, source_context,
         )
 
+        # Build field definitions list for grounding/confidence scoring
+        field_defs = [
+            {
+                "name": f.name,
+                "field_type": f.field_type,
+                **({"grounding_mode": f.grounding_mode} if f.grounding_mode else {}),
+            }
+            for f in group.fields
+        ]
+
         entities: list[EntityItem] = []
         for entity_data in all_entities:
             fields = entity_data.get("fields", {})
-            confidence = float(entity_data.get("_confidence", 0.5))
+            raw_confidence = float(entity_data.get("_confidence", 0.5))
             quote = entity_data.get("_quote")
 
             # Skip entities with negation quotes ("No mention of...", etc.)
@@ -1211,12 +1272,24 @@ class SchemaExtractionOrchestrator:
             grounding = ground_entity_item(quote, chunk.content)
             location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
 
+            # Per-field grounding within entity (Fix F)
+            field_gnd = ground_entity_fields(
+                fields, quote, chunk.content, field_defs,
+            )
+
+            # Adjusted confidence from quality signals (Fix H)
+            confidence = score_entity_confidence(
+                fields, field_defs, raw_confidence,
+                field_grounding=field_gnd, quote=quote,
+            )
+
             entities.append(EntityItem(
                 fields=fields,
                 confidence=confidence,
                 quote=quote,
                 grounding=grounding,
                 location=location,
+                field_grounding=field_gnd,
             ))
 
         return ChunkExtractionResult(
@@ -1262,7 +1335,8 @@ class SchemaExtractionOrchestrator:
                 items = []
                 for v in value:
                     grounding = ground_field_item(
-                        field_def.name, v, quote, chunk.content, field_def.field_type
+                        field_def.name, v, quote, chunk.content, field_def.field_type,
+                        grounding_mode=field_def.grounding_mode,
                     )
                     location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
                     items.append(ListValueItem(v, confidence, quote, grounding, location))
@@ -1270,7 +1344,8 @@ class SchemaExtractionOrchestrator:
             else:
                 # Single, boolean, summary
                 grounding = ground_field_item(
-                    field_def.name, value, quote, chunk.content, field_def.field_type
+                    field_def.name, value, quote, chunk.content, field_def.field_type,
+                    grounding_mode=field_def.grounding_mode,
                 )
                 location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
                 field_items[field_def.name] = FieldItem(

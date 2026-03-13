@@ -38,7 +38,7 @@ extraction_schema:
             - location
             - unknown
         - name: description
-          field_type: text
+          field_type: summary
           description: Brief description of the entity
           required: false
     - name: key_facts
@@ -57,7 +57,7 @@ extraction_schema:
             - operational
             - historical
         - name: fact_text
-          field_type: text
+          field_type: summary
           description: The factual statement
           required: true
           default: ""

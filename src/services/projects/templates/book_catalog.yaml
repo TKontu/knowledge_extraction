@@ -47,7 +47,7 @@ extraction_schema:
           required: false
           description: Book genre or category
         - name: description
-          field_type: text
+          field_type: summary
           required: false
           description: Book description or synopsis
         - name: confidence

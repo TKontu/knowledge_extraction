@@ -22,7 +22,7 @@ GROUNDING_DEFAULTS: dict[str, str] = {
     "integer": "required",
     "float": "required",
     "boolean": "semantic",
-    "text": "none",
+    "text": "required",
     "enum": "required",
     "list": "required",
     "summary": "none",
@@ -107,15 +107,20 @@ def verify_list_items_in_quote(items: list, quote: str | None) -> float:
     if not items or not quote:
         return 0.0
 
-    # Extract string values from items (handle dicts with 'name' key)
+    # Extract string values from items (handle dicts by extracting all string values)
     string_items = []
     for item in items:
         if item is None:
             continue
         if isinstance(item, dict):
+            # Try common name keys first for backward compat
             name = item.get("name") or item.get("product_name") or item.get("id")
             if name:
                 string_items.append(str(name))
+            else:
+                # Fall back to all non-empty string values (for location dicts, etc.)
+                vals = [str(v) for v in item.values() if v and isinstance(v, str)]
+                string_items.extend(vals)
         else:
             string_items.append(str(item))
 
@@ -163,6 +168,17 @@ def score_field(value: Any, quote: Any, field_type: str) -> float:
     if field_type == "list":
         if isinstance(value, list):
             return verify_list_items_in_quote(value, coerced)
+        if isinstance(value, dict):
+            # Single dict item from a list (v2 per-item scoring) —
+            # check if any string values from the dict appear in the quote
+            name = value.get("name") or value.get("product_name") or value.get("id")
+            if name:
+                return verify_string_in_quote(str(name), coerced)
+            vals = [str(v) for v in value.values() if v and isinstance(v, str)]
+            if not vals:
+                return 0.0
+            found = sum(1 for v in vals if _normalize_string(v) in _normalize_string(coerced))
+            return round(found / len(vals), 4) if vals else 0.0
         return verify_string_in_quote(str(value), coerced)
     # string, enum, and any other type
     return verify_string_in_quote(value, coerced)
@@ -961,6 +977,8 @@ def ground_field_item(
     quote: str | None,
     chunk_content: str,
     field_type: str,
+    *,
+    grounding_mode: str | None = None,
 ) -> float:
     """Complete inline grounding for one field item.
 
@@ -975,11 +993,12 @@ def ground_field_item(
         quote: The quote string claimed to support the value.
         chunk_content: The source text that was sent to the LLM.
         field_type: Type string (determines grounding mode).
+        grounding_mode: Optional per-field override. If None, uses type default.
 
     Returns:
         Grounding score 0.0-1.0.
     """
-    grounding_mode = GROUNDING_DEFAULTS.get(field_type, "required")
+    grounding_mode = grounding_mode or GROUNDING_DEFAULTS.get(field_type, "required")
 
     if grounding_mode == "none":
         return 1.0
@@ -1026,6 +1045,132 @@ def ground_entity_item(
     if not coerced or not chunk_content:
         return 0.0
     return verify_quote_in_source(coerced, chunk_content)
+
+
+def ground_entity_fields(
+    fields: dict[str, Any],
+    entity_quote: str | None,
+    chunk_content: str,
+    field_definitions: list[dict],
+) -> dict[str, float]:
+    """Ground each field in an entity against the entity's quote.
+
+    Uses score_field() (Layer B) for each field value against the entity quote.
+    Falls back to chunk_content if entity_quote is None.
+
+    Args:
+        fields: Entity field dict {name: value}.
+        entity_quote: The entity-level quote string.
+        chunk_content: The source text from the chunk.
+        field_definitions: List of field definition dicts with 'name' and 'field_type'.
+
+    Returns:
+        Dict of field_name -> grounding score (0.0-1.0).
+    """
+    if not fields:
+        return {}
+
+    coerced_quote = _coerce_quote(entity_quote)
+    source = coerced_quote or chunk_content
+    if not source:
+        return {fd["name"]: 0.0 for fd in field_definitions if fd["name"] in fields}
+
+    field_type_map = {fd["name"]: fd.get("field_type", "string") for fd in field_definitions}
+    grounding_mode_map = {
+        fd["name"]: fd["grounding_mode"]
+        for fd in field_definitions
+        if fd.get("grounding_mode")
+    }
+    scores: dict[str, float] = {}
+
+    for field_name, value in fields.items():
+        if value is None or field_name.startswith("_"):
+            continue
+        field_type = field_type_map.get(field_name, "string")
+        grounding_mode = grounding_mode_map.get(
+            field_name, GROUNDING_DEFAULTS.get(field_type, "required"),
+        )
+        if grounding_mode == "none":
+            scores[field_name] = 1.0
+            continue
+        if grounding_mode == "semantic":
+            # For semantic fields in entities, check if value appears in source
+            scores[field_name] = verify_string_in_quote(str(value), source)
+            continue
+        # Required mode: score value against source text
+        scores[field_name] = score_field(value, source, field_type)
+
+    return scores
+
+
+def score_entity_confidence(
+    fields: dict[str, Any],
+    field_definitions: list[dict],
+    raw_confidence: float = 0.5,
+    field_grounding: dict[str, float] | None = None,
+    quote: str | None = None,
+) -> float:
+    """Compute entity confidence from field completeness + grounding signals.
+
+    Adjusts the LLM's raw confidence based on observable quality signals:
+    1. Field completeness: filled_fields / total_fields
+    2. ID field presence: boost if name/identifier is filled
+    3. Average field grounding score (if available)
+    4. Quote quality: short quotes for many fields are suspicious
+
+    Args:
+        fields: Entity field dict.
+        field_definitions: List of field definition dicts.
+        raw_confidence: The LLM's confidence value (default 0.5).
+        field_grounding: Per-field grounding scores (from ground_entity_fields).
+        quote: The entity's quote string.
+
+    Returns:
+        Adjusted confidence 0.0-1.0.
+    """
+    if not fields or not field_definitions:
+        return raw_confidence
+
+    # 1. Field completeness
+    total = len(field_definitions)
+    filled = sum(
+        1 for fd in field_definitions
+        if fields.get(fd["name"]) is not None
+    )
+    completeness = filled / total if total > 0 else 0.0
+
+    # 2. ID field presence boost
+    id_boost = 0.0
+    for id_field in ("name", "entity_id", "product_name", "id"):
+        if fields.get(id_field) is not None:
+            id_boost = 0.1
+            break
+
+    # 3. Field grounding average
+    avg_field_gnd = 1.0
+    if field_grounding:
+        gnd_values = [v for v in field_grounding.values() if v is not None]
+        if gnd_values:
+            avg_field_gnd = sum(gnd_values) / len(gnd_values)
+
+    # 4. Quote quality: penalize very short quotes with many fields
+    quote_factor = 1.0
+    if quote and filled > 0:
+        quote_len = len(quote)
+        # If quote is less than 10 chars per filled field, it's suspicious
+        if quote_len < filled * 10:
+            quote_factor = max(0.5, quote_len / (filled * 10))
+
+    # Combine: base * completeness * grounding blend * quote quality + id boost
+    adjusted = (
+        raw_confidence
+        * (0.4 + 0.6 * completeness)
+        * (0.5 + 0.5 * avg_field_gnd)
+        * quote_factor
+        + id_boost
+    )
+
+    return round(min(1.0, max(0.0, adjusted)), 4)
 
 
 def compute_chunk_grounding(result: dict, chunk_content: str) -> dict[str, float]:

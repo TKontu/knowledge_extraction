@@ -3,6 +3,8 @@
 TDD: Tests written first, implementation follows.
 """
 
+import pytest
+
 from services.extraction.grounding import (
     GROUNDING_DEFAULTS,
     _coerce_quote,
@@ -12,7 +14,9 @@ from services.extraction.grounding import (
     compute_grounding_scores,
     compute_source_grounding_scores,
     extract_entity_list_groups,
+    ground_entity_fields,
     is_negation_quote,
+    score_entity_confidence,
     score_field,
     verify_list_items_in_quote,
     verify_numeric_in_quote,
@@ -185,6 +189,82 @@ class TestVerifyListItemsInQuote:
         quote = "The G Series and P Series gearboxes"
         assert verify_list_items_in_quote(items, quote) == 1.0
 
+    def test_dict_items_without_name_key(self):
+        """Location dicts: each string value grounded independently."""
+        items = [
+            {"city": "Bocholt", "country": "Germany", "site_type": "headquarters"},
+        ]
+        quote = "the headquarters is in Bocholt, Germany"
+        score = verify_list_items_in_quote(items, quote)
+        # 3 values: "Bocholt" ✓, "Germany" ✓, "headquarters" ✓ → 3/3
+        assert score == pytest.approx(1.0)
+
+    def test_dict_items_partial_values_found(self):
+        """Only some dict values found → proportional score."""
+        items = [
+            {"city": "Munich", "country": "Germany", "site_type": "R&D center"},
+        ]
+        quote = "Our facility in Munich, Germany"
+        score = verify_list_items_in_quote(items, quote)
+        # "Munich" ✓, "Germany" ✓, "R&D center" ✗ → 2/3
+        assert score == pytest.approx(2.0 / 3.0, abs=0.01)
+
+    def test_dict_items_no_values_found(self):
+        """Location dict values not in quote → 0.0."""
+        items = [
+            {"city": "Bielefeld", "country": "Austria", "site_type": "factory"},
+        ]
+        quote = "headquartered in Bocholt, Germany"
+        assert verify_list_items_in_quote(items, quote) == 0.0
+
+    def test_mixed_named_and_unnamed_dicts(self):
+        """Mix of dicts with and without 'name' key — each value grounded 1:1."""
+        items = [
+            {"name": "G Series"},  # uses name key → 1 item
+            {"city": "Munich", "country": "Germany"},  # uses all values → 2 items
+        ]
+        quote = "The G Series gearbox is made in Munich, Germany"
+        score = verify_list_items_in_quote(items, quote)
+        # "G Series" ✓, "Munich" ✓, "Germany" ✓ → 3/3
+        assert score == pytest.approx(1.0)
+
+
+class TestScoreFieldDictInList:
+    """Tests for score_field handling dict values from list items (v2 per-item path)."""
+
+    def test_dict_with_name_key(self):
+        value = {"name": "G Series", "type": "planetary"}
+        quote = "The G Series planetary gearbox"
+        assert score_field(value, quote, "list") >= 0.8
+
+    def test_dict_without_name_key_each_value_grounded(self):
+        """Location dict: each string value grounded independently, proportional score."""
+        value = {"city": "Bocholt", "country": "Germany", "site_type": "headquarters"}
+        quote = "the headquarters is in Bocholt, Germany since 1899"
+        score = score_field(value, quote, "list")
+        # "Bocholt" ✓, "Germany" ✓, "headquarters" ✓ → 3/3
+        assert score == pytest.approx(1.0)
+
+    def test_dict_partial_values_found(self):
+        """Only some dict values in quote → proportional score."""
+        value = {"city": "Bocholt", "country": "Germany", "site_type": "R&D lab"}
+        quote = "located in Bocholt, Germany"
+        score = score_field(value, quote, "list")
+        # "Bocholt" ✓, "Germany" ✓, "R&D lab" ✗ → 2/3
+        assert score == pytest.approx(2.0 / 3.0, abs=0.01)
+
+    def test_dict_without_name_key_not_found(self):
+        """Location dict values not in quote → 0.0."""
+        value = {"city": "Bielefeld", "country": "Austria"}
+        quote = "headquartered in Bocholt, Germany"
+        assert score_field(value, quote, "list") == 0.0
+
+    def test_dict_empty_string_values(self):
+        """Dict with no string values → 0.0."""
+        value = {"count": 5}
+        quote = "some quote text"
+        assert score_field(value, quote, "list") == 0.0
+
 
 class TestComputeGroundingScores:
     def test_full_extraction_with_quotes(self):
@@ -233,15 +313,25 @@ class TestComputeGroundingScores:
         scores = compute_grounding_scores(data, field_types)
         assert "manufactures_gearboxes" not in scores
 
-    def test_text_skipped(self):
-        """Text (description) fields have grounding_mode='none' → not scored."""
+    def test_summary_skipped(self):
+        """Summary fields have grounding_mode='none' → not scored."""
         data = {
             "description": "ABB is a global technology leader",
             "_quotes": {"description": "ABB is a global technology leader"},
         }
-        field_types = {"description": "text"}
+        field_types = {"description": "summary"}
         scores = compute_grounding_scores(data, field_types)
         assert "description" not in scores
+
+    def test_text_scored(self):
+        """Text fields have grounding_mode='required' → scored."""
+        data = {
+            "company_name": "ABB",
+            "_quotes": {"company_name": "ABB Corp is a leader"},
+        }
+        field_types = {"company_name": "text"}
+        scores = compute_grounding_scores(data, field_types)
+        assert scores["company_name"] == 1.0
 
     def test_empty_data(self):
         scores = compute_grounding_scores({}, {"company_name": "string"})
@@ -325,7 +415,7 @@ class TestComputeGroundingScores:
         assert scores["company_name"] == 1.0
         assert scores["employee_count"] == 1.0
         assert "manufactures_gears" not in scores  # boolean → semantic
-        assert "description" not in scores  # text → none
+        assert scores["description"] == 1.0  # text → required (scored)
 
     def test_metadata_keys_ignored(self):
         """_quotes, confidence, _conflicts should not be scored."""
@@ -355,8 +445,8 @@ class TestGroundingDefaults:
     def test_boolean_semantic(self):
         assert GROUNDING_DEFAULTS["boolean"] == "semantic"
 
-    def test_text_none(self):
-        assert GROUNDING_DEFAULTS["text"] == "none"
+    def test_text_required(self):
+        assert GROUNDING_DEFAULTS["text"] == "required"
 
     def test_enum_required(self):
         assert GROUNDING_DEFAULTS["enum"] == "required"
@@ -832,3 +922,177 @@ class TestIsNegationQuote:
 
     def test_whitespace_only(self):
         assert is_negation_quote("   ") is False
+
+
+# ── ground_entity_fields ──
+
+
+class TestGroundEntityFields:
+    QUOTE = "The FZG Series planetary gearbox delivers up to 50 kW"
+    CHUNK = "Our FZG Series planetary gearbox delivers up to 50 kW with 95% efficiency."
+    FIELD_DEFS = [
+        {"name": "product_name", "field_type": "string"},
+        {"name": "power_rating_kw", "field_type": "float"},
+        {"name": "subcategory", "field_type": "string"},
+    ]
+
+    def test_grounded_fields(self):
+        fields = {"product_name": "FZG Series", "power_rating_kw": 50, "subcategory": "planetary"}
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert scores["product_name"] >= 0.5  # "FZG Series" in quote
+        assert scores["power_rating_kw"] == 1.0  # 50 in quote
+        assert scores["subcategory"] >= 0.5  # "planetary" in quote
+
+    def test_hallucinated_value(self):
+        """Value not in quote should score low."""
+        fields = {"product_name": "FZG Series", "power_rating_kw": 500}
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert scores["power_rating_kw"] == 0.0  # 500 not in quote
+
+    def test_no_quote_uses_chunk(self):
+        """When entity has no quote, falls back to chunk content."""
+        fields = {"product_name": "FZG Series", "power_rating_kw": 50}
+        scores = ground_entity_fields(fields, None, self.CHUNK, self.FIELD_DEFS)
+        assert scores["product_name"] >= 0.5
+        assert scores["power_rating_kw"] == 1.0
+
+    def test_no_source(self):
+        """No quote and no chunk → all zeros."""
+        fields = {"product_name": "FZG Series"}
+        scores = ground_entity_fields(fields, None, "", self.FIELD_DEFS)
+        assert scores["product_name"] == 0.0
+
+    def test_empty_fields(self):
+        scores = ground_entity_fields({}, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert scores == {}
+
+    def test_skips_none_values(self):
+        fields = {"product_name": "FZG Series", "power_rating_kw": None}
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert "power_rating_kw" not in scores
+        assert "product_name" in scores
+
+    def test_skips_underscore_fields(self):
+        fields = {"product_name": "FZG", "_quote": "some quote"}
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        assert "_quote" not in scores
+
+    def test_summary_type_exempt(self):
+        """Summary-typed fields always get 1.0 (grounding_mode: none)."""
+        field_defs = [{"name": "description", "field_type": "summary"}]
+        fields = {"description": "A totally fabricated description"}
+        scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, field_defs)
+        assert scores["description"] == 1.0
+
+    def test_grounding_mode_override_summary_to_required(self):
+        """Summary field with grounding_mode override to 'required' uses value-in-quote check."""
+        # Summary fields normally use none mode (always 1.0).
+        # With override to required, value must appear in the quote.
+        field_defs_no_override = [
+            {"name": "description", "field_type": "summary"},
+        ]
+        field_defs_with_override = [
+            {"name": "description", "field_type": "summary", "grounding_mode": "required"},
+        ]
+        fields = {"description": "Fabricated Corp"}
+
+        # Without override: summary → none mode → always 1.0
+        score_none = ground_entity_fields(
+            fields, self.QUOTE, self.CHUNK, field_defs_no_override,
+        )
+        # With override: required mode. "Fabricated Corp" not found by score_field → 0.0
+        score_required = ground_entity_fields(
+            fields, self.QUOTE, self.CHUNK, field_defs_with_override,
+        )
+        assert score_required["description"] == 0.0
+        assert score_none["description"] == 1.0
+
+    def test_grounding_mode_override_respected_for_real_value(self):
+        """Override changes behavior: summary field 'FZG Series' gets required-mode check."""
+        field_defs_none = [
+            {"name": "product_name", "field_type": "summary"},
+        ]
+        field_defs_required = [
+            {"name": "product_name", "field_type": "summary", "grounding_mode": "required"},
+        ]
+        fields = {"product_name": "FZG Series"}
+
+        score_none = ground_entity_fields(
+            fields, self.QUOTE, self.CHUNK, field_defs_none,
+        )
+        score_required = ground_entity_fields(
+            fields, self.QUOTE, self.CHUNK, field_defs_required,
+        )
+        # summary (none) always returns 1.0; required should also score well since "FZG Series" is in the source
+        assert score_none["product_name"] == 1.0
+        assert score_required["product_name"] >= 0.5
+
+
+# ── score_entity_confidence ──
+
+
+class TestScoreEntityConfidence:
+    FIELD_DEFS = [
+        {"name": "name", "field_type": "string"},
+        {"name": "power_kw", "field_type": "float"},
+        {"name": "category", "field_type": "string"},
+        {"name": "model", "field_type": "string"},
+    ]
+
+    def test_fully_filled_entity(self):
+        """Entity with all fields filled gets boosted confidence."""
+        fields = {"name": "X", "power_kw": 50, "category": "gear", "model": "M1"}
+        conf = score_entity_confidence(fields, self.FIELD_DEFS, 0.5)
+        assert conf > 0.5  # Boosted by completeness + ID presence
+
+    def test_sparse_entity_penalized(self):
+        """Entity with few fields filled gets lower confidence."""
+        fields = {"name": "X", "power_kw": None, "category": None, "model": None}
+        conf = score_entity_confidence(fields, self.FIELD_DEFS, 0.5)
+        assert conf < 0.6  # Penalized by low completeness
+
+    def test_no_id_field_no_boost(self):
+        """Entity without name/id field doesn't get ID boost."""
+        fields = {"power_kw": 50}
+        field_defs = [{"name": "power_kw", "field_type": "float"}]
+        conf = score_entity_confidence(fields, field_defs, 0.5)
+        # No id_boost, but full completeness
+        assert conf >= 0.4
+
+    def test_field_grounding_reduces_confidence(self):
+        """Low field grounding should reduce confidence."""
+        fields = {"name": "X", "power_kw": 500}
+        conf_high_gnd = score_entity_confidence(
+            fields, self.FIELD_DEFS, 0.5,
+            field_grounding={"name": 1.0, "power_kw": 1.0},
+        )
+        conf_low_gnd = score_entity_confidence(
+            fields, self.FIELD_DEFS, 0.5,
+            field_grounding={"name": 1.0, "power_kw": 0.0},
+        )
+        assert conf_high_gnd > conf_low_gnd
+
+    def test_short_quote_penalized(self):
+        """Very short quote with many fields is suspicious."""
+        fields = {"name": "X", "power_kw": 50, "category": "gear", "model": "M1"}
+        conf_long = score_entity_confidence(
+            fields, self.FIELD_DEFS, 0.5, quote="This is a very long quote about X gear M1 with 50kW",
+        )
+        conf_short = score_entity_confidence(
+            fields, self.FIELD_DEFS, 0.5, quote="X",
+        )
+        assert conf_long > conf_short
+
+    def test_defaults_on_empty(self):
+        """Empty fields/defs returns raw confidence."""
+        assert score_entity_confidence({}, [], 0.5) == 0.5
+        assert score_entity_confidence({}, self.FIELD_DEFS, 0.5) == 0.5
+
+    def test_capped_at_one(self):
+        """Confidence should never exceed 1.0."""
+        fields = {"name": "X", "power_kw": 50, "category": "gear", "model": "M1"}
+        conf = score_entity_confidence(
+            fields, self.FIELD_DEFS, 0.95,
+            field_grounding={"name": 1.0, "power_kw": 1.0, "category": 1.0, "model": 1.0},
+        )
+        assert conf <= 1.0
