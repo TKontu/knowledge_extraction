@@ -144,6 +144,7 @@ async def create_extraction_job(
             "profile": request.profile,
             "force": request.force,
             "source_groups": request.source_groups,
+            "field_groups": request.field_groups,
         },
     )
 

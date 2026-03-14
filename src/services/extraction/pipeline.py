@@ -71,6 +71,7 @@ class SchemaExtractionPipeline:
         source_context: str | None = None,
         field_groups: list | None = None,
         schema_name: str = "unknown",
+        update_classification: bool = True,
     ) -> list:  # list[Extraction]
         """Extract all field groups from a source.
 
@@ -79,6 +80,9 @@ class SchemaExtractionPipeline:
             source_context: Source context (e.g., company name, website name).
             field_groups: Pre-converted FieldGroup objects (required).
             schema_name: Name of the schema used for extraction (for tracking).
+            update_classification: If True, store classification result on source.
+                Set to False for partial field_groups extraction to preserve
+                existing classification from a prior full extraction.
 
         Returns:
             List of created Extraction objects.
@@ -114,7 +118,9 @@ class SchemaExtractionPipeline:
         )
 
         # Store classification result on source if available
-        if classification:
+        # Skip when doing partial field_groups extraction to preserve
+        # classification from prior full extraction
+        if classification and update_classification:
             source.page_type = classification.page_type
             source.relevant_field_groups = classification.relevant_groups
             source.classification_method = classification.method.value
@@ -158,6 +164,7 @@ class SchemaExtractionPipeline:
         source_ids: list[UUID] | None = None,
         source_groups: list[str] | None = None,
         skip_extracted: bool = True,
+        field_groups_filter: list[str] | None = None,
         cancellation_check: Callable[[], Awaitable[bool]] | None = None,
         checkpoint_callback: CheckpointCallback | None = None,
         resume_from: set[str] | None = None,
@@ -229,6 +236,47 @@ class SchemaExtractionPipeline:
             )
 
         field_groups = adapter.convert_to_field_groups(schema)
+
+        if field_groups_filter:
+            all_names = {g.name for g in field_groups}
+            filter_set = set(field_groups_filter)
+            unmatched = filter_set - all_names
+            field_groups = [g for g in field_groups if g.name in filter_set]
+
+            if unmatched:
+                if not field_groups:
+                    error_msg = (
+                        f"No field groups matched filter {sorted(unmatched)}. "
+                        f"Available: {sorted(all_names)}"
+                    )
+                    logger.error(
+                        "field_groups_filter_no_match",
+                        project_id=str(project_id),
+                        requested=field_groups_filter,
+                        available=sorted(all_names),
+                    )
+                    return SchemaPipelineResult(
+                        project_id=str(project_id),
+                        sources_processed=0,
+                        sources_failed=0,
+                        total_extractions=0,
+                        field_groups=0,
+                        schema_name=schema.get("name", "unknown"),
+                        error=error_msg,
+                    )
+                logger.warning(
+                    "field_groups_filter_partial_match",
+                    project_id=str(project_id),
+                    matched=[g.name for g in field_groups],
+                    unmatched=sorted(unmatched),
+                )
+
+            logger.info(
+                "field_groups_filtered",
+                project_id=str(project_id),
+                requested=field_groups_filter,
+                matched=[g.name for g in field_groups],
+            )
 
         logger.info(
             "using_project_schema",
@@ -316,6 +364,7 @@ class SchemaExtractionPipeline:
                         source_context=source.source_group,
                         field_groups=field_groups,
                         schema_name=schema_name,
+                        update_classification=not bool(field_groups_filter),
                     )
                     # Update source status based on classification result
                     if source.page_type == "skip":

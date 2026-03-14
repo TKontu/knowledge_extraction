@@ -276,6 +276,10 @@ class ExtractRequest(BaseModel):
         default=None,
         description="Optional filter by source groups (company names). If omitted, extracts from all groups.",
     )
+    field_groups: list[str] | None = Field(
+        default=None,
+        description="Extract only these field groups by name. If omitted, extracts all field groups.",
+    )
 
 
 class ExtractResponse(BaseModel):

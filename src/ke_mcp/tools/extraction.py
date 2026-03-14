@@ -28,6 +28,10 @@ def register_extraction_tools(mcp: FastMCP) -> None:
             list[str] | None,
             "Optional filter by source groups (company names). If omitted, extracts from all groups.",
         ] = None,
+        field_groups: Annotated[
+            list[str] | None,
+            "Extract only these field groups by name. If omitted, extracts all field groups.",
+        ] = None,
         ctx: Context = None,
     ) -> dict:
         """Run LLM-based knowledge extraction on sources.
@@ -52,6 +56,7 @@ def register_extraction_tools(mcp: FastMCP) -> None:
                 source_ids=source_ids,
                 force=force,
                 source_groups=source_groups,
+                field_groups=field_groups,
             )
 
             return {

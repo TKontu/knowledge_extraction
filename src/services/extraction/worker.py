@@ -275,6 +275,7 @@ class ExtractionWorker:
         source_ids: list[UUID] | None,
         source_groups: list[str] | None = None,
         force: bool = False,
+        field_groups_filter: list[str] | None = None,
         cancellation_check=None,
         project: Project | None = None,
         job: Job | None = None,
@@ -310,6 +311,7 @@ class ExtractionWorker:
             source_ids=source_ids,
             source_groups=source_groups,
             skip_extracted=not force,
+            field_groups_filter=field_groups_filter,
             cancellation_check=cancellation_check,
             checkpoint_callback=checkpoint_callback,
             resume_from=resume_from,
@@ -347,6 +349,7 @@ class ExtractionWorker:
             source_ids = payload.get("source_ids")
             force = payload.get("force", False)
             source_groups = payload.get("source_groups")
+            field_groups_filter = payload.get("field_groups")
 
             if not project_id:
                 raise ValueError("project_id is required in job payload")
@@ -388,6 +391,7 @@ class ExtractionWorker:
                 else None,
                 source_groups=source_groups,
                 force=force,
+                field_groups_filter=field_groups_filter,
                 cancellation_check=check_cancellation,
                 project=project,
                 job=job,
