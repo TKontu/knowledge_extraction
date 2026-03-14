@@ -1,33 +1,39 @@
 # Handoff: Knowledge Extraction Orchestrator
 
-**Last updated:** 2026-03-13
+**Last updated:** 2026-03-14
 
 ## Current State
 
-### Uncommitted: Consolidation Quality Fixes D, F, G→I, H + Grounding Simplification
-20+ modified files + 2 new files. All tests pass.
-
-**What was implemented:**
-- **Fix D**: LLM summary consolidation — `llm_summarize` strategy, async `_llm_post_process()` in `ConsolidationService`, background job via `ConsolidationWorker` + scheduler loop. `use_llm=True` returns 202 with `job_id`.
-- **Fix F**: Entity per-field grounding — `ground_entity_fields()`, `field_grounding` on `EntityItem`, `_filter_entity_fields()` in gate
-- **Fix G→I (superseded)**: Grounding mode overrides removed — replaced by grounding simplification (see below)
-- **Fix H**: Entity confidence scoring — `score_entity_confidence()` replaces default 0.5 using completeness, ID presence, field grounding, quote quality
-- **Grounding Simplification**: `GROUNDING_DEFAULTS["text"]` changed from `"semantic"` to `"required"`. Descriptive text fields retyped to `summary` (grounding_mode=none). All 22 `grounding_mode: required` overrides removed from templates (now redundant). Net effect: field_type alone determines grounding behavior, no per-field overrides needed.
-- **Pipeline review bug fixes**: `grounding_mode` overrides were silently dropped (now fixed), LLM consolidation moved from inline HTTP to background job
-
-### Deployed & Running
+### Deployed & Verified
 - **v2 extraction pipeline** live with three-tier grounding gate, LLM quote rescue, negation filtering, confidence recalibration
 - **Phase B prompt improvements** deployed (92.0% well-grounded baseline)
+- **Grounding simplification** deployed — `GROUNDING_DEFAULTS["text"]` = `"required"`, descriptive fields retyped to `summary`
+- **Consolidation quality fixes (0, A-I)** all deployed — including v2 list field fix (Fix I)
+- **All 3 project schemas updated** — descriptive text fields retyped to `summary` in DB
+- **Grounding backfill** completed on all 3 projects
+- **Reconsolidation** completed on all 3 projects with `use_llm=true`
+
+### Quality Results (2026-03-14)
+See `docs/quality_analysis_2026-03-14.md` for full analysis.
+
+Key metrics (drivetrain, 238 companies consolidated):
+- company_name: 98.3% fill, 0.790 avg grounding
+- headquarters_location: 95.7% fill, 0.242 avg grounding
+- certifications: **61.0%** fill (was 0.9% before Fix I)
+- service_types: **51.8%** fill (was 0% before Fix I)
+- manufacturing_details: 87.7% fill
+- locations: 0% fill (extraction gap — LLM doesn't extract, not a consolidation issue)
+
+### Uncommitted Changes
+- Template change: `company_meta` split — locations removed, new `company_locations` entity list group
+- This template change needs to be applied to the live drivetrain project schema via `PUT` and then re-extracted
 
 ## Next Steps
 
 ### Immediate
-- [ ] Commit all uncommitted changes
-- [ ] Deploy to production
-- [ ] Update existing project schemas via `PUT /projects/{id}` to retype descriptive text fields to `summary` (templates only affect new projects)
-- [ ] Run backfill: `POST /projects/{id}/backfill-grounding-v2?dry_run=false` on all 3 projects
-- [ ] Reconsolidate drivetrain project with `use_llm=true` (now a background job)
-- [ ] Generate reports and verify quality improvements
+- [ ] Apply `company_locations` entity list schema to live drivetrain project
+- [ ] Re-extract `company_locations` group (or full re-extraction with `force=True`)
+- [ ] Generate final quality report for stakeholder review
 
 ### Later
 - [ ] Position tracing (Phase C) — `docs/TODO_quote_source_tracing.md`, algorithm validated: 87.3% match rate
@@ -38,13 +44,14 @@
 ## Key Files
 
 - `src/services/extraction/grounding.py` — `GROUNDING_DEFAULTS` (text=required, summary=none), `ground_entity_fields()`, `score_entity_confidence()`
-- `src/services/extraction/schema_orchestrator.py` — `apply_grounding_gate()`, `grounding_mode_overrides` (for rare per-field overrides)
+- `src/services/extraction/schema_orchestrator.py` — `apply_grounding_gate()`, `grounding_mode_overrides`
+- `src/services/extraction/consolidation.py` — v2 list field handling, `llm_summarize` strategy, `union_dedup`
 - `src/services/extraction/consolidation_service.py` — async methods, `_llm_post_process()`
-- `src/services/extraction/consolidation_worker.py` — NEW: background worker for consolidation jobs
+- `src/services/extraction/consolidation_worker.py` — background worker for consolidation jobs
 - `src/services/scraper/scheduler.py` — `_run_consolidate_worker()` loop
-- `src/api/v1/projects.py` — consolidation endpoint: 202 pattern for `use_llm=True`
-- `src/services/extraction/consolidation.py` — `llm_summarize` strategy, `get_llm_summarize_candidates()`
+- `src/api/v1/projects.py` — consolidation endpoint (202 pattern), backfill endpoints
 - `src/constants.py` — `JobType.CONSOLIDATE`
+- `docs/quality_analysis_2026-03-14.md` — post-grounding-simplification quality analysis
 
 ## Deployment Context
 
@@ -66,7 +73,7 @@
 
 | Doc | Status |
 |-----|--------|
-| `docs/TODO_consolidation_quality.md` | COMPLETE — all fixes (0, A-H) + grounding simplification |
+| `docs/TODO_consolidation_quality.md` | COMPLETE — all fixes (0, A-I) + grounding simplification + post-deploy verification |
 | `docs/TODO_grounding_and_consolidation.md` | COMPLETE — all 6 increments |
 | `docs/TODO_extraction_quality.md` | Phase A & B COMPLETE & deployed |
 | `docs/TODO_grounded_extraction.md` | Layers 1+3 COMPLETE, Layer 2 (skip-gate) pending |
@@ -76,7 +83,7 @@
 ## Context
 
 - **v2 is live**: All new extractions use v2 format with inline grounding. v1 data coexists.
-- **Grounding model**: `text` = required (value-in-quote + quote-in-source), `summary` = none (always 1.0), `boolean` = semantic (quote-in-source only). No per-field `grounding_mode` overrides needed — field_type determines behavior.
-- **Test suite**: 2281+ tests passing
+- **Grounding model**: `text` = required (value-in-quote + quote-in-source), `summary` = none (always 1.0), `boolean` = semantic (quote-in-source only). No per-field overrides needed.
+- **Test suite**: 2286+ tests passing
 - **Consolidation stale threshold**: 30 minutes (vs 10 min default) for LLM synthesis time
-- **Pre-existing lint warnings**: B008 (Depends) in projects.py, E402 (imports) in scheduler.py — not introduced by this work
+- **Postgres container ID**: changes on deploy — look up via Portainer `GET /containers/json?filters={"name":["postgres"]}`

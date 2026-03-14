@@ -67,13 +67,9 @@ extraction_schema:
           required: true
           default: 0.8
     - name: contact_info
-      description: Contact and location information
+      description: Contact information
       is_entity_list: false
       fields:
-        - name: locations
-          field_type: list
-          description: List of locations (city, country)
-          required: false
         - name: website
           field_type: text
           description: Website URL
@@ -82,6 +78,23 @@ extraction_schema:
           field_type: text
           description: Contact email address
           required: false
+    - name: entity_locations
+      description: Locations and facilities
+      is_entity_list: true
+      fields:
+        - name: city
+          field_type: text
+          required: false
+          description: City name
+        - name: country
+          field_type: text
+          required: true
+          default: ""
+          description: Country name
+        - name: site_type
+          field_type: text
+          required: false
+          description: "headquarters, office, manufacturing, service, warehouse"
 entity_types:
   - name: entity
     description: Generic named entity

@@ -11,7 +11,7 @@ class TestSchemaAdapterIntegration:
     """Test SchemaAdapter with real templates."""
 
     def test_default_template_converts_to_field_groups(self):
-        """Default template should convert to 3 field groups."""
+        """Default template should convert to 4 field groups."""
         adapter = SchemaAdapter()
         schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
 
@@ -21,13 +21,14 @@ class TestSchemaAdapterIntegration:
 
         # Convert
         field_groups = adapter.convert_to_field_groups(schema)
-        assert len(field_groups) == 3
+        assert len(field_groups) == 4
 
         # Check group names
         group_names = [g.name for g in field_groups]
         assert "entity_info" in group_names
         assert "key_facts" in group_names
         assert "contact_info" in group_names
+        assert "entity_locations" in group_names
 
     def test_custom_schema_round_trip(self):
         """Custom schema should validate and convert correctly."""
@@ -74,4 +75,4 @@ class TestProjectCreationWithDefault:
         # Should have default schema
         assert project.extraction_schema is not None
         assert project.extraction_schema.get("name") == "generic_facts"
-        assert len(project.extraction_schema.get("field_groups", [])) == 3
+        assert len(project.extraction_schema.get("field_groups", [])) == 4

@@ -1,0 +1,1035 @@
+{
+  "extraction_counts_by_version": [
+    {
+      "version": 1,
+      "count": 2
+    },
+    {
+      "version": 2,
+      "count": 6966
+    }
+  ],
+  "v2_sample_size": 500,
+  "locations_stats": {
+    "missing": 0,
+    "empty_items": 500,
+    "has_items": 0,
+    "has_value_not_items": 0
+  },
+  "certifications_stats": {
+    "missing": 0,
+    "empty_items": 421,
+    "has_items": 79
+  },
+  "full_count": {
+    "total_v2_company_meta": 6966,
+    "has_locations_key": 6964,
+    "has_location_items": 0,
+    "has_certifications_key": 6964,
+    "has_cert_items": 965
+  },
+  "v1_count": {
+    "total": 2,
+    "has_locations_data": 1
+  },
+  "raw_samples": [
+    {
+      "extraction_id": "40b0db4e-8d5a-41aa-bd92-3df3364c87b2",
+      "source_group": "Southerngear",
+      "uri": "https://southerngear.com/helical-gearbox-hobbing",
+      "title": "Helical Gearbox Hobbing | Southern Gear",
+      "confidence": 0.8,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": [
+          {
+            "quote": "under our AS9100D certified quality system",
+            "value": "AS9100D",
+            "location": {
+              "char_end": 1259,
+              "match_tier": 1,
+              "char_offset": 1217,
+              "chunk_index": 0,
+              "heading_path": []
+            },
+            "grounding": 1.0,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "7a74b9c1-d589-4e35-88d8-5261aee09f37",
+      "source_group": "En",
+      "uri": "https://en.zaninirenk.com.br/redutor-planetario-revolution-para-roller-press",
+      "title": "Redutor Planet\u00e1rio Revolution\u00ae para Roller Press - Zanini Renk",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "e6876353-33d7-49cf-8380-cf82e1cdb1cc",
+      "source_group": "Ramseychain",
+      "uri": "https://ramseychain.com/country/united-states",
+      "title": "United States Archives - Ramsey Products",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "18d904c1-af9e-46db-85b6-f0d5f7e97bf0",
+      "source_group": "Gleason",
+      "uri": "https://www.gleason.com/de/academy/events/training-bevel-gear-single-flank-testing-1",
+      "title": "Training - Bevel Gear Single Flank Testing",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "1ccc5a36-9325-4669-b31b-c11c8b685e44",
+      "source_group": "Retenfor",
+      "uri": "https://www.retenfor.com.br/servicos/engenharia-e-projeto",
+      "title": "Retenfor - Correias e polias para m\u00e1quinas industriais - Breco, Brecoflex, Esband",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "099cfa54-5b55-43fb-9bea-c72a47413bab",
+      "source_group": "Boschrexroth",
+      "uri": "https://boschrexroth.africa/en/power-steering-systems",
+      "title": "Power Steering Systems | Bosch Rexroth Africa",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "94b6f5b3-1e2a-4f2d-83f1-238464c419dc",
+      "source_group": "Transcyko",
+      "uri": "https://transcyko.com/cyclo-speed-reducers-cycloidal-gearboxes-for-airports-aviation",
+      "title": "Cyclo Speed Reducers & Cycloidal Gearboxes For Airports & Aviation - Transcyko",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "d5b73e0f-05fa-4ef2-a876-18a2b2e236d0",
+      "source_group": "Stoeber",
+      "uri": "https://www.stoeber.de/en/news/stober-in-motion",
+      "title": "STOBER in Motion Mountain Bike Event",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "18d6338d-bbb5-4fbd-b411-113239f50f59",
+      "source_group": "Ramseychain",
+      "uri": "https://ramseychain.com/the-chain-doctor/videos",
+      "title": "Ramsey Products | Silent Chain Videos",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    },
+    {
+      "extraction_id": "cc96d9fd-23f5-446b-8b3f-d481ffc85e27",
+      "source_group": "Venturemfgco",
+      "uri": "https://www.venturemfgco.com/actuators-for-construction-and-manufacturing-industry",
+      "title": "Heavy Duty Actuators for Construction & Manufacturing Industries - Venture Mfg. Co.",
+      "confidence": 0.0,
+      "chunk_index": null,
+      "locations_field": {
+        "items": []
+      },
+      "certifications_field": {
+        "items": []
+      },
+      "all_keys": [
+        "_meta",
+        "locations",
+        "certifications"
+      ]
+    }
+  ],
+  "source_content_analysis": {
+    "groups_analyzed": 20,
+    "groups_with_location_keywords": 9,
+    "percentage": 45.0,
+    "evidence_samples": [
+      {
+        "source_group": "Abb",
+        "sources_with_locations": 1,
+        "samples": [
+          {
+            "uri": "https://www.abb.com/global/en/areas/robotics/products/software/iot-gateway",
+            "title": "IoT Gateway | ABB",
+            "match_count": 2,
+            "sample_contexts": [
+              "Skip to main content  ![This image captures a hand operating a tablet in a factory. Robotic systems engage in production. It highlights the integration of technol",
+              "961042/2023-09-14/5qyj68)  ![This image captures a hand operating a tablet in a factory. Robotic systems engage in production. It highlights the integration of technol"
+            ],
+            "content_length": 1369
+          }
+        ]
+      },
+      {
+        "source_group": "Ablproducts",
+        "sources_with_locations": 1,
+        "samples": [
+          {
+            "uri": "https://www.ablproducts.com/washers-wear-plates-and-stampings",
+            "title": "Sprockets, Washers, Wear Plates and Stampings - ABL Products, Inc.",
+            "match_count": 1,
+            "sample_contexts": [
+              "Heavy duty, standard and ASTM F436 washers.  _**WEAR PLATES**_   Our stamping plant and our machine shop produce wear plates for various uses including industrial"
+            ],
+            "content_length": 1304
+          }
+        ]
+      },
+      {
+        "source_group": "Acmegear",
+        "sources_with_locations": 2,
+        "samples": [
+          {
+            "uri": "https://www.acmegear.com/wenzel-wgt-850",
+            "title": "Wenzel WGT 850",
+            "match_count": 1,
+            "sample_contexts": [
+              "his assures high precision measurements of big parts even in close proximity to factory production machines.  PRECISION  Wenzel machine using a Renishaw probe  Air bea"
+            ],
+            "content_length": 1420
+          },
+          {
+            "uri": "https://www.acmegear.com/about",
+            "title": "Producers of Precision Custom Gears",
+            "match_count": 1,
+            "sample_contexts": [
+              "O requirements. Acme's fully integrated and production-controlled manufacturing plant provides you with the most up-to-date machine tools for satisfying the varied d"
+            ],
+            "content_length": 1884
+          }
+        ]
+      },
+      {
+        "source_group": "Aisin",
+        "sources_with_locations": 1,
+        "samples": [
+          {
+            "uri": "https://www.aisin.com/en/profile/factory/",
+            "title": "Head Office and Plants | AISIN CORPORATION Global Website",
+            "match_count": 21,
+            "sample_contexts": [
+              "Head Office and Plants ======================  Head Office (Main building, R&D center, Supp",
+              "Head Office and Plants ======================  Head Office (Main building, R&D center, Supply chain center, com-center) ------------------",
+              "| Telephone | +81-566-24-8441 (main switchboard) |  Plants ------  ### Anjo 1st Plant, Anjo 2nd Plant  |     |     | | --- | --- | | Address | 10, Takane, Fujii-cho,"
+            ],
+            "content_length": 2313
+          }
+        ]
+      },
+      {
+        "source_group": "Allischalmers",
+        "sources_with_locations": 2,
+        "samples": [
+          {
+            "uri": "https://www.allischalmers.com/forum/help.asp",
+            "title": "Forum Help",
+            "match_count": 1,
+            "sample_contexts": [
+              "the forum depends if you need to login first before you can post a message. The facilities available to you in each of the forums are listed at the bottom of the topic sc"
+            ],
+            "content_length": 21473
+          },
+          {
+            "uri": "https://www.allischalmers.com/",
+            "title": "Unofficial Allis Home Page",
+            "match_count": 2,
+            "sample_contexts": [
+              "/oktractor.com/accom/acadvert.jpg)](http://www.oktractor.com/)     **![La Porte factory parking lot.  Photo from image archive.](https://www.allischalmers.com/graphics",
+              "of the remaining manufacturing businesses in 1988, Allis-Chalmers maintained an office in Milwaukee until January 1999.      AGCO has steadily grown through the aquis"
+            ],
+            "content_length": 2918
+          }
+        ]
+      },
+      {
+        "source_group": "Allisontransmission",
+        "sources_with_locations": 4,
+        "samples": [
+          {
+            "uri": "https://www.allisontransmission.com",
+            "title": "Global Leader in Automatic Transmissions | Allison Transmission",
+            "match_count": 3,
+            "sample_contexts": [
+              "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:1920,height:1000,gravity:top)  Allison Transmission Acc",
+              "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:337,height:186,gravity:center)  ### Allison Transmissio",
+              "ission.bynder.com/transform/3763f54f-ba2f-4019-b474-b8a1b19d835d/Allison-Global-Headquarters?io=transform:fill,width:337,height:186,gravity:center)  ### Dana and Allison A"
+            ],
+            "content_length": 7713
+          },
+          {
+            "uri": "https://www.allisontransmission.com/",
+            "title": "Global Leader in Automatic Transmissions | Allison Transmission",
+            "match_count": 4,
+            "sample_contexts": [
+              "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:1920,height:1000,gravity:top)  Allison Transmission Acc",
+              "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:70,height:70)Allison Transmission Accelerates Growth in",
+              "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:337,height:186,gravity:center)  ### Allison Transmissio"
+            ],
+            "content_length": 9008
+          }
+        ]
+      },
+      {
+        "source_group": "Alphagearhead",
+        "sources_with_locations": 1,
+        "samples": [
+          {
+            "uri": "https://alphagearhead.com/2017/12/23/utilitarian-luxuries",
+            "title": "Utilitarian Luxuries \u2013 Alpha Gearhead",
+            "match_count": 1,
+            "sample_contexts": [
+              "00&h=1868&fm=pjpg&auto=compress&fit=crop&crop=faces,edges)  On top of this, the factory tire diameter is over 32\u201d, larger in fact, than similar era Super-Duty and Excu"
+            ],
+            "content_length": 15175
+          }
+        ]
+      },
+      {
+        "source_group": "Anandgears",
+        "sources_with_locations": 1,
+        "samples": [
+          {
+            "uri": "https://www.anandgears.co.in/enquiry.html",
+            "title": "Manufacturer from Thane",
+            "match_count": 2,
+            "sample_contexts": [
+              "contact number +91-8048966272 Call Response Rate: 79%  View Additional Details  Branch Office   A. K. Teli    Share us on[](https://www.facebook.com/sharer.php?u=http",
+              "number +91-8048966272 Call Response Rate: 79%  View Additional Details  Branch Office   A. K. Teli    Share us on[](https://www.facebook.com/sharer.php?u=https://www"
+            ],
+            "content_length": 1800
+          }
+        ]
+      },
+      {
+        "source_group": "Anantengineering",
+        "sources_with_locations": 4,
+        "samples": [
+          {
+            "uri": "https://www.anantengineering.com/las-vegas/star-coupling.htm",
+            "title": "Star Coupling Manufacturers in Las Vegas, Star Coupling Suppliers Exporters Las Vegas",
+            "match_count": 1,
+            "sample_contexts": [
+              "liable Star Coupling Supplier in Las Vegas, Anant Engineering supports OEMs and plant maintenance teams with coupling solutions that are easy to install, align, and"
+            ],
+            "content_length": 33148
+          },
+          {
+            "uri": "https://www.anantengineering.com/london/taper-lock-sprocket.htm",
+            "title": "Taper lock Sprocket Manufacturers in London, Taper lock Sprocket Suppliers Exporters London",
+            "match_count": 2,
+            "sample_contexts": [
+              "These applications benefit from secure mounting and repeatable positioning in facilities across London.  Manufacturing Accuracy That Ensures Shaft Integrity -----------",
+              "are engineered for strength and durability, making them suitable for heavy-duty operations in industries like agriculture, automotive, and material handling.  [Read More](ht"
+            ],
+            "content_length": 18980
+          }
+        ]
+      }
+    ]
+  },
+  "side_by_side": [
+    {
+      "source_group": "Abb",
+      "total_extractions": 10,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://www.abb.com/global/en/areas/robotics/products/software/iot-gateway",
+          "title": "IoT Gateway | ABB",
+          "match_count": 2,
+          "sample_contexts": [
+            "Skip to main content  ![This image captures a hand operating a tablet in a factory. Robotic systems engage in production. It highlights the integration of technol",
+            "961042/2023-09-14/5qyj68)  ![This image captures a hand operating a tablet in a factory. Robotic systems engage in production. It highlights the integration of technol"
+          ],
+          "content_length": 1369
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.abb.com/global/en/areas/motion/digital-tools/legacy-drive-tools",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.abb.com/global/en/company/innovation/news/opc-ua",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.abb.com/global/en/areas/robotics/solutions/functional-modules/spot-welding-functional-module",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Ablproducts",
+      "total_extractions": 4,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://www.ablproducts.com/washers-wear-plates-and-stampings",
+          "title": "Sprockets, Washers, Wear Plates and Stampings - ABL Products, Inc.",
+          "match_count": 1,
+          "sample_contexts": [
+            "Heavy duty, standard and ASTM F436 washers.  _**WEAR PLATES**_   Our stamping plant and our machine shop produce wear plates for various uses including industrial"
+          ],
+          "content_length": 1304
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.ablproducts.com/",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.ablproducts.com/washers-wear-plates-and-stampings",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.ablproducts.com/contact-us/",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Acmegear",
+      "total_extractions": 1,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://www.acmegear.com/wenzel-wgt-850",
+          "title": "Wenzel WGT 850",
+          "match_count": 1,
+          "sample_contexts": [
+            "his assures high precision measurements of big parts even in close proximity to factory production machines.  PRECISION  Wenzel machine using a Renishaw probe  Air bea"
+          ],
+          "content_length": 1420
+        },
+        {
+          "uri": "https://www.acmegear.com/about",
+          "title": "Producers of Precision Custom Gears",
+          "match_count": 1,
+          "sample_contexts": [
+            "O requirements. Acme's fully integrated and production-controlled manufacturing plant provides you with the most up-to-date machine tools for satisfying the varied d"
+          ],
+          "content_length": 1884
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.acmegear.com/about",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Aisin",
+      "total_extractions": 25,
+      "total_location_items": 0,
+      "total_cert_items": 2,
+      "source_evidence": [
+        {
+          "uri": "https://www.aisin.com/en/profile/factory/",
+          "title": "Head Office and Plants | AISIN CORPORATION Global Website",
+          "match_count": 21,
+          "sample_contexts": [
+            "Head Office and Plants ======================  Head Office (Main building, R&D center, Supp",
+            "Head Office and Plants ======================  Head Office (Main building, R&D center, Supply chain center, com-center) ------------------",
+            "| Telephone | +81-566-24-8441 (main switchboard) |  Plants ------  ### Anjo 1st Plant, Anjo 2nd Plant  |     |     | | --- | --- | | Address | 10, Takane, Fujii-cho,"
+          ],
+          "content_length": 2313
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.aisin.com/en/3min/",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.aisin.com/en/product/mobility/?tab=type&category=hevPhev",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.aisin.com/en/product/mobility/?tab=business&category=body",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Allischalmers",
+      "total_extractions": 7,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://www.allischalmers.com/forum/help.asp",
+          "title": "Forum Help",
+          "match_count": 1,
+          "sample_contexts": [
+            "the forum depends if you need to login first before you can post a message. The facilities available to you in each of the forums are listed at the bottom of the topic sc"
+          ],
+          "content_length": 21473
+        },
+        {
+          "uri": "https://www.allischalmers.com/",
+          "title": "Unofficial Allis Home Page",
+          "match_count": 2,
+          "sample_contexts": [
+            "/oktractor.com/accom/acadvert.jpg)](http://www.oktractor.com/)     **![La Porte factory parking lot.  Photo from image archive.](https://www.allischalmers.com/graphics",
+            "of the remaining manufacturing businesses in 1988, Allis-Chalmers maintained an office in Milwaukee until January 1999.      AGCO has steadily grown through the aquis"
+          ],
+          "content_length": 2918
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.allischalmers.com/forum/member_profile.asp?PF=7770",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.allischalmers.com/forum/default.asp",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.allischalmers.com/history/",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Allisontransmission",
+      "total_extractions": 4,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://www.allisontransmission.com",
+          "title": "Global Leader in Automatic Transmissions | Allison Transmission",
+          "match_count": 3,
+          "sample_contexts": [
+            "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:1920,height:1000,gravity:top)  Allison Transmission Acc",
+            "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:337,height:186,gravity:center)  ### Allison Transmissio",
+            "ission.bynder.com/transform/3763f54f-ba2f-4019-b474-b8a1b19d835d/Allison-Global-Headquarters?io=transform:fill,width:337,height:186,gravity:center)  ### Dana and Allison A"
+          ],
+          "content_length": 7713
+        },
+        {
+          "uri": "https://www.allisontransmission.com/",
+          "title": "Global Leader in Automatic Transmissions | Allison Transmission",
+          "match_count": 4,
+          "sample_contexts": [
+            "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:1920,height:1000,gravity:top)  Allison Transmission Acc",
+            "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:70,height:70)Allison Transmission Accelerates Growth in",
+            "bynder.com/transform/251d07ee-b993-4e2e-bca7-4fac4501aca6/Allison-Chennai-India-Plant?io=transform:fill,width:337,height:186,gravity:center)  ### Allison Transmissio"
+          ],
+          "content_length": 9008
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.allisontransmission.com/",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.allisontransmission.com/home",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.allisontransmission.com/support/sales-and-service-locator",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Alphagearhead",
+      "total_extractions": 29,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://alphagearhead.com/2017/12/23/utilitarian-luxuries",
+          "title": "Utilitarian Luxuries \u2013 Alpha Gearhead",
+          "match_count": 1,
+          "sample_contexts": [
+            "00&h=1868&fm=pjpg&auto=compress&fit=crop&crop=faces,edges)  On top of this, the factory tire diameter is over 32\u201d, larger in fact, than similar era Super-Duty and Excu"
+          ],
+          "content_length": 15175
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://alphagearhead.com/2018/01/01/a-gearhead-new-year",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://alphagearhead.com/2018/01/24/the-spirit-of-a-gearhead",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://alphagearhead.com/2017/11/05/what-is-a-gearhead",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    },
+    {
+      "source_group": "Anandgears",
+      "total_extractions": 6,
+      "total_location_items": 0,
+      "total_cert_items": 0,
+      "source_evidence": [
+        {
+          "uri": "https://www.anandgears.co.in/enquiry.html",
+          "title": "Manufacturer from Thane",
+          "match_count": 2,
+          "sample_contexts": [
+            "contact number +91-8048966272 Call Response Rate: 79%  View Additional Details  Branch Office   A. K. Teli    Share us on[](https://www.facebook.com/sharer.php?u=http",
+            "number +91-8048966272 Call Response Rate: 79%  View Additional Details  Branch Office   A. K. Teli    Share us on[](https://www.facebook.com/sharer.php?u=https://www"
+          ],
+          "content_length": 1800
+        }
+      ],
+      "extraction_samples": [
+        {
+          "uri": "https://www.anandgears.co.in/crown-pinion.html",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.anandgears.co.in/enquiry.html",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        },
+        {
+          "uri": "https://www.anandgears.co.in/motorized-gearboxes.html",
+          "chunk": null,
+          "confidence": 0.0,
+          "locations": {
+            "items": []
+          },
+          "certifications_count": 0
+        }
+      ]
+    }
+  ],
+  "prompt_analysis": {
+    "locations_field_spec": "- \"locations\" (list): List of {city, country, site_type} objects",
+    "certifications_field_spec": "- \"certifications\" (list): ISO certifications, industry standards, safety certifications",
+    "prompt_hint": "Extract:\n- Certifications: ISO 9001, ISO 14001, ATEX, UL, CE, etc.\n- Locations: manufacturing plants, headquarters, sales offices, service centers",
+    "v2_output_format_issue": "v2 format asks LLM for {\"value\": ..., \"confidence\": ..., \"quote\": ...} per field. For list fields, the LLM must return {\"value\": [...list items...]}. Complex objects like {city, country, site_type} may confuse the LLM about how to structure the response. Certifications (simple strings) work; locations (complex objects) may fail."
+  },
+  "distinct_locations_formats": [
+    "{\"items\": []}"
+  ],
+  "consolidated_samples": [
+    {
+      "source_group": "Holinger",
+      "source_count": 23,
+      "grounded_count": 0,
+      "locations": null,
+      "certifications": null
+    },
+    {
+      "source_group": "Clevelandgear",
+      "source_count": 15,
+      "grounded_count": 3,
+      "locations": null,
+      "certifications": [
+        "ISO 9001:2015"
+      ]
+    },
+    {
+      "source_group": "Alltorquetransmissions",
+      "source_count": 20,
+      "grounded_count": 1,
+      "locations": null,
+      "certifications": [
+        "BISSC\u00ae Certified"
+      ]
+    },
+    {
+      "source_group": "Turnerunidrive",
+      "source_count": 15,
+      "grounded_count": 0,
+      "locations": null,
+      "certifications": null
+    },
+    {
+      "source_group": "Stmteamaustralia",
+      "source_count": 37,
+      "grounded_count": 3,
+      "locations": null,
+      "certifications": [
+        "EMC",
+        "LV Directives",
+        "ISO 9001",
+        "CE"
+      ]
+    },
+    {
+      "source_group": "Venturemfgco",
+      "source_count": 78,
+      "grounded_count": 48,
+      "locations": null,
+      "certifications": [
+        "ISO 9001:2015",
+        "ETL listed",
+        "UL325",
+        "ETL compliance",
+        "ISO 9001: 2008",
+        "RoHS",
+        "CE",
+        "EN 55014-1",
+        "EN55014-2",
+        "EN60204-1: 2006"
+      ]
+    },
+    {
+      "source_group": "Geographe",
+      "source_count": 67,
+      "grounded_count": 13,
+      "locations": null,
+      "certifications": [
+        "ISO 9001"
+      ]
+    },
+    {
+      "source_group": "Ultragear",
+      "source_count": 5,
+      "grounded_count": 2,
+      "locations": null,
+      "certifications": [
+        "ISO",
+        "ISO 9001",
+        "UL"
+      ]
+    },
+    {
+      "source_group": "Davall",
+      "source_count": 15,
+      "grounded_count": 8,
+      "locations": null,
+      "certifications": [
+        "AS 9100D",
+        "ISO 9001:2015",
+        "Certified Processes",
+        "CE",
+        "NADCAP"
+      ]
+    },
+    {
+      "source_group": "Hgears",
+      "source_count": 46,
+      "grounded_count": 8,
+      "locations": null,
+      "certifications": [
+        "ISO 45001",
+        "TISAX",
+        "Family Audit Certification",
+        "Family Audit",
+        "GBM-Global Benchmarking",
+        "IATF 16949",
+        "ISO/TS 16949"
+      ]
+    }
+  ],
+  "v1_samples": [
+    {
+      "source_group": "Principalpower",
+      "uri": "https://www.principalpower.co.za/just-a-simple-post",
+      "locations": [],
+      "certifications": [],
+      "all_keys": [
+        "locations",
+        "confidence",
+        "_validation",
+        "certifications"
+      ]
+    },
+    {
+      "source_group": "En",
+      "uri": "https://en.zaninirenk.com.br/structure",
+      "locations": [
+        {
+          "city": "Brazil",
+          "country": "Brazil",
+          "site_type": "manufacturing plant"
+        },
+        {
+          "city": "Guatemala",
+          "country": "Guatemala",
+          "site_type": "sales office"
+        },
+        {
+          "city": "EUA",
+          "country": "United States",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Col\u00f4mbia",
+          "country": "Colombia",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Chile",
+          "country": "Chile",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Alemanha",
+          "country": "Germany",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Uruguai",
+          "country": "Uruguay",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Argentina",
+          "country": "Argentina",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Peru",
+          "country": "Peru",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Venezuela",
+          "country": "Venezuela",
+          "site_type": "sales office"
+        },
+        {
+          "city": "M\u00e9xico",
+          "country": "Mexico",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Jap\u00e3o",
+          "country": "Japan",
+          "site_type": "sales office"
+        },
+        {
+          "city": "\u00cdndia",
+          "country": "India",
+          "site_type": "sales office"
+        },
+        {
+          "city": "Honduras",
+          "country": "Honduras",
+          "site_type": "sales office"
+        }
+      ],
+      "certifications": [],
+      "all_keys": [
+        "_quotes",
+        "locations",
+        "confidence",
+        "certifications"
+      ]
+    }
+  ]
+}

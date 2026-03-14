@@ -51,10 +51,6 @@ extraction_schema:
           field_type: integer
           required: false
           description: Number of locations
-        - name: site_locations
-          field_type: list
-          required: false
-          description: List of site locations (city, country)
         - name: confidence
           field_type: float
           required: true
@@ -85,6 +81,23 @@ extraction_schema:
           field_type: float
           required: false
           description: Speed in RPM
+    - name: company_locations
+      description: Company facility and office locations
+      is_entity_list: true
+      fields:
+        - name: city
+          field_type: text
+          required: false
+          description: City name
+        - name: country
+          field_type: text
+          required: true
+          default: ""
+          description: Country name
+        - name: site_type
+          field_type: text
+          required: false
+          description: "headquarters, manufacturing, sales, service, R&D, warehouse, office"
 entity_types:
   - name: product
     description: Product with specifications

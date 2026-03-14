@@ -270,4 +270,4 @@ class TestProjectCreate:
         project = ProjectCreate(name="test_project")
 
         assert "field_groups" in project.extraction_schema
-        assert len(project.extraction_schema["field_groups"]) == 3
+        assert len(project.extraction_schema["field_groups"]) == 4

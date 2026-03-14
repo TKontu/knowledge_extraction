@@ -92,17 +92,35 @@ The `text` type triggered a **double vulnerability** (now fixed):
 - All 2281 tests pass
 - Test files updated/added: `test_grounding.py`, `test_grounding_v2.py`, `test_grounding_gate.py`, `test_inline_grounding.py`, `test_grounding_backfill.py`, `test_consolidation.py`, `test_consolidation_service.py`, `test_scheduler_startup.py`
 
-## Remaining Work
+### ✅ Fix I: V2 list field consolidation bug
+- `consolidation.py` v2 branch: list fields store data as `{"items": [...]}` not `{"value": ...}`
+- The code only looked for `field_data.get("value")` → always None for list fields → silently dropped
+- Fix: added v2 list item extraction — extracts items, computes per-item avg weight, feeds into `union_dedup`
+- **Impact**: certifications 0.9% → 61.0%, service_types 0% → 51.8%
 
-### 🔲 Post-deploy: Update existing project schemas
-Existing projects (drivetrain, jobs, wikipedia) need descriptive text fields retyped to `summary` in their DB schemas via `PUT /projects/{id}` — template changes only affect new projects.
+## Post-Deploy Verification (2026-03-14)
 
-### 🔲 Post-deploy: Backfill → Reconsolidate → Verify
-1. Run `POST /projects/{id}/backfill-grounding-v2?dry_run=true` on all 3 projects — check stats
-2. Run with `dry_run=false` — verify Flender "Bielefeld" grounding drops to ~0.0
-3. Reconsolidate drivetrain project (with `use_llm=true` for synthesis)
-4. Generate report → verify Flender HQ = "Bocholt, Germany"
-5. Verify product entity quality still reasonable, confidence distribution no longer uniform 0.5
+### ✅ Schema updates
+- Drivetrain: `manufacturing_details` retyped to `summary` via `PUT /projects/{id}?force=true`
+- Wikipedia: `notable_for`, `dimensions_or_measurements` retyped to `summary`
+- Jobs: no changes needed
+
+### ✅ Grounding backfill
+- All 3 projects backfilled via `POST /projects/{id}/backfill-grounding-v2?dry_run=false`
+- Drivetrain: 5,343/46,950 extractions updated
+- Jobs: 19/85 updated
+- Wikipedia: 32/57 updated
+
+### ✅ Reconsolidation (3 rounds)
+1. Post-backfill: certifications 0.9%, service_types 0% (list bug not yet fixed)
+2. Post-Fix I: certifications **61.0%** (139/228), service_types **51.8%** (115/222)
+3. company_meta empty: 226/228 → **89/228**
+
+### Remaining: Locations extraction gap
+- `locations` field: 0/6,964 raw extractions have any items — LLM returns empty `{"items": []}` for all
+- Root cause: complex structured list description ("List of {city, country, site_type} objects") doesn't translate well to per-item extraction
+- **Fix**: Template updated — `locations` removed from `company_meta`, new `company_locations` entity list group with structured fields (city, country, site_type) and detailed prompt hints
+- Requires re-extraction to populate
 
 ## Files Modified
 

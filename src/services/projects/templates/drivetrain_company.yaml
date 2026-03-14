@@ -229,21 +229,40 @@ extraction_schema:
           required: false
           description: Torque rating in Nm
     - name: company_meta
-      description: Certifications and locations
+      description: Certifications
       is_entity_list: false
       prompt_hint: |
         Extract:
         - Certifications: ISO 9001, ISO 14001, ATEX, UL, CE, etc.
-        - Locations: manufacturing plants, headquarters, sales offices, service centers
       fields:
         - name: certifications
           field_type: list
           required: false
           description: "ISO certifications, industry standards, safety certifications"
-        - name: locations
-          field_type: list
+    - name: company_locations
+      description: Company facility and office locations
+      is_entity_list: true
+      prompt_hint: |
+        Extract each company LOCATION as a separate entity:
+        - Headquarters, manufacturing plants, factories, production sites
+        - Sales offices, service centers, branch offices, R&D centers
+        - Look in "About Us", "Contact", "Locations", footer sections
+        - Include the site type (headquarters, manufacturing, sales, service, R&D, warehouse)
+        - If only a country is mentioned without a city, still extract it
+      fields:
+        - name: city
+          field_type: text
           required: false
-          description: "List of {city, country, site_type} objects"
+          description: City name
+        - name: country
+          field_type: text
+          required: true
+          default: ""
+          description: Country name
+        - name: site_type
+          field_type: text
+          required: false
+          description: "headquarters, manufacturing, sales, service, R&D, warehouse, office"
 entity_types:
   - name: company
     description: Company name and identifier

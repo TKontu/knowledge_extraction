@@ -15,12 +15,12 @@ class TestDefaultTemplate:
         assert DEFAULT_EXTRACTION_TEMPLATE is not None
         assert "extraction_schema" in DEFAULT_EXTRACTION_TEMPLATE
 
-    def test_default_template_has_3_field_groups(self):
-        """Exactly 3 field groups."""
+    def test_default_template_has_4_field_groups(self):
+        """Exactly 4 field groups."""
         from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
         schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
-        assert len(schema["field_groups"]) == 3
+        assert len(schema["field_groups"]) == 4
 
     def test_default_template_passes_validation(self):
         """Use SchemaAdapter to validate."""
@@ -38,7 +38,7 @@ class TestDefaultTemplate:
         from services.projects.templates import DEFAULT_EXTRACTION_TEMPLATE
 
         schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
-        valid_types = {"boolean", "integer", "float", "text", "list", "enum"}
+        valid_types = {"boolean", "integer", "float", "text", "summary", "list", "enum"}
 
         for fg in schema["field_groups"]:
             for field in fg["fields"]:
@@ -73,6 +73,6 @@ class TestDefaultTemplate:
         schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
 
         field_groups = adapter.convert_to_field_groups(schema)
-        assert len(field_groups) == 3
+        assert len(field_groups) == 4
         assert all(hasattr(g, "name") for g in field_groups)
         assert all(hasattr(g, "fields") for g in field_groups)
