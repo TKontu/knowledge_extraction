@@ -465,13 +465,44 @@ def consolidate_extractions(
                 field_data = data.get(field_name)
                 if not isinstance(field_data, dict):
                     continue
+                ext_confidence = float(ext.get("confidence", 0.5))
+
+                # v2 list fields use {"items": [...]} instead of {"value": ...}
+                if field_type == "list" and "items" in field_data:
+                    items = field_data["items"]
+                    if not isinstance(items, list) or not items:
+                        continue
+                    # Collect item values, weighted by avg item quality
+                    item_values = []
+                    item_weights = []
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        iv = item.get("value")
+                        if iv is None:
+                            continue
+                        item_values.append(iv)
+                        ic = float(item.get("confidence", 0.5))
+                        ig = float(item.get("grounding", 1.0))
+                        item_weights.append(
+                            effective_weight(ic, ig, grounding_mode)
+                        )
+                    if not item_values:
+                        continue
+                    value = item_values
+                    avg_w = sum(item_weights) / len(item_weights)
+                    weight = min(avg_w, max(ext_confidence, 0.3))
+                    weighted_values.append(
+                        WeightedValue(value, weight, str(source_id))
+                    )
+                    continue
+
                 value = field_data.get("value")
                 if value is None:
                     continue
                 confidence = float(field_data.get("confidence", 0.5))
                 grounding_score = float(field_data.get("grounding", 1.0))
                 # Cap by extraction-level confidence (floor 0.3 to avoid zeroing)
-                ext_confidence = float(ext.get("confidence", 0.5))
             else:
                 # v1: flat format
                 value = data.get(field_name)

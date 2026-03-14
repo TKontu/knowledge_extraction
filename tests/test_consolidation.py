@@ -1412,3 +1412,129 @@ class TestFieldGroundingInEntityConsolidation:
             extractions, field_defs, "g", "products", entity_list_key="products"
         )
         assert "products" in record.fields
+
+
+class TestV2ListFieldConsolidation:
+    """V2 list fields use {"items": [...]} not {"value": ...}."""
+
+    def test_v2_list_items_collected(self):
+        """List field items from multiple extractions are union-deduped."""
+        extractions = [
+            {
+                "data": {
+                    "_meta": {"group": "company_meta", "data_version": 2},
+                    "certifications": {
+                        "items": [
+                            {"value": "ISO9001:2015", "grounding": 1.0, "confidence": 0.9},
+                            {"value": "ISO14001", "grounding": 1.0, "confidence": 0.85},
+                        ]
+                    },
+                },
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+            {
+                "data": {
+                    "_meta": {"group": "company_meta", "data_version": 2},
+                    "certifications": {
+                        "items": [
+                            {"value": "ISO9001:2015", "grounding": 1.0, "confidence": 0.9},
+                            {"value": "CE", "grounding": 0.9, "confidence": 0.8},
+                        ]
+                    },
+                },
+                "data_version": 2,
+                "confidence": 0.7,
+                "source_id": "s2",
+            },
+        ]
+        field_defs = [{"name": "certifications", "field_type": "list"}]
+        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        assert "certifications" in record.fields
+        result = record.fields["certifications"].value
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert "ISO9001:2015" in result
+        assert "CE" in result
+        assert "ISO14001" in result
+
+    def test_v2_list_empty_items_skipped(self):
+        """Extractions with empty items list are skipped."""
+        extractions = [
+            {
+                "data": {
+                    "_meta": {"group": "company_meta", "data_version": 2},
+                    "certifications": {"items": []},
+                },
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "certifications", "field_type": "list"}]
+        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        assert "certifications" not in record.fields
+
+    def test_v2_list_items_null_values_skipped(self):
+        """Items with null values are excluded."""
+        extractions = [
+            {
+                "data": {
+                    "_meta": {"group": "company_meta", "data_version": 2},
+                    "certifications": {
+                        "items": [
+                            {"value": "ISO9001", "grounding": 1.0, "confidence": 0.9},
+                            {"value": None, "grounding": 0.0, "confidence": 0.0},
+                        ]
+                    },
+                },
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "certifications", "field_type": "list"}]
+        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        assert record.fields["certifications"].value == ["ISO9001"]
+
+    def test_v2_list_weight_capped_by_ext_confidence(self):
+        """List item weights are capped by extraction-level confidence."""
+        extractions = [
+            {
+                "data": {
+                    "_meta": {"group": "company_meta", "data_version": 2},
+                    "certifications": {
+                        "items": [
+                            {"value": "ISO9001", "grounding": 1.0, "confidence": 0.95},
+                        ]
+                    },
+                },
+                "data_version": 2,
+                "confidence": 0.2,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "certifications", "field_type": "list"}]
+        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        assert record.fields["certifications"].winning_weight == pytest.approx(0.3)
+
+    def test_v2_list_falls_back_to_value_key(self):
+        """If a list field has 'value' key instead of 'items', scalar path handles it."""
+        extractions = [
+            {
+                "data": {
+                    "_meta": {"group": "meta", "data_version": 2},
+                    "tags": {"value": ["alpha", "beta"], "grounding": 1.0, "confidence": 0.9},
+                },
+                "data_version": 2,
+                "confidence": 0.8,
+                "source_id": "s1",
+            },
+        ]
+        field_defs = [{"name": "tags", "field_type": "list"}]
+        record = consolidate_extractions(extractions, field_defs, "g", "meta")
+        assert "tags" in record.fields
+        result = record.fields["tags"].value
+        assert "alpha" in result
+        assert "beta" in result
