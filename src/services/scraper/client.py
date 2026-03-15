@@ -365,9 +365,7 @@ class FirecrawlClient:
         }
         # Always identify ourselves - transparency is good practice
         # regardless of robots.txt handling
-        scrape_options["headers"] = {
-            "User-Agent": user_agent or DEFAULT_USER_AGENT
-        }
+        scrape_options["headers"] = {"User-Agent": user_agent or DEFAULT_USER_AGENT}
 
         # Build crawl request with rate limiting options
         crawl_request = {
@@ -426,9 +424,7 @@ class FirecrawlClient:
         )
 
         start_time = time.monotonic()
-        response = await self._http_client.get(
-            f"{self.base_url}/v1/crawl/{crawl_id}"
-        )
+        response = await self._http_client.get(f"{self.base_url}/v1/crawl/{crawl_id}")
         duration_ms = int((time.monotonic() - start_time) * 1000)
 
         try:
@@ -667,11 +663,13 @@ class FirecrawlClient:
                 if isinstance(link, str):
                     urls.append({"url": link, "title": None, "description": None})
                 elif isinstance(link, dict):
-                    urls.append({
-                        "url": link.get("url", ""),
-                        "title": link.get("title"),
-                        "description": link.get("description"),
-                    })
+                    urls.append(
+                        {
+                            "url": link.get("url", ""),
+                            "title": link.get("title"),
+                            "description": link.get("description"),
+                        }
+                    )
 
             logger.info(
                 "firecrawl_map_completed",

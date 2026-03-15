@@ -62,6 +62,7 @@ class TestSchemaExtractorQueueMode:
     def llm_config(self):
         """Create LLMConfig for testing."""
         from config import LLMConfig
+
         return LLMConfig(
             base_url="http://localhost:9003/v1",
             embedding_base_url="http://localhost:9003/v1",
@@ -133,6 +134,7 @@ class TestSchemaExtractorQueueMode:
         )
 
         from services.extraction.schema_extractor import SchemaExtractor
+
         extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         await extractor.extract_field_group(
@@ -166,6 +168,7 @@ class TestSchemaExtractorQueueMode:
         )
 
         from services.extraction.schema_extractor import SchemaExtractor
+
         extractor = SchemaExtractor(llm_config, llm_queue=mock_queue)
 
         await extractor.extract_field_group(
@@ -238,7 +241,10 @@ class TestSchemaExtractorQueueMode:
                 source_context="Test Co",
             )
 
-        assert "timeout" in str(exc_info.value).lower() or "expired" in str(exc_info.value).lower()
+        assert (
+            "timeout" in str(exc_info.value).lower()
+            or "expired" in str(exc_info.value).lower()
+        )
 
     @pytest.mark.asyncio
     async def test_falls_back_to_direct_when_no_queue(self, llm_config):
@@ -254,9 +260,7 @@ class TestSchemaExtractorQueueMode:
             return_value=MagicMock(
                 choices=[
                     MagicMock(
-                        message=MagicMock(
-                            content='{"manufactures_gearboxes": true}'
-                        )
+                        message=MagicMock(content='{"manufactures_gearboxes": true}')
                     )
                 ]
             )
@@ -282,9 +286,7 @@ class TestSchemaExtractorQueueMode:
             request_id="test-id",
             status="success",
             result={
-                "products": [
-                    {"product_name": "D Series", "power_rating_kw": 100}
-                ],
+                "products": [{"product_name": "D Series", "power_rating_kw": 100}],
                 "confidence": 0.9,
             },
             error=None,
@@ -381,4 +383,6 @@ class TestSchemaExtractorQueueIntegration:
         assert len(submitted_requests) == 5
 
         # Should have had concurrent submissions
-        assert max_concurrent > 1, f"Expected concurrent submissions, got max {max_concurrent}"
+        assert max_concurrent > 1, (
+            f"Expected concurrent submissions, got max {max_concurrent}"
+        )

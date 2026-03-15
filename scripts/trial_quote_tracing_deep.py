@@ -84,7 +84,9 @@ def classify_failure(quote: str, content: str) -> dict:
     # Check if quote words are individually present
     quote_words = set(norm_q.split())
     content_words = set(norm_c.split())
-    word_overlap = len(quote_words & content_words) / len(quote_words) if quote_words else 0
+    word_overlap = (
+        len(quote_words & content_words) / len(quote_words) if quote_words else 0
+    )
 
     # Check if it's a short value-like quote (classification, enum, etc.)
     is_short = len(quote.strip()) < 20
@@ -156,15 +158,17 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da")
+    parser.add_argument(
+        "--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da"
+    )
     parser.add_argument("--limit", type=int, default=2000)
     args = parser.parse_args()
 
     project_id = UUID(args.project_id) if args.project_id else None
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("DEEP ANALYSIS: Why do quotes fail to locate?")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     with Session(engine) as session:
         query = (
@@ -208,28 +212,36 @@ def main():
                     unmatched_details.append(diag)
 
         print(f"\nTotal quotes: {total_quotes}")
-        print(f"Tier 1 matches: {t1_matches} ({t1_matches/total_quotes*100:.1f}%)")
-        print(f"Need further matching: {len(unmatched_details)} ({len(unmatched_details)/total_quotes*100:.1f}%)")
+        print(f"Tier 1 matches: {t1_matches} ({t1_matches / total_quotes * 100:.1f}%)")
+        print(
+            f"Need further matching: {len(unmatched_details)} ({len(unmatched_details) / total_quotes * 100:.1f}%)"
+        )
 
         # ── Categorize failures ──
         categories = Counter(d["category"] for d in unmatched_details)
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Failure categories (for quotes Tier 1 misses):")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         for cat, count in categories.most_common():
             pct_of_unmatched = count / len(unmatched_details) * 100
             pct_of_total = count / total_quotes * 100
-            print(f"  {cat:30s} {count:4d} ({pct_of_unmatched:5.1f}% of unmatched, {pct_of_total:4.1f}% of all)")
+            print(
+                f"  {cat:30s} {count:4d} ({pct_of_unmatched:5.1f}% of unmatched, {pct_of_total:4.1f}% of all)"
+            )
 
         # ── What does the existing grounding verifier say? ──
         grounded_scores = [d["grounding_score"] for d in unmatched_details]
         grounded_count = sum(1 for s in grounded_scores if s >= 0.8)
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Existing grounding verifier on unmatched quotes:")
-        print(f"{'─'*60}")
-        print(f"  Grounded (score >= 0.8): {grounded_count}/{len(unmatched_details)} "
-              f"({grounded_count/len(unmatched_details)*100:.1f}%)")
-        print(f"  These are quotes the verifier confirms exist but locate_in_source can't find")
+        print(f"{'─' * 60}")
+        print(
+            f"  Grounded (score >= 0.8): {grounded_count}/{len(unmatched_details)} "
+            f"({grounded_count / len(unmatched_details) * 100:.1f}%)"
+        )
+        print(
+            "  These are quotes the verifier confirms exist but locate_in_source can't find"
+        )
 
         # Score distribution
         score_buckets = Counter()
@@ -251,29 +263,45 @@ def main():
             print(f"    {bucket}: {count:4d}")
 
         # ── Recovery potential ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Recovery potential (what each tier would add):")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         recoverable_punct = sum(1 for d in unmatched_details if d["t2a_punct"])
-        recoverable_md = sum(1 for d in unmatched_details if d["t2b_md"] and not d["t2a_punct"])
-        recoverable_both = sum(1 for d in unmatched_details if d["t2c_both"] and not d["t2a_punct"] and not d["t2b_md"])
-        high_overlap = sum(1 for d in unmatched_details if d["word_overlap"] >= 0.6
-                          and not d["t2a_punct"] and not d["t2b_md"] and not d["t2c_both"])
+        recoverable_md = sum(
+            1 for d in unmatched_details if d["t2b_md"] and not d["t2a_punct"]
+        )
+        recoverable_both = sum(
+            1
+            for d in unmatched_details
+            if d["t2c_both"] and not d["t2a_punct"] and not d["t2b_md"]
+        )
+        high_overlap = sum(
+            1
+            for d in unmatched_details
+            if d["word_overlap"] >= 0.6
+            and not d["t2a_punct"]
+            and not d["t2b_md"]
+            and not d["t2c_both"]
+        )
 
         print(f"  Punct-strip only:     {recoverable_punct:4d} (would catch)")
         print(f"  MD-strip only:        {recoverable_md:4d} (would catch)")
         print(f"  MD+punct combined:    {recoverable_both:4d} (would catch)")
         print(f"  Fuzzy (overlap>=0.6): {high_overlap:4d} (would catch)")
-        total_recoverable = recoverable_punct + recoverable_md + recoverable_both + high_overlap
+        total_recoverable = (
+            recoverable_punct + recoverable_md + recoverable_both + high_overlap
+        )
         still_unmatched = len(unmatched_details) - total_recoverable
         print(f"  Still unmatched:      {still_unmatched:4d}")
-        print(f"\n  Projected total match rate: {(t1_matches + total_recoverable) / total_quotes * 100:.1f}%")
+        print(
+            f"\n  Projected total match rate: {(t1_matches + total_recoverable) / total_quotes * 100:.1f}%"
+        )
 
         # ── By extraction type ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Failure categories by extraction_type:")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         by_type: dict[str, Counter] = {}
         for d in unmatched_details:
             t = d["extraction_type"]
@@ -288,9 +316,9 @@ def main():
                 print(f"    {cat:30s} {count:3d}")
 
         # ── Show examples per category ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Examples per failure category:")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         shown_cats = set()
         for d in unmatched_details:
             cat = d["category"]
@@ -301,11 +329,15 @@ def main():
             # Show up to 3 examples
             examples = [x for x in unmatched_details if x["category"] == cat][:3]
             for ex in examples:
-                print(f"    {ex['source_group']} / {ex['extraction_type']}.{ex['field_name']}")
+                print(
+                    f"    {ex['source_group']} / {ex['extraction_type']}.{ex['field_name']}"
+                )
                 print(f"    Quote:    '{ex['quote'][:100]}'")
-                print(f"    Grounding: {ex['grounding_score']:.2f}  WordOverlap: {ex['word_overlap']:.2f}")
+                print(
+                    f"    Grounding: {ex['grounding_score']:.2f}  WordOverlap: {ex['word_overlap']:.2f}"
+                )
                 if ex["has_unicode"]:
-                    print(f"    [has unicode chars]")
+                    print("    [has unicode chars]")
                 print()
 
 

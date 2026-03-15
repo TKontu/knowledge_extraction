@@ -1,14 +1,11 @@
 """Integration tests for language filtering in CrawlWorker."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from config import settings
 from orm_models import Job
-from services.filtering.language import LanguageResult
 from services.scraper.crawl_worker import CrawlWorker
 
 
@@ -124,7 +121,9 @@ class TestCrawlWorkerLanguageFiltering:
             mock_settings.language_detection_confidence_threshold = 0.7
             mock_settings.language_detection_timeout_seconds = 5.0
 
-            sources_created = await crawl_worker._store_pages(sample_job, [english_page])
+            sources_created = await crawl_worker._store_pages(
+                sample_job, [english_page]
+            )
 
         # Should store the English page
         assert sources_created == 1
@@ -151,12 +150,16 @@ class TestCrawlWorkerLanguageFiltering:
         with patch("services.scraper.crawl_worker.settings") as mock_settings:
             mock_settings.language_filtering_enabled = True
             mock_settings.language_detection_confidence_threshold = 0.7
-            mock_settings.language_detection_timeout_seconds = 0.001  # Very short timeout
+            mock_settings.language_detection_timeout_seconds = (
+                0.001  # Very short timeout
+            )
 
-            with patch("services.filtering.language.get_language_service") as mock_service:
+            with patch(
+                "services.filtering.language.get_language_service"
+            ) as mock_service:
                 mock_lang_service = MagicMock()
                 mock_lang_service.detect = AsyncMock(
-                    side_effect=asyncio.TimeoutError("Timeout")
+                    side_effect=TimeoutError("Timeout")
                 )
                 mock_service.return_value = mock_lang_service
 
@@ -239,9 +242,13 @@ class TestCrawlWorkerLanguageFiltering:
             mock_settings.language_detection_confidence_threshold = 0.7
             mock_settings.language_detection_timeout_seconds = 5.0
 
-            with patch("services.filtering.language.get_language_service") as mock_service:
+            with patch(
+                "services.filtering.language.get_language_service"
+            ) as mock_service:
                 mock_lang_service = MagicMock()
-                mock_lang_service.detect = AsyncMock(side_effect=Exception("Detection error"))
+                mock_lang_service.detect = AsyncMock(
+                    side_effect=Exception("Detection error")
+                )
                 mock_service.return_value = mock_lang_service
 
                 sources_created = await crawl_worker._store_pages(sample_job, [page])

@@ -13,7 +13,6 @@ from services.reports.consolidated_builder import (
 from services.reports.excel_formatter import ExcelFormatter
 from services.reports.schema_table_generator import SchemaTableGenerator
 
-
 # ── Fixtures ──
 
 
@@ -29,9 +28,21 @@ def sample_schema():
                 "description": "Company metadata",
                 "prompt_hint": "Extract company info",
                 "fields": [
-                    {"name": "company_name", "field_type": "text", "description": "Name"},
-                    {"name": "founded_year", "field_type": "integer", "description": "Founded year"},
-                    {"name": "is_oem", "field_type": "boolean", "description": "Is OEM"},
+                    {
+                        "name": "company_name",
+                        "field_type": "text",
+                        "description": "Name",
+                    },
+                    {
+                        "name": "founded_year",
+                        "field_type": "integer",
+                        "description": "Founded year",
+                    },
+                    {
+                        "name": "is_oem",
+                        "field_type": "boolean",
+                        "description": "Is OEM",
+                    },
                 ],
             },
             {
@@ -39,8 +50,16 @@ def sample_schema():
                 "description": "Company certifications",
                 "prompt_hint": "Extract certs",
                 "fields": [
-                    {"name": "iso_certified", "field_type": "boolean", "description": "ISO certified"},
-                    {"name": "cert_list", "field_type": "list", "description": "Certifications"},
+                    {
+                        "name": "iso_certified",
+                        "field_type": "boolean",
+                        "description": "ISO certified",
+                    },
+                    {
+                        "name": "cert_list",
+                        "field_type": "list",
+                        "description": "Certifications",
+                    },
                 ],
             },
             {
@@ -49,10 +68,22 @@ def sample_schema():
                 "prompt_hint": "Extract products",
                 "is_entity_list": True,
                 "fields": [
-                    {"name": "product_name", "field_type": "text", "description": "Product"},
-                    {"name": "max_torque_nm", "field_type": "float", "description": "Max torque"},
-                    {"name": "gear_type", "field_type": "enum", "description": "Gear type",
-                     "enum_values": ["spur", "helical", "planetary"]},
+                    {
+                        "name": "product_name",
+                        "field_type": "text",
+                        "description": "Product",
+                    },
+                    {
+                        "name": "max_torque_nm",
+                        "field_type": "float",
+                        "description": "Max torque",
+                    },
+                    {
+                        "name": "gear_type",
+                        "field_type": "enum",
+                        "description": "Gear type",
+                        "enum_values": ["spur", "helical", "planetary"],
+                    },
                 ],
             },
         ],
@@ -71,7 +102,11 @@ def collision_schema():
                 "prompt_hint": "...",
                 "fields": [
                     {"name": "name", "field_type": "text", "description": "Name A"},
-                    {"name": "unique_a", "field_type": "text", "description": "Unique A"},
+                    {
+                        "name": "unique_a",
+                        "field_type": "text",
+                        "description": "Unique A",
+                    },
                 ],
             },
             {
@@ -80,7 +115,11 @@ def collision_schema():
                 "prompt_hint": "...",
                 "fields": [
                     {"name": "name", "field_type": "text", "description": "Name B"},
-                    {"name": "unique_b", "field_type": "text", "description": "Unique B"},
+                    {
+                        "name": "unique_b",
+                        "field_type": "text",
+                        "description": "Unique B",
+                    },
                 ],
             },
         ],
@@ -109,51 +148,89 @@ def sample_records():
     """Two companies with scalar + entity data."""
     return [
         # Company A - scalar
-        _make_record("Acme Corp", "company_meta", {
-            "company_name": "Acme Corporation",
-            "founded_year": 1995,
-            "is_oem": True,
-        }, provenance={
-            "company_name": {"winning_weight": 0.9, "top_sources": ["s1", "s2"]},
-            "founded_year": {"winning_weight": 0.8, "top_sources": ["s1"]},
-            "is_oem": {"winning_weight": 1.0, "top_sources": ["s1"]},
-        }),
-        _make_record("Acme Corp", "certifications", {
-            "iso_certified": True,
-            "cert_list": ["ISO 9001", "ISO 14001"],
-        }),
-        # Company A - entity
-        _make_record("Acme Corp", "products_gearbox", {
-            "products_gearbox": [
-                {"product_name": "GearX-100", "max_torque_nm": 500.0, "gear_type": "helical"},
-                {"product_name": "GearX-200", "max_torque_nm": 1000.0, "gear_type": "planetary"},
-            ]
-        }, provenance={
-            "products_gearbox": {
-                "winning_weight": 0.85,
-                "top_sources": ["s1"],
-                "entity_provenance": [
-                    {"winning_weight": 0.9, "top_sources": ["s1"]},
-                    {"winning_weight": 0.8, "top_sources": ["s1"]},
-                ],
+        _make_record(
+            "Acme Corp",
+            "company_meta",
+            {
+                "company_name": "Acme Corporation",
+                "founded_year": 1995,
+                "is_oem": True,
             },
-        }),
+            provenance={
+                "company_name": {"winning_weight": 0.9, "top_sources": ["s1", "s2"]},
+                "founded_year": {"winning_weight": 0.8, "top_sources": ["s1"]},
+                "is_oem": {"winning_weight": 1.0, "top_sources": ["s1"]},
+            },
+        ),
+        _make_record(
+            "Acme Corp",
+            "certifications",
+            {
+                "iso_certified": True,
+                "cert_list": ["ISO 9001", "ISO 14001"],
+            },
+        ),
+        # Company A - entity
+        _make_record(
+            "Acme Corp",
+            "products_gearbox",
+            {
+                "products_gearbox": [
+                    {
+                        "product_name": "GearX-100",
+                        "max_torque_nm": 500.0,
+                        "gear_type": "helical",
+                    },
+                    {
+                        "product_name": "GearX-200",
+                        "max_torque_nm": 1000.0,
+                        "gear_type": "planetary",
+                    },
+                ]
+            },
+            provenance={
+                "products_gearbox": {
+                    "winning_weight": 0.85,
+                    "top_sources": ["s1"],
+                    "entity_provenance": [
+                        {"winning_weight": 0.9, "top_sources": ["s1"]},
+                        {"winning_weight": 0.8, "top_sources": ["s1"]},
+                    ],
+                },
+            },
+        ),
         # Company B - scalar
-        _make_record("Beta Inc", "company_meta", {
-            "company_name": "Beta Industries",
-            "founded_year": 2003,
-            "is_oem": False,
-        }),
-        _make_record("Beta Inc", "certifications", {
-            "iso_certified": False,
-            "cert_list": ["CE"],
-        }),
+        _make_record(
+            "Beta Inc",
+            "company_meta",
+            {
+                "company_name": "Beta Industries",
+                "founded_year": 2003,
+                "is_oem": False,
+            },
+        ),
+        _make_record(
+            "Beta Inc",
+            "certifications",
+            {
+                "iso_certified": False,
+                "cert_list": ["CE"],
+            },
+        ),
         # Company B - entity
-        _make_record("Beta Inc", "products_gearbox", {
-            "products_gearbox": [
-                {"product_name": "BetaDrive", "max_torque_nm": 250.0, "gear_type": "spur"},
-            ]
-        }),
+        _make_record(
+            "Beta Inc",
+            "products_gearbox",
+            {
+                "products_gearbox": [
+                    {
+                        "product_name": "BetaDrive",
+                        "max_torque_nm": 250.0,
+                        "gear_type": "spur",
+                    },
+                ]
+            },
+        ),
     ]
 
 
@@ -221,7 +298,9 @@ class TestGetEntityGroupColumns:
 
 class TestGetUnifiedColumns:
     def test_includes_scalars_and_entity_list(self, generator, sample_schema):
-        columns, labels, col_types, entity_groups = generator.get_unified_columns(sample_schema)
+        columns, labels, col_types, entity_groups = generator.get_unified_columns(
+            sample_schema
+        )
         # Scalar fields present
         assert "company_name" in columns
         assert "founded_year" in columns
@@ -241,8 +320,12 @@ class TestGetUnifiedColumns:
         schema = {
             "name": "test",
             "field_groups": [
-                {"name": "g", "description": "G", "prompt_hint": "...",
-                 "fields": [{"name": "x", "field_type": "text", "description": "X"}]},
+                {
+                    "name": "g",
+                    "description": "G",
+                    "prompt_hint": "...",
+                    "fields": [{"name": "x", "field_type": "text", "description": "X"}],
+                },
             ],
         }
         _, labels, _, _ = generator.get_unified_columns(schema)
@@ -292,21 +375,40 @@ class TestBuildUnifiedRow:
         """Entities with low winning_weight are excluded from cell."""
         records = [
             _make_record("FilterCorp", "company_meta", {"company_name": "FilterCorp"}),
-            _make_record("FilterCorp", "products_gearbox", {
-                "products_gearbox": [
-                    {"product_name": "Good", "max_torque_nm": 100.0, "gear_type": "spur"},
-                    {"product_name": "Bad", "max_torque_nm": 50.0, "gear_type": "worm"},
-                ]
-            }, provenance={
-                "products_gearbox": {
-                    "winning_weight": 0.5,
-                    "top_sources": ["s1"],
-                    "entity_provenance": [
-                        {"winning_weight": 0.9, "top_sources": ["s1"]},  # Good — above 0.3
-                        {"winning_weight": 0.1, "top_sources": ["s1"]},  # Bad — below 0.3
-                    ],
+            _make_record(
+                "FilterCorp",
+                "products_gearbox",
+                {
+                    "products_gearbox": [
+                        {
+                            "product_name": "Good",
+                            "max_torque_nm": 100.0,
+                            "gear_type": "spur",
+                        },
+                        {
+                            "product_name": "Bad",
+                            "max_torque_nm": 50.0,
+                            "gear_type": "worm",
+                        },
+                    ]
                 },
-            }),
+                provenance={
+                    "products_gearbox": {
+                        "winning_weight": 0.5,
+                        "top_sources": ["s1"],
+                        "entity_provenance": [
+                            {
+                                "winning_weight": 0.9,
+                                "top_sources": ["s1"],
+                            },  # Good — above 0.3
+                            {
+                                "winning_weight": 0.1,
+                                "top_sources": ["s1"],
+                            },  # Bad — below 0.3
+                        ],
+                    },
+                },
+            ),
         ]
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(records, sample_schema)
@@ -317,18 +419,26 @@ class TestBuildUnifiedRow:
     def test_list_of_dicts_formatted(self, generator, sample_schema):
         """List-of-dicts scalar values are formatted as delimited items, not 'N items'."""
         records = [
-            _make_record("LocCorp", "company_meta", {
-                "company_name": "LocCorp",
-                "founded_year": 2000,
-                "is_oem": False,
-            }),
-            _make_record("LocCorp", "certifications", {
-                "iso_certified": True,
-                "cert_list": [
-                    {"city": "Munich", "country": "Germany", "site_type": "HQ"},
-                    {"city": "Tokyo", "country": "Japan", "site_type": "Branch"},
-                ],
-            }),
+            _make_record(
+                "LocCorp",
+                "company_meta",
+                {
+                    "company_name": "LocCorp",
+                    "founded_year": 2000,
+                    "is_oem": False,
+                },
+            ),
+            _make_record(
+                "LocCorp",
+                "certifications",
+                {
+                    "iso_certified": True,
+                    "cert_list": [
+                        {"city": "Munich", "country": "Germany", "site_type": "HQ"},
+                        {"city": "Tokyo", "country": "Japan", "site_type": "Branch"},
+                    ],
+                },
+            ),
         ]
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(records, sample_schema)
@@ -350,11 +460,15 @@ class TestBuildUnifiedRow:
 
     def test_missing_extraction_type_none(self, generator, sample_schema):
         records = [
-            _make_record("Lonely Corp", "company_meta", {
-                "company_name": "Lonely",
-                "founded_year": 2020,
-                "is_oem": False,
-            }),
+            _make_record(
+                "Lonely Corp",
+                "company_meta",
+                {
+                    "company_name": "Lonely",
+                    "founded_year": 2020,
+                    "is_oem": False,
+                },
+            ),
             # No certifications record
         ]
         builder = ConsolidatedReportBuilder(generator)
@@ -380,7 +494,9 @@ class TestBuildUnifiedRow:
         # Acme has 2 + Beta has 1 = 3
         assert summary["entity_counts"]["Products Gearbox"] == 3
 
-    def test_sheet_name_uses_source_label(self, generator, sample_schema, sample_records):
+    def test_sheet_name_uses_source_label(
+        self, generator, sample_schema, sample_records
+    ):
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(sample_records, sample_schema)
         assert data_sheet.name == "Company Data"
@@ -390,7 +506,9 @@ class TestBuildUnifiedRow:
 
 
 class TestEntityPagination:
-    def test_no_pagination_when_under_page_size(self, generator, sample_schema, sample_records):
+    def test_no_pagination_when_under_page_size(
+        self, generator, sample_schema, sample_records
+    ):
         """No extra columns when entity count < page_size."""
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(sample_records, sample_schema, page_size=50)
@@ -402,14 +520,22 @@ class TestEntityPagination:
         """Entity list with more items than page_size creates page columns."""
         # Create 5 products — with page_size=2, should get 3 page columns
         products = [
-            {"product_name": f"Gear{i}", "max_torque_nm": float(i * 100), "gear_type": "spur"}
+            {
+                "product_name": f"Gear{i}",
+                "max_torque_nm": float(i * 100),
+                "gear_type": "spur",
+            }
             for i in range(5)
         ]
         records = [
             _make_record("BigCorp", "company_meta", {"company_name": "BigCorp"}),
-            _make_record("BigCorp", "products_gearbox", {
-                "products_gearbox": products,
-            }),
+            _make_record(
+                "BigCorp",
+                "products_gearbox",
+                {
+                    "products_gearbox": products,
+                },
+            ),
         ]
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
@@ -466,12 +592,24 @@ class TestEntityPagination:
         records = [
             # BigCorp has 4 products
             _make_record("BigCorp", "company_meta", {"company_name": "BigCorp"}),
-            _make_record("BigCorp", "products_gearbox", {"products_gearbox": products_big}),
+            _make_record(
+                "BigCorp", "products_gearbox", {"products_gearbox": products_big}
+            ),
             # SmallCorp has 1 product
             _make_record("SmallCorp", "company_meta", {"company_name": "SmallCorp"}),
-            _make_record("SmallCorp", "products_gearbox", {
-                "products_gearbox": [{"product_name": "Only", "max_torque_nm": 10.0, "gear_type": "spur"}],
-            }),
+            _make_record(
+                "SmallCorp",
+                "products_gearbox",
+                {
+                    "products_gearbox": [
+                        {
+                            "product_name": "Only",
+                            "max_torque_nm": 10.0,
+                            "gear_type": "spur",
+                        }
+                    ],
+                },
+            ),
         ]
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
@@ -495,21 +633,28 @@ class TestEntityPagination:
         ]
         records = [
             _make_record("Corp", "company_meta", {"company_name": "Corp"}),
-            _make_record("Corp", "products_gearbox", {
-                "products_gearbox": products,
-            }, provenance={
-                "products_gearbox": {
-                    "winning_weight": 0.75,
-                    "top_sources": ["s1"],
-                    "entity_provenance": entity_prov,
+            _make_record(
+                "Corp",
+                "products_gearbox",
+                {
+                    "products_gearbox": products,
                 },
-            }),
+                provenance={
+                    "products_gearbox": {
+                        "winning_weight": 0.75,
+                        "top_sources": ["s1"],
+                        "entity_provenance": entity_prov,
+                    },
+                },
+            ),
         ]
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
         records_by_sg = {"Corp": {rec.extraction_type: rec for rec in records}}
-        quality, _ = build_provenance_sheets(data_sheet, records_by_sg, {"s1": "http://x"})
+        quality, _ = build_provenance_sheets(
+            data_sheet, records_by_sg, {"s1": "http://x"}
+        )
 
         # Page 1 entities: weights 0.9, 0.8 → avg 0.85
         assert quality.rows[0]["products_gearbox_list"] == pytest.approx(0.85)
@@ -529,8 +674,13 @@ class TestEntityPagination:
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(records, sample_schema, page_size=2)
 
-        assert data_sheet.provenance_key_map["products_gearbox_list"] == "products_gearbox"
-        assert data_sheet.provenance_key_map["products_gearbox_list_p2"] == "products_gearbox"
+        assert (
+            data_sheet.provenance_key_map["products_gearbox_list"] == "products_gearbox"
+        )
+        assert (
+            data_sheet.provenance_key_map["products_gearbox_list_p2"]
+            == "products_gearbox"
+        )
 
 
 # ── TestThreeSheetExcel ──
@@ -552,10 +702,13 @@ class TestThreeSheetExcel:
         quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
 
         formatter = ExcelFormatter()
-        excel_bytes = formatter.create_multi_sheet_workbook([data_sheet, quality, sources])
+        excel_bytes = formatter.create_multi_sheet_workbook(
+            [data_sheet, quality, sources]
+        )
         assert isinstance(excel_bytes, bytes)
 
         from io import BytesIO
+
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(excel_bytes))
@@ -580,7 +733,9 @@ class TestThreeSheetExcel:
         acme_quality = quality.rows[0]
         assert acme_quality["company_name"] == pytest.approx(0.9)
 
-    def test_entity_list_provenance_via_suffix_stripping(self, generator, sample_schema, sample_records):
+    def test_entity_list_provenance_via_suffix_stripping(
+        self, generator, sample_schema, sample_records
+    ):
         """Entity list column provenance resolves via _list suffix stripping."""
         builder = ConsolidatedReportBuilder(generator)
         data_sheet, _ = builder.gather(sample_records, sample_schema)
@@ -593,7 +748,9 @@ class TestThreeSheetExcel:
             records_by_sg[sg][rec.extraction_type] = rec
 
         source_url_map = {"s1": "https://example.com/a", "s2": "https://example.com/b"}
-        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, source_url_map)
+        quality, sources = build_provenance_sheets(
+            data_sheet, records_by_sg, source_url_map
+        )
 
         # products_gearbox_list should resolve via stripping _list → products_gearbox
         # Quality is average of per-entity winning_weights (0.9 + 0.8) / 2 = 0.85
@@ -616,6 +773,7 @@ class TestThreeSheetExcel:
         excel_bytes = formatter.create_multi_sheet_workbook(sheets)
 
         from io import BytesIO
+
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(excel_bytes))

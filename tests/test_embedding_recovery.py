@@ -46,7 +46,9 @@ def mock_extraction_repo():
 
 
 @pytest.fixture
-def recovery_service(mock_db, mock_embedding_service, mock_qdrant_repo, mock_extraction_repo):
+def recovery_service(
+    mock_db, mock_embedding_service, mock_qdrant_repo, mock_extraction_repo
+):
     """Create recovery service with mocks."""
     return EmbeddingRecoveryService(
         db=mock_db,
@@ -136,9 +138,7 @@ class TestFindOrphanedExtractions:
         project_id = uuid4()
 
         # Act
-        recovery_service.find_orphaned_extractions(
-            project_id=project_id, limit=50
-        )
+        recovery_service.find_orphaned_extractions(project_id=project_id, limit=50)
 
         # Assert
         mock_extraction_repo.find_orphaned.assert_called_once_with(
@@ -153,9 +153,7 @@ class TestFindOrphanedExtractions:
         project_id = uuid4()
 
         # Act
-        recovery_service.find_orphaned_extractions(
-            project_id=project_id, limit=25
-        )
+        recovery_service.find_orphaned_extractions(project_id=project_id, limit=25)
 
         # Assert
         mock_extraction_repo.find_orphaned.assert_called_once_with(
@@ -204,10 +202,18 @@ class TestRecoverBatch:
         assert result.failed == 0
         mock_embedding_service.embed_batch.assert_called_once()
         call_args = mock_embedding_service.embed_batch.call_args[0][0]
-        assert call_args == ["Test fact 1", "Test fact 2"]
+        # extraction_to_text formats v1 as "Type: {type}\n{key}: {value}"
+        assert call_args == [
+            "Type: technical\nfact_text: Test fact 1",
+            "Type: feature\nfact_text: Test fact 2",
+        ]
 
     async def test_recover_batch_updates_embedding_id(
-        self, recovery_service, mock_embedding_service, mock_qdrant_repo, mock_extraction_repo
+        self,
+        recovery_service,
+        mock_embedding_service,
+        mock_qdrant_repo,
+        mock_extraction_repo,
     ):
         """Should update embedding_id after successful recovery."""
         # Arrange
@@ -287,7 +293,11 @@ class TestRunRecovery:
     """Tests for the full recovery process."""
 
     async def test_run_recovery_processes_multiple_batches(
-        self, recovery_service, mock_extraction_repo, mock_embedding_service, mock_qdrant_repo
+        self,
+        recovery_service,
+        mock_extraction_repo,
+        mock_embedding_service,
+        mock_qdrant_repo,
     ):
         """Should process multiple batches until no orphans remain."""
         # Arrange
@@ -309,7 +319,7 @@ class TestRunRecovery:
                 id=uuid4(),
                 project_id=project_id,
                 source_id=uuid4(),
-                data={"fact_text": f"Test fact {i+50}"},
+                data={"fact_text": f"Test fact {i + 50}"},
                 extraction_type="technical",
                 source_group="test",
                 embedding_id=None,
@@ -359,9 +369,7 @@ class TestRunRecovery:
         ]
         # Always return a full batch (simulating many orphans)
         mock_extraction_repo.find_orphaned = MagicMock(return_value=batch)
-        mock_embedding_service.embed_batch = AsyncMock(
-            return_value=[[0.1] * 1024] * 50
-        )
+        mock_embedding_service.embed_batch = AsyncMock(return_value=[[0.1] * 1024] * 50)
 
         # Act
         summary = await recovery_service.run_recovery(

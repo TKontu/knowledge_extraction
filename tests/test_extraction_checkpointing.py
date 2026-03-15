@@ -44,9 +44,7 @@ def mock_llm():
 class TestCheckpointCallback:
     """Tests for checkpoint callback creation in ExtractionWorker."""
 
-    def test_create_checkpoint_callback_returns_callable(
-        self, mock_db
-    ):
+    def test_create_checkpoint_callback_returns_callable(self, mock_db):
         """_create_checkpoint_callback returns a callable."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -63,9 +61,7 @@ class TestCheckpointCallback:
 
         assert callable(callback)
 
-    def test_checkpoint_callback_updates_job_payload(
-        self, mock_db
-    ):
+    def test_checkpoint_callback_updates_job_payload(self, mock_db):
         """Checkpoint callback updates job.payload with checkpoint data."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -95,9 +91,7 @@ class TestCheckpointCallback:
         # Note: Callback does NOT commit - pipeline commits after calling callback
         # This ensures checkpoint and extractions are committed atomically
 
-    def test_checkpoint_callback_preserves_existing_payload(
-        self, mock_db
-    ):
+    def test_checkpoint_callback_preserves_existing_payload(self, mock_db):
         """Checkpoint callback preserves existing payload fields."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -129,9 +123,7 @@ class TestCheckpointCallback:
 class TestResumeState:
     """Tests for resume state detection in ExtractionWorker."""
 
-    def test_get_resume_state_returns_none_for_no_payload(
-        self, mock_db
-    ):
+    def test_get_resume_state_returns_none_for_no_payload(self, mock_db):
         """_get_resume_state returns None when job has no payload."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -147,9 +139,7 @@ class TestResumeState:
         result = worker._get_resume_state(job)
         assert result is None
 
-    def test_get_resume_state_returns_none_for_no_checkpoint(
-        self, mock_db
-    ):
+    def test_get_resume_state_returns_none_for_no_checkpoint(self, mock_db):
         """_get_resume_state returns None when payload has no checkpoint."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -165,9 +155,7 @@ class TestResumeState:
         result = worker._get_resume_state(job)
         assert result is None
 
-    def test_get_resume_state_returns_set_of_processed_ids(
-        self, mock_db
-    ):
+    def test_get_resume_state_returns_set_of_processed_ids(self, mock_db):
         """_get_resume_state returns set of processed source IDs."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -196,9 +184,7 @@ class TestResumeState:
         assert len(result) == 3
         assert all(pid in result for pid in processed_ids)
 
-    def test_get_resume_state_returns_none_for_empty_processed_ids(
-        self, mock_db
-    ):
+    def test_get_resume_state_returns_none_for_empty_processed_ids(self, mock_db):
         """_get_resume_state returns None when processed_source_ids is empty."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -296,9 +282,7 @@ class TestSchemaExtractionPipelineCheckpointing:
             )
 
         # Run extraction with checkpoint callback
-        with patch(
-            "services.extraction.pipeline.SchemaAdapter"
-        ) as mock_adapter_class:
+        with patch("services.extraction.pipeline.SchemaAdapter") as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
             mock_adapter.convert_to_field_groups.return_value = []
@@ -334,9 +318,7 @@ class TestSchemaExtractionPipelineCheckpointing:
 
         self._setup_db_mock(mock_db, mock_project, sources)
 
-        with patch(
-            "services.extraction.pipeline.SchemaAdapter"
-        ) as mock_adapter_class:
+        with patch("services.extraction.pipeline.SchemaAdapter") as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
             mock_adapter.convert_to_field_groups.return_value = []
@@ -367,9 +349,7 @@ class TestSchemaExtractionPipelineCheckpointing:
 
         self._setup_db_mock(mock_db, mock_project, sources)
 
-        with patch(
-            "services.extraction.pipeline.SchemaAdapter"
-        ) as mock_adapter_class:
+        with patch("services.extraction.pipeline.SchemaAdapter") as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
             mock_adapter.convert_to_field_groups.return_value = []
@@ -411,7 +391,9 @@ class TestSchemaExtractionPipelineCheckpointing:
                 raise Exception(f"Simulated failure for source {idx}")
             return ([], None)
 
-        mock_orchestrator.extract_all_groups.side_effect = extract_all_groups_side_effect
+        mock_orchestrator.extract_all_groups.side_effect = (
+            extract_all_groups_side_effect
+        )
 
         # Track checkpoint calls
         checkpoint_calls = []
@@ -423,9 +405,7 @@ class TestSchemaExtractionPipelineCheckpointing:
         mock_field_group = Mock()
         mock_field_group.name = "test"
 
-        with patch(
-            "services.extraction.pipeline.SchemaAdapter"
-        ) as mock_adapter_class:
+        with patch("services.extraction.pipeline.SchemaAdapter") as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.validate_extraction_schema.return_value = Mock(is_valid=True)
             # Return non-empty field_groups so extract_source proceeds to orchestrator
@@ -448,11 +428,15 @@ class TestSchemaExtractionPipelineCheckpointing:
 
             # All successful sources should be in checkpoint
             for sid in successful_source_ids:
-                assert sid in final_checkpoint, f"Successful source {sid} missing from checkpoint"
+                assert sid in final_checkpoint, (
+                    f"Successful source {sid} missing from checkpoint"
+                )
 
             # No failed sources should be in checkpoint
             for sid in failed_source_ids:
-                assert sid not in final_checkpoint, f"Failed source {sid} should not be in checkpoint"
+                assert sid not in final_checkpoint, (
+                    f"Failed source {sid} should not be in checkpoint"
+                )
 
 
 class TestWorkerProcessJobWithCheckpointing:
@@ -507,9 +491,7 @@ class TestWorkerProcessJobWithCheckpointing:
             assert "checkpoint_callback" in call_kwargs
             assert call_kwargs["checkpoint_callback"] is not None
 
-    async def test_process_job_resumes_from_checkpoint(
-        self, mock_db, mock_llm
-    ):
+    async def test_process_job_resumes_from_checkpoint(self, mock_db, mock_llm):
         """Worker resumes from checkpoint when restarting a failed job."""
         project_id = uuid4()
         already_processed = [str(uuid4()), str(uuid4())]
@@ -568,9 +550,7 @@ class TestWorkerProcessJobWithCheckpointing:
 class TestCheckpointDataStructure:
     """Tests for checkpoint data structure integrity."""
 
-    def test_checkpoint_has_required_fields(
-        self, mock_db
-    ):
+    def test_checkpoint_has_required_fields(self, mock_db):
         """Checkpoint data contains all required fields."""
         worker = ExtractionWorker(
             db=mock_db,
@@ -594,9 +574,7 @@ class TestCheckpointDataStructure:
         assert "total_extractions" in checkpoint
         assert "total_entities" in checkpoint
 
-    def test_checkpoint_timestamp_is_iso_format(
-        self, mock_db
-    ):
+    def test_checkpoint_timestamp_is_iso_format(self, mock_db):
         """Checkpoint timestamp is in ISO 8601 format."""
         worker = ExtractionWorker(
             db=mock_db,

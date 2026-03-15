@@ -1,7 +1,6 @@
 """Tests for ServiceContainer lifecycle."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -16,7 +15,10 @@ class TestServiceContainerStart:
             patch("services.scraper.service_container.settings") as mock_settings,
             patch("services.scraper.service_container.redis_client"),
             patch("services.scraper.service_container.qdrant_client"),
-            patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock) as mock_get_redis,
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ) as mock_get_redis,
             patch("services.scraper.service_container.FirecrawlClient") as mock_fc,
             patch("services.scraper.service_container.DomainRateLimiter"),
             patch("services.scraper.service_container.RateLimitConfig"),
@@ -149,7 +151,10 @@ class TestServiceContainerShutdownResilience:
             patch("services.scraper.service_container.settings") as mock_settings,
             patch("services.scraper.service_container.redis_client"),
             patch("services.scraper.service_container.qdrant_client"),
-            patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock) as mock_get_redis,
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ) as mock_get_redis,
             patch("services.scraper.service_container.FirecrawlClient") as mock_fc,
             patch("services.scraper.service_container.DomainRateLimiter"),
             patch("services.scraper.service_container.RateLimitConfig"),
@@ -225,7 +230,9 @@ class TestServiceContainerShutdownResilience:
         container = ServiceContainer()
         await container.start()
 
-        _patch_all["firecrawl_cls"].return_value.close.side_effect = RuntimeError("close failed")
+        _patch_all["firecrawl_cls"].return_value.close.side_effect = RuntimeError(
+            "close failed"
+        )
 
         await container.stop()
 

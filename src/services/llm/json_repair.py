@@ -243,9 +243,14 @@ def _balance_brackets(text: str) -> str:
 
         if char in ("{", "["):
             stack.append(char)
-        elif char == "}" and stack and stack[-1] == "{":
-            stack.pop()
-        elif char == "]" and stack and stack[-1] == "[":
+        elif (
+            char == "}"
+            and stack
+            and stack[-1] == "{"
+            or char == "]"
+            and stack
+            and stack[-1] == "["
+        ):
             stack.pop()
 
     # Close unclosed openers in reverse order

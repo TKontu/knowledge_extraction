@@ -1,8 +1,8 @@
 """Tests for scraper retry logic."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from services.scraper.retry import RetryConfig, retry_with_backoff
 
@@ -57,13 +57,13 @@ class TestRetryWithBackoff:
     @pytest.mark.asyncio
     async def test_retries_on_failure(self):
         """Should retry on transient failure."""
-        func = AsyncMock(side_effect=[ValueError("fail"), ValueError("fail"), "success"])
+        func = AsyncMock(
+            side_effect=[ValueError("fail"), ValueError("fail"), "success"]
+        )
         config = RetryConfig(max_retries=3, base_delay=0.01)
 
         result = await retry_with_backoff(
-            func,
-            config,
-            retryable_exceptions=(ValueError,)
+            func, config, retryable_exceptions=(ValueError,)
         )
 
         assert result == "success"
@@ -76,11 +76,7 @@ class TestRetryWithBackoff:
         config = RetryConfig(max_retries=2, base_delay=0.01)
 
         with pytest.raises(ValueError, match="persistent failure"):
-            await retry_with_backoff(
-                func,
-                config,
-                retryable_exceptions=(ValueError,)
-            )
+            await retry_with_backoff(func, config, retryable_exceptions=(ValueError,))
 
         assert func.call_count == 3  # Initial + 2 retries
 
@@ -94,7 +90,7 @@ class TestRetryWithBackoff:
             await retry_with_backoff(
                 func,
                 config,
-                retryable_exceptions=(ValueError,)  # KeyError not included
+                retryable_exceptions=(ValueError,),  # KeyError not included
             )
 
         assert func.call_count == 1
@@ -104,8 +100,8 @@ class TestScraperWorkerRetry:
     @pytest.mark.asyncio
     async def test_worker_retries_failed_scrape(self):
         """Worker should retry failed scrapes."""
-        from services.scraper.worker import ScraperWorker
         from services.scraper.retry import RetryConfig
+        from services.scraper.worker import ScraperWorker
 
         # Mock dependencies
         db = MagicMock()
@@ -120,15 +116,11 @@ class TestScraperWorkerRetry:
         success_result.domain = "example.com"
         success_result.metadata = {}
 
-        client.scrape = AsyncMock(
-            side_effect=[TimeoutError("timeout"), success_result]
-        )
+        client.scrape = AsyncMock(side_effect=[TimeoutError("timeout"), success_result])
 
         retry_config = RetryConfig(max_retries=2, base_delay=0.01)
         worker = ScraperWorker(
-            db=db,
-            firecrawl_client=client,
-            retry_config=retry_config
+            db=db, firecrawl_client=client, retry_config=retry_config
         )
 
         # Mock repositories
@@ -136,8 +128,7 @@ class TestScraperWorkerRetry:
         worker.project_repo = AsyncMock()
 
         result = await worker._scrape_url_with_retry(
-            "https://example.com",
-            "example.com"
+            "https://example.com", "example.com"
         )
 
         assert result is not None

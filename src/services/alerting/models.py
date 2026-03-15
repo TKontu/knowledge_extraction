@@ -81,9 +81,13 @@ class Alert(BaseModel):
 
         fields = []
         if self.project_id:
-            fields.append({"title": "Project", "value": str(self.project_id), "short": True})
+            fields.append(
+                {"title": "Project", "value": str(self.project_id), "short": True}
+            )
         if self.source_id:
-            fields.append({"title": "Source", "value": str(self.source_id), "short": True})
+            fields.append(
+                {"title": "Source", "value": str(self.source_id), "short": True}
+            )
         if self.job_id:
             fields.append({"title": "Job", "value": str(self.job_id), "short": True})
 

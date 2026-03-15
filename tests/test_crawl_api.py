@@ -1,9 +1,9 @@
 """Tests for crawl API endpoints."""
 
-import pytest
+from uuid import UUID, uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from uuid import UUID, uuid4
 
 from orm_models import Job
 

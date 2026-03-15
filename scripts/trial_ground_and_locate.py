@@ -45,26 +45,30 @@ _MD_INLINE_CODE_RE = re.compile(r"`([^`]+)`")
 # Trailing ellipsis: "products..." or "products…"
 _TRAILING_ELLIPSIS_RE = re.compile(r"\.{2,}$|…$")
 # Unicode dash normalization
-_UNICODE_DASHES = str.maketrans({
-    "\u2013": "-",  # en-dash
-    "\u2014": "-",  # em-dash
-    "\u2015": "-",  # horizontal bar
-    "\u2212": "-",  # minus sign
-})
+_UNICODE_DASHES = str.maketrans(
+    {
+        "\u2013": "-",  # en-dash
+        "\u2014": "-",  # em-dash
+        "\u2015": "-",  # horizontal bar
+        "\u2212": "-",  # minus sign
+    }
+)
 
 
 # ── Result type ──
 
+
 @dataclass
 class GroundingResult:
-    score: float               # 0.0-1.0
+    score: float  # 0.0-1.0
     source_offset: int | None  # char position in original content
-    source_end: int | None     # end char position in original content
-    matched_span: str | None   # actual source text at [offset:end]
-    match_tier: int            # 1-4, or 0 for unmatched
+    source_end: int | None  # end char position in original content
+    matched_span: str | None  # actual source text at [offset:end]
+    match_tier: int  # 1-4, or 0 for unmatched
 
 
 # ── Pre-processing ──
+
 
 def _preprocess_quote(quote: str) -> str:
     """Clean up common LLM quoting artifacts before matching."""
@@ -83,6 +87,7 @@ def _normalize(s: str) -> str:
 
 
 # ── Offset-mapped transformations ──
+
 
 def _normalize_with_map(text: str) -> tuple[str, list[int]]:
     """Lowercase + collapse whitespace, tracking char-to-original positions.
@@ -218,7 +223,10 @@ def _compose_maps(map_a: list[int], map_b: list[int]) -> list[int]:
 
 # ── Tier implementations ──
 
-def _tier1_locate(norm_quote: str, norm_content: str, norm_map: list[int]) -> GroundingResult | None:
+
+def _tier1_locate(
+    norm_quote: str, norm_content: str, norm_map: list[int]
+) -> GroundingResult | None:
     """Tier 1: Normalized substring match with position."""
     pos = norm_content.find(norm_quote)
     if pos < 0:
@@ -274,12 +282,18 @@ def _tier3_locate(
     end = pos + len(norm_quote_stripped)
 
     # Compose: md_punct → md_norm → md_stripped → original
-    map_to_md_norm = _compose_maps(md_norm_map, md_punct_map) if md_punct_map else md_norm_map
-    map_to_md_stripped = _compose_maps(md_map, map_to_md_norm) if map_to_md_norm else md_map
+    map_to_md_norm = (
+        _compose_maps(md_norm_map, md_punct_map) if md_punct_map else md_norm_map
+    )
+    map_to_md_stripped = (
+        _compose_maps(md_map, map_to_md_norm) if map_to_md_norm else md_map
+    )
     # map_to_md_stripped already maps to original content positions
 
     orig_start = map_to_md_stripped[pos] if pos < len(map_to_md_stripped) else 0
-    orig_end = (map_to_md_stripped[end - 1] + 1) if end - 1 < len(map_to_md_stripped) else 0
+    orig_end = (
+        (map_to_md_stripped[end - 1] + 1) if end - 1 < len(map_to_md_stripped) else 0
+    )
     return GroundingResult(
         score=0.9,
         source_offset=orig_start,
@@ -366,6 +380,7 @@ def _tier4_locate(
 
 # ── Unified entry point ──
 
+
 def ground_and_locate(quote: str, content: str) -> GroundingResult:
     """Unified grounding + location in one call.
 
@@ -389,7 +404,7 @@ def ground_and_locate(quote: str, content: str) -> GroundingResult:
     # Tier 1: Normalized substring
     result = _tier1_locate(norm_quote, norm_content, norm_map)
     if result:
-        result.matched_span = content[result.source_offset:result.source_end]
+        result.matched_span = content[result.source_offset : result.source_end]
         return result
 
     # Tier 2: Punct-stripped
@@ -398,14 +413,14 @@ def ground_and_locate(quote: str, content: str) -> GroundingResult:
     if norm_quote_stripped:
         result = _tier2_locate(norm_quote_stripped, norm_content, norm_map)
         if result:
-            result.matched_span = content[result.source_offset:result.source_end]
+            result.matched_span = content[result.source_offset : result.source_end]
             return result
 
     # Tier 3: Markdown + punct stripped
     if norm_quote_stripped:
         result = _tier3_locate(norm_quote_stripped, content)
         if result:
-            result.matched_span = content[result.source_offset:result.source_end]
+            result.matched_span = content[result.source_offset : result.source_end]
             return result
 
     # Tier 4: Block fuzzy
@@ -417,6 +432,7 @@ def ground_and_locate(quote: str, content: str) -> GroundingResult:
 
 
 # ── Trial runner ──
+
 
 def extract_quotes(data: dict, data_version: int) -> list[tuple[str, str]]:
     pairs = []
@@ -443,16 +459,18 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da")
+    parser.add_argument(
+        "--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da"
+    )
     parser.add_argument("--limit", type=int, default=2000)
     parser.add_argument("--show-position-examples", type=int, default=5)
     args = parser.parse_args()
 
     project_id = UUID(args.project_id)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL: Unified ground_and_locate() prototype")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     with Session(engine) as session:
         query = (
@@ -483,18 +501,23 @@ def main():
                 # Validate position: does matched_span actually contain quote words?
                 if result.source_offset is not None and result.matched_span:
                     # Collect examples
-                    if len(position_examples[result.match_tier]) < args.show_position_examples:
-                        position_examples[result.match_tier].append({
-                            "source_group": ext.source_group,
-                            "ext_type": ext.extraction_type,
-                            "field": fname,
-                            "quote": quote,
-                            "tier": result.match_tier,
-                            "score": result.score,
-                            "offset": result.source_offset,
-                            "end": result.source_end,
-                            "span": result.matched_span[:200],
-                        })
+                    if (
+                        len(position_examples[result.match_tier])
+                        < args.show_position_examples
+                    ):
+                        position_examples[result.match_tier].append(
+                            {
+                                "source_group": ext.source_group,
+                                "ext_type": ext.extraction_type,
+                                "field": fname,
+                                "quote": quote,
+                                "tier": result.match_tier,
+                                "score": result.score,
+                                "offset": result.source_offset,
+                                "end": result.source_end,
+                                "span": result.matched_span[:200],
+                            }
+                        )
 
                     # Validate: check if extracted span makes sense
                     if result.match_tier in (1, 2, 3):
@@ -503,22 +526,24 @@ def main():
                         q_words = set(norm_q.split())
                         s_words = set(norm_span.split())
                         if q_words and len(q_words & s_words) / len(q_words) < 0.5:
-                            position_errors.append({
-                                "tier": result.match_tier,
-                                "quote": quote[:100],
-                                "span": result.matched_span[:100],
-                                "source_group": ext.source_group,
-                                "field": fname,
-                            })
+                            position_errors.append(
+                                {
+                                    "tier": result.match_tier,
+                                    "quote": quote[:100],
+                                    "span": result.matched_span[:100],
+                                    "source_group": ext.source_group,
+                                    "field": fname,
+                                }
+                            )
 
         if total == 0:
             print("No quotes found!")
             return
 
         # ── Results ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print(f"RESULTS: {total} quotes analyzed")
-        print(f"{'─'*60}\n")
+        print(f"{'─' * 60}\n")
 
         print("Coverage by tier:")
         for tier in [1, 2, 3, 4, 0]:
@@ -535,40 +560,48 @@ def main():
             print(f"  {label:40s} {count:5d} ({pct:5.1f}%) {bar}")
 
         matched = total - tier_counts.get(0, 0)
-        print(f"\n  TOTAL MATCHED: {matched}/{total} ({matched/total*100:.1f}%)")
+        print(f"\n  TOTAL MATCHED: {matched}/{total} ({matched / total * 100:.1f}%)")
 
         # Compare with old (Tier 1 only)
         old_matched = tier_counts.get(1, 0)
         improvement = matched - old_matched
-        print(f"  Improvement over current: +{improvement} quotes ({improvement/total*100:.1f}%)")
+        print(
+            f"  Improvement over current: +{improvement} quotes ({improvement / total * 100:.1f}%)"
+        )
 
         # ── Position validation ──
         if position_errors:
-            print(f"\n{'─'*60}")
-            print(f"POSITION ERRORS: {len(position_errors)} spans with <50% word overlap")
-            print(f"{'─'*60}")
+            print(f"\n{'─' * 60}")
+            print(
+                f"POSITION ERRORS: {len(position_errors)} spans with <50% word overlap"
+            )
+            print(f"{'─' * 60}")
             for err in position_errors[:10]:
                 print(f"  Tier {err['tier']}: {err['source_group']}/{err['field']}")
-                print(f"    Quote: \"{err['quote']}\"")
-                print(f"    Span:  \"{err['span']}\"")
+                print(f'    Quote: "{err["quote"]}"')
+                print(f'    Span:  "{err["span"]}"')
                 print()
         else:
-            print(f"\n  Position validation: ALL spans verified (>50% word overlap)")
+            print("\n  Position validation: ALL spans verified (>50% word overlap)")
 
         # ── Position examples ──
         for tier in [2, 3, 4]:
             examples = position_examples.get(tier, [])
             if not examples:
                 continue
-            label = {2: "Tier 2 (punct-stripped)", 3: "Tier 3 (md+punct)", 4: "Tier 4 (fuzzy)"}[tier]
-            print(f"\n{'─'*60}")
+            label = {
+                2: "Tier 2 (punct-stripped)",
+                3: "Tier 3 (md+punct)",
+                4: "Tier 4 (fuzzy)",
+            }[tier]
+            print(f"\n{'─' * 60}")
             print(f"Position examples: {label}")
-            print(f"{'─'*60}")
+            print(f"{'─' * 60}")
             for ex in examples:
                 print(f"\n  [{ex['source_group']} / {ex['ext_type']}.{ex['field']}]")
-                print(f"  Quote:    \"{ex['quote'][:120]}\"")
+                print(f'  Quote:    "{ex["quote"][:120]}"')
                 print(f"  Offset:   {ex['offset']}-{ex['end']}")
-                print(f"  Span:     \"{ex['span'][:120]}\"")
+                print(f'  Span:     "{ex["span"][:120]}"')
                 if ex["tier"] == 4:
                     print(f"  Score:    {ex['score']:.2f}")
 
@@ -592,26 +625,32 @@ def main():
                     if gs >= 0.8:
                         unmatched_grounded += 1
                     if len(unmatched_examples) < 10:
-                        unmatched_examples.append({
-                            "quote": quote[:120],
-                            "grounding": gs,
-                            "source_group": ext.source_group,
-                            "field": fname,
-                        })
+                        unmatched_examples.append(
+                            {
+                                "quote": quote[:120],
+                                "grounding": gs,
+                                "source_group": ext.source_group,
+                                "field": fname,
+                            }
+                        )
 
         if unmatched_total:
-            print(f"\n{'─'*60}")
+            print(f"\n{'─' * 60}")
             print(f"Unmatched analysis ({unmatched_total} quotes):")
-            print(f"{'─'*60}")
-            print(f"  Still grounded (score>=0.8): {unmatched_grounded}/{unmatched_total}")
+            print(f"{'─' * 60}")
+            print(
+                f"  Still grounded (score>=0.8): {unmatched_grounded}/{unmatched_total}"
+            )
             print(f"  Truly unfindable: {unmatched_total - unmatched_grounded}")
-            print(f"\n  Examples:")
+            print("\n  Examples:")
             for ex in unmatched_examples[:8]:
-                print(f"    g={ex['grounding']:.2f}  {ex['source_group']}/{ex['field']}: \"{ex['quote']}\"")
+                print(
+                    f'    g={ex["grounding"]:.2f}  {ex["source_group"]}/{ex["field"]}: "{ex["quote"]}"'
+                )
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL COMPLETE")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":

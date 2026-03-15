@@ -3,8 +3,6 @@
 TDD: These tests define the expected behavior for source deduplication.
 """
 
-import pytest
-
 from orm_models import Source
 
 

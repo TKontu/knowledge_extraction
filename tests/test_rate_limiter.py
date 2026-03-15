@@ -1,15 +1,15 @@
 """Tests for DomainRateLimiter."""
 
-import pytest
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime, date, timedelta
 import time
+from unittest.mock import Mock
+
+import pytest
 
 from services.scraper.rate_limiter import (
     DomainRateLimiter,
-    RateLimitExceeded,
     RateLimitConfig,
+    RateLimitExceeded,
 )
 
 
@@ -82,9 +82,7 @@ class TestDomainRateLimiter:
         return DomainRateLimiter(redis_client=redis_mock, config=config)
 
     @pytest.mark.asyncio
-    async def test_rate_limiter_initialization(
-        self, rate_limiter, redis_mock, config
-    ):
+    async def test_rate_limiter_initialization(self, rate_limiter, redis_mock, config):
         """Test DomainRateLimiter initializes correctly."""
         assert rate_limiter.redis == redis_mock
         assert rate_limiter.config == config
@@ -232,9 +230,7 @@ class TestDomainRateLimiter:
         assert count == 0
 
     @pytest.mark.asyncio
-    async def test_acquire_checks_limit_and_increments(
-        self, rate_limiter, redis_mock
-    ):
+    async def test_acquire_checks_limit_and_increments(self, rate_limiter, redis_mock):
         """Test acquire checks limit and increments count on success."""
         domain = "example.com"
         key = rate_limiter._daily_count_key(domain)

@@ -47,7 +47,10 @@ async def create_project(
         )
 
     # Log if default template was applied (check schema name)
-    if project.extraction_schema and project.extraction_schema.get("name") == "generic_facts":
+    if (
+        project.extraction_schema
+        and project.extraction_schema.get("name") == "generic_facts"
+    ):
         logger.info(
             "default_template_assigned",
             project_name=project.name,
@@ -96,10 +99,7 @@ async def list_templates(
         return list_template_names()
 
     all_templates = get_all_templates()
-    templates = [
-        TemplateResponse.from_template(t)
-        for t in all_templates.values()
-    ]
+    templates = [TemplateResponse.from_template(t) for t in all_templates.values()]
     return TemplateListResponse(templates=templates, count=len(templates))
 
 
@@ -305,7 +305,9 @@ async def create_from_template(
 @router.post("/{project_id}/backfill-grounding")
 async def backfill_grounding(
     project_id: UUID,
-    dry_run: bool = Query(default=False, description="Compute scores without writing to DB"),
+    dry_run: bool = Query(
+        default=False, description="Compute scores without writing to DB"
+    ),
     batch_size: int = Query(default=500, ge=1, le=5000, description="Batch size"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -397,16 +399,16 @@ async def backfill_grounding(
         "updated": updated,
         "skipped_no_field_types": skipped,
         "dry_run": dry_run,
-        "field_stats": {
-            field: dict(counts) for field, counts in sorted(stats.items())
-        },
+        "field_stats": {field: dict(counts) for field, counts in sorted(stats.items())},
     }
 
 
 @router.post("/{project_id}/backfill-grounding-v2")
 async def backfill_grounding_v2(
     project_id: UUID,
-    dry_run: bool = Query(default=True, description="Compute scores without writing to DB"),
+    dry_run: bool = Query(
+        default=True, description="Compute scores without writing to DB"
+    ),
     batch_size: int = Query(default=100, ge=1, le=5000, description="Batch size"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -490,8 +492,8 @@ async def backfill_grounding_v2(
             if ext.source_id not in source_content_cache:
                 source = ext.source
                 source_content_cache[ext.source_id] = (
-                    source.cleaned_content or source.content or ""
-                ) if source else ""
+                    (source.cleaned_content or source.content or "") if source else ""
+                )
             source_content = source_content_cache[ext.source_id]
 
             data = ext.data
@@ -509,12 +511,18 @@ async def backfill_grounding_v2(
                     continue
                 quote = field_data.get("quote")
 
-                effective_mode = gmode_override or GROUNDING_DEFAULTS.get(field_type, "required")
+                effective_mode = gmode_override or GROUNDING_DEFAULTS.get(
+                    field_type, "required"
+                )
                 if effective_mode == "none":
                     continue
 
                 new_score = ground_field_item(
-                    field_name, value, quote, source_content, field_type,
+                    field_name,
+                    value,
+                    quote,
+                    source_content,
+                    field_type,
                     grounding_mode=gmode_override,
                 )
                 old_score = float(field_data.get("grounding", 1.0))
@@ -547,9 +555,7 @@ async def backfill_grounding_v2(
         "updated": updated,
         "skipped": skipped,
         "dry_run": dry_run,
-        "field_stats": {
-            field: dict(counts) for field, counts in sorted(stats.items())
-        },
+        "field_stats": {field: dict(counts) for field, counts in sorted(stats.items())},
     }
 
 
@@ -617,7 +623,8 @@ async def consolidate_project(
     try:
         if source_group:
             records = await service.consolidate_source_group(
-                project_id, source_group,
+                project_id,
+                source_group,
             )
             db.commit()
             return {

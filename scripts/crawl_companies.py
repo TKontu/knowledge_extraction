@@ -190,7 +190,9 @@ def normalize_url(url: str) -> str | None:
     # Fix common protocol typos
     url = re.sub(r"^nttps://", "https://", url)
     url = re.sub(r"^htps://", "https://", url)
-    url = re.sub(r"^https:/([^/])", r"https://\1", url)  # https:/domain -> https://domain
+    url = re.sub(
+        r"^https:/([^/])", r"https://\1", url
+    )  # https:/domain -> https://domain
 
     # Add protocol if missing
     if not url.startswith(("http://", "https://")):
@@ -419,7 +421,11 @@ def main() -> None:
         return
 
     # Load state for resume
-    state = load_state() if config.resume else {"completed": [], "failed": [], "project_id": None}
+    state = (
+        load_state()
+        if config.resume
+        else {"completed": [], "failed": [], "project_id": None}
+    )
     completed_urls = set(state.get("completed", []))
 
     if config.resume and completed_urls:
@@ -446,7 +452,7 @@ def main() -> None:
         save_state(state)
 
     # Print configuration
-    print(f"\nConfiguration:")
+    print("\nConfiguration:")
     print(f"  Project ID: {project_id}")
     print(f"  Template: {config.template}")
     print(f"  Max depth: {config.max_depth}")
@@ -477,7 +483,9 @@ def main() -> None:
             state["completed"].append(url)
 
             if i % 10 == 0 or i == len(pending):
-                print(f"  Progress: {i}/{len(pending)} ({successful} ok, {len(failed)} failed)")
+                print(
+                    f"  Progress: {i}/{len(pending)} ({successful} ok, {len(failed)} failed)"
+                )
                 save_state(state)
         else:
             failed.append((url, company, error))

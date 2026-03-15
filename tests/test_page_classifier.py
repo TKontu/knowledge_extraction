@@ -11,7 +11,10 @@ from services.extraction.page_classifier import (
 # Sample patterns for testing (similar to drivetrain template)
 SAMPLE_URL_PATTERNS = {
     r"/products?($|/)": ["products_gearbox", "products_motor", "products_accessory"],
-    r"/gearbox|/gear-?box|/reducer|/gear-?reducer": ["products_gearbox", "manufacturing"],
+    r"/gearbox|/gear-?box|/reducer|/gear-?reducer": [
+        "products_gearbox",
+        "manufacturing",
+    ],
     r"/motor|/electric-?motor|/servo|/drive": ["products_motor", "manufacturing"],
     r"/coupling|/shaft|/bearing|/brake|/clutch": ["products_accessory"],
     r"/service|/repair|/maintenance|/refurbish": ["services"],
@@ -139,7 +142,9 @@ class TestPageClassifier:
             url="https://example.com/news/2024/announcement",
             title="Company News",
         )
-        assert not result.skip_extraction  # News may have product announcements, partnerships
+        assert (
+            not result.skip_extraction
+        )  # News may have product announcements, partnerships
 
     def test_blog_page_not_skipped(self, classifier):
         """Blog pages should NOT be skipped - may contain valuable company info."""
@@ -281,7 +286,10 @@ class TestPageClassifier:
             title="About Our Manufacturing",
         )
         assert "company_info" in result.relevant_groups
-        assert "manufacturing" in result.relevant_groups or "company_meta" in result.relevant_groups
+        assert (
+            "manufacturing" in result.relevant_groups
+            or "company_meta" in result.relevant_groups
+        )
 
     def test_case_insensitive_url_matching(self, classifier):
         """URL matching should be case insensitive."""
@@ -339,7 +347,10 @@ class TestPageClassifier:
             url="https://example.com/facilities",
             title="Our Manufacturing Facilities",
         )
-        assert "company_meta" in result.relevant_groups or "manufacturing" in result.relevant_groups
+        assert (
+            "company_meta" in result.relevant_groups
+            or "manufacturing" in result.relevant_groups
+        )
 
 
 class TestClassificationResult:

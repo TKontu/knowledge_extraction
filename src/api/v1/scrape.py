@@ -98,11 +98,7 @@ async def get_job_status(
         ) from None
 
     # Query database for job (filter by scrape type to prevent cross-type leaks)
-    job = (
-        db.query(Job)
-        .filter(Job.id == job_uuid, Job.type == JobType.SCRAPE)
-        .first()
-    )
+    job = db.query(Job).filter(Job.id == job_uuid, Job.type == JobType.SCRAPE).first()
 
     # Check if job exists
     if job is None:

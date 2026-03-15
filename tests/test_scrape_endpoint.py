@@ -1,7 +1,7 @@
-import pytest
+from uuid import UUID, uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from uuid import UUID, uuid4
 
 from orm_models import Job
 
@@ -16,7 +16,11 @@ class TestScrapeEndpoint:
         """Scrape endpoint should require API key."""
         response = client.post(
             "/api/v1/scrape",
-            json={"urls": ["https://example.com"], "company": "Example Inc", "project_id": TEST_PROJECT_ID},
+            json={
+                "urls": ["https://example.com"],
+                "company": "Example Inc",
+                "project_id": TEST_PROJECT_ID,
+            },
         )
         assert response.status_code == 401
 

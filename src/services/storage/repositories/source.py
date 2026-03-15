@@ -108,9 +108,7 @@ class SourceRepository:
         """
         if not source_ids:
             return []
-        result = self._session.execute(
-            select(Source).where(Source.id.in_(source_ids))
-        )
+        result = self._session.execute(select(Source).where(Source.id.in_(source_ids)))
         return list(result.scalars().all())
 
     def get_by_uri(self, project_id: UUID, uri: str) -> Source | None:

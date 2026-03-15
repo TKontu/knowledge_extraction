@@ -28,7 +28,6 @@ from sqlalchemy.orm import Session
 from database import engine
 from orm_models import Extraction, Source
 
-
 # ── Tier 1: Normalized substring (same as current locate_in_source) ──
 
 _WS_RE = re.compile(r"\s+")
@@ -280,7 +279,9 @@ def analyze_quote(
     t1 = tier1_match(quote, content)
     t2_off, t2_span = tier2_match(quote, content) if t1 is None else (None, None)
     t3_off, t3_score, t3_span = (
-        tier3_match(quote, content) if t1 is None and t2_off is None else (None, 0.0, None)
+        tier3_match(quote, content)
+        if t1 is None and t2_off is None
+        else (None, 0.0, None)
     )
 
     if t1 is not None:
@@ -356,9 +357,9 @@ def run_trial(
     show_examples: int = 5,
     v2_only: bool = False,
 ) -> None:
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL: Quote-to-Source Tracing Algorithm Validation")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     with Session(engine) as session:
         # Query extractions with source content
@@ -414,10 +415,10 @@ def run_trial(
         total = len(results)
         tier_counts = Counter(r.winning_tier for r in results)
 
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print(f"RESULTS: {total} quotes analyzed from {len(rows)} extractions")
         print(f"(Skipped {skipped_no_quotes} extractions with no quotes)")
-        print(f"{'─'*60}\n")
+        print(f"{'─' * 60}\n")
 
         print("Coverage by tier:")
         for tier in [1, 2, 3, 0]:
@@ -433,24 +434,26 @@ def run_trial(
             print(f"  {label:40s} {count:5d} ({pct:5.1f}%) {bar}")
 
         matched = total - tier_counts.get(0, 0)
-        print(f"\n  TOTAL MATCHED: {matched}/{total} ({matched/total*100:.1f}%)")
+        print(f"\n  TOTAL MATCHED: {matched}/{total} ({matched / total * 100:.1f}%)")
 
         # Expected vs actual comparison
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Expected vs Actual:")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         expected = {1: 40, 2: 40, 3: 15, 0: 5}
         for tier in [1, 2, 3, 0]:
             actual_pct = tier_counts.get(tier, 0) / total * 100
             exp = expected[tier]
             diff = actual_pct - exp
             label = {1: "Tier 1", 2: "Tier 2", 3: "Tier 3", 0: "Unmatched"}[tier]
-            print(f"  {label:12s}  expected={exp:5.1f}%  actual={actual_pct:5.1f}%  diff={diff:+5.1f}%")
+            print(
+                f"  {label:12s}  expected={exp:5.1f}%  actual={actual_pct:5.1f}%  diff={diff:+5.1f}%"
+            )
 
         # ── Breakdown by content type ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Breakdown by extraction_type:")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         by_type: dict[str, Counter] = defaultdict(Counter)
         for r in results:
             by_type[r.extraction_type][r.winning_tier] += 1
@@ -463,39 +466,45 @@ def run_trial(
             t0 = tcounts.get(0, 0)
             print(
                 f"  {etype:30s}  n={total_type:4d}  "
-                f"T1={t1/total_type*100:5.1f}%  "
-                f"T2={t2/total_type*100:5.1f}%  "
-                f"T3={t3/total_type*100:5.1f}%  "
-                f"Unmatched={t0/total_type*100:5.1f}%"
+                f"T1={t1 / total_type * 100:5.1f}%  "
+                f"T2={t2 / total_type * 100:5.1f}%  "
+                f"T3={t3 / total_type * 100:5.1f}%  "
+                f"Unmatched={t0 / total_type * 100:5.1f}%"
             )
 
         # ── Markdown presence analysis ──
         md_results = [r for r in results if r.has_markdown]
         non_md = [r for r in results if not r.has_markdown]
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Markdown presence analysis:")
-        print(f"{'─'*60}")
-        print(f"  Sources with markdown: {len(md_results)}/{total} ({len(md_results)/total*100:.1f}%)")
+        print(f"{'─' * 60}")
+        print(
+            f"  Sources with markdown: {len(md_results)}/{total} ({len(md_results) / total * 100:.1f}%)"
+        )
         if md_results:
             md_tier = Counter(r.winning_tier for r in md_results)
-            print(f"    Tier 1: {md_tier.get(1,0)/len(md_results)*100:.1f}%  "
-                  f"Tier 2: {md_tier.get(2,0)/len(md_results)*100:.1f}%  "
-                  f"Tier 3: {md_tier.get(3,0)/len(md_results)*100:.1f}%  "
-                  f"Unmatched: {md_tier.get(0,0)/len(md_results)*100:.1f}%")
+            print(
+                f"    Tier 1: {md_tier.get(1, 0) / len(md_results) * 100:.1f}%  "
+                f"Tier 2: {md_tier.get(2, 0) / len(md_results) * 100:.1f}%  "
+                f"Tier 3: {md_tier.get(3, 0) / len(md_results) * 100:.1f}%  "
+                f"Unmatched: {md_tier.get(0, 0) / len(md_results) * 100:.1f}%"
+            )
         if non_md:
             non_md_tier = Counter(r.winning_tier for r in non_md)
             print(f"  Sources without markdown: {len(non_md)}")
-            print(f"    Tier 1: {non_md_tier.get(1,0)/len(non_md)*100:.1f}%  "
-                  f"Tier 2: {non_md_tier.get(2,0)/len(non_md)*100:.1f}%  "
-                  f"Tier 3: {non_md_tier.get(3,0)/len(non_md)*100:.1f}%  "
-                  f"Unmatched: {non_md_tier.get(0,0)/len(non_md)*100:.1f}%")
+            print(
+                f"    Tier 1: {non_md_tier.get(1, 0) / len(non_md) * 100:.1f}%  "
+                f"Tier 2: {non_md_tier.get(2, 0) / len(non_md) * 100:.1f}%  "
+                f"Tier 3: {non_md_tier.get(3, 0) / len(non_md) * 100:.1f}%  "
+                f"Unmatched: {non_md_tier.get(0, 0) / len(non_md) * 100:.1f}%"
+            )
 
         # ── Tier 3 score distribution ──
         t3_results = [r for r in results if r.winning_tier == 3]
         if t3_results:
-            print(f"\n{'─'*60}")
+            print(f"\n{'─' * 60}")
             print("Tier 3 score distribution:")
-            print(f"{'─'*60}")
+            print(f"{'─' * 60}")
             buckets = Counter()
             for r in t3_results:
                 bucket = f"{int(r.tier3_score * 10) * 10}-{int(r.tier3_score * 10) * 10 + 10}%"
@@ -506,12 +515,11 @@ def run_trial(
         # ── Unmatched analysis ──
         unmatched = [r for r in results if r.winning_tier == 0]
         if unmatched:
-            print(f"\n{'─'*60}")
+            print(f"\n{'─' * 60}")
             print(f"Unmatched quotes analysis ({len(unmatched)} total):")
-            print(f"{'─'*60}")
+            print(f"{'─' * 60}")
 
             # Check what the existing grounding verifier says
-            from services.extraction.grounding import verify_quote_in_source
 
             grounded_but_unlocated = 0
             for r in unmatched:
@@ -520,8 +528,10 @@ def run_trial(
 
             # Show quote length distribution
             lengths = [len(r.quote) for r in unmatched]
-            print(f"  Quote length: min={min(lengths)}, max={max(lengths)}, "
-                  f"avg={sum(lengths)/len(lengths):.0f}")
+            print(
+                f"  Quote length: min={min(lengths)}, max={max(lengths)}, "
+                f"avg={sum(lengths) / len(lengths):.0f}"
+            )
 
         # ── Examples ──
         if show_examples > 0:
@@ -529,39 +539,63 @@ def run_trial(
                 tier_results = [r for r in results if r.winning_tier == tier]
                 if not tier_results:
                     continue
-                label = {2: "Tier 2 (markdown-stripped)", 3: "Tier 3 (block fuzzy)", 0: "UNMATCHED"}[tier]
-                print(f"\n{'─'*60}")
-                print(f"Example: {label} (showing {min(show_examples, len(tier_results))})")
-                print(f"{'─'*60}")
+                label = {
+                    2: "Tier 2 (markdown-stripped)",
+                    3: "Tier 3 (block fuzzy)",
+                    0: "UNMATCHED",
+                }[tier]
+                print(f"\n{'─' * 60}")
+                print(
+                    f"Example: {label} (showing {min(show_examples, len(tier_results))})"
+                )
+                print(f"{'─' * 60}")
                 for r in tier_results[:show_examples]:
-                    print(f"\n  Source: {r.source_group} / {r.extraction_type}.{r.field_name}")
-                    print(f"  Quote:  {r.quote[:120]}{'...' if len(r.quote)>120 else ''}")
+                    print(
+                        f"\n  Source: {r.source_group} / {r.extraction_type}.{r.field_name}"
+                    )
+                    print(
+                        f"  Quote:  {r.quote[:120]}{'...' if len(r.quote) > 120 else ''}"
+                    )
                     if tier == 2 and r.tier2_span:
-                        print(f"  Span:   {r.tier2_span[:120]}{'...' if len(r.tier2_span)>120 else ''}")
+                        print(
+                            f"  Span:   {r.tier2_span[:120]}{'...' if len(r.tier2_span) > 120 else ''}"
+                        )
                     elif tier == 3 and r.tier3_span:
                         print(f"  Score:  {r.tier3_score:.2f}")
-                        print(f"  Block:  {r.tier3_span[:120]}{'...' if len(r.tier3_span)>120 else ''}")
+                        print(
+                            f"  Block:  {r.tier3_span[:120]}{'...' if len(r.tier3_span) > 120 else ''}"
+                        )
                     elif tier == 0:
                         # Show what verify_quote_in_source returns
-                        print(f"  (all 3 tiers failed to locate this quote)")
+                        print("  (all 3 tiers failed to locate this quote)")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL COMPLETE")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Trial: Quote-to-source tracing validation")
+    parser = argparse.ArgumentParser(
+        description="Trial: Quote-to-source tracing validation"
+    )
     parser.add_argument(
         "--project-id",
         type=str,
         default=None,
         help="Project UUID to analyze (default: all projects)",
     )
-    parser.add_argument("--limit", type=int, default=500, help="Max extractions to analyze")
-    parser.add_argument("--show-examples", type=int, default=5, help="Examples per tier to show")
-    parser.add_argument("--v2-only", action="store_true", help="Only analyze v2 extractions")
+    parser.add_argument(
+        "--limit", type=int, default=500, help="Max extractions to analyze"
+    )
+    parser.add_argument(
+        "--show-examples", type=int, default=5, help="Examples per tier to show"
+    )
+    parser.add_argument(
+        "--v2-only", action="store_true", help="Only analyze v2 extractions"
+    )
     args = parser.parse_args()
 
     pid = UUID(args.project_id) if args.project_id else None
-    run_trial(pid, limit=args.limit, show_examples=args.show_examples, v2_only=args.v2_only)
+    run_trial(
+        pid, limit=args.limit, show_examples=args.show_examples, v2_only=args.v2_only
+    )

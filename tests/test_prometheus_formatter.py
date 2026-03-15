@@ -1,7 +1,5 @@
 """Tests for Prometheus metrics formatter."""
 
-import pytest
-
 from services.metrics.collector import SystemMetrics
 from services.metrics.prometheus import format_prometheus
 

@@ -1,14 +1,15 @@
 """Tests for scraper background worker."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, Mock
-from datetime import datetime, UTC
+from datetime import datetime
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
-from services.scraper.worker import ScraperWorker
+import pytest
+
+from orm_models import Job
 from services.scraper.client import ScrapeResult
 from services.scraper.rate_limiter import RateLimitExceeded
-from orm_models import Job, Source
+from services.scraper.worker import ScraperWorker
 
 
 class TestScraperWorker:
@@ -340,7 +341,9 @@ class TestScraperWorker:
         db_session.commit.assert_called()
 
     @pytest.mark.asyncio
-    async def test_process_job_extracts_source_group_from_payload(self, worker, mock_source_repo):
+    async def test_process_job_extracts_source_group_from_payload(
+        self, worker, mock_source_repo
+    ):
         """Test that source_group is correctly extracted from payload."""
         job = Job(
             id=uuid4(),
@@ -439,7 +442,14 @@ class TestScraperWorkerWithRateLimiting:
         return repo
 
     @pytest.fixture
-    def worker_with_limiter(self, db_session, firecrawl_client, rate_limiter, mock_source_repo, mock_project_repo):
+    def worker_with_limiter(
+        self,
+        db_session,
+        firecrawl_client,
+        rate_limiter,
+        mock_source_repo,
+        mock_project_repo,
+    ):
         """Create ScraperWorker instance with rate limiter."""
         worker = ScraperWorker(
             db=db_session,

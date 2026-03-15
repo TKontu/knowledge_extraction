@@ -6,15 +6,16 @@ Tests that exceptions are properly formatted with:
 - error_type field in log context
 """
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import pytest
+
 from orm_models import Job
+from services.extraction.worker import ExtractionWorker
 from services.scraper.crawl_worker import CrawlWorker
 from services.scraper.worker import ScraperWorker
-from services.extraction.worker import ExtractionWorker
 
 
 class TestCrawlWorkerErrorHandling:
@@ -245,9 +246,7 @@ class TestExtractionWorkerErrorHandling:
         assert "missing_key" in extract_job.error
 
     @pytest.mark.asyncio
-    async def test_exception_logs_with_exc_info(
-        self, extraction_worker, extract_job
-    ):
+    async def test_exception_logs_with_exc_info(self, extraction_worker, extract_job):
         """Test that exceptions are logged with exc_info=True."""
         # Arrange
         extraction_worker._process_with_schema_pipeline = AsyncMock(

@@ -58,7 +58,9 @@ async def search_extractions(
 
     # Initialize services
     embedding_service = EmbeddingService(settings.llm)
-    qdrant_repo = QdrantRepository(qdrant_client, embedding_dimension=settings.llm.embedding_dimension)
+    qdrant_repo = QdrantRepository(
+        qdrant_client, embedding_dimension=settings.llm.embedding_dimension
+    )
     extraction_repo = ExtractionRepository(db)
 
     search_service = SearchService(

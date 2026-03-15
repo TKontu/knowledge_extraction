@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
-from services.extraction.field_groups import FieldGroup, FieldDefinition
 
 
 def _make_extraction_config(max_concurrent_chunks=2):
@@ -35,7 +35,9 @@ def test_field_group():
         name="test_group",
         description="Test group",
         fields=[
-            FieldDefinition(name="test_field", field_type="text", description="Test field"),
+            FieldDefinition(
+                name="test_field", field_type="text", description="Test field"
+            ),
         ],
         prompt_hint="Extract test field",
     )
@@ -66,7 +68,9 @@ class TestContinuousConcurrency:
         - With continuous flow, chunk 2 should start at ~0.02s when chunk 0 finishes
         - With batch-and-wait, chunk 2 would wait until 0.10s for both to finish
         """
-        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=2)
+        orchestrator = _make_orchestrator(
+            mock_schema_extractor, max_concurrent_chunks=2
+        )
 
         # Track when each extraction starts and completes
         extraction_events = []
@@ -77,14 +81,18 @@ class TestContinuousConcurrency:
             chunk_id = content
             chunk_idx = int(chunk_id.split("_")[1])
             async with extraction_lock:
-                extraction_events.append(("start", chunk_id, asyncio.get_event_loop().time()))
+                extraction_events.append(
+                    ("start", chunk_id, asyncio.get_event_loop().time())
+                )
 
             # Alternating delays: even chunks fast (0.02s), odd chunks slow (0.10s)
             delay = 0.02 if chunk_idx % 2 == 0 else 0.10
             await asyncio.sleep(delay)
 
             async with extraction_lock:
-                extraction_events.append(("end", chunk_id, asyncio.get_event_loop().time()))
+                extraction_events.append(
+                    ("end", chunk_id, asyncio.get_event_loop().time())
+                )
             return {"test_field": f"result_{chunk_id}"}
 
         mock_schema_extractor.extract_field_group.side_effect = track_extraction
@@ -120,7 +128,9 @@ class TestContinuousConcurrency:
         self, mock_schema_extractor, test_field_group
     ):
         """Verify concurrency never exceeds extraction_max_concurrent_chunks."""
-        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=3)
+        orchestrator = _make_orchestrator(
+            mock_schema_extractor, max_concurrent_chunks=3
+        )
 
         max_concurrent_observed = 0
         current_concurrent = 0
@@ -130,7 +140,9 @@ class TestContinuousConcurrency:
             nonlocal max_concurrent_observed, current_concurrent
             async with concurrent_lock:
                 current_concurrent += 1
-                max_concurrent_observed = max(max_concurrent_observed, current_concurrent)
+                max_concurrent_observed = max(
+                    max_concurrent_observed, current_concurrent
+                )
             await asyncio.sleep(0.02)  # Simulate work
             async with concurrent_lock:
                 current_concurrent -= 1
@@ -160,7 +172,9 @@ class TestContinuousConcurrency:
         self, mock_schema_extractor, test_field_group
     ):
         """All chunks complete even with varying processing times."""
-        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=4)
+        orchestrator = _make_orchestrator(
+            mock_schema_extractor, max_concurrent_chunks=4
+        )
 
         completed_chunks = []
 
@@ -190,7 +204,9 @@ class TestContinuousConcurrency:
         self, mock_schema_extractor, test_field_group
     ):
         """Failed extractions don't prevent other chunks from processing."""
-        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=2)
+        orchestrator = _make_orchestrator(
+            mock_schema_extractor, max_concurrent_chunks=2
+        )
 
         call_count = 0
 
@@ -232,7 +248,9 @@ class TestRetryBehavior:
         and returns None. Retries are handled by the inner _extract_direct
         loop inside extract_field_group, which the mock bypasses here.
         """
-        orchestrator = _make_orchestrator(mock_schema_extractor, max_concurrent_chunks=2)
+        orchestrator = _make_orchestrator(
+            mock_schema_extractor, max_concurrent_chunks=2
+        )
 
         attempt_counts = {}
 

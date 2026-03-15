@@ -211,7 +211,7 @@ class TestTier1:
         assert result is not None
         assert result.score == 1.0
         assert result.match_tier == 1
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert span == "leading manufacturer"
 
     def test_case_insensitive(self):
@@ -219,7 +219,7 @@ class TestTier1:
         norm, omap = _normalize_with_map(content)
         result = _tier1_locate("leading manufacturer", norm, omap)
         assert result is not None
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert span.lower() == "leading manufacturer"
 
     def test_whitespace_collapse(self):
@@ -227,7 +227,7 @@ class TestTier1:
         norm, omap = _normalize_with_map(content)
         result = _tier1_locate("leading manufacturer of gears", norm, omap)
         assert result is not None
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert "leading" in span
         assert "gears" in span
 
@@ -245,7 +245,7 @@ class TestTier2:
         assert result is not None
         assert result.score == 0.95
         assert result.match_tier == 2
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert "Products" in span
         assert "drives" in span
 
@@ -291,6 +291,7 @@ class TestTier4:
     def test_block_fuzzy(self):
         content = "About the company\n\nAcme manufactures gearboxes motors and drives for industrial applications\n\nContact us"
         from services.extraction.grounding import _pos_normalize
+
         norm_quote = _pos_normalize("acme gearboxes motors drives industrial")
         result = _tier4_locate(norm_quote, content)
         assert result is not None
@@ -300,6 +301,7 @@ class TestTier4:
     def test_line_level_match(self):
         content = "Header\n\nLine one about gears\nLine two about motors and drives\nLine three about controls\n\nFooter"
         from services.extraction.grounding import _pos_normalize
+
         norm_quote = _pos_normalize("motors and drives")
         result = _tier4_locate(norm_quote, content)
         assert result is not None
@@ -307,6 +309,7 @@ class TestTier4:
 
     def test_below_threshold(self):
         from services.extraction.grounding import _pos_normalize
+
         norm_quote = _pos_normalize("completely unrelated words here")
         assert _tier4_locate(norm_quote, "some other content entirely") is None
 
@@ -324,7 +327,7 @@ class TestPositionCorrectness:
         content = "The  quick  brown  fox  jumps"
         result = ground_and_locate("quick brown fox", content)
         assert result.match_tier == 1
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert "quick" in span
         assert "fox" in span
 
@@ -332,7 +335,7 @@ class TestPositionCorrectness:
         content = "Header\n\nThe quick\nbrown fox jumps\n\nFooter"
         result = ground_and_locate("quick brown fox", content)
         assert result.match_tier == 1
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert "quick" in span
         assert "fox" in span
 
@@ -340,14 +343,14 @@ class TestPositionCorrectness:
         content = "Rating: A+ (excellent)"
         result = ground_and_locate("Rating A excellent", content)
         assert result.match_tier in (2, 3)
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         assert "Rating" in span or "rating" in span.lower()
 
     def test_tier3_position_markdown(self):
         content = "Buy our **premium gearboxes** today"
         result = ground_and_locate("premium gearboxes", content)
         assert result.source_offset is not None
-        span = content[result.source_offset:result.source_end]
+        span = content[result.source_offset : result.source_end]
         # The span in original content may include markdown markers
         assert "premium" in span.lower() or "gearbox" in span.lower()
 
@@ -373,7 +376,9 @@ class TestPositionCorrectness:
         assert result.source_offset is None
 
     def test_no_match(self):
-        result = ground_and_locate("completely unrelated xyz abc", "some other content here")
+        result = ground_and_locate(
+            "completely unrelated xyz abc", "some other content here"
+        )
         assert result.match_tier in (0, 4)
 
 
@@ -413,10 +418,14 @@ class TestPrecomputed:
 
 class TestLocateInSourceIntegration:
     def _make_chunk(self, header_path=None, chunk_index=0):
-        return type("Chunk", (), {
-            "header_path": header_path or [],
-            "chunk_index": chunk_index,
-        })()
+        return type(
+            "Chunk",
+            (),
+            {
+                "header_path": header_path or [],
+                "chunk_index": chunk_index,
+            },
+        )()
 
     def test_with_content_maps(self):
         content = "The  quick  brown  fox"
@@ -427,7 +436,7 @@ class TestLocateInSourceIntegration:
         assert loc.match_tier >= 1
         assert loc.match_quality > 0
         assert loc.char_offset is not None
-        span = content[loc.char_offset:loc.char_end]
+        span = content[loc.char_offset : loc.char_end]
         assert "quick" in span
 
     def test_without_content_maps(self):
@@ -460,8 +469,6 @@ class TestLocateInSourceIntegration:
 
     def test_source_location_new_fields_default(self):
         """New fields have sensible defaults for backward compat."""
-        loc = SourceLocation(
-            heading_path=[], char_offset=0, char_end=10, chunk_index=0
-        )
+        loc = SourceLocation(heading_path=[], char_offset=0, char_end=10, chunk_index=0)
         assert loc.match_tier == 0
         assert loc.match_quality == 1.0

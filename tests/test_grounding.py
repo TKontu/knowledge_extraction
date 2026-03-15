@@ -499,7 +499,9 @@ class TestScoreFieldNonStringQuotes:
         assert score == 1.0
 
     def test_list_quote_with_list_field(self):
-        score = score_field(["motors", "drives"], ["motors and drives division"], "list")
+        score = score_field(
+            ["motors", "drives"], ["motors and drives division"], "list"
+        )
         assert score > 0.0
 
     def test_none_quote_returns_zero(self):
@@ -896,7 +898,9 @@ class TestIsNegationQuote:
         assert is_negation_quote("No explicit information about this field") is True
 
     def test_not_explicitly_mentioned(self):
-        assert is_negation_quote("Not explicitly mentioned in the provided data") is True
+        assert (
+            is_negation_quote("Not explicitly mentioned in the provided data") is True
+        )
 
     def test_no_details(self):
         assert is_negation_quote("No details available in the source") is True
@@ -937,24 +941,29 @@ class TestGroundEntityFields:
     ]
 
     def test_grounded_fields(self):
-        fields = {"product_name": "FZG Series", "power_rating_kw": 50, "subcategory": "planetary"}
+        """Field values found in source content get high grounding."""
+        fields = {
+            "product_name": "FZG Series",
+            "power_rating_kw": 50,
+            "subcategory": "planetary",
+        }
         scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
-        assert scores["product_name"] >= 0.5  # "FZG Series" in quote
-        assert scores["power_rating_kw"] == 1.0  # 50 in quote
-        assert scores["subcategory"] >= 0.5  # "planetary" in quote
+        assert scores["product_name"] >= 0.5  # "FZG Series" in source
+        assert scores["power_rating_kw"] == 1.0  # 50 in source
+        assert scores["subcategory"] >= 0.5  # "planetary" in source
 
     def test_hallucinated_value(self):
-        """Value not in quote should score low."""
+        """Value not in source should score 0."""
         fields = {"product_name": "FZG Series", "power_rating_kw": 500}
         scores = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
-        assert scores["power_rating_kw"] == 0.0  # 500 not in quote
+        assert scores["power_rating_kw"] == 0.0  # 500 not in source
 
     def test_no_quote_uses_chunk(self):
-        """When entity has no quote, falls back to chunk content."""
+        """Entity fields are always grounded against source content."""
         fields = {"product_name": "FZG Series", "power_rating_kw": 50}
         scores = ground_entity_fields(fields, None, self.CHUNK, self.FIELD_DEFS)
-        assert scores["product_name"] >= 0.5
-        assert scores["power_rating_kw"] == 1.0
+        assert scores["product_name"] >= 0.5  # "FZG Series" in source
+        assert scores["power_rating_kw"] == 1.0  # 50 in source
 
     def test_no_source(self):
         """No quote and no chunk → all zeros."""
@@ -992,17 +1001,27 @@ class TestGroundEntityFields:
             {"name": "description", "field_type": "summary"},
         ]
         field_defs_with_override = [
-            {"name": "description", "field_type": "summary", "grounding_mode": "required"},
+            {
+                "name": "description",
+                "field_type": "summary",
+                "grounding_mode": "required",
+            },
         ]
         fields = {"description": "Fabricated Corp"}
 
         # Without override: summary → none mode → always 1.0
         score_none = ground_entity_fields(
-            fields, self.QUOTE, self.CHUNK, field_defs_no_override,
+            fields,
+            self.QUOTE,
+            self.CHUNK,
+            field_defs_no_override,
         )
         # With override: required mode. "Fabricated Corp" not found by score_field → 0.0
         score_required = ground_entity_fields(
-            fields, self.QUOTE, self.CHUNK, field_defs_with_override,
+            fields,
+            self.QUOTE,
+            self.CHUNK,
+            field_defs_with_override,
         )
         assert score_required["description"] == 0.0
         assert score_none["description"] == 1.0
@@ -1013,15 +1032,25 @@ class TestGroundEntityFields:
             {"name": "product_name", "field_type": "summary"},
         ]
         field_defs_required = [
-            {"name": "product_name", "field_type": "summary", "grounding_mode": "required"},
+            {
+                "name": "product_name",
+                "field_type": "summary",
+                "grounding_mode": "required",
+            },
         ]
         fields = {"product_name": "FZG Series"}
 
         score_none = ground_entity_fields(
-            fields, self.QUOTE, self.CHUNK, field_defs_none,
+            fields,
+            self.QUOTE,
+            self.CHUNK,
+            field_defs_none,
         )
         score_required = ground_entity_fields(
-            fields, self.QUOTE, self.CHUNK, field_defs_required,
+            fields,
+            self.QUOTE,
+            self.CHUNK,
+            field_defs_required,
         )
         # summary (none) always returns 1.0; required should also score well since "FZG Series" is in the source
         assert score_none["product_name"] == 1.0
@@ -1039,49 +1068,94 @@ class TestScoreEntityConfidence:
         {"name": "model", "field_type": "string"},
     ]
 
-    def test_fully_filled_entity(self):
-        """Entity with all fields filled gets boosted confidence."""
+    def test_fully_grounded_entity(self):
+        """Entity with all fields grounded gets full confidence."""
         fields = {"name": "X", "power_kw": 50, "category": "gear", "model": "M1"}
-        conf = score_entity_confidence(fields, self.FIELD_DEFS, 0.5)
-        assert conf > 0.5  # Boosted by completeness + ID presence
+        conf = score_entity_confidence(
+            fields,
+            self.FIELD_DEFS,
+            0.8,
+            field_grounding={
+                "name": 1.0,
+                "power_kw": 1.0,
+                "category": 1.0,
+                "model": 1.0,
+            },
+            entity_grounding=1.0,
+        )
+        # 0.8 * 1.0 * 1.0 = 0.8
+        assert conf == 0.8
 
-    def test_sparse_entity_penalized(self):
-        """Entity with few fields filled gets lower confidence."""
+    def test_sparse_entity_not_penalized(self):
+        """Entity with few fields filled is NOT penalized — sparse data is expected."""
         fields = {"name": "X", "power_kw": None, "category": None, "model": None}
-        conf = score_entity_confidence(fields, self.FIELD_DEFS, 0.5)
-        assert conf < 0.6  # Penalized by low completeness
+        conf = score_entity_confidence(
+            fields,
+            self.FIELD_DEFS,
+            0.5,
+            field_grounding={"name": 1.0},
+            entity_grounding=1.0,
+        )
+        # 0.5 * 1.0 (avg of filled) * 1.0 (entity) = 0.5
+        assert conf == 0.5
 
-    def test_no_id_field_no_boost(self):
-        """Entity without name/id field doesn't get ID boost."""
-        fields = {"power_kw": 50}
-        field_defs = [{"name": "power_kw", "field_type": "float"}]
-        conf = score_entity_confidence(fields, field_defs, 0.5)
-        # No id_boost, but full completeness
-        assert conf >= 0.4
+    def test_entity_grounding_reduces_confidence(self):
+        """Low entity grounding (quote not in source) reduces confidence."""
+        fields = {"name": "X", "power_kw": 50}
+        conf_high = score_entity_confidence(
+            fields,
+            self.FIELD_DEFS,
+            0.5,
+            entity_grounding=1.0,
+        )
+        conf_low = score_entity_confidence(
+            fields,
+            self.FIELD_DEFS,
+            0.5,
+            entity_grounding=0.3,
+        )
+        assert conf_high > conf_low
 
     def test_field_grounding_reduces_confidence(self):
         """Low field grounding should reduce confidence."""
         fields = {"name": "X", "power_kw": 500}
         conf_high_gnd = score_entity_confidence(
-            fields, self.FIELD_DEFS, 0.5,
+            fields,
+            self.FIELD_DEFS,
+            0.5,
             field_grounding={"name": 1.0, "power_kw": 1.0},
         )
         conf_low_gnd = score_entity_confidence(
-            fields, self.FIELD_DEFS, 0.5,
+            fields,
+            self.FIELD_DEFS,
+            0.5,
             field_grounding={"name": 1.0, "power_kw": 0.0},
         )
         assert conf_high_gnd > conf_low_gnd
 
-    def test_short_quote_penalized(self):
-        """Very short quote with many fields is suspicious."""
-        fields = {"name": "X", "power_kw": 50, "category": "gear", "model": "M1"}
-        conf_long = score_entity_confidence(
-            fields, self.FIELD_DEFS, 0.5, quote="This is a very long quote about X gear M1 with 50kW",
+    def test_null_field_grounding_ignored(self):
+        """Grounding scores for null fields should not affect confidence."""
+        fields = {"name": "X", "power_kw": None, "category": None, "model": None}
+        # With only "name" filled and grounded at 1.0, extra 0.0 entries for
+        # null fields should be ignored
+        conf_clean = score_entity_confidence(
+            fields,
+            self.FIELD_DEFS,
+            0.5,
+            field_grounding={"name": 1.0},
         )
-        conf_short = score_entity_confidence(
-            fields, self.FIELD_DEFS, 0.5, quote="X",
+        conf_with_zeros = score_entity_confidence(
+            fields,
+            self.FIELD_DEFS,
+            0.5,
+            field_grounding={
+                "name": 1.0,
+                "power_kw": 0.0,
+                "category": 0.0,
+                "model": 0.0,
+            },
         )
-        assert conf_long > conf_short
+        assert conf_clean == conf_with_zeros
 
     def test_defaults_on_empty(self):
         """Empty fields/defs returns raw confidence."""
@@ -1092,7 +1166,14 @@ class TestScoreEntityConfidence:
         """Confidence should never exceed 1.0."""
         fields = {"name": "X", "power_kw": 50, "category": "gear", "model": "M1"}
         conf = score_entity_confidence(
-            fields, self.FIELD_DEFS, 0.95,
-            field_grounding={"name": 1.0, "power_kw": 1.0, "category": 1.0, "model": 1.0},
+            fields,
+            self.FIELD_DEFS,
+            0.95,
+            field_grounding={
+                "name": 1.0,
+                "power_kw": 1.0,
+                "category": 1.0,
+                "model": 1.0,
+            },
         )
         assert conf <= 1.0

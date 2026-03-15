@@ -36,7 +36,9 @@ def sample_field_groups():
             name="company_info",
             description="Company information",
             fields=[
-                FieldDefinition(name="company_name", field_type="text", description="Name"),
+                FieldDefinition(
+                    name="company_name", field_type="text", description="Name"
+                ),
             ],
             prompt_hint="Extract company info",
         ),
@@ -44,7 +46,9 @@ def sample_field_groups():
             name="products",
             description="Product catalog",
             fields=[
-                FieldDefinition(name="product_name", field_type="text", description="Product"),
+                FieldDefinition(
+                    name="product_name", field_type="text", description="Product"
+                ),
             ],
             prompt_hint="Extract products",
         ),
@@ -95,7 +99,10 @@ class TestSkipGateIntegration:
 
     @pytest.mark.asyncio
     async def test_skip_gate_skips_page(
-        self, mock_extractor, sample_field_groups, sample_schema,
+        self,
+        mock_extractor,
+        sample_field_groups,
+        sample_schema,
     ):
         """Skip-gate returns 'skip' → extraction not called."""
         mock_llm = MockLLMClient(response={"decision": "skip"})
@@ -127,7 +134,10 @@ class TestSkipGateIntegration:
 
     @pytest.mark.asyncio
     async def test_skip_gate_extract_runs_all_groups(
-        self, mock_extractor, sample_field_groups, sample_schema,
+        self,
+        mock_extractor,
+        sample_field_groups,
+        sample_schema,
     ):
         """Skip-gate returns 'extract' → all groups processed."""
         mock_llm = MockLLMClient(response={"decision": "extract"})
@@ -160,7 +170,10 @@ class TestSkipGateIntegration:
 
     @pytest.mark.asyncio
     async def test_skip_gate_disabled_normal_flow(
-        self, mock_extractor, sample_field_groups, sample_schema,
+        self,
+        mock_extractor,
+        sample_field_groups,
+        sample_schema,
     ):
         """skip_gate_enabled=False → gate not called, normal flow."""
         mock_llm = MockLLMClient(response={"decision": "skip"})
@@ -190,7 +203,10 @@ class TestSkipGateIntegration:
 
     @pytest.mark.asyncio
     async def test_skip_gate_failure_extracts(
-        self, mock_extractor, sample_field_groups, sample_schema,
+        self,
+        mock_extractor,
+        sample_field_groups,
+        sample_schema,
     ):
         """Skip-gate raises error → extraction proceeds (safe default)."""
         mock_llm = MockLLMClient(error=RuntimeError("LLM down"))
@@ -220,7 +236,10 @@ class TestSkipGateIntegration:
 
     @pytest.mark.asyncio
     async def test_smart_classifier_fallback(
-        self, mock_extractor, sample_field_groups, sample_schema,
+        self,
+        mock_extractor,
+        sample_field_groups,
+        sample_schema,
     ):
         """skip-gate disabled + smart enabled → smart classifier used."""
         from services.extraction.page_classifier import ClassificationResult
@@ -236,7 +255,8 @@ class TestSkipGateIntegration:
             )
         )
         config = FakeClassificationConfig(
-            skip_gate_enabled=False, smart_enabled=True,
+            skip_gate_enabled=False,
+            smart_enabled=True,
         )
 
         orchestrator = SchemaExtractionOrchestrator(

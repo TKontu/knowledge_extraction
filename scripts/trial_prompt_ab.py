@@ -21,7 +21,7 @@ import json
 import re
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -35,7 +35,7 @@ from config import settings
 from database import engine
 from orm_models import Project, Source
 from services.extraction.content_cleaner import strip_structural_junk
-from services.extraction.field_groups import FieldDefinition, FieldGroup
+from services.extraction.field_groups import FieldGroup
 from services.extraction.grounding import verify_quote_in_source
 from services.extraction.schema_adapter import ExtractionContext, SchemaAdapter
 
@@ -124,8 +124,7 @@ def build_system_prompt_treatment(
 
     quoting_note = (
         '\nInclude a "quote" with each field: a brief verbatim excerpt '
-        "(15-50 chars) from the source that supports the value."
-        + _QUOTE_NOT_VALUE_NOTE
+        "(15-50 chars) from the source that supports the value." + _QUOTE_NOT_VALUE_NOTE
     )
 
     return f"""You are extracting {field_group.description} from {context.source_type}.
@@ -228,8 +227,7 @@ def build_entity_prompt_treatment(
 
     quoting_note = (
         '\nFor each entity, include "_quote": a brief verbatim excerpt '
-        "(15-50 chars) from the source identifying this entity."
-        + _QUOTE_NOT_VALUE_NOTE
+        "(15-50 chars) from the source identifying this entity." + _QUOTE_NOT_VALUE_NOTE
     )
 
     return f"""You are extracting {field_group.description} from {context.source_type}.
@@ -264,6 +262,7 @@ Confidence per entity:
 
 # ── Data structures ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class FieldResult:
     field: str
@@ -285,7 +284,11 @@ def _normalize(s: str) -> str:
 
 
 def parse_v2_fields(
-    raw: dict, source_text: str, variant: str, source_group: str, group_name: str,
+    raw: dict,
+    source_text: str,
+    variant: str,
+    source_group: str,
+    group_name: str,
 ) -> list[FieldResult]:
     """Parse v2 response and compute grounding for each field."""
     results = []
@@ -307,22 +310,34 @@ def parse_v2_fields(
         grounding = verify_quote_in_source(quote, source_text)
 
         value_is_quote = (
-            bool(value_str) and len(value_str) > 1
+            bool(value_str)
+            and len(value_str) > 1
             and _normalize(value_str) == _normalize(quote)
         )
 
-        results.append(FieldResult(
-            field=fname, value=value_str[:200], quote=quote[:200],
-            confidence=confidence, grounding=grounding,
-            value_is_quote=value_is_quote, variant=variant,
-            source_group=source_group, group_name=group_name,
-        ))
+        results.append(
+            FieldResult(
+                field=fname,
+                value=value_str[:200],
+                quote=quote[:200],
+                confidence=confidence,
+                grounding=grounding,
+                value_is_quote=value_is_quote,
+                variant=variant,
+                source_group=source_group,
+                group_name=group_name,
+            )
+        )
     return results
 
 
 def parse_entity_fields(
-    raw: dict, entity_key: str, source_text: str,
-    variant: str, source_group: str, group_name: str,
+    raw: dict,
+    entity_key: str,
+    source_text: str,
+    variant: str,
+    source_group: str,
+    group_name: str,
 ) -> list[FieldResult]:
     """Parse v2 entity list response and compute grounding for each entity."""
     results = []
@@ -337,7 +352,9 @@ def parse_entity_fields(
         confidence = float(entity.get("_confidence", entity.get("confidence", 0)))
 
         # Use the entity's identifying field as value
-        entity_name = entity.get("name") or entity.get("entity_id") or entity.get("id") or ""
+        entity_name = (
+            entity.get("name") or entity.get("entity_id") or entity.get("id") or ""
+        )
         value_str = str(entity_name)
 
         if not quote:
@@ -345,23 +362,35 @@ def parse_entity_fields(
 
         grounding = verify_quote_in_source(quote, source_text)
         value_is_quote = (
-            bool(value_str) and len(value_str) > 1
+            bool(value_str)
+            and len(value_str) > 1
             and _normalize(value_str) == _normalize(quote)
         )
 
-        results.append(FieldResult(
-            field=f"{entity_key}[{i}]", value=value_str[:200], quote=quote[:200],
-            confidence=confidence, grounding=grounding,
-            value_is_quote=value_is_quote, variant=variant,
-            source_group=source_group, group_name=group_name,
-        ))
+        results.append(
+            FieldResult(
+                field=f"{entity_key}[{i}]",
+                value=value_str[:200],
+                quote=quote[:200],
+                confidence=confidence,
+                grounding=grounding,
+                value_is_quote=value_is_quote,
+                variant=variant,
+                source_group=source_group,
+                group_name=group_name,
+            )
+        )
     return results
 
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
+
 async def call_llm(
-    client: AsyncOpenAI, model: str, system_prompt: str, user_prompt: str,
+    client: AsyncOpenAI,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
 ) -> tuple[dict | None, float]:
     """Call LLM and return (parsed_json, elapsed_seconds)."""
     t0 = time.monotonic()
@@ -390,24 +419,31 @@ async def call_llm(
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 async def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=30,
-                        help="Number of sources to sample")
-    parser.add_argument("--project-id", type=str,
-                        default="99a19141-9268-40a8-bc9e-ad1fa12243da")
-    parser.add_argument("--groups", type=str, default=None,
-                        help="Comma-separated field group names to test (default: all)")
+    parser.add_argument(
+        "--limit", type=int, default=30, help="Number of sources to sample"
+    )
+    parser.add_argument(
+        "--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da"
+    )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        default=None,
+        help="Comma-separated field group names to test (default: all)",
+    )
     parser.add_argument("--content-limit", type=int, default=20000)
     args = parser.parse_args()
 
     project_id = UUID(args.project_id)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("A/B TRIAL: ANTI-HALLUCINATION PROMPT IMPROVEMENT")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"Project: {args.project_id}")
     print(f"Sources: {args.limit}")
     print(f"Model: {settings.llm_model}")
@@ -443,7 +479,9 @@ async def main():
         # ── Sample sources with content ──
         # Prefer sources that had extractions (we know they're relevant)
         sources = session.execute(
-            select(Source.id, Source.source_group, Source.content, Source.cleaned_content)
+            select(
+                Source.id, Source.source_group, Source.content, Source.cleaned_content
+            )
             .where(Source.project_id == project_id)
             .where(Source.content.isnot(None))
             .where(func.length(Source.content) > 200)
@@ -477,15 +515,14 @@ async def main():
             continue
 
         cleaned = strip_structural_junk(source_text)
-        truncated = cleaned[:args.content_limit]
+        truncated = cleaned[: args.content_limit]
 
         for group in field_groups:
             call_idx += 2
 
             # Build user prompt (same for both variants)
             context_line = (
-                f"{context.source_label}: {source_group}\n\n"
-                if source_group else ""
+                f"{context.source_label}: {source_group}\n\n" if source_group else ""
             )
             user_prompt = (
                 f"{context_line}Extract {group.name} information from "
@@ -503,7 +540,12 @@ async def main():
             if raw_a:
                 if group.is_entity_list:
                     results_a = parse_entity_fields(
-                        raw_a, group.name, source_text, "A", source_group or "", group.name
+                        raw_a,
+                        group.name,
+                        source_text,
+                        "A",
+                        source_group or "",
+                        group.name,
                     )
                 else:
                     results_a = parse_v2_fields(
@@ -524,7 +566,12 @@ async def main():
             if raw_b:
                 if group.is_entity_list:
                     results_b = parse_entity_fields(
-                        raw_b, group.name, source_text, "B", source_group or "", group.name
+                        raw_b,
+                        group.name,
+                        source_text,
+                        "B",
+                        source_group or "",
+                        group.name,
                     )
                 else:
                     results_b = parse_v2_fields(
@@ -540,21 +587,22 @@ async def main():
                 f"\r  [{call_idx}/{total_calls}] ({pct:.0f}%) "
                 f"{source_group or '?'}/{group.name} "
                 f"A:{len(results_a) if raw_a else 'ERR'} B:{len(results_b) if raw_b else 'ERR'}  ",
-                end="", flush=True,
+                end="",
+                flush=True,
             )
 
-    print(f"\n\n{'='*80}")
+    print(f"\n\n{'=' * 80}")
     print("RESULTS")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     # ── Analysis ──
     for label, results, timings, errs in [
         ("A (baseline)", all_results_a, timing_a, errors_a),
         ("B (anti-hallucination)", all_results_b, timing_b, errors_b),
     ]:
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         print(f"Variant {label}")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         n = len(results)
         if n == 0:
@@ -565,10 +613,7 @@ async def main():
         poor = sum(1 for r in results if r.grounding < 0.3)
         overconf = sum(1 for r in results if r.confidence >= 0.8 and r.grounding < 0.3)
         val_eq_q = sum(1 for r in results if r.value_is_quote)
-        bad_echo = sum(
-            1 for r in results
-            if r.value_is_quote and r.grounding < 0.3
-        )
+        bad_echo = sum(1 for r in results if r.value_is_quote and r.grounding < 0.3)
         avg_g = sum(r.grounding for r in results) / n
         avg_c = sum(r.confidence for r in results) / n
         avg_t = sum(timings) / len(timings) if timings else 0
@@ -579,17 +624,21 @@ async def main():
         print(f"  Avg latency: {avg_t:.2f}s")
         print(f"  Avg grounding: {avg_g:.3f}")
         print(f"  Avg confidence: {avg_c:.3f}")
-        print(f"  Well grounded (>=0.8): {well}/{n} ({well/n*100:.1f}%)")
-        print(f"  Poorly grounded (<0.3): {poor}/{n} ({poor/n*100:.1f}%)")
-        print(f"  Overconfident (conf>=0.8 & ground<0.3): {overconf}/{n} ({overconf/n*100:.1f}%)")
-        print(f"  Value == quote: {val_eq_q}/{n} ({val_eq_q/n*100:.1f}%)")
-        print(f"  Bad echo (val==quote & ground<0.3): {bad_echo}/{n} ({bad_echo/n*100:.1f}%)")
+        print(f"  Well grounded (>=0.8): {well}/{n} ({well / n * 100:.1f}%)")
+        print(f"  Poorly grounded (<0.3): {poor}/{n} ({poor / n * 100:.1f}%)")
+        print(
+            f"  Overconfident (conf>=0.8 & ground<0.3): {overconf}/{n} ({overconf / n * 100:.1f}%)"
+        )
+        print(f"  Value == quote: {val_eq_q}/{n} ({val_eq_q / n * 100:.1f}%)")
+        print(
+            f"  Bad echo (val==quote & ground<0.3): {bad_echo}/{n} ({bad_echo / n * 100:.1f}%)"
+        )
         print()
 
     # ── Paired comparison ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("PAIRED COMPARISON (B vs A)")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     na, nb = len(all_results_a), len(all_results_b)
     if na > 0 and nb > 0:
@@ -597,13 +646,29 @@ async def main():
         well_b = sum(1 for r in all_results_b if r.grounding >= 0.8) / nb * 100
         poor_a = sum(1 for r in all_results_a if r.grounding < 0.3) / na * 100
         poor_b = sum(1 for r in all_results_b if r.grounding < 0.3) / nb * 100
-        oc_a = sum(1 for r in all_results_a if r.confidence >= 0.8 and r.grounding < 0.3) / na * 100
-        oc_b = sum(1 for r in all_results_b if r.confidence >= 0.8 and r.grounding < 0.3) / nb * 100
-        be_a = sum(1 for r in all_results_a if r.value_is_quote and r.grounding < 0.3) / na * 100
-        be_b = sum(1 for r in all_results_b if r.value_is_quote and r.grounding < 0.3) / nb * 100
+        oc_a = (
+            sum(1 for r in all_results_a if r.confidence >= 0.8 and r.grounding < 0.3)
+            / na
+            * 100
+        )
+        oc_b = (
+            sum(1 for r in all_results_b if r.confidence >= 0.8 and r.grounding < 0.3)
+            / nb
+            * 100
+        )
+        be_a = (
+            sum(1 for r in all_results_a if r.value_is_quote and r.grounding < 0.3)
+            / na
+            * 100
+        )
+        be_b = (
+            sum(1 for r in all_results_b if r.value_is_quote and r.grounding < 0.3)
+            / nb
+            * 100
+        )
 
         print(f"\n  {'Metric':<40s} {'A':>8s} {'B':>8s} {'Delta':>8s}")
-        print(f"  {'─'*64}")
+        print(f"  {'─' * 64}")
 
         for name, va, vb in [
             ("Well grounded (>=0.8) %", well_a, well_b),
@@ -618,13 +683,15 @@ async def main():
 
         avg_t_a = sum(timing_a) / len(timing_a) if timing_a else 0
         avg_t_b = sum(timing_b) / len(timing_b) if timing_b else 0
-        print(f"  {'Avg latency (s)':<40s} {avg_t_a:7.2f}s {avg_t_b:7.2f}s {avg_t_b - avg_t_a:+.2f}s")
+        print(
+            f"  {'Avg latency (s)':<40s} {avg_t_a:7.2f}s {avg_t_b:7.2f}s {avg_t_b - avg_t_a:+.2f}s"
+        )
         print(f"  {'Fields extracted':<40s} {na:>7d}  {nb:>7d}  {nb - na:+d}")
 
     # ── Per-field breakdown for problem fields ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("PER-FIELD BREAKDOWN (problem fields)")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     # Collect by group.field
     by_field_a: dict[str, list[FieldResult]] = defaultdict(list)
@@ -638,8 +705,10 @@ async def main():
 
     all_field_keys = sorted(set(by_field_a.keys()) | set(by_field_b.keys()))
 
-    print(f"\n  {'Field':<45s} {'n_A':>4s} {'G_A':>5s} {'P_A%':>5s}  {'n_B':>4s} {'G_B':>5s} {'P_B%':>5s}  {'Δpoor':>6s}")
-    print(f"  {'─'*85}")
+    print(
+        f"\n  {'Field':<45s} {'n_A':>4s} {'G_A':>5s} {'P_A%':>5s}  {'n_B':>4s} {'G_B':>5s} {'P_B%':>5s}  {'Δpoor':>6s}"
+    )
+    print(f"  {'─' * 85}")
 
     for fk in all_field_keys:
         items_a = by_field_a.get(fk, [])
@@ -662,9 +731,9 @@ async def main():
         )
 
     # ── Examples: fields that IMPROVED in B ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("EXAMPLES: Fields poorly grounded in A but improved in B")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     # Find source_group+field combos where A was poorly grounded
     a_by_key: dict[str, FieldResult] = {}
@@ -689,15 +758,23 @@ async def main():
     print(f"\n  Improved (A<0.3 → B>=0.8): {len(improvements)}")
     for ra, rb in improvements[:8]:
         print(f"    {ra.source_group}/{ra.group_name}.{ra.field}")
-        print(f"      A: ground={ra.grounding:.2f} conf={ra.confidence:.2f} val=\"{ra.value[:50]}\" q=\"{ra.quote[:50]}\"")
-        print(f"      B: ground={rb.grounding:.2f} conf={rb.confidence:.2f} val=\"{rb.value[:50]}\" q=\"{rb.quote[:50]}\"")
+        print(
+            f'      A: ground={ra.grounding:.2f} conf={ra.confidence:.2f} val="{ra.value[:50]}" q="{ra.quote[:50]}"'
+        )
+        print(
+            f'      B: ground={rb.grounding:.2f} conf={rb.confidence:.2f} val="{rb.value[:50]}" q="{rb.quote[:50]}"'
+        )
         print()
 
     print(f"  Regressed (A>=0.8 → B<0.3): {len(regressions)}")
     for ra, rb in regressions[:5]:
         print(f"    {ra.source_group}/{ra.group_name}.{ra.field}")
-        print(f"      A: ground={ra.grounding:.2f} conf={ra.confidence:.2f} val=\"{ra.value[:50]}\" q=\"{ra.quote[:50]}\"")
-        print(f"      B: ground={rb.grounding:.2f} conf={rb.confidence:.2f} val=\"{rb.value[:50]}\" q=\"{rb.quote[:50]}\"")
+        print(
+            f'      A: ground={ra.grounding:.2f} conf={ra.confidence:.2f} val="{ra.value[:50]}" q="{ra.quote[:50]}"'
+        )
+        print(
+            f'      B: ground={rb.grounding:.2f} conf={rb.confidence:.2f} val="{rb.value[:50]}" q="{rb.quote[:50]}"'
+        )
         print()
 
     # ── Examples: still poorly grounded in BOTH ──
@@ -711,14 +788,14 @@ async def main():
         print(f"  Still poor in both: {len(both_poor)}")
         for ra, rb in both_poor[:5]:
             print(f"    {ra.source_group}/{ra.group_name}.{ra.field}")
-            print(f"      A: val=\"{ra.value[:50]}\" q=\"{ra.quote[:50]}\"")
-            print(f"      B: val=\"{rb.value[:50]}\" q=\"{rb.quote[:50]}\"")
+            print(f'      A: val="{ra.value[:50]}" q="{ra.quote[:50]}"')
+            print(f'      B: val="{rb.value[:50]}" q="{rb.quote[:50]}"')
             print()
 
     # ── Verdict ──
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("VERDICT")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     if na > 0 and nb > 0:
         poor_rate_a = sum(1 for r in all_results_a if r.grounding < 0.3) / na * 100
@@ -726,13 +803,19 @@ async def main():
         delta_poor = poor_rate_b - poor_rate_a
 
         if delta_poor < -2:
-            print(f"\n  ✓ IMPROVEMENT: Poorly-grounded dropped by {abs(delta_poor):.1f}pp ({poor_rate_a:.1f}% → {poor_rate_b:.1f}%)")
+            print(
+                f"\n  ✓ IMPROVEMENT: Poorly-grounded dropped by {abs(delta_poor):.1f}pp ({poor_rate_a:.1f}% → {poor_rate_b:.1f}%)"
+            )
             print("  → Recommend deploying anti-hallucination prompt to production")
         elif delta_poor > 2:
-            print(f"\n  ✗ REGRESSION: Poorly-grounded increased by {delta_poor:.1f}pp ({poor_rate_a:.1f}% → {poor_rate_b:.1f}%)")
+            print(
+                f"\n  ✗ REGRESSION: Poorly-grounded increased by {delta_poor:.1f}pp ({poor_rate_a:.1f}% → {poor_rate_b:.1f}%)"
+            )
             print("  → Do NOT deploy — prompt changes hurt quality")
         else:
-            print(f"\n  ~ NEUTRAL: Poorly-grounded changed by {delta_poor:+.1f}pp ({poor_rate_a:.1f}% → {poor_rate_b:.1f}%)")
+            print(
+                f"\n  ~ NEUTRAL: Poorly-grounded changed by {delta_poor:+.1f}pp ({poor_rate_a:.1f}% → {poor_rate_b:.1f}%)"
+            )
             print("  → Marginal effect — consider if latency/token cost is acceptable")
 
         if improvements:

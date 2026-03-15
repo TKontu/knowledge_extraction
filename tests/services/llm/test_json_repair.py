@@ -5,13 +5,13 @@ import json
 import pytest
 
 from services.llm.json_repair import (
+    _balance_brackets,
+    _fix_quotes,
+    _fix_unterminated_strings,
+    _remove_trailing_commas,
+    _strip_code_fences,
     repair_json,
     try_repair_json,
-    _strip_code_fences,
-    _fix_unterminated_strings,
-    _balance_brackets,
-    _remove_trailing_commas,
-    _fix_quotes,
 )
 
 

@@ -177,7 +177,9 @@ def score_field(value: Any, quote: Any, field_type: str) -> float:
             vals = [str(v) for v in value.values() if v and isinstance(v, str)]
             if not vals:
                 return 0.0
-            found = sum(1 for v in vals if _normalize_string(v) in _normalize_string(coerced))
+            found = sum(
+                1 for v in vals if _normalize_string(v) in _normalize_string(coerced)
+            )
             return round(found / len(vals), 4) if vals else 0.0
         return verify_string_in_quote(str(value), coerced)
     # string, enum, and any other type
@@ -461,23 +463,25 @@ _MD_BOLD_ITALIC_RE = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
 _MD_TABLE_SEP_RE = re.compile(r"^\|[\s\-:]+\|[\s\-:|]*$", re.MULTILINE)
 _MD_INLINE_CODE_RE = re.compile(r"`([^`]+)`")
 _TRAILING_ELLIPSIS_RE = re.compile(r"\.{2,}$|…$")
-_UNICODE_DASHES = str.maketrans({
-    "\u2013": "-",  # en-dash
-    "\u2014": "-",  # em-dash
-    "\u2015": "-",  # horizontal bar
-    "\u2212": "-",  # minus sign
-})
+_UNICODE_DASHES = str.maketrans(
+    {
+        "\u2013": "-",  # en-dash
+        "\u2014": "-",  # em-dash
+        "\u2015": "-",  # horizontal bar
+        "\u2212": "-",  # minus sign
+    }
+)
 
 
 @dataclass
 class GroundingResult:
     """Result from ground_and_locate: match score + original-content positions."""
 
-    score: float               # 0.0-1.0
+    score: float  # 0.0-1.0
     source_offset: int | None  # char position in original content
-    source_end: int | None     # end char position in original content
-    matched_span: str | None   # actual source text at [offset:end]
-    match_tier: int            # 1-4, or 0 for unmatched
+    source_end: int | None  # end char position in original content
+    matched_span: str | None  # actual source text at [offset:end]
+    match_tier: int  # 1-4, or 0 for unmatched
 
 
 class ContentMaps(NamedTuple):
@@ -617,7 +621,9 @@ def _compose_maps(map_a: list[int], map_b: list[int]) -> list[int]:
 
 
 def _tier1_locate(
-    norm_quote: str, norm_content: str, norm_map: list[int],
+    norm_quote: str,
+    norm_content: str,
+    norm_map: list[int],
 ) -> GroundingResult | None:
     """Tier 1: Normalized substring match with position."""
     pos = norm_content.find(norm_quote)
@@ -627,13 +633,18 @@ def _tier1_locate(
     orig_start = norm_map[pos] if pos < len(norm_map) else 0
     orig_end = (norm_map[end - 1] + 1) if end - 1 < len(norm_map) else len(norm_map)
     return GroundingResult(
-        score=1.0, source_offset=orig_start, source_end=orig_end,
-        matched_span=None, match_tier=1,
+        score=1.0,
+        source_offset=orig_start,
+        source_end=orig_end,
+        matched_span=None,
+        match_tier=1,
     )
 
 
 def _tier2_locate(
-    norm_quote_stripped: str, norm_content: str, norm_map: list[int],
+    norm_quote_stripped: str,
+    norm_content: str,
+    norm_map: list[int],
 ) -> GroundingResult | None:
     """Tier 2: Punct-stripped match with position tracking."""
     content_stripped, punct_map = _punct_strip_with_map(norm_content)
@@ -645,13 +656,17 @@ def _tier2_locate(
     orig_start = composed[pos] if pos < len(composed) else 0
     orig_end = (composed[end - 1] + 1) if end - 1 < len(composed) else 0
     return GroundingResult(
-        score=0.95, source_offset=orig_start, source_end=orig_end,
-        matched_span=None, match_tier=2,
+        score=0.95,
+        source_offset=orig_start,
+        source_end=orig_end,
+        matched_span=None,
+        match_tier=2,
     )
 
 
 def _tier3_locate(
-    norm_quote_stripped: str, content: str,
+    norm_quote_stripped: str,
+    content: str,
 ) -> GroundingResult | None:
     """Tier 3: Markdown-stripped + punct-stripped with position tracking."""
     md_stripped, md_map = _strip_markdown_with_map(content)
@@ -664,19 +679,28 @@ def _tier3_locate(
     end = pos + len(norm_quote_stripped)
 
     # Compose: md_punct → md_norm → md_stripped → original
-    map_to_md_norm = _compose_maps(md_norm_map, md_punct_map) if md_punct_map else md_norm_map
-    map_to_original = _compose_maps(md_map, map_to_md_norm) if map_to_md_norm else md_map
+    map_to_md_norm = (
+        _compose_maps(md_norm_map, md_punct_map) if md_punct_map else md_norm_map
+    )
+    map_to_original = (
+        _compose_maps(md_map, map_to_md_norm) if map_to_md_norm else md_map
+    )
 
     orig_start = map_to_original[pos] if pos < len(map_to_original) else 0
     orig_end = (map_to_original[end - 1] + 1) if end - 1 < len(map_to_original) else 0
     return GroundingResult(
-        score=0.9, source_offset=orig_start, source_end=orig_end,
-        matched_span=None, match_tier=3,
+        score=0.9,
+        source_offset=orig_start,
+        source_end=orig_end,
+        matched_span=None,
+        match_tier=3,
     )
 
 
 def _tier4_locate(
-    norm_quote: str, content: str, threshold: float = 0.6,
+    norm_quote: str,
+    content: str,
+    threshold: float = 0.6,
 ) -> GroundingResult | None:
     """Tier 4: Block-level fuzzy matching with position tracking."""
     quote_words = norm_quote.split()
@@ -766,7 +790,7 @@ def ground_and_locate(quote: str, content: str) -> GroundingResult:
     # Tier 1: Normalized substring
     result = _tier1_locate(norm_quote, norm_content, norm_map)
     if result:
-        result.matched_span = content[result.source_offset:result.source_end]
+        result.matched_span = content[result.source_offset : result.source_end]
         return result
 
     # Tier 2: Punct-stripped
@@ -775,14 +799,14 @@ def ground_and_locate(quote: str, content: str) -> GroundingResult:
     if norm_quote_stripped:
         result = _tier2_locate(norm_quote_stripped, norm_content, norm_map)
         if result:
-            result.matched_span = content[result.source_offset:result.source_end]
+            result.matched_span = content[result.source_offset : result.source_end]
             return result
 
     # Tier 3: Markdown + punct stripped
     if norm_quote_stripped:
         result = _tier3_locate(norm_quote_stripped, content)
         if result:
-            result.matched_span = content[result.source_offset:result.source_end]
+            result.matched_span = content[result.source_offset : result.source_end]
             return result
 
     # Tier 4: Block fuzzy
@@ -800,7 +824,9 @@ def precompute_content_maps(content: str) -> ContentMaps:
 
 
 def ground_and_locate_precomputed(
-    quote: str, content: str, content_maps: ContentMaps,
+    quote: str,
+    content: str,
+    content_maps: ContentMaps,
 ) -> GroundingResult:
     """Like ground_and_locate but reuses pre-computed content maps."""
     if not quote or not content:
@@ -820,7 +846,7 @@ def ground_and_locate_precomputed(
     # Tier 1
     result = _tier1_locate(norm_quote, norm_content, norm_map)
     if result:
-        result.matched_span = content[result.source_offset:result.source_end]
+        result.matched_span = content[result.source_offset : result.source_end]
         return result
 
     # Tier 2
@@ -829,14 +855,14 @@ def ground_and_locate_precomputed(
     if norm_quote_stripped:
         result = _tier2_locate(norm_quote_stripped, norm_content, norm_map)
         if result:
-            result.matched_span = content[result.source_offset:result.source_end]
+            result.matched_span = content[result.source_offset : result.source_end]
             return result
 
     # Tier 3
     if norm_quote_stripped:
         result = _tier3_locate(norm_quote_stripped, content)
         if result:
-            result.matched_span = content[result.source_offset:result.source_end]
+            result.matched_span = content[result.source_offset : result.source_end]
             return result
 
     # Tier 4
@@ -1053,29 +1079,39 @@ def ground_entity_fields(
     chunk_content: str,
     field_definitions: list[dict],
 ) -> dict[str, float]:
-    """Ground each field in an entity against the entity's quote.
+    """Ground each entity field value directly against the source content.
 
-    Uses score_field() (Layer B) for each field value against the entity quote.
-    Falls back to chunk_content if entity_quote is None.
+    Checks value→source for each filled field. The entity-level quote is
+    used separately for quote→source (entity_grounding), not here.
+
+    Two independent grounding signals:
+    - This function: value→source (does the value exist on the page?)
+    - entity_grounding: quote→source (is the quote real text?)
+    Together they prove the extraction is grounded without relying on the
+    fragile value→quote middle layer (which breaks on plurals, reformulations).
 
     Args:
         fields: Entity field dict {name: value}.
-        entity_quote: The entity-level quote string.
+        entity_quote: Unused, kept for API compatibility.
         chunk_content: The source text from the chunk.
         field_definitions: List of field definition dicts with 'name' and 'field_type'.
 
     Returns:
-        Dict of field_name -> grounding score (0.0-1.0).
+        Dict of field_name -> grounding score (0.0-1.0) for filled fields.
     """
     if not fields:
         return {}
 
-    coerced_quote = _coerce_quote(entity_quote)
-    source = coerced_quote or chunk_content
-    if not source:
-        return {fd["name"]: 0.0 for fd in field_definitions if fd["name"] in fields}
+    if not chunk_content:
+        return {
+            fd["name"]: 0.0
+            for fd in field_definitions
+            if fd["name"] in fields and fields[fd["name"]] is not None
+        }
 
-    field_type_map = {fd["name"]: fd.get("field_type", "string") for fd in field_definitions}
+    field_type_map = {
+        fd["name"]: fd.get("field_type", "string") for fd in field_definitions
+    }
     grounding_mode_map = {
         fd["name"]: fd["grounding_mode"]
         for fd in field_definitions
@@ -1084,21 +1120,21 @@ def ground_entity_fields(
     scores: dict[str, float] = {}
 
     for field_name, value in fields.items():
-        if value is None or field_name.startswith("_"):
+        if value is None or value == "" or field_name.startswith("_"):
             continue
         field_type = field_type_map.get(field_name, "string")
         grounding_mode = grounding_mode_map.get(
-            field_name, GROUNDING_DEFAULTS.get(field_type, "required"),
+            field_name,
+            GROUNDING_DEFAULTS.get(field_type, "required"),
         )
         if grounding_mode == "none":
             scores[field_name] = 1.0
             continue
         if grounding_mode == "semantic":
-            # For semantic fields in entities, check if value appears in source
-            scores[field_name] = verify_string_in_quote(str(value), source)
+            scores[field_name] = verify_string_in_quote(str(value), chunk_content)
             continue
-        # Required mode: score value against source text
-        scores[field_name] = score_field(value, source, field_type)
+        # Required mode: score value against source content
+        scores[field_name] = score_field(value, chunk_content, field_type)
 
     return scores
 
@@ -1108,22 +1144,29 @@ def score_entity_confidence(
     field_definitions: list[dict],
     raw_confidence: float = 0.5,
     field_grounding: dict[str, float] | None = None,
+    entity_grounding: float = 1.0,
     quote: str | None = None,
 ) -> float:
-    """Compute entity confidence from field completeness + grounding signals.
+    """Compute entity confidence: LLM confidence * field grounding * entity grounding.
 
-    Adjusts the LLM's raw confidence based on observable quality signals:
-    1. Field completeness: filled_fields / total_fields
-    2. ID field presence: boost if name/identifier is filled
-    3. Average field grounding score (if available)
-    4. Quote quality: short quotes for many fields are suspicious
+    Three independent signals multiplied together:
+    - raw_confidence: LLM's self-assessed confidence (0-1)
+    - avg field grounding: are extracted values found in the quote? (filled fields only)
+    - entity grounding: is the quote found in the source page?
+
+    When entity_grounding is 0 (no/bad quote) but field values are verified
+    in the source (field_grounding > 0), entity_grounding is replaced by
+    avg_field_gnd capped at 0.9 — the values are real even without a quote chain.
+
+    Empty fields are ignored — sparse entities are normal for entity lists.
 
     Args:
         fields: Entity field dict.
         field_definitions: List of field definition dicts.
         raw_confidence: The LLM's confidence value (default 0.5).
         field_grounding: Per-field grounding scores (from ground_entity_fields).
-        quote: The entity's quote string.
+        entity_grounding: Entity-level quote-in-source score (default 1.0).
+        quote: The entity's quote string (unused, kept for API compat).
 
     Returns:
         Adjusted confidence 0.0-1.0.
@@ -1131,44 +1174,26 @@ def score_entity_confidence(
     if not fields or not field_definitions:
         return raw_confidence
 
-    # 1. Field completeness
-    total = len(field_definitions)
-    filled = sum(
-        1 for fd in field_definitions
-        if fields.get(fd["name"]) is not None
-    )
-    completeness = filled / total if total > 0 else 0.0
-
-    # 2. ID field presence boost
-    id_boost = 0.0
-    for id_field in ("name", "entity_id", "product_name", "id"):
-        if fields.get(id_field) is not None:
-            id_boost = 0.1
-            break
-
-    # 3. Field grounding average
+    # Average grounding of FILLED fields only
+    # Ignore grounding scores for null fields — they're not meaningful
+    filled_names = {
+        fd["name"] for fd in field_definitions if fields.get(fd["name"]) is not None
+    }
     avg_field_gnd = 1.0
     if field_grounding:
-        gnd_values = [v for v in field_grounding.values() if v is not None]
+        gnd_values = [
+            v for k, v in field_grounding.items() if v is not None and k in filled_names
+        ]
         if gnd_values:
             avg_field_gnd = sum(gnd_values) / len(gnd_values)
 
-    # 4. Quote quality: penalize very short quotes with many fields
-    quote_factor = 1.0
-    if quote and filled > 0:
-        quote_len = len(quote)
-        # If quote is less than 10 chars per filled field, it's suspicious
-        if quote_len < filled * 10:
-            quote_factor = max(0.5, quote_len / (filled * 10))
+    # If entity_grounding is 0 (no/bad quote) but fields are verified in
+    # source, don't zero out — use field grounding as proxy, capped at 0.9
+    effective_entity_gnd = entity_grounding
+    if entity_grounding < 0.1 and avg_field_gnd > 0:
+        effective_entity_gnd = min(avg_field_gnd, 0.9)
 
-    # Combine: base * completeness * grounding blend * quote quality + id boost
-    adjusted = (
-        raw_confidence
-        * (0.4 + 0.6 * completeness)
-        * (0.5 + 0.5 * avg_field_gnd)
-        * quote_factor
-        + id_boost
-    )
+    adjusted = raw_confidence * avg_field_gnd * effective_entity_gnd
 
     return round(min(1.0, max(0.0, adjusted)), 4)
 

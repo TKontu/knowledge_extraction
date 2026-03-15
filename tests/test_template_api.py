@@ -1,6 +1,5 @@
 """Tests for template API endpoints."""
 
-import os
 
 from fastapi.testclient import TestClient
 
@@ -27,7 +26,9 @@ class TestListTemplates:
 
     def test_list_templates_with_details(self):
         """With details=true returns full template info."""
-        response = client.get("/api/v1/projects/templates?details=true", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates?details=true", headers=AUTH_HEADERS
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -44,7 +45,9 @@ class TestListTemplates:
 
     def test_list_templates_details_false_explicit(self):
         """With details=false returns list of names."""
-        response = client.get("/api/v1/projects/templates?details=false", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates?details=false", headers=AUTH_HEADERS
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -56,7 +59,9 @@ class TestGetTemplateDetails:
 
     def test_get_template_details_company_analysis(self):
         """Returns full details for company_analysis template."""
-        response = client.get("/api/v1/projects/templates/company_analysis", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates/company_analysis", headers=AUTH_HEADERS
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -78,7 +83,9 @@ class TestGetTemplateDetails:
 
     def test_get_template_details_default(self):
         """Returns details for default template."""
-        response = client.get("/api/v1/projects/templates/default", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates/default", headers=AUTH_HEADERS
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -86,7 +93,9 @@ class TestGetTemplateDetails:
 
     def test_get_template_details_not_found(self):
         """Returns 404 for unknown template."""
-        response = client.get("/api/v1/projects/templates/nonexistent_template", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates/nonexistent_template", headers=AUTH_HEADERS
+        )
         assert response.status_code == 404
 
         data = response.json()
@@ -95,7 +104,9 @@ class TestGetTemplateDetails:
 
     def test_get_template_details_research_survey(self):
         """Returns details for research_survey template."""
-        response = client.get("/api/v1/projects/templates/research_survey", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates/research_survey", headers=AUTH_HEADERS
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -104,7 +115,10 @@ class TestGetTemplateDetails:
 
     def test_get_template_details_drivetrain(self):
         """Returns details for drivetrain template with multiple field groups."""
-        response = client.get("/api/v1/projects/templates/drivetrain_company_analysis", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates/drivetrain_company_analysis",
+            headers=AUTH_HEADERS,
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -114,7 +128,9 @@ class TestGetTemplateDetails:
 
     def test_get_template_field_details(self):
         """Verify field-level details are returned correctly."""
-        response = client.get("/api/v1/projects/templates/company_analysis", headers=AUTH_HEADERS)
+        response = client.get(
+            "/api/v1/projects/templates/company_analysis", headers=AUTH_HEADERS
+        )
         assert response.status_code == 200
 
         data = response.json()

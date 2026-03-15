@@ -97,7 +97,9 @@ class TemplateRegistry:
             TemplateLoadError: If any template fails validation.
         """
         yaml_files = list(directory.glob("*.yaml"))
-        logger.info("loading_templates", directory=str(directory), count=len(yaml_files))
+        logger.info(
+            "loading_templates", directory=str(directory), count=len(yaml_files)
+        )
 
         for yaml_file in yaml_files:
             template = self._load_and_validate(yaml_file)
@@ -127,9 +129,7 @@ class TemplateRegistry:
             ) from e
 
         if not isinstance(template, dict):
-            raise TemplateLoadError(
-                yaml_file.stem, ["Template must be a dictionary"]
-            )
+            raise TemplateLoadError(yaml_file.stem, ["Template must be a dictionary"])
 
         template_name = template.get("name", yaml_file.stem)
 
@@ -144,7 +144,9 @@ class TemplateRegistry:
 
         # Log warnings but don't fail
         for warning in result.warnings:
-            logger.warning("template_validation_warning", template=template_name, warning=warning)
+            logger.warning(
+                "template_validation_warning", template=template_name, warning=warning
+            )
 
         # Fail on errors
         if not result.is_valid:

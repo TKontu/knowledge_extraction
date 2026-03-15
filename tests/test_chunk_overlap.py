@@ -1,11 +1,8 @@
 """Tests for chunk overlap and limit alignment."""
 
-import pytest
-
 from services.llm.chunking import (
     _get_tail_text,
     chunk_document,
-    count_tokens,
 )
 
 
@@ -57,12 +54,14 @@ class TestChunkDocumentDefaultTokens:
     def test_default_max_tokens_is_5000(self) -> None:
         """Default should be 5000 (aligned with EXTRACTION_CONTENT_LIMIT / 4)."""
         import inspect
+
         sig = inspect.signature(chunk_document)
         assert sig.parameters["max_tokens"].default == 5000
 
     def test_default_overlap_is_zero(self) -> None:
         """Default overlap should be 0 (disabled)."""
         import inspect
+
         sig = inspect.signature(chunk_document)
         assert sig.parameters["overlap_tokens"].default == 0
 
@@ -74,7 +73,7 @@ class TestChunkOverlap:
         """Chunks with overlap should share content at boundaries."""
         # Create content that splits into 2+ chunks at max_tokens=50
         section1 = "## Section 1\n" + ("alpha " * 30)  # ~40 tokens
-        section2 = "## Section 2\n" + ("beta " * 30)   # ~40 tokens
+        section2 = "## Section 2\n" + ("beta " * 30)  # ~40 tokens
         markdown = f"{section1}\n\n{section2}"
 
         chunks = chunk_document(markdown, max_tokens=50, overlap_tokens=20)
@@ -94,7 +93,9 @@ class TestChunkOverlap:
         """Documents that fit in one chunk should be unaffected by overlap setting."""
         markdown = "Short document."
         chunks_no_overlap = chunk_document(markdown, max_tokens=1000, overlap_tokens=0)
-        chunks_with_overlap = chunk_document(markdown, max_tokens=1000, overlap_tokens=200)
+        chunks_with_overlap = chunk_document(
+            markdown, max_tokens=1000, overlap_tokens=200
+        )
 
         assert len(chunks_no_overlap) == 1
         assert len(chunks_with_overlap) == 1

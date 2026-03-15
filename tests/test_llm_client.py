@@ -170,9 +170,7 @@ class TestLLMClientComplete:
             assert mock_create.call_count == settings.llm_max_retries
 
     @pytest.mark.asyncio
-    async def test_complete_sends_correct_messages(
-        self, llm_client: LLMClient
-    ) -> None:
+    async def test_complete_sends_correct_messages(self, llm_client: LLMClient) -> None:
         """Test complete() sends correct system and user messages."""
         with patch.object(
             llm_client.client.chat.completions,

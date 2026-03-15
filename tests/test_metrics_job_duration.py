@@ -1,6 +1,6 @@
 """Tests for metrics collector job duration calculations."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -25,7 +25,7 @@ def test_project(db):
 def completed_jobs(db, test_project):
     """Create completed jobs with timestamps."""
     jobs = []
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
 
     # Job 1: 10 seconds duration
     job1 = Job(
@@ -58,7 +58,7 @@ def completed_jobs(db, test_project):
 def mixed_jobs(db, test_project):
     """Create jobs of different types."""
     jobs = []
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
 
     # Scrape job: 15 seconds
     scrape_job = Job(
@@ -134,7 +134,7 @@ class TestJobDurationMetrics:
 
     def test_excludes_jobs_without_timestamps(self, db, test_project):
         """Jobs with NULL started_at/completed_at excluded."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
 
         # Job without started_at
         job1 = Job(
@@ -178,7 +178,7 @@ class TestJobDurationMetrics:
 
     def test_excludes_non_completed_jobs(self, db, test_project):
         """Only completed jobs are included in stats."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
 
         # Pending job
         job1 = Job(

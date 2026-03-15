@@ -24,7 +24,10 @@ class TestAPIKeyAuthentication:
     def test_protected_endpoint_requires_api_key(self, client: TestClient):
         """Protected endpoints should require API key."""
         response = client.get("/api/v1/nonexistent")
-        assert response.status_code in [401, 404]  # 401 if auth works, 404 if endpoint missing
+        assert response.status_code in [
+            401,
+            404,
+        ]  # 401 if auth works, 404 if endpoint missing
 
     def test_protected_endpoint_rejects_invalid_key(
         self, client: TestClient, invalid_api_key: str
@@ -34,7 +37,10 @@ class TestAPIKeyAuthentication:
             "/api/v1/nonexistent",
             headers={"X-API-Key": invalid_api_key},
         )
-        assert response.status_code in [401, 404]  # 401 if auth works, 404 if endpoint missing
+        assert response.status_code in [
+            401,
+            404,
+        ]  # 401 if auth works, 404 if endpoint missing
         if response.status_code == 401:
             assert "api key" in response.json()["detail"].lower()
 
@@ -62,9 +68,7 @@ class TestAPIKeyAuthentication:
         assert response.status_code == 200
         assert response.json()["service"] == "Scristill Pipeline API"
 
-    def test_case_insensitive_header_name(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_case_insensitive_header_name(self, client: TestClient, valid_api_key: str):
         """API key header should be case-insensitive."""
         # Try different case variations
         for header_name in ["X-API-Key", "x-api-key", "X-Api-Key"]:

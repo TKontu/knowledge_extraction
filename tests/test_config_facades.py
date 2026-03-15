@@ -148,7 +148,9 @@ class TestClassificationConfig:
         assert cl.embedding_low_threshold == s.classification_embedding_low_threshold
         assert cl.reranker_threshold == s.classification_reranker_threshold
         assert cl.cache_ttl == s.classification_cache_ttl
-        assert cl.use_default_skip_patterns == s.classification_use_default_skip_patterns
+        assert (
+            cl.use_default_skip_patterns == s.classification_use_default_skip_patterns
+        )
         assert cl.classifier_content_limit == s.classification_content_limit
 
 
@@ -165,8 +167,13 @@ class TestScrapingConfig:
         assert sc.retry_base_delay == s.scrape_retry_base_delay
         assert sc.retry_max_delay == s.scrape_retry_max_delay
         assert sc.camoufox_networkidle_timeout == s.camoufox_networkidle_timeout
-        assert sc.camoufox_content_stability_checks == s.camoufox_content_stability_checks
-        assert sc.camoufox_content_stability_interval == s.camoufox_content_stability_interval
+        assert (
+            sc.camoufox_content_stability_checks == s.camoufox_content_stability_checks
+        )
+        assert (
+            sc.camoufox_content_stability_interval
+            == s.camoufox_content_stability_interval
+        )
 
 
 class TestCrawlConfig:
@@ -180,7 +187,10 @@ class TestCrawlConfig:
         assert cr.smart_map_limit == s.smart_crawl_map_limit
         assert cr.smart_batch_max_concurrency == s.smart_crawl_batch_max_concurrency
         assert cr.language_filtering_enabled == s.language_filtering_enabled
-        assert cr.language_detection_confidence == s.language_detection_confidence_threshold
+        assert (
+            cr.language_detection_confidence
+            == s.language_detection_confidence_threshold
+        )
         assert cr.language_detection_timeout == s.language_detection_timeout_seconds
         assert cr.excluded_language_codes == s.excluded_language_codes
 

@@ -21,7 +21,9 @@ class ShutdownManager:
     def is_shutting_down(self) -> bool:
         return self._shutting_down
 
-    def register_cleanup(self, callback: Callable[[], Coroutine[Any, Any, None]]) -> None:
+    def register_cleanup(
+        self, callback: Callable[[], Coroutine[Any, Any, None]]
+    ) -> None:
         """Register an async cleanup callback to run on shutdown."""
         self._cleanup_callbacks.append(callback)
 
@@ -40,7 +42,9 @@ class ShutdownManager:
             except TimeoutError:
                 logger.warning("cleanup_callback_timeout", callback=callback.__name__)
             except Exception as e:
-                logger.error("cleanup_callback_failed", callback=callback.__name__, error=str(e))
+                logger.error(
+                    "cleanup_callback_failed", callback=callback.__name__, error=str(e)
+                )
 
         self._shutdown_event.set()
         logger.info("shutdown_complete")

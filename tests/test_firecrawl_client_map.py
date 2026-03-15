@@ -31,7 +31,9 @@ class TestFirecrawlClientMap:
     """Tests for FirecrawlClient.map() method."""
 
     @pytest.mark.asyncio
-    async def test_map_success_with_string_urls(self, firecrawl_client, mock_http_client):
+    async def test_map_success_with_string_urls(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test successful map with URLs as strings."""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -204,11 +206,16 @@ class TestFirecrawlClientBatchScrape:
         call_args = mock_http_client.post.call_args
         assert "/v1/batch/scrape" in call_args[0][0]
         request_body = call_args[1]["json"]
-        assert request_body["urls"] == ["https://example.com/a", "https://example.com/b"]
+        assert request_body["urls"] == [
+            "https://example.com/a",
+            "https://example.com/b",
+        ]
         assert request_body["formats"] == ["markdown"]
 
     @pytest.mark.asyncio
-    async def test_start_batch_scrape_with_options(self, firecrawl_client, mock_http_client):
+    async def test_start_batch_scrape_with_options(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test batch scrape with all options."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -250,7 +257,9 @@ class TestFirecrawlClientBatchScrape:
             )
 
     @pytest.mark.asyncio
-    async def test_start_batch_scrape_no_job_id(self, firecrawl_client, mock_http_client):
+    async def test_start_batch_scrape_no_job_id(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test batch scrape with missing job ID raises error."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -265,7 +274,9 @@ class TestFirecrawlClientBatchScrape:
             )
 
     @pytest.mark.asyncio
-    async def test_get_batch_scrape_status_scraping(self, firecrawl_client, mock_http_client):
+    async def test_get_batch_scrape_status_scraping(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test getting batch scrape status while scraping."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -284,7 +295,9 @@ class TestFirecrawlClientBatchScrape:
         assert result.pages == []
 
     @pytest.mark.asyncio
-    async def test_get_batch_scrape_status_completed(self, firecrawl_client, mock_http_client):
+    async def test_get_batch_scrape_status_completed(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test getting batch scrape status when completed."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -314,7 +327,9 @@ class TestFirecrawlClientBatchScrape:
         assert result.pages[0]["markdown"] == "# Page 1\n\nContent"
 
     @pytest.mark.asyncio
-    async def test_get_batch_scrape_status_with_pagination(self, firecrawl_client, mock_http_client):
+    async def test_get_batch_scrape_status_with_pagination(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test batch scrape status handles pagination."""
         # First response with pagination
         first_response = MagicMock()
@@ -351,7 +366,9 @@ class TestFirecrawlClientBatchScrape:
         assert mock_http_client.get.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_get_batch_scrape_status_failed(self, firecrawl_client, mock_http_client):
+    async def test_get_batch_scrape_status_failed(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test batch scrape status when failed."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -369,7 +386,9 @@ class TestFirecrawlClientBatchScrape:
         assert result.error == "Some pages failed to scrape"
 
     @pytest.mark.asyncio
-    async def test_get_batch_scrape_status_network_error(self, firecrawl_client, mock_http_client):
+    async def test_get_batch_scrape_status_network_error(
+        self, firecrawl_client, mock_http_client
+    ):
         """Test batch scrape status handles network errors."""
         mock_http_client.get.side_effect = Exception("Connection timeout")
 

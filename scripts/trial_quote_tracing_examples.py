@@ -46,7 +46,9 @@ def _strip_punct(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def find_best_window(quote_words: list[str], content: str, window_size: int | None = None) -> tuple[float, str]:
+def find_best_window(
+    quote_words: list[str], content: str, window_size: int | None = None
+) -> tuple[float, str]:
     """Find best matching window in content, return (score, matched_text)."""
     content_words = content.split()
     n = window_size or len(quote_words)
@@ -58,13 +60,13 @@ def find_best_window(quote_words: list[str], content: str, window_size: int | No
     best_start = 0
 
     for i in range(len(content_words) - n + 1):
-        window = content_words[i:i + n]
+        window = content_words[i : i + n]
         overlap = len(quote_set & set(window)) / len(quote_set)
         if overlap > best_score:
             best_score = overlap
             best_start = i
 
-    matched = " ".join(content_words[best_start:best_start + n])
+    matched = " ".join(content_words[best_start : best_start + n])
     return best_score, matched
 
 
@@ -189,34 +191,52 @@ def main():
                 by_cat[result["category"]].append(result)
 
         # Show detailed examples per category
-        for cat in ["reworded", "punct_strip", "partial", "hallucinated",
-                     "fabricated", "md_plus_punct", "md_strip", "other"]:
+        for cat in [
+            "reworded",
+            "punct_strip",
+            "partial",
+            "hallucinated",
+            "fabricated",
+            "md_plus_punct",
+            "md_strip",
+            "other",
+        ]:
             examples = by_cat.get(cat, [])
             if not examples:
                 continue
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print(f"  {cat.upper()} — {len(examples)} cases")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
 
             for ex in examples[:8]:
                 print(f"\n  [{ex['source_group']} / {ex['ext_type']}.{ex['field']}]")
-                print(f"  Quote:   \"{ex['quote'][:150]}\"")
+                print(f'  Quote:   "{ex["quote"][:150]}"')
                 print(f"  Detail:  {ex['detail']}")
                 if ex.get("missing_words"):
                     print(f"  Missing: {ex['missing_words'][:10]}")
                 if ex.get("best_window_score", 0) > 0.3:
-                    print(f"  Best window ({ex['best_window_score']:.2f}): \"{ex['best_window_text'][:150]}\"")
+                    print(
+                        f'  Best window ({ex["best_window_score"]:.2f}): "{ex["best_window_text"][:150]}"'
+                    )
                 print()
 
         # Summary
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("SUMMARY")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         total = sum(len(v) for v in by_cat.values())
-        for cat in ["reworded", "punct_strip", "partial", "hallucinated",
-                     "fabricated", "md_plus_punct", "md_strip", "other"]:
+        for cat in [
+            "reworded",
+            "punct_strip",
+            "partial",
+            "hallucinated",
+            "fabricated",
+            "md_plus_punct",
+            "md_strip",
+            "other",
+        ]:
             count = len(by_cat.get(cat, []))
-            print(f"  {cat:20s} {count:4d} ({count/total*100:.1f}%)")
+            print(f"  {cat:20s} {count:4d} ({count / total * 100:.1f}%)")
         print(f"  {'TOTAL':20s} {total:4d}")
 
 

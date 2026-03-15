@@ -39,8 +39,7 @@ def upgrade() -> None:
     # Idempotent: skip if index already exists
     result = conn.execute(
         sa.text(
-            "SELECT 1 FROM pg_indexes "
-            "WHERE indexname='ix_extractions_grounding_scores'"
+            "SELECT 1 FROM pg_indexes WHERE indexname='ix_extractions_grounding_scores'"
         )
     )
     if not result.fetchone():

@@ -138,17 +138,19 @@ class TestFindContentByLineDensity:
 
     def test_skips_nav_preamble(self):
         """Should skip navigation links at the top."""
-        nav = "\n".join([
-            "[Home](/) [Products](/products) [About](/about)",
-            "[Contact](/contact) [Careers](/careers) [News](/news)",
-            "[Support](/support) [Investors](/investors) [Blog](/blog)",
-            "[Partners](/partners) [Resources](/resources)",
-            "",
-            "# About Our Company",
-            "We manufacture high-quality industrial gearboxes.",
-            "Our products serve customers worldwide.",
-            "Founded in 1950, we have decades of experience.",
-        ])
+        nav = "\n".join(
+            [
+                "[Home](/) [Products](/products) [About](/about)",
+                "[Contact](/contact) [Careers](/careers) [News](/news)",
+                "[Support](/support) [Investors](/investors) [Blog](/blog)",
+                "[Partners](/partners) [Resources](/resources)",
+                "",
+                "# About Our Company",
+                "We manufacture high-quality industrial gearboxes.",
+                "Our products serve customers worldwide.",
+                "Founded in 1950, we have decades of experience.",
+            ]
+        )
         offset = find_content_by_line_density(nav)
         assert offset > 0
         remaining = nav[offset:]
@@ -160,23 +162,28 @@ class TestFindContentByLineDensity:
 
     def test_returns_zero_when_no_clear_content(self):
         """Should return 0 (conservative) when no content region found."""
-        all_links = "\n".join([
-            "[Link1](url1) [Link2](url2)",
-        ] * 5)
+        all_links = "\n".join(
+            [
+                "[Link1](url1) [Link2](url2)",
+            ]
+            * 5
+        )
         offset = find_content_by_line_density(all_links)
         assert offset == 0
 
     def test_works_with_non_english_content(self):
         """Should work on non-English content (language agnostic)."""
-        content = "\n".join([
-            "[Startseite](/) [Produkte](/produkte) [Kontakt](/kontakt)",
-            "[Über uns](/ueber-uns) [Karriere](/karriere)",
-            "",
-            "# Über unser Unternehmen",
-            "Wir sind ein führender Hersteller von Industriegetrieben.",
-            "Unsere Produkte werden weltweit eingesetzt.",
-            "Gegründet im Jahr 1950, verfügen wir über jahrzehntelange Erfahrung.",
-        ])
+        content = "\n".join(
+            [
+                "[Startseite](/) [Produkte](/produkte) [Kontakt](/kontakt)",
+                "[Über uns](/ueber-uns) [Karriere](/karriere)",
+                "",
+                "# Über unser Unternehmen",
+                "Wir sind ein führender Hersteller von Industriegetrieben.",
+                "Unsere Produkte werden weltweit eingesetzt.",
+                "Gegründet im Jahr 1950, verfügen wir über jahrzehntelange Erfahrung.",
+            ]
+        )
         offset = find_content_by_line_density(content)
         assert offset > 0
         remaining = content[offset:]
@@ -188,20 +195,22 @@ class TestCleanMarkdownForEmbedding:
 
     def test_combines_both_layers(self):
         """Should apply structural removal then density windowing."""
-        content = "\n".join([
-            "[Skip to content](#main)",
-            "![](https://example.com/tracking.png)",
-            "* [Home](/)",
-            "* [Products](/products)",
-            "* [About](/about)",
-            "[Nav1](url1) [Nav2](url2) [Nav3](url3) [Nav4](url4)",
-            "[Nav5](url5) [Nav6](url6) [Nav7](url7) [Nav8](url8)",
-            "",
-            "# Welcome to Our Company",
-            "We are a leading manufacturer of industrial equipment.",
-            "Our products serve customers in over 50 countries worldwide.",
-            "Founded in 1990, we have three decades of innovation.",
-        ])
+        content = "\n".join(
+            [
+                "[Skip to content](#main)",
+                "![](https://example.com/tracking.png)",
+                "* [Home](/)",
+                "* [Products](/products)",
+                "* [About](/about)",
+                "[Nav1](url1) [Nav2](url2) [Nav3](url3) [Nav4](url4)",
+                "[Nav5](url5) [Nav6](url6) [Nav7](url7) [Nav8](url8)",
+                "",
+                "# Welcome to Our Company",
+                "We are a leading manufacturer of industrial equipment.",
+                "Our products serve customers in over 50 countries worldwide.",
+                "Founded in 1990, we have three decades of innovation.",
+            ]
+        )
         result = clean_markdown_for_embedding(content)
         assert "Skip to content" not in result
         assert "tracking.png" not in result

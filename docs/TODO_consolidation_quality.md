@@ -116,11 +116,16 @@ The `text` type triggered a **double vulnerability** (now fixed):
 2. Post-Fix I: certifications **61.0%** (139/228), service_types **51.8%** (115/222)
 3. company_meta empty: 226/228 → **89/228**
 
-### Remaining: Locations extraction gap
+### Remaining: Locations extraction gap — READY TO EXTRACT
 - `locations` field: 0/6,964 raw extractions have any items — LLM returns empty `{"items": []}` for all
 - Root cause: complex structured list description ("List of {city, country, site_type} objects") doesn't translate well to per-item extraction
 - **Fix**: Template updated — `locations` removed from `company_meta`, new `company_locations` entity list group with structured fields (city, country, site_type) and detailed prompt hints
-- Requires re-extraction to populate
+- **`field_groups` filter implemented** (2026-03-14): Extract only `company_locations` without re-running all 8 groups. Saves ~7/8 LLM calls.
+  ```
+  POST /api/v1/projects/{id}/extract
+  {"force": true, "field_groups": ["company_locations"]}
+  ```
+  Or via MCP: `extract_knowledge(project_id, force=True, field_groups=["company_locations"])`
 
 ## Files Modified
 
@@ -143,3 +148,9 @@ The `text` type triggered a **double vulnerability** (now fixed):
 | `src/api/v1/projects.py` | C, D | Backfill endpoint, consolidation job creation (202 pattern) |
 | `src/services/storage/repositories/extraction.py` | C | `update_v2_data_batch()` method |
 | `src/constants.py` | D | `JobType.CONSOLIDATE` |
+| `src/models.py` | field_groups | `field_groups: list[str] \| None` on `ExtractRequest` |
+| `src/api/v1/extraction.py` | field_groups | Pass `field_groups` to job payload |
+| `src/services/extraction/worker.py` | field_groups | Read `field_groups` from payload, thread to pipeline |
+| `src/services/extraction/pipeline.py` | field_groups | Filter field groups, validate names, skip classification overwrite on partial extraction |
+| `src/ke_mcp/tools/extraction.py` | field_groups | `field_groups` param on `extract_knowledge` MCP tool |
+| `src/ke_mcp/client.py` | field_groups | `field_groups` param on `create_extraction()` |

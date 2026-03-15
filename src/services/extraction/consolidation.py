@@ -24,7 +24,15 @@ from services.extraction.grounding import GROUNDING_DEFAULTS
 
 # Default consolidation strategy per field type
 VALID_CONSOLIDATION_STRATEGIES = frozenset(
-    {"frequency", "weighted_frequency", "weighted_median", "any_true", "longest_top_k", "union_dedup", "llm_summarize"}
+    {
+        "frequency",
+        "weighted_frequency",
+        "weighted_median",
+        "any_true",
+        "longest_top_k",
+        "union_dedup",
+        "llm_summarize",
+    }
 )
 
 STRATEGY_DEFAULTS: dict[str, str] = {
@@ -484,17 +492,13 @@ def consolidate_extractions(
                         item_values.append(iv)
                         ic = float(item.get("confidence", 0.5))
                         ig = float(item.get("grounding", 1.0))
-                        item_weights.append(
-                            effective_weight(ic, ig, grounding_mode)
-                        )
+                        item_weights.append(effective_weight(ic, ig, grounding_mode))
                     if not item_values:
                         continue
                     value = item_values
                     avg_w = sum(item_weights) / len(item_weights)
-                    weight = min(avg_w, max(ext_confidence, 0.3))
-                    weighted_values.append(
-                        WeightedValue(value, weight, str(source_id))
-                    )
+                    weight = min(avg_w, ext_confidence)
+                    weighted_values.append(WeightedValue(value, weight, str(source_id)))
                     continue
 
                 value = field_data.get("value")
@@ -502,7 +506,7 @@ def consolidate_extractions(
                     continue
                 confidence = float(field_data.get("confidence", 0.5))
                 grounding_score = float(field_data.get("grounding", 1.0))
-                # Cap by extraction-level confidence (floor 0.3 to avoid zeroing)
+                # Cap by extraction-level confidence
             else:
                 # v1: flat format
                 value = data.get(field_name)
@@ -515,7 +519,7 @@ def consolidate_extractions(
             weight = effective_weight(confidence, grounding_score, grounding_mode)
             # For v2 extractions, cap weight by extraction-level confidence
             if data_version >= 2:
-                weight = min(weight, max(ext_confidence, 0.3))
+                weight = min(weight, ext_confidence)
             weighted_values.append(WeightedValue(value, weight, str(source_id)))
 
         if not weighted_values:
@@ -552,7 +556,9 @@ def _consolidate_entity_list(
         if data_version >= 2:
             # v2: entities are in data[entity_key]["items"]
             entity_data = data.get(entity_key, {})
-            items = entity_data.get("items", []) if isinstance(entity_data, dict) else []
+            items = (
+                entity_data.get("items", []) if isinstance(entity_data, dict) else []
+            )
             if not items:
                 continue
             # Extract fields from v2 entity items and compute weight per entity
@@ -562,13 +568,17 @@ def _consolidate_entity_list(
                 if not isinstance(item, dict):
                     continue
                 fields = item.get("fields", item)
-                cleaned.append({k: v for k, v in fields.items() if not str(k).startswith("_")})
+                cleaned.append(
+                    {k: v for k, v in fields.items() if not str(k).startswith("_")}
+                )
                 conf = float(item.get("confidence", 0.5))
                 gnd = float(item.get("grounding", 1.0))
                 # Refine grounding with per-field average when available
                 field_gnd = item.get("field_grounding")
                 if field_gnd and isinstance(field_gnd, dict):
-                    gnd_vals = [v for v in field_gnd.values() if isinstance(v, (int, float))]
+                    gnd_vals = [
+                        v for v in field_gnd.values() if isinstance(v, (int, float))
+                    ]
                     if gnd_vals:
                         avg_field_gnd = sum(gnd_vals) / len(gnd_vals)
                         gnd = min(gnd, avg_field_gnd) if avg_field_gnd < gnd else gnd
@@ -578,7 +588,9 @@ def _consolidate_entity_list(
                 # Cap by extraction-level confidence (floor 0.3)
                 ext_confidence = float(ext.get("confidence", 0.5))
                 avg_weight = min(avg_weight, max(ext_confidence, 0.3))
-                weighted_values.append(WeightedValue(cleaned, avg_weight, str(source_id)))
+                weighted_values.append(
+                    WeightedValue(cleaned, avg_weight, str(source_id))
+                )
         else:
             # v1: flat entity list
             entities = data.get(entity_key)
@@ -637,7 +649,8 @@ def get_llm_summarize_candidates(
         List of (value_str, weight) tuples sorted by weight descending.
     """
     non_null = [
-        v for v in values
+        v
+        for v in values
         if v.value is not None and isinstance(v.value, str) and v.value.strip()
     ]
     if not non_null:
@@ -654,9 +667,9 @@ def _entity_match_key(entity: dict) -> str:
     name = entity.get("name") or entity.get("product_name") or entity.get("id", "")
     key = str(name).strip().lower()
     if not key:
-        key = hashlib.sha256(
-            json.dumps(entity, sort_keys=True).encode()
-        ).hexdigest()[:16]
+        key = hashlib.sha256(json.dumps(entity, sort_keys=True).encode()).hexdigest()[
+            :16
+        ]
     return key
 
 
@@ -697,10 +710,12 @@ def _compute_entity_provenance(
             key=lambda x: x[0],
             reverse=True,
         )
-        result.append({
-            "winning_weight": round(grounded[0][0], 4) if grounded else 0.0,
-            "top_sources": [sid for _, sid in grounded][:5],
-        })
+        result.append(
+            {
+                "winning_weight": round(grounded[0][0], 4) if grounded else 0.0,
+                "top_sources": [sid for _, sid in grounded][:5],
+            }
+        )
 
     return result
 
@@ -744,9 +759,9 @@ def _dedup_dicts(items: list[dict]) -> list[dict]:
         name = item.get("name") or item.get("product_name") or item.get("id", "")
         key = str(name).strip().lower()
         if not key:
-            key = hashlib.sha256(
-                json.dumps(item, sort_keys=True).encode()
-            ).hexdigest()[:16]
+            key = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[
+                :16
+            ]
         if key not in groups:
             groups[key] = []
             order.append(key)

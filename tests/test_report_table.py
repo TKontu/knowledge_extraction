@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from services.reports.schema_table_generator import ColumnMetadata, SchemaTableGenerator
-from services.reports.service import ReportData, ReportService
-from services.reports.smart_merge import MergeCandidate, MergeResult, SmartMergeService
+from services.reports.service import ReportService
+from services.reports.smart_merge import MergeCandidate, SmartMergeService
 
 
 class TestSchemaTableGenerator:
@@ -27,8 +27,16 @@ class TestSchemaTableGenerator:
                     "description": "Company details",
                     "prompt_hint": "Extract company info",
                     "fields": [
-                        {"name": "company_name", "field_type": "text", "description": "Name"},
-                        {"name": "employee_count", "field_type": "integer", "description": "Employees"},
+                        {
+                            "name": "company_name",
+                            "field_type": "text",
+                            "description": "Name",
+                        },
+                        {
+                            "name": "employee_count",
+                            "field_type": "integer",
+                            "description": "Employees",
+                        },
                     ],
                 },
                 {
@@ -37,8 +45,16 @@ class TestSchemaTableGenerator:
                     "prompt_hint": "Extract products",
                     "is_entity_list": True,
                     "fields": [
-                        {"name": "product_name", "field_type": "text", "description": "Product"},
-                        {"name": "price", "field_type": "float", "description": "Price"},
+                        {
+                            "name": "product_name",
+                            "field_type": "text",
+                            "description": "Product",
+                        },
+                        {
+                            "name": "price",
+                            "field_type": "float",
+                            "description": "Price",
+                        },
                     ],
                 },
             ],
@@ -46,7 +62,9 @@ class TestSchemaTableGenerator:
 
     def test_get_flattened_columns_includes_metadata(self, generator, sample_schema):
         """Test that metadata columns are included at the start."""
-        columns, labels, metadata = generator.get_flattened_columns_for_source(sample_schema)
+        columns, labels, metadata = generator.get_flattened_columns_for_source(
+            sample_schema
+        )
 
         # Metadata columns first
         assert columns[0] == "source_url"
@@ -60,7 +78,9 @@ class TestSchemaTableGenerator:
 
     def test_get_flattened_columns_includes_fields(self, generator, sample_schema):
         """Test that field group fields are flattened."""
-        columns, labels, metadata = generator.get_flattened_columns_for_source(sample_schema)
+        columns, labels, metadata = generator.get_flattened_columns_for_source(
+            sample_schema
+        )
 
         # Company info fields
         assert "company_name" in columns
@@ -82,7 +102,11 @@ class TestSchemaTableGenerator:
                     "description": "Group A",
                     "prompt_hint": "A",
                     "fields": [
-                        {"name": "name", "field_type": "text", "description": "Name in A"},
+                        {
+                            "name": "name",
+                            "field_type": "text",
+                            "description": "Name in A",
+                        },
                     ],
                 },
                 {
@@ -90,7 +114,11 @@ class TestSchemaTableGenerator:
                     "description": "Group B",
                     "prompt_hint": "B",
                     "fields": [
-                        {"name": "name", "field_type": "text", "description": "Name in B"},
+                        {
+                            "name": "name",
+                            "field_type": "text",
+                            "description": "Name in B",
+                        },
                     ],
                 },
             ],
@@ -141,8 +169,12 @@ class TestSmartMergeService:
     async def test_merge_all_null_returns_null(self, merge_service, column_meta):
         """Test that all null candidates returns null without LLM call."""
         candidates = [
-            MergeCandidate(value=None, source_url="url1", source_title="T1", confidence=0.9),
-            MergeCandidate(value=None, source_url="url2", source_title="T2", confidence=0.8),
+            MergeCandidate(
+                value=None, source_url="url1", source_title="T1", confidence=0.9
+            ),
+            MergeCandidate(
+                value=None, source_url="url2", source_title="T2", confidence=0.8
+            ),
         ]
 
         result = await merge_service.merge_column("test", column_meta, candidates)
@@ -154,8 +186,12 @@ class TestSmartMergeService:
     async def test_merge_single_value_returns_it(self, merge_service, column_meta):
         """Test that single non-null value returns without LLM."""
         candidates = [
-            MergeCandidate(value="only value", source_url="url1", source_title="T1", confidence=0.9),
-            MergeCandidate(value=None, source_url="url2", source_title="T2", confidence=0.8),
+            MergeCandidate(
+                value="only value", source_url="url1", source_title="T1", confidence=0.9
+            ),
+            MergeCandidate(
+                value=None, source_url="url2", source_title="T2", confidence=0.8
+            ),
         ]
 
         result = await merge_service.merge_column("test", column_meta, candidates)
@@ -167,8 +203,12 @@ class TestSmartMergeService:
     async def test_merge_identical_values_no_llm(self, merge_service, column_meta):
         """Test that identical values merge without LLM call."""
         candidates = [
-            MergeCandidate(value="same", source_url="url1", source_title="T1", confidence=0.9),
-            MergeCandidate(value="same", source_url="url2", source_title="T2", confidence=0.8),
+            MergeCandidate(
+                value="same", source_url="url1", source_title="T1", confidence=0.9
+            ),
+            MergeCandidate(
+                value="same", source_url="url2", source_title="T2", confidence=0.8
+            ),
         ]
 
         result = await merge_service.merge_column("test", column_meta, candidates)
@@ -178,7 +218,9 @@ class TestSmartMergeService:
         assert len(result.sources_used) == 2
         assert "agree" in result.reasoning.lower()
 
-    async def test_merge_different_values_calls_llm(self, merge_service, column_meta, mock_llm_client):
+    async def test_merge_different_values_calls_llm(
+        self, merge_service, column_meta, mock_llm_client
+    ):
         """Test that different values trigger LLM synthesis."""
         # LLMClient.complete() returns a parsed dict, not a string
         mock_llm_client.complete.return_value = {
@@ -189,8 +231,12 @@ class TestSmartMergeService:
         }
 
         candidates = [
-            MergeCandidate(value="value A", source_url="url1", source_title="T1", confidence=0.9),
-            MergeCandidate(value="value B", source_url="url2", source_title="T2", confidence=0.8),
+            MergeCandidate(
+                value="value A", source_url="url1", source_title="T1", confidence=0.9
+            ),
+            MergeCandidate(
+                value="value B", source_url="url2", source_title="T2", confidence=0.8
+            ),
         ]
 
         result = await merge_service.merge_column("test", column_meta, candidates)
@@ -205,8 +251,12 @@ class TestSmartMergeService:
     async def test_merge_filters_low_confidence(self, merge_service, column_meta):
         """Test that low confidence candidates are filtered."""
         candidates = [
-            MergeCandidate(value="good", source_url="url1", source_title="T1", confidence=0.9),
-            MergeCandidate(value="low", source_url="url2", source_title="T2", confidence=0.1),  # Below 0.3
+            MergeCandidate(
+                value="good", source_url="url1", source_title="T1", confidence=0.9
+            ),
+            MergeCandidate(
+                value="low", source_url="url2", source_title="T2", confidence=0.1
+            ),  # Below 0.3
         ]
 
         result = await merge_service.merge_column("test", column_meta, candidates)
@@ -215,13 +265,19 @@ class TestSmartMergeService:
         assert result.value == "good"
         assert result.sources_used == ["url1"]
 
-    async def test_merge_llm_error_fallback(self, merge_service, column_meta, mock_llm_client):
+    async def test_merge_llm_error_fallback(
+        self, merge_service, column_meta, mock_llm_client
+    ):
         """Test fallback to highest confidence on LLM error."""
         mock_llm_client.complete.side_effect = Exception("LLM failed")
 
         candidates = [
-            MergeCandidate(value="low conf", source_url="url1", source_title="T1", confidence=0.7),
-            MergeCandidate(value="high conf", source_url="url2", source_title="T2", confidence=0.95),
+            MergeCandidate(
+                value="low conf", source_url="url1", source_title="T1", confidence=0.7
+            ),
+            MergeCandidate(
+                value="high conf", source_url="url2", source_title="T2", confidence=0.95
+            ),
         ]
 
         result = await merge_service.merge_column("test", column_meta, candidates)

@@ -11,6 +11,7 @@ from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
 @pytest.fixture
 def mock_extractor():
     from unittest.mock import AsyncMock
+
     extractor = Mock()
     extractor.extract_field_group = AsyncMock(return_value={})
     return extractor
@@ -39,10 +40,18 @@ def mixed_group():
         description="Company information",
         fields=[
             FieldDefinition(name="name", field_type="text", description="Company name"),
-            FieldDefinition(name="employees", field_type="integer", description="Employee count"),
-            FieldDefinition(name="is_public", field_type="boolean", description="Public?"),
-            FieldDefinition(name="industry", field_type="enum", description="Industry",
-                          enum_values=["manufacturing", "services", "technology"]),
+            FieldDefinition(
+                name="employees", field_type="integer", description="Employee count"
+            ),
+            FieldDefinition(
+                name="is_public", field_type="boolean", description="Public?"
+            ),
+            FieldDefinition(
+                name="industry",
+                field_type="enum",
+                description="Industry",
+                enum_values=["manufacturing", "services", "technology"],
+            ),
         ],
         prompt_hint="",
     )

@@ -168,7 +168,7 @@ def _filter_entity_fields(entity: EntityItem, threshold: float) -> EntityItem:
 async def apply_grounding_gate(
     result: ChunkExtractionResult,
     chunk_content: str,
-    verifier: "LLMGroundingVerifier",
+    verifier: LLMGroundingVerifier,
     *,
     field_types: dict[str, str] | None = None,
     grounding_mode_overrides: dict[str, str] | None = None,
@@ -240,13 +240,16 @@ async def apply_grounding_gate(
         async with rescue_sem:
             rescue = await verifier.rescue_quote(name, item.value, chunk_content)
         if rescue.quote and rescue.grounding >= keep_threshold:
-            return (name, FieldItem(
-                value=item.value,
-                confidence=item.confidence,
-                quote=rescue.quote,
-                grounding=rescue.grounding,
-                location=item.location,
-            ))
+            return (
+                name,
+                FieldItem(
+                    value=item.value,
+                    confidence=item.confidence,
+                    quote=rescue.quote,
+                    grounding=rescue.grounding,
+                    location=item.location,
+                ),
+            )
         return None
 
     async def _maybe_rescue_list_item(
@@ -262,13 +265,16 @@ async def apply_grounding_gate(
         async with rescue_sem:
             rescue = await verifier.rescue_quote(name, item.value, chunk_content)
         if rescue.quote and rescue.grounding >= keep_threshold:
-            return (name, ListValueItem(
-                value=item.value,
-                confidence=item.confidence,
-                quote=rescue.quote,
-                grounding=rescue.grounding,
-                location=item.location,
-            ))
+            return (
+                name,
+                ListValueItem(
+                    value=item.value,
+                    confidence=item.confidence,
+                    quote=rescue.quote,
+                    grounding=rescue.grounding,
+                    location=item.location,
+                ),
+            )
         return None
 
     async def _maybe_rescue_entity(
@@ -290,9 +296,7 @@ async def apply_grounding_gate(
         if not entity_name:
             return None  # No identifiable field → drop borderline entity
         async with rescue_sem:
-            rescue = await verifier.rescue_quote(
-                group_name, entity_name, chunk_content
-            )
+            rescue = await verifier.rescue_quote(group_name, entity_name, chunk_content)
         if rescue.quote and rescue.grounding >= keep_threshold:
             rescued = EntityItem(
                 fields=entity.fields,
@@ -308,8 +312,7 @@ async def apply_grounding_gate(
 
     # Process field_items
     field_tasks = [
-        _maybe_rescue_field(name, item)
-        for name, item in result.field_items.items()
+        _maybe_rescue_field(name, item) for name, item in result.field_items.items()
     ]
     field_results = await asyncio.gather(*field_tasks)
     new_fields: dict[str, FieldItem] = {}
@@ -355,12 +358,12 @@ class SchemaExtractionOrchestrator:
         self,
         schema_extractor: SchemaExtractor,
         *,
-        extraction_config: "ExtractionConfig | None" = None,
-        classification_config: "ClassificationConfig | None" = None,
-        context: "ExtractionContext | None" = None,
-        smart_classifier: "SmartClassifier | None" = None,
-        grounding_verifier: "LLMGroundingVerifier | None" = None,
-        skip_gate: "LLMSkipGate | None" = None,
+        extraction_config: ExtractionConfig | None = None,
+        classification_config: ClassificationConfig | None = None,
+        context: ExtractionContext | None = None,
+        smart_classifier: SmartClassifier | None = None,
+        grounding_verifier: LLMGroundingVerifier | None = None,
+        skip_gate: LLMSkipGate | None = None,
         extraction_schema: dict | None = None,
     ):
         """Initialize the orchestrator.
@@ -437,7 +440,8 @@ class SchemaExtractionOrchestrator:
             # Level 0: Rule-based (always runs first — free, instant)
             rule_classifier = PageClassifier(available_groups=available_group_names)
             rule_result = rule_classifier.classify(
-                url=source_url, title=source_title,
+                url=source_url,
+                title=source_title,
             )
 
             if rule_result.skip_extraction and self._classification.skip_enabled:
@@ -586,9 +590,7 @@ class SchemaExtractionOrchestrator:
                     )
                     merged, _ = validator.validate(merged, group)
 
-                group_result["grounding_scores"] = merged.pop(
-                    "_grounding_scores", {}
-                )
+                group_result["grounding_scores"] = merged.pop("_grounding_scores", {})
                 group_result["data"] = merged
 
                 raw_confidence = merged.get("confidence", 0.0)
@@ -661,9 +663,7 @@ class SchemaExtractionOrchestrator:
                 # Compute per-field source grounding scores for this chunk
                 # (quote vs source content, all field types)
                 chunk_sg = compute_chunk_grounding(result, chunk.content)
-                entity_sg = compute_chunk_grounding_entities(
-                    result, chunk.content
-                )
+                entity_sg = compute_chunk_grounding_entities(result, chunk.content)
                 result["_source_grounding"] = {**chunk_sg, **entity_sg}
 
                 # Source-grounding: verify quotes exist in chunk content
@@ -762,7 +762,7 @@ class SchemaExtractionOrchestrator:
                     best_val = v
         return best_val
 
-    def _get_merge_strategy(self, field: "FieldDefinition") -> str:
+    def _get_merge_strategy(self, field: FieldDefinition) -> str:
         """Resolve merge strategy for a field.
 
         Priority: explicit field.merge_strategy > type-based default.
@@ -870,9 +870,7 @@ class SchemaExtractionOrchestrator:
         # Skip chunks where LLM omitted confidence to avoid diluting the
         # average (e.g., 0.9 + missing → 0.9, not (0.9+0.5)/2 = 0.7).
         confidences = [
-            r["confidence"]
-            for r in chunk_results
-            if r.get("confidence") is not None
+            r["confidence"] for r in chunk_results if r.get("confidence") is not None
         ]
         merged["confidence"] = (
             sum(confidences) / len(confidences) if confidences else 0.5
@@ -985,13 +983,9 @@ class SchemaExtractionOrchestrator:
 
         # Average confidence from chunks that actually returned it
         confidences = [
-            r["confidence"]
-            for r in chunk_results
-            if r.get("confidence") is not None
+            r["confidence"] for r in chunk_results if r.get("confidence") is not None
         ]
-        avg_confidence = (
-            sum(confidences) / len(confidences) if confidences else 0.5
-        )
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
 
         merged = {
             entity_key: all_entities,
@@ -1113,9 +1107,7 @@ class SchemaExtractionOrchestrator:
         content_maps = precompute_content_maps(full_content) if full_content else None
 
         # Build field_types map once for the gate (field_name → field_type)
-        gate_field_types: dict[str, str] = {
-            f.name: f.field_type for f in group.fields
-        }
+        gate_field_types: dict[str, str] = {f.name: f.field_type for f in group.fields}
         # Collect per-field grounding_mode overrides from schema (Fix G)
         gate_grounding_overrides: dict[str, str] = {
             f.name: f.grounding_mode
@@ -1123,13 +1115,19 @@ class SchemaExtractionOrchestrator:
             if f.grounding_mode is not None
         }
 
-        async def extract_chunk_v2(chunk, chunk_idx: int) -> ChunkExtractionResult | None:
+        async def extract_chunk_v2(
+            chunk, chunk_idx: int
+        ) -> ChunkExtractionResult | None:
             # Phase 1: Extract (semaphore-limited for LLM concurrency)
             async with semaphore:
                 try:
                     if group.is_entity_list:
                         result = await self._extract_entity_chunk_v2(
-                            chunk, chunk_idx, group, source_context, full_content,
+                            chunk,
+                            chunk_idx,
+                            group,
+                            source_context,
+                            full_content,
                             content_maps=content_maps,
                         )
                     else:
@@ -1139,7 +1137,11 @@ class SchemaExtractionOrchestrator:
                             source_context=source_context,
                         )
                         result = self._parse_chunk_to_v2(
-                            raw, group, chunk, chunk_idx, full_content,
+                            raw,
+                            group,
+                            chunk,
+                            chunk_idx,
+                            full_content,
                             content_maps=content_maps,
                         )
 
@@ -1155,14 +1157,20 @@ class SchemaExtractionOrchestrator:
                                     avg_grounding=avg_grounding,
                                 )
                                 try:
-                                    retry_raw = await self._extractor.extract_field_group(
-                                        content=chunk.content,
-                                        field_group=group,
-                                        source_context=source_context,
-                                        strict_quoting=True,
+                                    retry_raw = (
+                                        await self._extractor.extract_field_group(
+                                            content=chunk.content,
+                                            field_group=group,
+                                            source_context=source_context,
+                                            strict_quoting=True,
+                                        )
                                     )
                                     retry_result = self._parse_chunk_to_v2(
-                                        retry_raw, group, chunk, chunk_idx, full_content,
+                                        retry_raw,
+                                        group,
+                                        chunk,
+                                        chunk_idx,
+                                        full_content,
                                         content_maps=content_maps,
                                     )
                                     retry_avg = _avg_chunk_grounding(retry_result)
@@ -1190,7 +1198,9 @@ class SchemaExtractionOrchestrator:
             # don't need to hold an extraction concurrency slot)
             if self._grounding_verifier is not None:
                 result = await apply_grounding_gate(
-                    result, chunk.content, self._grounding_verifier,
+                    result,
+                    chunk.content,
+                    self._grounding_verifier,
                     field_types=gate_field_types,
                     grounding_mode_overrides=gate_grounding_overrides,
                 )
@@ -1246,7 +1256,9 @@ class SchemaExtractionOrchestrator:
         inline grounding.
         """
         all_entities, _, any_truncated = await self._extract_entities_paginated(
-            chunk.content, group, source_context,
+            chunk.content,
+            group,
+            source_context,
         )
 
         # Build field definitions list for grounding/confidence scoring
@@ -1270,27 +1282,37 @@ class SchemaExtractionOrchestrator:
                 continue
 
             grounding = ground_entity_item(quote, chunk.content)
-            location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
+            location = locate_in_source(
+                quote, full_content, chunk, content_maps=content_maps
+            )
 
             # Per-field grounding within entity (Fix F)
             field_gnd = ground_entity_fields(
-                fields, quote, chunk.content, field_defs,
+                fields,
+                quote,
+                chunk.content,
+                field_defs,
             )
 
-            # Adjusted confidence from quality signals (Fix H)
+            # Adjusted confidence: LLM confidence * field grounding * entity grounding
             confidence = score_entity_confidence(
-                fields, field_defs, raw_confidence,
-                field_grounding=field_gnd, quote=quote,
+                fields,
+                field_defs,
+                raw_confidence,
+                field_grounding=field_gnd,
+                entity_grounding=grounding,
             )
 
-            entities.append(EntityItem(
-                fields=fields,
-                confidence=confidence,
-                quote=quote,
-                grounding=grounding,
-                location=location,
-                field_grounding=field_gnd,
-            ))
+            entities.append(
+                EntityItem(
+                    fields=fields,
+                    confidence=confidence,
+                    quote=quote,
+                    grounding=grounding,
+                    location=location,
+                    field_grounding=field_gnd,
+                )
+            )
 
         return ChunkExtractionResult(
             chunk_index=chunk_idx,
@@ -1322,7 +1344,9 @@ class SchemaExtractionOrchestrator:
         for field_def in group.fields:
             entry = fields_data.get(field_def.name, {})
             value = entry.get("value") if isinstance(entry, dict) else None
-            confidence = float(entry.get("confidence", 0.5)) if isinstance(entry, dict) else 0.5
+            confidence = (
+                float(entry.get("confidence", 0.5)) if isinstance(entry, dict) else 0.5
+            )
             quote = entry.get("quote") if isinstance(entry, dict) else None
 
             # Skip fields with negation quotes ("No mention of...", "N/A", etc.)
@@ -1335,19 +1359,33 @@ class SchemaExtractionOrchestrator:
                 items = []
                 for v in value:
                     grounding = ground_field_item(
-                        field_def.name, v, quote, chunk.content, field_def.field_type,
+                        field_def.name,
+                        v,
+                        quote,
+                        chunk.content,
+                        field_def.field_type,
                         grounding_mode=field_def.grounding_mode,
                     )
-                    location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
-                    items.append(ListValueItem(v, confidence, quote, grounding, location))
+                    location = locate_in_source(
+                        quote, full_content, chunk, content_maps=content_maps
+                    )
+                    items.append(
+                        ListValueItem(v, confidence, quote, grounding, location)
+                    )
                 list_items[field_def.name] = items
             else:
                 # Single, boolean, summary
                 grounding = ground_field_item(
-                    field_def.name, value, quote, chunk.content, field_def.field_type,
+                    field_def.name,
+                    value,
+                    quote,
+                    chunk.content,
+                    field_def.field_type,
                     grounding_mode=field_def.grounding_mode,
                 )
-                location = locate_in_source(quote, full_content, chunk, content_maps=content_maps)
+                location = locate_in_source(
+                    quote, full_content, chunk, content_maps=content_maps
+                )
                 field_items[field_def.name] = FieldItem(
                     value=value,
                     confidence=confidence,

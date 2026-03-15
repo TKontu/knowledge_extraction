@@ -20,9 +20,15 @@ class ExcelFormatter:
 
     # Header fill colors by sheet style
     _HEADER_FILLS = {
-        "data": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
-        "quality": PatternFill(start_color="548235", end_color="548235", fill_type="solid"),
-        "sources": PatternFill(start_color="808080", end_color="808080", fill_type="solid"),
+        "data": PatternFill(
+            start_color="4472C4", end_color="4472C4", fill_type="solid"
+        ),
+        "quality": PatternFill(
+            start_color="548235", end_color="548235", fill_type="solid"
+        ),
+        "sources": PatternFill(
+            start_color="808080", end_color="808080", fill_type="solid"
+        ),
     }
 
     def __init__(self) -> None:
@@ -35,9 +41,15 @@ class ExcelFormatter:
             bottom=Side(style="thin"),
         )
         # Conditional formatting fills for quality sheets
-        self._quality_green = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-        self._quality_yellow = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-        self._quality_red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        self._quality_green = PatternFill(
+            start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"
+        )
+        self._quality_yellow = PatternFill(
+            start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"
+        )
+        self._quality_red = PatternFill(
+            start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"
+        )
 
     def create_workbook(
         self,
@@ -88,7 +100,9 @@ class ExcelFormatter:
                 sheet_style = "quality"
             elif sheet_data.name.endswith(" - Sources"):
                 sheet_style = "sources"
-            self._write_sheet(ws, sheet_data.rows, sheet_data.columns, sheet_data.labels, sheet_style)
+            self._write_sheet(
+                ws, sheet_data.rows, sheet_data.columns, sheet_data.labels, sheet_style
+            )
             # Apply quality conditional formatting
             if sheet_style == "quality":
                 self._apply_quality_formatting(ws, sheet_data.columns)
@@ -173,7 +187,7 @@ class ExcelFormatter:
     def _safe_sheet_name(name: str) -> str:
         """Sanitize sheet name for Excel compatibility."""
         safe = name
-        for char in r'\/?*[]:':
+        for char in r"\/?*[]:":
             safe = safe.replace(char, "-")
         return safe[:31]
 

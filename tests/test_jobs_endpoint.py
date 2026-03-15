@@ -1,8 +1,9 @@
 """Tests for jobs API endpoints."""
 
-import pytest
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -96,7 +97,9 @@ def sample_jobs(db: Session, test_project: Project) -> list[Job]:
 class TestListJobs:
     """Tests for GET /api/v1/jobs endpoint."""
 
-    def test_list_jobs_returns_all(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_returns_all(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test that listing jobs returns results with correct structure."""
         response = client.get("/api/v1/jobs?limit=100", headers=auth_headers)
 
@@ -114,7 +117,9 @@ class TestListJobs:
         assert "status" in first_job
         assert "created_at" in first_job
 
-    def test_list_jobs_filter_by_type(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_filter_by_type(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test filtering jobs by type."""
         response = client.get("/api/v1/jobs?type=scrape", headers=auth_headers)
 
@@ -124,7 +129,9 @@ class TestListJobs:
         assert data["total"] >= 3  # At least our 3 scrape jobs
         assert all(job["type"] == "scrape" for job in data["jobs"])
 
-    def test_list_jobs_filter_by_status(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_filter_by_status(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test filtering jobs by status."""
         response = client.get("/api/v1/jobs?status=completed", headers=auth_headers)
 
@@ -134,13 +141,17 @@ class TestListJobs:
         assert data["total"] >= 2  # At least our 2 completed jobs
         assert all(job["status"] == "completed" for job in data["jobs"])
 
-    def test_list_jobs_filter_by_date_range(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_filter_by_date_range(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test filtering jobs by date range."""
         now = datetime.now(UTC)
         # Use naive ISO format (without timezone) to avoid URL encoding issues
         yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
 
-        response = client.get(f"/api/v1/jobs?created_after={yesterday}", headers=auth_headers)
+        response = client.get(
+            f"/api/v1/jobs?created_after={yesterday}", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -148,7 +159,9 @@ class TestListJobs:
         # Should return jobs created in last 24 hours (at least our fixture jobs)
         assert data["total"] >= 3
 
-    def test_list_jobs_pagination(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_pagination(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test pagination works correctly."""
         # First page
         response = client.get("/api/v1/jobs?limit=2&offset=0", headers=auth_headers)
@@ -168,7 +181,9 @@ class TestListJobs:
         assert len(data["jobs"]) == 2
         assert data["offset"] == 2
 
-    def test_list_jobs_sorted_newest_first(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_list_jobs_sorted_newest_first(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test that jobs are sorted by created_at descending (newest first)."""
         response = client.get("/api/v1/jobs", headers=auth_headers)
 
@@ -181,15 +196,21 @@ class TestListJobs:
         # Verify jobs are sorted newest first
         for i in range(len(jobs) - 1):
             # Parse ISO timestamps and compare
-            current_time = datetime.fromisoformat(jobs[i]["created_at"].replace("Z", "+00:00"))
-            next_time = datetime.fromisoformat(jobs[i + 1]["created_at"].replace("Z", "+00:00"))
+            current_time = datetime.fromisoformat(
+                jobs[i]["created_at"].replace("Z", "+00:00")
+            )
+            next_time = datetime.fromisoformat(
+                jobs[i + 1]["created_at"].replace("Z", "+00:00")
+            )
             assert current_time >= next_time
 
 
 class TestGetJob:
     """Tests for GET /api/v1/jobs/{job_id} endpoint."""
 
-    def test_get_job_returns_details(self, client: TestClient, auth_headers, sample_jobs: list[Job]) -> None:
+    def test_get_job_returns_details(
+        self, client: TestClient, auth_headers, sample_jobs: list[Job]
+    ) -> None:
         """Test that getting a job returns full details."""
         job = sample_jobs[0]
         response = client.get(f"/api/v1/jobs/{job.id}", headers=auth_headers)

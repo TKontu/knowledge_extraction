@@ -25,34 +25,44 @@ class TestBuildProvenanceSheets:
 
     def test_same_row_count(self):
         """Quality and Sources sheets have same number of rows as data sheet."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-            {"source_group": "sg2", "company_name": "Siemens", "employee_count": 200},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+                {
+                    "source_group": "sg2",
+                    "company_name": "Siemens",
+                    "employee_count": 200,
+                },
+            ]
+        )
         records_by_sg = {
             "sg1": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {
-                        "winning_weight": 0.9,
-                        "top_sources": ["s1", "s2"],
-                    },
-                    "employee_count": {
-                        "winning_weight": 0.85,
-                        "top_sources": ["s1"],
-                    },
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {
+                            "winning_weight": 0.9,
+                            "top_sources": ["s1", "s2"],
+                        },
+                        "employee_count": {
+                            "winning_weight": 0.85,
+                            "top_sources": ["s1"],
+                        },
+                    }
+                ),
             },
             "sg2": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {
-                        "winning_weight": 0.7,
-                        "top_sources": ["s3"],
-                    },
-                    "employee_count": {
-                        "winning_weight": 0.6,
-                        "top_sources": ["s3"],
-                    },
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {
+                            "winning_weight": 0.7,
+                            "top_sources": ["s3"],
+                        },
+                        "employee_count": {
+                            "winning_weight": 0.6,
+                            "top_sources": ["s3"],
+                        },
+                    }
+                ),
             },
         }
         source_url_map = {
@@ -61,16 +71,20 @@ class TestBuildProvenanceSheets:
             "s3": "https://example.com/page3",
         }
 
-        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, source_url_map)
+        quality, sources = build_provenance_sheets(
+            data_sheet, records_by_sg, source_url_map
+        )
 
         assert len(quality.rows) == 2
         assert len(sources.rows) == 2
 
     def test_same_columns(self):
         """Quality and Sources sheets have same columns as data sheet."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+            ]
+        )
         records_by_sg = {"sg1": {"company_info": _FakeRecord(provenance={})}}
 
         quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
@@ -80,15 +94,19 @@ class TestBuildProvenanceSheets:
 
     def test_quality_values(self):
         """Quality sheet contains winning_weight values."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+            ]
+        )
         records_by_sg = {
             "sg1": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {"winning_weight": 0.92, "top_sources": []},
-                    "employee_count": {"winning_weight": 0.85, "top_sources": []},
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {"winning_weight": 0.92, "top_sources": []},
+                        "employee_count": {"winning_weight": 0.85, "top_sources": []},
+                    }
+                ),
             },
         }
 
@@ -99,21 +117,25 @@ class TestBuildProvenanceSheets:
 
     def test_sources_resolved_to_urls(self):
         """Sources sheet resolves source_ids to URLs."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+            ]
+        )
         records_by_sg = {
             "sg1": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {
-                        "winning_weight": 0.9,
-                        "top_sources": ["s1", "s2"],
-                    },
-                    "employee_count": {
-                        "winning_weight": 0.8,
-                        "top_sources": ["s1"],
-                    },
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {
+                            "winning_weight": 0.9,
+                            "top_sources": ["s1", "s2"],
+                        },
+                        "employee_count": {
+                            "winning_weight": 0.8,
+                            "top_sources": ["s1"],
+                        },
+                    }
+                ),
             },
         }
         source_url_map = {
@@ -129,15 +151,19 @@ class TestBuildProvenanceSheets:
 
     def test_missing_winning_weight_is_na(self):
         """Missing winning_weight in provenance → 'N/A' in quality cell."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+            ]
+        )
         records_by_sg = {
             "sg1": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {"top_sources": ["s1"]},
-                    # employee_count not in provenance at all
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {"top_sources": ["s1"]},
+                        # employee_count not in provenance at all
+                    }
+                ),
             },
         }
 
@@ -148,9 +174,15 @@ class TestBuildProvenanceSheets:
 
     def test_missing_source_group_in_records(self):
         """Source group not found in records → all N/A."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "unknown_sg", "company_name": "X", "employee_count": 1},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {
+                    "source_group": "unknown_sg",
+                    "company_name": "X",
+                    "employee_count": 1,
+                },
+            ]
+        )
 
         quality, sources = build_provenance_sheets(data_sheet, {}, {})
 
@@ -159,9 +191,11 @@ class TestBuildProvenanceSheets:
 
     def test_sheet_names(self):
         """Companion sheets have correct names."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+            ]
+        )
         records_by_sg = {"sg1": {"company_info": _FakeRecord(provenance={})}}
 
         quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
@@ -171,9 +205,11 @@ class TestBuildProvenanceSheets:
 
     def test_source_group_preserved(self):
         """source_group column is preserved in companion sheets."""
-        data_sheet = self._make_data_sheet([
-            {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
-        ])
+        data_sheet = self._make_data_sheet(
+            [
+                {"source_group": "sg1", "company_name": "ABB", "employee_count": 100},
+            ]
+        )
         records_by_sg = {"sg1": {"company_info": _FakeRecord(provenance={})}}
 
         quality, sources = build_provenance_sheets(data_sheet, records_by_sg, {})
@@ -186,19 +222,34 @@ class TestBuildProvenanceSheets:
         data_sheet = SheetData(
             name="Company Data",
             rows=[
-                {"source_group": "sg1", "company_name": "ABB", "products_gearbox_list": "GearX (500Nm)"},
+                {
+                    "source_group": "sg1",
+                    "company_name": "ABB",
+                    "products_gearbox_list": "GearX (500Nm)",
+                },
             ],
             columns=["source_group", "company_name", "products_gearbox_list"],
-            labels={"source_group": "Source", "company_name": "Name", "products_gearbox_list": "Products"},
+            labels={
+                "source_group": "Source",
+                "company_name": "Name",
+                "products_gearbox_list": "Products",
+            },
         )
         records_by_sg = {
             "sg1": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {"winning_weight": 0.9, "top_sources": ["s1"]},
-                }),
-                "products_gearbox": _FakeRecord(provenance={
-                    "products_gearbox": {"winning_weight": 0.85, "top_sources": ["s1", "s2"]},
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {"winning_weight": 0.9, "top_sources": ["s1"]},
+                    }
+                ),
+                "products_gearbox": _FakeRecord(
+                    provenance={
+                        "products_gearbox": {
+                            "winning_weight": 0.85,
+                            "top_sources": ["s1", "s2"],
+                        },
+                    }
+                ),
             },
         }
         source_url_map = {
@@ -206,7 +257,9 @@ class TestBuildProvenanceSheets:
             "s2": "https://example.com/b",
         }
 
-        quality, sources = build_provenance_sheets(data_sheet, records_by_sg, source_url_map)
+        quality, sources = build_provenance_sheets(
+            data_sheet, records_by_sg, source_url_map
+        )
 
         # products_gearbox_list → strip _list → products_gearbox → found in provenance
         assert quality.rows[0]["products_gearbox_list"] == pytest.approx(0.85)
@@ -216,26 +269,40 @@ class TestBuildProvenanceSheets:
         """Entity list quality shows average of per-entity winning_weights."""
         data_sheet = SheetData(
             name="Company Data",
-            rows=[{"source_group": "sg1", "company_name": "ABB", "products_gearbox_list": "..."}],
+            rows=[
+                {
+                    "source_group": "sg1",
+                    "company_name": "ABB",
+                    "products_gearbox_list": "...",
+                }
+            ],
             columns=["source_group", "company_name", "products_gearbox_list"],
-            labels={"source_group": "Source", "company_name": "Name", "products_gearbox_list": "Products"},
+            labels={
+                "source_group": "Source",
+                "company_name": "Name",
+                "products_gearbox_list": "Products",
+            },
         )
         records_by_sg = {
             "sg1": {
-                "company_info": _FakeRecord(provenance={
-                    "company_name": {"winning_weight": 0.9, "top_sources": ["s1"]},
-                }),
-                "products_gearbox": _FakeRecord(provenance={
-                    "products_gearbox": {
-                        "winning_weight": 0.85,
-                        "top_sources": ["s1"],
-                        "entity_provenance": [
-                            {"winning_weight": 0.9, "top_sources": ["s1"]},
-                            {"winning_weight": 0.7, "top_sources": ["s1"]},
-                            {"winning_weight": 0.5, "top_sources": ["s1"]},
-                        ],
-                    },
-                }),
+                "company_info": _FakeRecord(
+                    provenance={
+                        "company_name": {"winning_weight": 0.9, "top_sources": ["s1"]},
+                    }
+                ),
+                "products_gearbox": _FakeRecord(
+                    provenance={
+                        "products_gearbox": {
+                            "winning_weight": 0.85,
+                            "top_sources": ["s1"],
+                            "entity_provenance": [
+                                {"winning_weight": 0.9, "top_sources": ["s1"]},
+                                {"winning_weight": 0.7, "top_sources": ["s1"]},
+                                {"winning_weight": 0.5, "top_sources": ["s1"]},
+                            ],
+                        },
+                    }
+                ),
             },
         }
 
@@ -257,16 +324,21 @@ class TestBuildProvenanceSheets:
         )
         records_by_sg = {
             "sg1": {
-                "products": _FakeRecord(provenance={
-                    "products": {
-                        "winning_weight": 0.5,
-                        "top_sources": ["s1"],
-                        "entity_provenance": [
-                            {"winning_weight": 0.8, "top_sources": ["s1"]},
-                            {"winning_weight": 0.1, "top_sources": ["s1"]},  # Below 0.3
-                        ],
-                    },
-                }),
+                "products": _FakeRecord(
+                    provenance={
+                        "products": {
+                            "winning_weight": 0.5,
+                            "top_sources": ["s1"],
+                            "entity_provenance": [
+                                {"winning_weight": 0.8, "top_sources": ["s1"]},
+                                {
+                                    "winning_weight": 0.1,
+                                    "top_sources": ["s1"],
+                                },  # Below 0.3
+                            ],
+                        },
+                    }
+                ),
             },
         }
 

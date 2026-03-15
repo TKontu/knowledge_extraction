@@ -295,8 +295,13 @@ class TestNonBoolSupportedHandling:
         return LLMGroundingVerifier(llm_client=mock_llm_client)
 
     @pytest.mark.asyncio
-    async def test_string_supported_treated_as_malformed(self, verifier, mock_llm_client):
-        mock_llm_client.complete.return_value = {"supported": "yes", "reason": "looks good"}
+    async def test_string_supported_treated_as_malformed(
+        self, verifier, mock_llm_client
+    ):
+        mock_llm_client.complete.return_value = {
+            "supported": "yes",
+            "reason": "looks good",
+        }
         result = await verifier.verify_quote("name", "ABB", "ABB Corp")
         assert result.supported is None
         assert "Malformed" in result.reason

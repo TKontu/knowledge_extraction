@@ -87,4 +87,3 @@ class TestSchemaExtractionSelection:
 
         assert job.status == "completed"
         assert job.result["total_extractions"] == 35
-

@@ -201,9 +201,9 @@ class ProxyAdapter:
                     response_headers = {}
                     skip_headers = {
                         "content-encoding",  # Let aiohttp handle encoding
-                        "content-length",    # aiohttp will recalculate
-                        "transfer-encoding", # aiohttp will set this
-                        "connection",        # Proxy will manage connections
+                        "content-length",  # aiohttp will recalculate
+                        "transfer-encoding",  # aiohttp will set this
+                        "connection",  # Proxy will manage connections
                     }
                     for key, value in http_response.headers.items():
                         if key.lower() not in skip_headers:
@@ -220,9 +220,7 @@ class ProxyAdapter:
             logger.error("proxy_error", error=str(e), url=request.path)
             return aiohttp.web.Response(text=str(e), status=500)
 
-    async def health_check(
-        self, request: aiohttp.web.Request
-    ) -> aiohttp.web.Response:
+    async def health_check(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
         """Health check endpoint.
 
         Args:

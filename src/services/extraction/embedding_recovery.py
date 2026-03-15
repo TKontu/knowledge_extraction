@@ -98,14 +98,18 @@ class EmbeddingRecoveryService:
         result = RecoveryResult()
 
         try:
-            # Extract fact texts for embedding
-            fact_texts = [
-                extraction.data.get("fact_text", "")
+            # Convert extractions to embeddable text (handles v1 and v2 formats)
+            from services.extraction.embedding_pipeline import (
+                ExtractionEmbeddingService,
+            )
+
+            texts = [
+                ExtractionEmbeddingService.extraction_to_text(extraction)
                 for extraction in extractions
             ]
 
             # Generate embeddings
-            embeddings = await self._embedding_service.embed_batch(fact_texts)
+            embeddings = await self._embedding_service.embed_batch(texts)
 
             # Prepare items for Qdrant
             items = [

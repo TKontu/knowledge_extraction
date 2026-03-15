@@ -1,8 +1,9 @@
 """Tests for per-job-type stale thresholds in job scheduler."""
 
-import pytest
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from orm_models import Job, Project
@@ -11,6 +12,7 @@ from orm_models import Job, Project
 @pytest.fixture
 def mock_settings(monkeypatch):
     """Mock settings with custom stale thresholds."""
+
     class MockSettings:
         job_stale_threshold_scrape = 300  # 5 minutes
         job_stale_threshold_extract = 900  # 15 minutes
@@ -209,7 +211,9 @@ def test_crawl_job_longer_threshold(db: Session, test_project):
         )
         .first()
     )
-    assert stale_with_scrape_threshold is not None  # Would be stale with scrape threshold
+    assert (
+        stale_with_scrape_threshold is not None
+    )  # Would be stale with scrape threshold
 
     # Check with crawl threshold (30 min) — scope to our test job
     crawl_threshold = datetime.now(UTC) - timedelta(minutes=30)
@@ -230,6 +234,7 @@ def test_crawl_job_longer_threshold(db: Session, test_project):
 async def test_custom_threshold_from_settings(db: Session, test_project, mock_settings):
     """Scheduler should use custom thresholds from settings."""
     from unittest.mock import MagicMock
+
     from services.scraper.scheduler import JobScheduler
 
     mock_container = MagicMock()

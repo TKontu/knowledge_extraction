@@ -1,13 +1,17 @@
 """Tests for the alerting service."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import httpx
+import pytest
 
 from services.alerting.models import Alert, AlertLevel, AlertType
-from services.alerting.service import AlertService, get_alert_service, reset_alert_service
+from services.alerting.service import (
+    AlertService,
+    get_alert_service,
+    reset_alert_service,
+)
 
 
 class TestAlertModels:
@@ -119,9 +123,7 @@ class TestAlertService:
         mock_response = MagicMock()
         mock_response.status_code = 200
 
-        with patch.object(
-            service_with_webhook, "_get_client"
-        ) as mock_get_client:
+        with patch.object(service_with_webhook, "_get_client") as mock_get_client:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -145,9 +147,7 @@ class TestAlertService:
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
 
-        with patch.object(
-            service_with_webhook, "_get_client"
-        ) as mock_get_client:
+        with patch.object(service_with_webhook, "_get_client") as mock_get_client:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -166,9 +166,7 @@ class TestAlertService:
             message="Test message",
         )
 
-        with patch.object(
-            service_with_webhook, "_get_client"
-        ) as mock_get_client:
+        with patch.object(service_with_webhook, "_get_client") as mock_get_client:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(
                 side_effect=httpx.RequestError("Connection failed")
@@ -185,7 +183,9 @@ class TestAlertService:
         project_id = uuid4()
         source_id = uuid4()
 
-        with patch.object(service_no_webhook, "send", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            service_no_webhook, "send", new_callable=AsyncMock
+        ) as mock_send:
             mock_send.return_value = True
             result = await service_no_webhook.alert_embedding_failure(
                 project_id=project_id,
@@ -208,7 +208,9 @@ class TestAlertService:
         """Test recovery completion alert with all successes."""
         project_id = uuid4()
 
-        with patch.object(service_no_webhook, "send", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            service_no_webhook, "send", new_callable=AsyncMock
+        ) as mock_send:
             mock_send.return_value = True
             await service_no_webhook.alert_recovery_completed(
                 project_id=project_id,
@@ -225,7 +227,9 @@ class TestAlertService:
         """Test recovery completion alert with some failures."""
         project_id = uuid4()
 
-        with patch.object(service_no_webhook, "send", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            service_no_webhook, "send", new_callable=AsyncMock
+        ) as mock_send:
             mock_send.return_value = True
             await service_no_webhook.alert_recovery_completed(
                 project_id=project_id,

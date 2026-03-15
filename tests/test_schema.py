@@ -4,8 +4,8 @@ This test suite validates that the generalized schema (projects, sources, extrac
 is properly created with all expected tables, columns, indexes, and constraints.
 """
 
-import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
+
 from database import engine
 
 
@@ -42,9 +42,7 @@ class TestGeneralizedSchema:
 
         # Check unique constraint on name
         unique_constraints = inspector.get_unique_constraints("projects")
-        name_is_unique = any(
-            "name" in uc["column_names"] for uc in unique_constraints
-        )
+        name_is_unique = any("name" in uc["column_names"] for uc in unique_constraints)
         assert name_is_unique
 
     def test_projects_table_indexes(self):

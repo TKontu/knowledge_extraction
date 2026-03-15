@@ -56,7 +56,13 @@ def main():
                 continue
 
             for fname, value in ext.data.items():
-                if fname in ("_quotes", "_conflicts", "_validation", "_quote", "confidence"):
+                if fname in (
+                    "_quotes",
+                    "_conflicts",
+                    "_validation",
+                    "_quote",
+                    "confidence",
+                ):
                     continue
                 quote = quotes.get(fname)
                 if not quote or not isinstance(quote, str) or len(quote) < 2:
@@ -67,7 +73,9 @@ def main():
 
                 is_echo = value_str and _normalize(value_str) == _normalize(quote)
                 grounding = verify_quote_in_source(quote, source_text)
-                value_in_source = bool(value_str and _normalize(value_str) in _normalize(source_text))
+                value_in_source = bool(
+                    value_str and _normalize(value_str) in _normalize(source_text)
+                )
                 quote_in_source = _normalize(quote) in _normalize(source_text)
 
                 item = {
@@ -88,32 +96,42 @@ def main():
                 else:
                     value_neq_quote.append(item)
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("VALUE-AS-QUOTE ECHO ANALYSIS")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"\nTotal quotes: {total_with_quotes}")
-        print(f"Value == Quote (echo): {len(value_eq_quote)} ({len(value_eq_quote)/total_with_quotes*100:.1f}%)")
+        print(
+            f"Value == Quote (echo): {len(value_eq_quote)} ({len(value_eq_quote) / total_with_quotes * 100:.1f}%)"
+        )
         print(f"Value != Quote (normal): {len(value_neq_quote)}")
 
         # ── Echoed quotes: are they in the source? ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("ECHOED QUOTES (value == quote): Are they legitimate?")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         echo_grounded = sum(1 for i in value_eq_quote if i["grounding"] >= 0.8)
         echo_in_source = sum(1 for i in value_eq_quote if i["value_in_source"])
         echo_not_in_source = sum(1 for i in value_eq_quote if not i["value_in_source"])
 
-        print(f"\n  Value found in source:     {echo_in_source} ({echo_in_source/len(value_eq_quote)*100:.1f}%)")
-        print(f"  Value NOT in source:        {echo_not_in_source} ({echo_not_in_source/len(value_eq_quote)*100:.1f}%)")
-        print(f"  Quote grounded (>=0.8):     {echo_grounded} ({echo_grounded/len(value_eq_quote)*100:.1f}%)")
+        print(
+            f"\n  Value found in source:     {echo_in_source} ({echo_in_source / len(value_eq_quote) * 100:.1f}%)"
+        )
+        print(
+            f"  Value NOT in source:        {echo_not_in_source} ({echo_not_in_source / len(value_eq_quote) * 100:.1f}%)"
+        )
+        print(
+            f"  Quote grounded (>=0.8):     {echo_grounded} ({echo_grounded / len(value_eq_quote) * 100:.1f}%)"
+        )
 
         # These are the problematic ones: echoed AND not in source
         print(f"\n  TRULY BAD: echoed AND not in source = {echo_not_in_source}")
-        print(f"  LEGITIMATE: echoed AND in source = {echo_in_source} (value IS the source text)")
+        print(
+            f"  LEGITIMATE: echoed AND in source = {echo_in_source} (value IS the source text)"
+        )
 
         # ── By field ──
-        print(f"\n  By field:")
+        print("\n  By field:")
         by_field = defaultdict(lambda: {"total": 0, "in_src": 0, "not_in_src": 0})
         for i in value_eq_quote:
             key = f"{i['ext_type']}.{i['field']}"
@@ -127,23 +145,29 @@ def main():
             d = by_field[fk]
             if d["total"] < 3:
                 continue
-            print(f"    {fk:45s} total={d['total']:4d}  in_src={d['in_src']:4d}  NOT_in_src={d['not_in_src']:4d}")
+            print(
+                f"    {fk:45s} total={d['total']:4d}  in_src={d['in_src']:4d}  NOT_in_src={d['not_in_src']:4d}"
+            )
 
         # ── Quote length analysis ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("QUOTE LENGTH: echoed vs normal")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         echo_lens = [i["quote_len"] for i in value_eq_quote]
         normal_lens = [i["quote_len"] for i in value_neq_quote]
 
-        print(f"\n  Echoed:  min={min(echo_lens)}  max={max(echo_lens)}  "
-              f"avg={sum(echo_lens)/len(echo_lens):.0f}  median={sorted(echo_lens)[len(echo_lens)//2]}")
-        print(f"  Normal:  min={min(normal_lens)}  max={max(normal_lens)}  "
-              f"avg={sum(normal_lens)/len(normal_lens):.0f}  median={sorted(normal_lens)[len(normal_lens)//2]}")
+        print(
+            f"\n  Echoed:  min={min(echo_lens)}  max={max(echo_lens)}  "
+            f"avg={sum(echo_lens) / len(echo_lens):.0f}  median={sorted(echo_lens)[len(echo_lens) // 2]}"
+        )
+        print(
+            f"  Normal:  min={min(normal_lens)}  max={max(normal_lens)}  "
+            f"avg={sum(normal_lens) / len(normal_lens):.0f}  median={sorted(normal_lens)[len(normal_lens) // 2]}"
+        )
 
         # Length distribution
-        print(f"\n  Length distribution of echoed quotes:")
+        print("\n  Length distribution of echoed quotes:")
         len_buckets = Counter()
         for l in echo_lens:
             if l < 10:
@@ -163,27 +187,27 @@ def main():
             print(f"    {b:8s} {count:4d} {bar}")
 
         # ── Examples of legitimate echoes (value IS in source) ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("LEGITIMATE ECHOES (value exists in source as-is):")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         legit = [i for i in value_eq_quote if i["value_in_source"]][:8]
         for i in legit:
             print(f"  {i['source_group']}/{i['ext_type']}.{i['field']}")
-            print(f"    value=quote=\"{i['value'][:80]}\"  ground={i['grounding']:.2f}")
+            print(f'    value=quote="{i["value"][:80]}"  ground={i["grounding"]:.2f}')
 
         # ── Examples of bad echoes (value NOT in source) ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("BAD ECHOES (value fabricated, echoed as quote):")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         bad = [i for i in value_eq_quote if not i["value_in_source"]][:8]
         for i in bad:
             print(f"  {i['source_group']}/{i['ext_type']}.{i['field']}")
-            print(f"    value=quote=\"{i['value'][:80]}\"  ground={i['grounding']:.2f}")
+            print(f'    value=quote="{i["value"][:80]}"  ground={i["grounding"]:.2f}')
 
         # ── Can grounding alone distinguish them? ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("CAN GROUNDING DISTINGUISH LEGITIMATE vs BAD ECHOES?")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         legit_items = [i for i in value_eq_quote if i["value_in_source"]]
         bad_items = [i for i in value_eq_quote if not i["value_in_source"]]
@@ -192,16 +216,22 @@ def main():
             avg_g_legit = sum(i["grounding"] for i in legit_items) / len(legit_items)
             high_g_legit = sum(1 for i in legit_items if i["grounding"] >= 0.8)
             print(f"\n  Legitimate (value in source, n={len(legit_items)}):")
-            print(f"    Avg grounding: {avg_g_legit:.2f}  Ground>=0.8: {high_g_legit/len(legit_items)*100:.0f}%")
+            print(
+                f"    Avg grounding: {avg_g_legit:.2f}  Ground>=0.8: {high_g_legit / len(legit_items) * 100:.0f}%"
+            )
 
         if bad_items:
             avg_g_bad = sum(i["grounding"] for i in bad_items) / len(bad_items)
             high_g_bad = sum(1 for i in bad_items if i["grounding"] >= 0.8)
             print(f"\n  Bad (value NOT in source, n={len(bad_items)}):")
-            print(f"    Avg grounding: {avg_g_bad:.2f}  Ground>=0.8: {high_g_bad/len(bad_items)*100:.0f}%")
+            print(
+                f"    Avg grounding: {avg_g_bad:.2f}  Ground>=0.8: {high_g_bad / len(bad_items) * 100:.0f}%"
+            )
 
-        print(f"\n  CONCLUSION: Grounding score {'CAN' if avg_g_legit > 0.7 and avg_g_bad < 0.3 else 'CANNOT'} "
-              f"distinguish them (legit={avg_g_legit:.2f} vs bad={avg_g_bad:.2f})")
+        print(
+            f"\n  CONCLUSION: Grounding score {'CAN' if avg_g_legit > 0.7 and avg_g_bad < 0.3 else 'CANNOT'} "
+            f"distinguish them (legit={avg_g_legit:.2f} vs bad={avg_g_bad:.2f})"
+        )
 
 
 if __name__ == "__main__":

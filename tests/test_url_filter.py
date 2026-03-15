@@ -13,7 +13,9 @@ from services.scraper.url_filter import (
 )
 
 
-def create_embedding_with_similarity(target_similarity: float, dim: int = 1024) -> list[float]:
+def create_embedding_with_similarity(
+    target_similarity: float, dim: int = 1024
+) -> list[float]:
     """Create a unit vector with specified cosine similarity to [1, 0, 0, ...].
 
     Args:
@@ -106,7 +108,9 @@ class TestUrlRelevanceFilter:
         assert result.threshold_used == 0.4  # Default threshold
 
     @pytest.mark.asyncio
-    async def test_filter_urls_high_relevance(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_high_relevance(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test URLs with high relevance scores pass the filter."""
         # Mock embeddings
         context_embedding = reference_embedding()
@@ -135,7 +139,9 @@ class TestUrlRelevanceFilter:
         assert result.relevant_urls[0].relevance_score >= 0.7  # High score
 
     @pytest.mark.asyncio
-    async def test_filter_urls_low_relevance(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_low_relevance(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test URLs with low relevance scores are filtered out."""
         context_embedding = reference_embedding()
         url_embedding = create_embedding_with_similarity(0.2)  # Low similarity
@@ -162,7 +168,9 @@ class TestUrlRelevanceFilter:
         assert result.filtered_out == 1
 
     @pytest.mark.asyncio
-    async def test_filter_urls_mixed_relevance(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_mixed_relevance(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test filtering with mix of relevant and irrelevant URLs."""
         context_embedding = reference_embedding()
         high_similarity = create_embedding_with_similarity(0.8)
@@ -205,7 +213,9 @@ class TestUrlRelevanceFilter:
         assert result.filtered_out == 1  # Low is filtered
 
     @pytest.mark.asyncio
-    async def test_filter_urls_custom_threshold(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_custom_threshold(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test filtering with custom threshold."""
         context_embedding = reference_embedding()
         url_embedding = create_embedding_with_similarity(0.5)
@@ -240,7 +250,9 @@ class TestUrlRelevanceFilter:
         assert result.threshold_used == 0.6
 
     @pytest.mark.asyncio
-    async def test_filter_urls_with_focus_terms(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_with_focus_terms(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test that focus_terms enhance the context."""
         context_embedding = reference_embedding()
         url_embedding = create_embedding_with_similarity(0.7)
@@ -268,7 +280,9 @@ class TestUrlRelevanceFilter:
         assert "technical specifications" in call_args.lower() or "Focus:" in call_args
 
     @pytest.mark.asyncio
-    async def test_filter_urls_no_metadata_passthrough(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_no_metadata_passthrough(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test URLs without metadata pass through (conservative)."""
         context_embedding = reference_embedding()
 
@@ -295,7 +309,9 @@ class TestUrlRelevanceFilter:
         assert result.relevant_urls[0].is_relevant is True
 
     @pytest.mark.asyncio
-    async def test_filter_urls_embedding_error_passthrough(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_embedding_error_passthrough(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test all URLs pass through on embedding error (conservative)."""
         embedding_service.embed.return_value = reference_embedding()
         embedding_service.embed_batch.side_effect = Exception("Embedding API error")
@@ -324,7 +340,9 @@ class TestUrlRelevanceFilter:
         assert result.filtered_out == 0
 
     @pytest.mark.asyncio
-    async def test_filter_urls_sorted_by_score(self, url_filter, embedding_service, field_groups):
+    async def test_filter_urls_sorted_by_score(
+        self, url_filter, embedding_service, field_groups
+    ):
         """Test results are sorted by relevance score (highest first)."""
         context_embedding = reference_embedding()
 
@@ -337,9 +355,21 @@ class TestUrlRelevanceFilter:
         ]
 
         urls = [
-            {"url": "https://example.com/a", "title": "Page A", "description": "Desc A"},
-            {"url": "https://example.com/b", "title": "Page B", "description": "Desc B"},
-            {"url": "https://example.com/c", "title": "Page C", "description": "Desc C"},
+            {
+                "url": "https://example.com/a",
+                "title": "Page A",
+                "description": "Desc A",
+            },
+            {
+                "url": "https://example.com/b",
+                "title": "Page B",
+                "description": "Desc B",
+            },
+            {
+                "url": "https://example.com/c",
+                "title": "Page C",
+                "description": "Desc C",
+            },
         ]
 
         result = await url_filter.filter_urls(
@@ -373,8 +403,7 @@ class TestUrlRelevanceFilterHelpers:
     def test_create_context_text_with_focus_terms(self, url_filter, field_groups):
         """Test context text includes focus terms."""
         context_text = url_filter._create_context_text(
-            field_groups,
-            ["gearbox", "motor specifications"]
+            field_groups, ["gearbox", "motor specifications"]
         )
 
         assert "Focus:" in context_text

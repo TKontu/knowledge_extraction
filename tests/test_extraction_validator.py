@@ -23,11 +23,19 @@ def mixed_group():
         description="Company information",
         fields=[
             FieldDefinition(name="name", field_type="text", description="Name"),
-            FieldDefinition(name="employees", field_type="integer", description="Count"),
+            FieldDefinition(
+                name="employees", field_type="integer", description="Count"
+            ),
             FieldDefinition(name="revenue", field_type="float", description="Revenue"),
-            FieldDefinition(name="is_public", field_type="boolean", description="Public?"),
-            FieldDefinition(name="industry", field_type="enum", description="Industry",
-                          enum_values=["manufacturing", "services", "technology"]),
+            FieldDefinition(
+                name="is_public", field_type="boolean", description="Public?"
+            ),
+            FieldDefinition(
+                name="industry",
+                field_type="enum",
+                description="Industry",
+                enum_values=["manufacturing", "services", "technology"],
+            ),
             FieldDefinition(name="tags", field_type="list", description="Tags"),
         ],
         prompt_hint="",
@@ -55,7 +63,10 @@ class TestTypeCoercion:
         data = {"employees": "42", "confidence": 0.8}
         cleaned, violations = validator.validate(data, mixed_group)
         assert cleaned["employees"] == 42
-        assert any(v["field"] == "employees" and v["issue"] == "type_coerced" for v in violations)
+        assert any(
+            v["field"] == "employees" and v["issue"] == "type_coerced"
+            for v in violations
+        )
 
     def test_string_with_commas_to_int(self, validator, mixed_group):
         data = {"employees": "1,500", "confidence": 0.8}
@@ -166,7 +177,9 @@ class TestConfidenceGating:
         assert any(v["issue"] == "confidence_below_threshold" for v in violations)
         assert any(v["issue"] == "type_coerced" for v in violations)
 
-    def test_below_threshold_entity_list_preserved(self, strict_validator, entity_group):
+    def test_below_threshold_entity_list_preserved(
+        self, strict_validator, entity_group
+    ):
         """Entity list data preserved when below threshold."""
         data = {
             "products": [{"product_name": "Widget", "power_kw": 100.0}],
@@ -241,7 +254,11 @@ class TestEntityListValidation:
     def test_entity_quote_preserved(self, validator, entity_group):
         data = {
             "products": [
-                {"product_name": "Widget", "power_kw": 100.0, "_quote": "our Widget series"},
+                {
+                    "product_name": "Widget",
+                    "power_kw": 100.0,
+                    "_quote": "our Widget series",
+                },
             ],
             "confidence": 0.8,
         }

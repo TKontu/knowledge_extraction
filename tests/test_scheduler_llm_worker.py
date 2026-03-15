@@ -5,8 +5,6 @@ Now tests that ServiceContainer creates/stops LLM workers, and that
 JobScheduler accesses them via the container.
 """
 
-import asyncio
-from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,22 +48,31 @@ class TestServiceContainerLLMWorkerStartup:
         return mock_client
 
     @pytest.mark.asyncio
-    async def test_creates_llm_request_queue_on_start(self, mock_settings, mock_firecrawl_client):
+    async def test_creates_llm_request_queue_on_start(
+        self, mock_settings, mock_firecrawl_client
+    ):
         """Test that container creates LLM request queue on start."""
         from services.scraper.service_container import ServiceContainer
 
-        with patch("services.scraper.service_container.settings", mock_settings), \
-             patch("services.scraper.service_container.redis_client"), \
-             patch("services.scraper.service_container.qdrant_client"), \
-             patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock), \
-             patch("services.scraper.service_container.FirecrawlClient", return_value=mock_firecrawl_client), \
-             patch("services.scraper.service_container.LLMRequestQueue") as MockQueue, \
-             patch("services.scraper.service_container.LLMWorker") as MockWorker, \
-             patch("services.scraper.service_container.AsyncOpenAI"), \
-             patch("services.scraper.service_container.EmbeddingService"), \
-             patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"):
-
+        with (
+            patch("services.scraper.service_container.settings", mock_settings),
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "services.scraper.service_container.FirecrawlClient",
+                return_value=mock_firecrawl_client,
+            ),
+            patch("services.scraper.service_container.LLMRequestQueue") as MockQueue,
+            patch("services.scraper.service_container.LLMWorker") as MockWorker,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+        ):
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
             mock_worker_instance.start = AsyncMock()
@@ -82,22 +89,31 @@ class TestServiceContainerLLMWorkerStartup:
             MockQueue.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_starts_llm_worker_on_start(self, mock_settings, mock_firecrawl_client):
+    async def test_starts_llm_worker_on_start(
+        self, mock_settings, mock_firecrawl_client
+    ):
         """Test that container starts LLM worker on start."""
         from services.scraper.service_container import ServiceContainer
 
-        with patch("services.scraper.service_container.settings", mock_settings), \
-             patch("services.scraper.service_container.redis_client"), \
-             patch("services.scraper.service_container.qdrant_client"), \
-             patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock), \
-             patch("services.scraper.service_container.FirecrawlClient", return_value=mock_firecrawl_client), \
-             patch("services.scraper.service_container.LLMRequestQueue"), \
-             patch("services.scraper.service_container.LLMWorker") as MockWorker, \
-             patch("services.scraper.service_container.AsyncOpenAI"), \
-             patch("services.scraper.service_container.EmbeddingService"), \
-             patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"):
-
+        with (
+            patch("services.scraper.service_container.settings", mock_settings),
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "services.scraper.service_container.FirecrawlClient",
+                return_value=mock_firecrawl_client,
+            ),
+            patch("services.scraper.service_container.LLMRequestQueue"),
+            patch("services.scraper.service_container.LLMWorker") as MockWorker,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+        ):
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
             mock_worker_instance.start = AsyncMock()
@@ -116,18 +132,25 @@ class TestServiceContainerLLMWorkerStartup:
         """Test that container stops LLM worker on stop."""
         from services.scraper.service_container import ServiceContainer
 
-        with patch("services.scraper.service_container.settings", mock_settings), \
-             patch("services.scraper.service_container.redis_client"), \
-             patch("services.scraper.service_container.qdrant_client"), \
-             patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock), \
-             patch("services.scraper.service_container.FirecrawlClient", return_value=mock_firecrawl_client), \
-             patch("services.scraper.service_container.LLMRequestQueue"), \
-             patch("services.scraper.service_container.LLMWorker") as MockWorker, \
-             patch("services.scraper.service_container.AsyncOpenAI"), \
-             patch("services.scraper.service_container.EmbeddingService"), \
-             patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"):
-
+        with (
+            patch("services.scraper.service_container.settings", mock_settings),
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "services.scraper.service_container.FirecrawlClient",
+                return_value=mock_firecrawl_client,
+            ),
+            patch("services.scraper.service_container.LLMRequestQueue"),
+            patch("services.scraper.service_container.LLMWorker") as MockWorker,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+        ):
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
             mock_worker_instance.start = AsyncMock()
@@ -141,22 +164,31 @@ class TestServiceContainerLLMWorkerStartup:
             mock_worker_instance.stop.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_llm_queue_available_via_property(self, mock_settings, mock_firecrawl_client):
+    async def test_llm_queue_available_via_property(
+        self, mock_settings, mock_firecrawl_client
+    ):
         """Test that LLM queue is accessible via container property."""
         from services.scraper.service_container import ServiceContainer
 
-        with patch("services.scraper.service_container.settings", mock_settings), \
-             patch("services.scraper.service_container.redis_client"), \
-             patch("services.scraper.service_container.qdrant_client"), \
-             patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock), \
-             patch("services.scraper.service_container.FirecrawlClient", return_value=mock_firecrawl_client), \
-             patch("services.scraper.service_container.LLMRequestQueue") as MockQueue, \
-             patch("services.scraper.service_container.LLMWorker") as MockWorker, \
-             patch("services.scraper.service_container.AsyncOpenAI"), \
-             patch("services.scraper.service_container.EmbeddingService"), \
-             patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"):
-
+        with (
+            patch("services.scraper.service_container.settings", mock_settings),
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "services.scraper.service_container.FirecrawlClient",
+                return_value=mock_firecrawl_client,
+            ),
+            patch("services.scraper.service_container.LLMRequestQueue") as MockQueue,
+            patch("services.scraper.service_container.LLMWorker") as MockWorker,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+        ):
             mock_queue_instance = MagicMock()
             MockQueue.return_value = mock_queue_instance
 
@@ -174,22 +206,31 @@ class TestServiceContainerLLMWorkerStartup:
             await container.stop()
 
     @pytest.mark.asyncio
-    async def test_llm_worker_uses_correct_configuration(self, mock_settings, mock_firecrawl_client):
+    async def test_llm_worker_uses_correct_configuration(
+        self, mock_settings, mock_firecrawl_client
+    ):
         """Test that LLM worker is configured with settings values."""
         from services.scraper.service_container import ServiceContainer
 
-        with patch("services.scraper.service_container.settings", mock_settings), \
-             patch("services.scraper.service_container.redis_client"), \
-             patch("services.scraper.service_container.qdrant_client"), \
-             patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock), \
-             patch("services.scraper.service_container.FirecrawlClient", return_value=mock_firecrawl_client), \
-             patch("services.scraper.service_container.LLMRequestQueue"), \
-             patch("services.scraper.service_container.LLMWorker") as MockWorker, \
-             patch("services.scraper.service_container.AsyncOpenAI"), \
-             patch("services.scraper.service_container.EmbeddingService"), \
-             patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"):
-
+        with (
+            patch("services.scraper.service_container.settings", mock_settings),
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "services.scraper.service_container.FirecrawlClient",
+                return_value=mock_firecrawl_client,
+            ),
+            patch("services.scraper.service_container.LLMRequestQueue"),
+            patch("services.scraper.service_container.LLMWorker") as MockWorker,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+        ):
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
             mock_worker_instance.start = AsyncMock()
@@ -244,22 +285,31 @@ class TestServiceContainerLLMWorkerLifecycle:
         return mock_client
 
     @pytest.mark.asyncio
-    async def test_llm_worker_task_is_created(self, mock_settings, mock_firecrawl_client):
+    async def test_llm_worker_task_is_created(
+        self, mock_settings, mock_firecrawl_client
+    ):
         """Test that LLM worker is started as a background task."""
         from services.scraper.service_container import ServiceContainer
 
-        with patch("services.scraper.service_container.settings", mock_settings), \
-             patch("services.scraper.service_container.redis_client"), \
-             patch("services.scraper.service_container.qdrant_client"), \
-             patch("services.scraper.service_container.get_async_redis", new_callable=AsyncMock), \
-             patch("services.scraper.service_container.FirecrawlClient", return_value=mock_firecrawl_client), \
-             patch("services.scraper.service_container.LLMRequestQueue"), \
-             patch("services.scraper.service_container.LLMWorker") as MockWorker, \
-             patch("services.scraper.service_container.AsyncOpenAI"), \
-             patch("services.scraper.service_container.EmbeddingService"), \
-             patch("services.scraper.service_container.QdrantRepository"), \
-             patch("services.scraper.service_container.ExtractionEmbeddingService"):
-
+        with (
+            patch("services.scraper.service_container.settings", mock_settings),
+            patch("services.scraper.service_container.redis_client"),
+            patch("services.scraper.service_container.qdrant_client"),
+            patch(
+                "services.scraper.service_container.get_async_redis",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "services.scraper.service_container.FirecrawlClient",
+                return_value=mock_firecrawl_client,
+            ),
+            patch("services.scraper.service_container.LLMRequestQueue"),
+            patch("services.scraper.service_container.LLMWorker") as MockWorker,
+            patch("services.scraper.service_container.AsyncOpenAI"),
+            patch("services.scraper.service_container.EmbeddingService"),
+            patch("services.scraper.service_container.QdrantRepository"),
+            patch("services.scraper.service_container.ExtractionEmbeddingService"),
+        ):
             mock_worker_instance = AsyncMock()
             mock_worker_instance.initialize = AsyncMock()
             mock_worker_instance.start = AsyncMock()

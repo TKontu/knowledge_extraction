@@ -298,11 +298,14 @@ class UrlRelevanceFilter:
         # Extract path hints from URL
         if url:
             from urllib.parse import urlparse
+
             parsed = urlparse(url)
             path_parts = [p for p in parsed.path.split("/") if p]
             if path_parts:
                 # Use last 2-3 path segments as context
-                path_hint = " ".join(path_parts[-3:]).replace("-", " ").replace("_", " ")
+                path_hint = (
+                    " ".join(path_parts[-3:]).replace("-", " ").replace("_", " ")
+                )
                 parts.append(f"Path: {path_hint}")
 
         if title:

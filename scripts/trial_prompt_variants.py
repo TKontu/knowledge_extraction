@@ -22,7 +22,7 @@ import re
 import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID
 
 sys.path.insert(0, "src")
@@ -151,7 +151,13 @@ Output JSON with per-field structure. Each field has its own value, confidence, 
 
 
 def _build_entity_system(
-    variant, field_group, context, fields_str, guard, quoting_note, confidence,
+    variant,
+    field_group,
+    context,
+    fields_str,
+    guard,
+    quoting_note,
+    confidence,
 ):
     output_key = field_group.name
     entity_singular = field_group.name.rstrip("s")
@@ -185,8 +191,12 @@ Set "has_more" to true if there are more entities in the content not yet extract
 
 
 def build_user_prompt(
-    variant: str, content: str, field_group, context: ExtractionContext,
-    source_context: str | None, content_limit: int,
+    variant: str,
+    content: str,
+    field_group,
+    context: ExtractionContext,
+    source_context: str | None,
+    content_limit: int,
 ) -> str:
     """Build user prompt for a given variant."""
     cleaned = strip_structural_junk(content)
@@ -219,6 +229,7 @@ def build_user_prompt(
 
 # ── Data structures ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class FieldResult:
     field: str
@@ -240,11 +251,17 @@ def _normalize(s: str) -> str:
 
 
 def parse_fields(
-    raw: dict, field_group, source_text: str, variant: str, source_group: str,
+    raw: dict,
+    field_group,
+    source_text: str,
+    variant: str,
+    source_group: str,
 ) -> list[FieldResult]:
     """Parse response and compute grounding."""
     if field_group.is_entity_list:
-        return _parse_entity_fields(raw, field_group, source_text, variant, source_group)
+        return _parse_entity_fields(
+            raw, field_group, source_text, variant, source_group
+        )
     return _parse_v2_fields(raw, source_text, variant, source_group, field_group.name)
 
 
@@ -264,15 +281,23 @@ def _parse_v2_fields(raw, source_text, variant, source_group, group_name):
         value_str = str(value) if not isinstance(value, str) else value
         grounding = verify_quote_in_source(quote, source_text)
         value_is_quote = (
-            bool(value_str) and len(value_str) > 1
+            bool(value_str)
+            and len(value_str) > 1
             and _normalize(value_str) == _normalize(quote)
         )
-        results.append(FieldResult(
-            field=fname, value=value_str[:200], quote=quote[:200],
-            confidence=confidence, grounding=grounding,
-            value_is_quote=value_is_quote, variant=variant,
-            source_group=source_group, group_name=group_name,
-        ))
+        results.append(
+            FieldResult(
+                field=fname,
+                value=value_str[:200],
+                quote=quote[:200],
+                confidence=confidence,
+                grounding=grounding,
+                value_is_quote=value_is_quote,
+                variant=variant,
+                source_group=source_group,
+                group_name=group_name,
+            )
+        )
     return results
 
 
@@ -292,19 +317,28 @@ def _parse_entity_fields(raw, field_group, source_text, variant, source_group):
             continue
         grounding = verify_quote_in_source(quote, source_text)
         value_is_quote = (
-            bool(value_str) and len(value_str) > 1
+            bool(value_str)
+            and len(value_str) > 1
             and _normalize(value_str) == _normalize(quote)
         )
-        results.append(FieldResult(
-            field=f"{field_group.name}[{i}]", value=value_str[:200], quote=quote[:200],
-            confidence=confidence, grounding=grounding,
-            value_is_quote=value_is_quote, variant=variant,
-            source_group=source_group, group_name=field_group.name,
-        ))
+        results.append(
+            FieldResult(
+                field=f"{field_group.name}[{i}]",
+                value=value_str[:200],
+                quote=quote[:200],
+                confidence=confidence,
+                grounding=grounding,
+                value_is_quote=value_is_quote,
+                variant=variant,
+                source_group=source_group,
+                group_name=field_group.name,
+            )
+        )
     return results
 
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
+
 
 async def call_llm(client, model, system_prompt, user_prompt):
     t0 = time.monotonic()
@@ -333,7 +367,10 @@ async def call_llm(client, model, system_prompt, user_prompt):
 
 # ── Analysis ─────────────────────────────────────────────────────────────────
 
-def analyze_variant(label: str, results: list[FieldResult], timings: list[float], errors: int):
+
+def analyze_variant(
+    label: str, results: list[FieldResult], timings: list[float], errors: int
+):
     """Print analysis for one variant."""
     n = len(results)
     if n == 0:
@@ -351,7 +388,9 @@ def analyze_variant(label: str, results: list[FieldResult], timings: list[float]
 
     # Low-confidence fabrications: conf < 0.5 — does calibration help?
     low_conf = sum(1 for r in results if r.confidence < 0.5)
-    low_conf_correct = sum(1 for r in results if r.confidence < 0.5 and r.grounding < 0.3)
+    low_conf_correct = sum(
+        1 for r in results if r.confidence < 0.5 and r.grounding < 0.3
+    )
 
     return {
         "label": label,
@@ -372,24 +411,30 @@ def analyze_variant(label: str, results: list[FieldResult], timings: list[float]
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 async def main():
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=30)
-    parser.add_argument("--project-id", type=str,
-                        default="99a19141-9268-40a8-bc9e-ad1fa12243da")
-    parser.add_argument("--groups", type=str, default="company_info,services",
-                        help="Comma-separated field group names")
+    parser.add_argument(
+        "--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da"
+    )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        default="company_info,services",
+        help="Comma-separated field group names",
+    )
     parser.add_argument("--content-limit", type=int, default=20000)
     args = parser.parse_args()
 
     project_id = UUID(args.project_id)
     variant_keys = list(VARIANTS.keys())
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("MULTI-VARIANT PROMPT TRIAL")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"Variants: {', '.join(f'{k}={v}' for k, v in VARIANTS.items())}")
     print(f"Project: {args.project_id}")
     print(f"Sources: {args.limit}")
@@ -419,7 +464,9 @@ async def main():
             return
 
         sources = session.execute(
-            select(Source.id, Source.source_group, Source.content, Source.cleaned_content)
+            select(
+                Source.id, Source.source_group, Source.content, Source.cleaned_content
+            )
             .where(Source.project_id == project_id)
             .where(Source.content.isnot(None))
             .where(func.length(Source.content) > 200)
@@ -456,15 +503,21 @@ async def main():
 
                 sys_prompt = build_system_prompt(v, group, context)
                 usr_prompt = build_user_prompt(
-                    v, source_text, group, context,
-                    source_group, args.content_limit,
+                    v,
+                    source_text,
+                    group,
+                    context,
+                    source_group,
+                    args.content_limit,
                 )
 
                 raw, elapsed = await call_llm(client, model, sys_prompt, usr_prompt)
                 all_timings[v].append(elapsed)
 
                 if raw:
-                    results = parse_fields(raw, group, source_text, v, source_group or "")
+                    results = parse_fields(
+                        raw, group, source_text, v, source_group or ""
+                    )
                     all_results[v].extend(results)
                     n_fields = len(results)
                 else:
@@ -475,13 +528,14 @@ async def main():
                 print(
                     f"\r  [{call_idx}/{total_calls}] ({pct:.0f}%) "
                     f"{source_group or '?'}/{group.name}/{v} → {n_fields}  ",
-                    end="", flush=True,
+                    end="",
+                    flush=True,
                 )
 
     # ── Results ──
-    print(f"\n\n{'='*80}")
+    print(f"\n\n{'=' * 80}")
     print("RESULTS SUMMARY")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     stats = {}
     for v in variant_keys:
@@ -493,11 +547,11 @@ async def main():
     # Comparison table
     print(f"\n  {'Metric':<35s}", end="")
     for v in variant_keys:
-        print(f" {'['+v+']':>9s}", end="")
+        print(f" {'[' + v + ']':>9s}", end="")
     print()
-    print(f"  {'─'*35}", end="")
+    print(f"  {'─' * 35}", end="")
     for _ in variant_keys:
-        print(f" {'─'*9}", end="")
+        print(f" {'─' * 9}", end="")
     print()
 
     metrics = [
@@ -522,15 +576,15 @@ async def main():
         print()
 
     # ── Delta vs A ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("DELTA vs BASELINE (A)")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     a = stats.get("A", {})
     if a:
         delta_metrics = [
-            ("Well grounded", "well_pct", True),   # higher is better
-            ("Poorly grounded", "poor_pct", False), # lower is better
+            ("Well grounded", "well_pct", True),  # higher is better
+            ("Poorly grounded", "poor_pct", False),  # lower is better
             ("Overconfident", "overconf_pct", False),
             ("Value == quote", "val_eq_q_pct", False),
             ("Avg latency", "avg_t", False),
@@ -538,11 +592,11 @@ async def main():
 
         print(f"\n  {'Metric':<30s}", end="")
         for v in variant_keys[1:]:  # skip A
-            print(f"  {'Δ['+v+']':>9s}", end="")
+            print(f"  {'Δ[' + v + ']':>9s}", end="")
         print()
-        print(f"  {'─'*30}", end="")
+        print(f"  {'─' * 30}", end="")
         for _ in variant_keys[1:]:
-            print(f"  {'─'*9}", end="")
+            print(f"  {'─' * 9}", end="")
         print()
 
         for label, key, higher_better in delta_metrics:
@@ -555,16 +609,24 @@ async def main():
                     arrow = "↓" if delta < 0 else "↑"
                     print(f"  {arrow}{abs(delta):>6.2f}s ", end="")
                 else:
-                    arrow = "↑" if (delta > 0) == higher_better else "↓" if delta != 0 else "="
+                    arrow = (
+                        "↑"
+                        if (delta > 0) == higher_better
+                        else "↓"
+                        if delta != 0
+                        else "="
+                    )
                     print(f"  {arrow}{abs(delta):>5.1f}pp ", end="")
             print()
 
     # ── Per-field breakdown ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("PER-FIELD: POORLY GROUNDED RATE BY VARIANT")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
-    by_field: dict[str, dict[str, list[FieldResult]]] = defaultdict(lambda: defaultdict(list))
+    by_field: dict[str, dict[str, list[FieldResult]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for v in variant_keys:
         for r in all_results[v]:
             base = re.sub(r"\[\d+\]$", "", r.field)
@@ -575,11 +637,11 @@ async def main():
 
     print(f"\n  {'Field':<40s}", end="")
     for v in variant_keys:
-        print(f"  {'['+v+']':>8s}", end="")
+        print(f"  {'[' + v + ']':>8s}", end="")
     print()
-    print(f"  {'─'*40}", end="")
+    print(f"  {'─' * 40}", end="")
     for _ in variant_keys:
-        print(f"  {'─'*8}", end="")
+        print(f"  {'─' * 8}", end="")
     print()
 
     for fk in all_fks:
@@ -601,9 +663,9 @@ async def main():
         print()
 
     # ── Paired: who fixed what ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("PAIRED FIXES (A→poor, variant→well) AND REGRESSIONS")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     # Build per-variant keyed results
     keyed: dict[str, dict[str, FieldResult]] = {v: {} for v in variant_keys}
@@ -616,25 +678,39 @@ async def main():
     for v in variant_keys[1:]:
         v_keys = keyed.get(v, {})
         shared = set(a_keys.keys()) & set(v_keys.keys())
-        fixes = [(a_keys[k], v_keys[k]) for k in shared
-                 if a_keys[k].grounding < 0.3 and v_keys[k].grounding >= 0.8]
-        regs = [(a_keys[k], v_keys[k]) for k in shared
-                if a_keys[k].grounding >= 0.8 and v_keys[k].grounding < 0.3]
+        fixes = [
+            (a_keys[k], v_keys[k])
+            for k in shared
+            if a_keys[k].grounding < 0.3 and v_keys[k].grounding >= 0.8
+        ]
+        regs = [
+            (a_keys[k], v_keys[k])
+            for k in shared
+            if a_keys[k].grounding >= 0.8 and v_keys[k].grounding < 0.3
+        ]
 
         print(f"\n  [{v}] Fixes: {len(fixes)}, Regressions: {len(regs)}")
         for ra, rb in fixes[:5]:
             print(f"    ✓ {ra.source_group}/{ra.group_name}.{ra.field}")
-            print(f"      A: g={ra.grounding:.2f} c={ra.confidence:.2f} q=\"{ra.quote[:60]}\"")
-            print(f"      {v}: g={rb.grounding:.2f} c={rb.confidence:.2f} q=\"{rb.quote[:60]}\"")
+            print(
+                f'      A: g={ra.grounding:.2f} c={ra.confidence:.2f} q="{ra.quote[:60]}"'
+            )
+            print(
+                f'      {v}: g={rb.grounding:.2f} c={rb.confidence:.2f} q="{rb.quote[:60]}"'
+            )
         for ra, rb in regs[:3]:
             print(f"    ✗ {ra.source_group}/{ra.group_name}.{ra.field}")
-            print(f"      A: g={ra.grounding:.2f} c={ra.confidence:.2f} q=\"{ra.quote[:60]}\"")
-            print(f"      {v}: g={rb.grounding:.2f} c={rb.confidence:.2f} q=\"{rb.quote[:60]}\"")
+            print(
+                f'      A: g={ra.grounding:.2f} c={ra.confidence:.2f} q="{ra.quote[:60]}"'
+            )
+            print(
+                f'      {v}: g={rb.grounding:.2f} c={rb.confidence:.2f} q="{rb.quote[:60]}"'
+            )
 
     # ── Verdict ──
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("VERDICT")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     if a:
         a_poor = a.get("poor_pct", 0)
@@ -647,7 +723,9 @@ async def main():
                 best_v = v
 
         print(f"\n  Best variant: [{best_v}] ({VARIANTS[best_v]})")
-        print(f"  Poorly grounded: {a_poor:.1f}% (A) → {best_poor:.1f}% ({best_v}) = {best_poor - a_poor:+.1f}pp")
+        print(
+            f"  Poorly grounded: {a_poor:.1f}% (A) → {best_poor:.1f}% ({best_v}) = {best_poor - a_poor:+.1f}pp"
+        )
         print()
 
         for v in variant_keys[1:]:
@@ -657,8 +735,11 @@ async def main():
             # Count regressions
             v_keys_set = keyed.get(v, {})
             shared = set(a_keys.keys()) & set(v_keys_set.keys())
-            regs = sum(1 for k in shared
-                       if a_keys[k].grounding >= 0.8 and v_keys_set[k].grounding < 0.3)
+            regs = sum(
+                1
+                for k in shared
+                if a_keys[k].grounding >= 0.8 and v_keys_set[k].grounding < 0.3
+            )
 
             if delta_poor < -2 and regs == 0:
                 verdict = "✓ DEPLOY"
@@ -669,7 +750,9 @@ async def main():
             else:
                 verdict = "✗ REGRESSION"
 
-            print(f"  [{v}] {verdict}  (Δpoor={delta_poor:+.1f}pp, Δwell={delta_well:+.1f}pp)")
+            print(
+                f"  [{v}] {verdict}  (Δpoor={delta_poor:+.1f}pp, Δwell={delta_well:+.1f}pp)"
+            )
 
     print()
 

@@ -112,8 +112,12 @@ def format_prometheus(metrics: SystemMetrics) -> str:
         )
 
     # Orphaned extractions
-    lines.append("# HELP scristill_orphaned_extractions_total Extractions without embeddings")
+    lines.append(
+        "# HELP scristill_orphaned_extractions_total Extractions without embeddings"
+    )
     lines.append("# TYPE scristill_orphaned_extractions_total gauge")
-    lines.append(f"scristill_orphaned_extractions_total {metrics.orphaned_extractions_total}")
+    lines.append(
+        f"scristill_orphaned_extractions_total {metrics.orphaned_extractions_total}"
+    )
 
     return "\n".join(lines) + "\n"

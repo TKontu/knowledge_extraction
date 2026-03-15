@@ -79,7 +79,9 @@ class ConsolidatedReportBuilder:
         Returns:
             Tuple of (data_sheet, summary).
         """
-        columns, labels, col_types, entity_groups = self._gen.get_unified_columns(schema)
+        columns, labels, col_types, entity_groups = self._gen.get_unified_columns(
+            schema
+        )
 
         # Get source_label for sheet naming
         context = schema.get("extraction_context", {})
@@ -107,8 +109,13 @@ class ConsolidatedReportBuilder:
         # Phase 2: Paginate entity columns and format cells
         columns, labels, col_types, prov_key_map, row_entity_prov = (
             self._paginate_entities(
-                rows, raw_entity_data, columns, labels, col_types,
-                entity_groups, page_size,
+                rows,
+                raw_entity_data,
+                columns,
+                labels,
+                col_types,
+                entity_groups,
+                page_size,
             )
         )
 
@@ -178,7 +185,8 @@ class ConsolidatedReportBuilder:
                     if isinstance(items, list) and items:
                         # Quality-filter entities
                         filtered_items, filtered_prov = _filter_entities(
-                            items, entity_prov,
+                            items,
+                            entity_prov,
                         )
                         if filtered_items:
                             entity_raw[col] = _EntityRaw(
@@ -195,7 +203,11 @@ class ConsolidatedReportBuilder:
                     data = rec.data or {}
                     if col in data and col not in row:
                         value = data[col]
-                        if isinstance(value, list) and value and isinstance(value[0], dict):
+                        if (
+                            isinstance(value, list)
+                            and value
+                            and isinstance(value[0], dict)
+                        ):
                             row[col] = _format_dict_list(value)
                         elif isinstance(value, list):
                             row[col] = ", ".join(str(v) for v in value)
@@ -305,7 +317,8 @@ class ConsolidatedReportBuilder:
 
                     if page_items:
                         row[page_col] = self._gen.format_entity_list(
-                            page_items, raw.group,
+                            page_items,
+                            raw.group,
                             max_items=page_size,
                         )
                         if page_prov:
@@ -389,7 +402,9 @@ def build_provenance_sheets(
                     # Sources: look up via provenance_key_map
                     prov_key = data_sheet.provenance_key_map.get(col)
                     sources_row[col] = _resolve_entity_sources(
-                        prov_key, sg_records, source_url_map,
+                        prov_key,
+                        sg_records,
+                        source_url_map,
                     )
                     continue
 
@@ -461,7 +476,9 @@ def _find_field_provenance(
     if stripped != col:
         for _ext_type, rec in sg_records.items():
             rec_provenance = rec.provenance or {}
-            if stripped in rec_provenance and isinstance(rec_provenance[stripped], dict):
+            if stripped in rec_provenance and isinstance(
+                rec_provenance[stripped], dict
+            ):
                 return rec_provenance[stripped]
 
     return None
@@ -508,7 +525,9 @@ def render_markdown(
 
     entity_counts = summary.get("entity_counts", {})
     if entity_counts:
-        parts = [f"{name}: {count}" for name, count in entity_counts.items() if count > 0]
+        parts = [
+            f"{name}: {count}" for name, count in entity_counts.items() if count > 0
+        ]
         if parts:
             lines.append(f"Entities: {', '.join(parts)}")
 

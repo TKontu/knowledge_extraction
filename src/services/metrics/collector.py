@@ -138,15 +138,14 @@ class MetricsCollector:
         # Build duration expression based on dialect
         if dialect_name == "postgresql":
             # PostgreSQL: Use extract epoch
-            duration_expr = (
-                extract("epoch", Job.completed_at) - extract("epoch", Job.started_at)
+            duration_expr = extract("epoch", Job.completed_at) - extract(
+                "epoch", Job.started_at
             )
         else:
             # SQLite: Use julianday
             duration_expr = (
-                (func.julianday(Job.completed_at) - func.julianday(Job.started_at))
-                * 86400
-            )
+                func.julianday(Job.completed_at) - func.julianday(Job.started_at)
+            ) * 86400
 
         # Query for completed jobs with valid timestamps
         result = self._db.execute(

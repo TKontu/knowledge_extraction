@@ -1,7 +1,5 @@
 """Tests for shared utility functions."""
 
-import math
-
 import pytest
 
 from utils import cosine_similarity

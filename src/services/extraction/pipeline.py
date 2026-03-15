@@ -148,7 +148,9 @@ class SchemaExtractionPipeline:
                 extraction_type=result["extraction_type"],
                 source_group=context_value,
                 confidence=result.get("confidence"),
-                grounding_scores=result.get("grounding_scores") if data_version < 2 else None,
+                grounding_scores=result.get("grounding_scores")
+                if data_version < 2
+                else None,
                 profile_used=schema_name,
                 chunk_context=chunk_context,
             )

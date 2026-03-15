@@ -1,14 +1,16 @@
 """Tests for ExtractionRepository."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from database import engine
 from orm_models import Extraction, Project, Source
 from services.storage.repositories.extraction import (
-    ExtractionRepository,
     ExtractionFilters,
+    ExtractionRepository,
 )
 
 
@@ -190,9 +192,7 @@ class TestExtractionRepositoryCreateBatch:
         assert extractions[1].data["fact_text"] == "Fact 2"
         assert extractions[2].data["fact_text"] == "Fact 3"
 
-    def test_create_batch_returns_empty_list_for_empty_input(
-        self, extraction_repo
-    ):
+    def test_create_batch_returns_empty_list_for_empty_input(self, extraction_repo):
         """Should return empty list when given empty input."""
         extractions = extraction_repo.create_batch([])
         assert extractions == []
@@ -315,9 +315,7 @@ class TestExtractionRepositoryGetBySource:
 class TestExtractionRepositoryList:
     """Test ExtractionRepository.list() method."""
 
-    def test_list_all_extractions(
-        self, extraction_repo, test_project, test_source
-    ):
+    def test_list_all_extractions(self, extraction_repo, test_project, test_source):
         """Should list all extractions without filters."""
         extraction_repo.create(
             project_id=test_project.id,
@@ -410,9 +408,7 @@ class TestExtractionRepositoryList:
         )
 
         # Filter by test_source
-        extractions = extraction_repo.list(
-            ExtractionFilters(source_id=test_source.id)
-        )
+        extractions = extraction_repo.list(ExtractionFilters(source_id=test_source.id))
         assert len(extractions) == 1
         assert extractions[0].data["fact_text"] == "From test source"
 
@@ -460,9 +456,7 @@ class TestExtractionRepositoryList:
             source_group="other_corp",
         )
 
-        extractions = extraction_repo.list(
-            ExtractionFilters(source_group="acme_corp")
-        )
+        extractions = extraction_repo.list(ExtractionFilters(source_group="acme_corp"))
         assert len(extractions) >= 1
         assert all(e.source_group == "acme_corp" for e in extractions)
 
@@ -487,9 +481,7 @@ class TestExtractionRepositoryList:
             confidence=0.95,
         )
 
-        extractions = extraction_repo.list(
-            ExtractionFilters(min_confidence=0.9)
-        )
+        extractions = extraction_repo.list(ExtractionFilters(min_confidence=0.9))
         assert len(extractions) >= 1
         assert all(e.confidence >= 0.9 for e in extractions if e.confidence)
 
@@ -667,11 +659,7 @@ class TestExtractionRepositoryQueryJsonb:
             project_id=test_project.id, path="category", value="nonexistent"
         )
         # Should only include extractions from this test
-        matching = [
-            e
-            for e in extractions
-            if e.data.get("category") == "nonexistent"
-        ]
+        matching = [e for e in extractions if e.data.get("category") == "nonexistent"]
         assert len(matching) == 0
 
 

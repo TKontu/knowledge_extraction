@@ -80,9 +80,11 @@ class TestGroundFieldItem:
         """Text fields use required mode: value must appear in quote."""
         # Value "Acme Corp" appears in quote → grounded
         score = ground_field_item(
-            "company_name", "Acme Corp",
+            "company_name",
+            "Acme Corp",
             "Acme Corp has approximately",
-            self.CHUNK, "text",
+            self.CHUNK,
+            "text",
         )
         assert score >= 0.8
         # Without a quote → no grounding evidence
@@ -97,17 +99,21 @@ class TestGroundFieldItem:
 
         # Value appears as exact substring in quote → high score
         score = ground_field_item(
-            "location", "Zurich, Switzerland",
+            "location",
+            "Zurich, Switzerland",
             "headquartered in Zurich, Switzerland since 1995",
-            source, "text",
+            source,
+            "text",
         )
         assert score >= 0.8
 
         # Value words present but reordered in quote → partial score
         score_partial = ground_field_item(
-            "location", "Zurich and Geneva",
+            "location",
+            "Zurich and Geneva",
             "offices in Geneva and Zurich",
-            source, "text",
+            source,
+            "text",
         )
         assert 0.3 <= score_partial < 0.8
 
@@ -204,18 +210,30 @@ class TestEntityFieldGroundingIntegration:
             "power_rating_kw": 50,
             "efficiency_percent": 97,
         }
-        field_gnd = ground_entity_fields(fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        field_gnd = ground_entity_fields(
+            fields, self.QUOTE, self.CHUNK, self.FIELD_DEFS
+        )
 
         conf_grounded = score_entity_confidence(
-            fields, self.FIELD_DEFS, 0.5, field_grounding=field_gnd, quote=self.QUOTE,
+            fields,
+            self.FIELD_DEFS,
+            0.5,
+            field_grounding=field_gnd,
+            quote=self.QUOTE,
         )
 
         # Same entity but with hallucinated value
         fields_bad = dict(fields)
         fields_bad["power_rating_kw"] = 500
-        field_gnd_bad = ground_entity_fields(fields_bad, self.QUOTE, self.CHUNK, self.FIELD_DEFS)
+        field_gnd_bad = ground_entity_fields(
+            fields_bad, self.QUOTE, self.CHUNK, self.FIELD_DEFS
+        )
         conf_bad = score_entity_confidence(
-            fields_bad, self.FIELD_DEFS, 0.5, field_grounding=field_gnd_bad, quote=self.QUOTE,
+            fields_bad,
+            self.FIELD_DEFS,
+            0.5,
+            field_grounding=field_gnd_bad,
+            quote=self.QUOTE,
         )
 
         assert conf_grounded > conf_bad

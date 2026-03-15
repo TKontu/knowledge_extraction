@@ -38,45 +38,60 @@ def extract_quote_pairs(data: dict, data_version: int) -> list[dict]:
             if fname.startswith("_"):
                 continue
             if isinstance(fdata, dict) and fdata.get("quote"):
-                fields.append({
-                    "field": fname, "value": fdata.get("value"),
-                    "quote": fdata["quote"], "confidence": float(fdata.get("confidence", 0)),
-                    "stored_grounding": float(fdata.get("grounding", 0)),
-                })
+                fields.append(
+                    {
+                        "field": fname,
+                        "value": fdata.get("value"),
+                        "quote": fdata["quote"],
+                        "confidence": float(fdata.get("confidence", 0)),
+                        "stored_grounding": float(fdata.get("grounding", 0)),
+                    }
+                )
             elif isinstance(fdata, list):
                 for i, item in enumerate(fdata):
                     if isinstance(item, dict) and item.get("quote"):
-                        fields.append({
-                            "field": f"{fname}[{i}]", "value": item.get("value"),
-                            "quote": item["quote"], "confidence": float(item.get("confidence", 0)),
-                            "stored_grounding": float(item.get("grounding", 0)),
-                        })
+                        fields.append(
+                            {
+                                "field": f"{fname}[{i}]",
+                                "value": item.get("value"),
+                                "quote": item["quote"],
+                                "confidence": float(item.get("confidence", 0)),
+                                "stored_grounding": float(item.get("grounding", 0)),
+                            }
+                        )
     else:
         quotes = data.get("_quotes", {})
         conf = float(data.get("confidence", 0))
         if isinstance(quotes, dict):
             for fname, q in quotes.items():
                 if q and isinstance(q, str) and len(q) > 3:
-                    fields.append({
-                        "field": fname, "value": data.get(fname),
-                        "quote": q, "confidence": conf,
-                        "stored_grounding": 0.0,
-                    })
+                    fields.append(
+                        {
+                            "field": fname,
+                            "value": data.get(fname),
+                            "quote": q,
+                            "confidence": conf,
+                            "stored_grounding": 0.0,
+                        }
+                    )
     return fields
 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=3000)
-    parser.add_argument("--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da")
+    parser.add_argument(
+        "--project-id", type=str, default="99a19141-9268-40a8-bc9e-ad1fa12243da"
+    )
     args = parser.parse_args()
 
     project_id = UUID(args.project_id)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("REAL-TIME GROUNDING ANALYSIS")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     with Session(engine) as session:
         query = (
@@ -114,26 +129,28 @@ def main():
                 norm_c = _normalize(source_text)
                 exact_match = norm_q in norm_c
 
-                all_items.append({
-                    "ext_type": ext.extraction_type,
-                    "source_group": ext.source_group,
-                    "field": f["field"],
-                    "value": value_str[:100],
-                    "quote": quote,
-                    "confidence": f["confidence"],
-                    "grounding": real_grounding,
-                    "value_in_quote": value_in_quote,
-                    "exact_match": exact_match,
-                    "quote_len": len(quote),
-                })
+                all_items.append(
+                    {
+                        "ext_type": ext.extraction_type,
+                        "source_group": ext.source_group,
+                        "field": f["field"],
+                        "value": value_str[:100],
+                        "quote": quote,
+                        "confidence": f["confidence"],
+                        "grounding": real_grounding,
+                        "value_in_quote": value_in_quote,
+                        "exact_match": exact_match,
+                        "quote_len": len(quote),
+                    }
+                )
 
         total = len(all_items)
         print(f"Analyzed {total} field-quote pairs\n")
 
         # ── 1. Grounding distribution (real) ──
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         print("1. REAL GROUNDING SCORE DISTRIBUTION")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         g_buckets = Counter()
         for item in all_items:
@@ -151,20 +168,31 @@ def main():
             else:
                 g_buckets["0.00"] += 1
 
-        for bucket in ["0.95-1.00", "0.80-0.95", "0.60-0.80", "0.30-0.60", "0.01-0.30", "0.00"]:
+        for bucket in [
+            "0.95-1.00",
+            "0.80-0.95",
+            "0.60-0.80",
+            "0.30-0.60",
+            "0.01-0.30",
+            "0.00",
+        ]:
             count = g_buckets.get(bucket, 0)
             bar = "█" * int(count / total * 100 / 2)
-            print(f"  {bucket:10s} {count:5d} ({count/total*100:5.1f}%) {bar}")
+            print(f"  {bucket:10s} {count:5d} ({count / total * 100:5.1f}%) {bar}")
 
         well_grounded = sum(1 for i in all_items if i["grounding"] >= 0.8)
         ungrounded = sum(1 for i in all_items if i["grounding"] < 0.3)
-        print(f"\n  Well grounded (>=0.8): {well_grounded}/{total} ({well_grounded/total*100:.1f}%)")
-        print(f"  Poorly grounded (<0.3): {ungrounded}/{total} ({ungrounded/total*100:.1f}%)")
+        print(
+            f"\n  Well grounded (>=0.8): {well_grounded}/{total} ({well_grounded / total * 100:.1f}%)"
+        )
+        print(
+            f"  Poorly grounded (<0.3): {ungrounded}/{total} ({ungrounded / total * 100:.1f}%)"
+        )
 
         # ── 2. Confidence vs Grounding (real) ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("2. CONFIDENCE vs REAL GROUNDING")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         conf_buckets: dict[str, list] = defaultdict(list)
         for item in all_items:
@@ -178,7 +206,9 @@ def main():
                 b = "0.0-0.5"
             conf_buckets[b].append(item)
 
-        print(f"\n  {'Confidence':12s} {'N':>6s} {'Avg Ground':>10s} {'Ground>=0.8':>12s} {'Ground<0.3':>12s}")
+        print(
+            f"\n  {'Confidence':12s} {'N':>6s} {'Avg Ground':>10s} {'Ground>=0.8':>12s} {'Ground<0.3':>12s}"
+        )
         for b in ["0.9-1.0", "0.7-0.9", "0.5-0.7", "0.0-0.5"]:
             items = conf_buckets.get(b, [])
             if not items:
@@ -187,16 +217,22 @@ def main():
             avg_g = sum(i["grounding"] for i in items) / n
             good = sum(1 for i in items if i["grounding"] >= 0.8)
             bad = sum(1 for i in items if i["grounding"] < 0.3)
-            print(f"  {b:12s} {n:6d} {avg_g:10.2f} {good/n*100:10.1f}% {bad/n*100:10.1f}%")
+            print(
+                f"  {b:12s} {n:6d} {avg_g:10.2f} {good / n * 100:10.1f}% {bad / n * 100:10.1f}%"
+            )
 
         # Overconfident: high confidence, low grounding
-        overconfident = [i for i in all_items if i["confidence"] >= 0.8 and i["grounding"] < 0.3]
-        print(f"\n  Overconfident (conf>=0.8 AND grounding<0.3): {len(overconfident)} ({len(overconfident)/total*100:.1f}%)")
+        overconfident = [
+            i for i in all_items if i["confidence"] >= 0.8 and i["grounding"] < 0.3
+        ]
+        print(
+            f"\n  Overconfident (conf>=0.8 AND grounding<0.3): {len(overconfident)} ({len(overconfident) / total * 100:.1f}%)"
+        )
 
         # ── 3. By extraction type ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("3. GROUNDING BY EXTRACTION TYPE")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         by_type: dict[str, list] = defaultdict(list)
         for item in all_items:
@@ -209,12 +245,14 @@ def main():
             well_g = sum(1 for i in items if i["grounding"] >= 0.8)
             poor_g = sum(1 for i in items if i["grounding"] < 0.3)
             print(f"\n  {etype} (n={n}):")
-            print(f"    Avg grounding: {avg_g:.2f}  Well(>=0.8): {well_g/n*100:.0f}%  Poor(<0.3): {poor_g/n*100:.0f}%")
+            print(
+                f"    Avg grounding: {avg_g:.2f}  Well(>=0.8): {well_g / n * 100:.0f}%  Poor(<0.3): {poor_g / n * 100:.0f}%"
+            )
 
         # ── 4. Field-level grounding bottlenecks ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("4. FIELD-LEVEL GROUNDING BOTTLENECKS")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         by_field: dict[str, list] = defaultdict(list)
         for item in all_items:
@@ -234,68 +272,91 @@ def main():
 
         field_stats.sort(key=lambda x: x[2])  # Sort by avg grounding ascending
 
-        print(f"\n  Worst grounded fields:")
-        print(f"  {'Field':50s} {'N':>5s} {'Avg_G':>6s} {'Poor%':>6s} {'Conf':>5s} {'Val∈Q':>6s}")
+        print("\n  Worst grounded fields:")
+        print(
+            f"  {'Field':50s} {'N':>5s} {'Avg_G':>6s} {'Poor%':>6s} {'Conf':>5s} {'Val∈Q':>6s}"
+        )
         for fk, n, avg_g, poor_rate, avg_c, viq in field_stats[:15]:
-            print(f"  {fk:50s} {n:5d} {avg_g:6.2f} {poor_rate*100:5.1f}% {avg_c:5.2f} {viq:5.1f}%")
+            print(
+                f"  {fk:50s} {n:5d} {avg_g:6.2f} {poor_rate * 100:5.1f}% {avg_c:5.2f} {viq:5.1f}%"
+            )
 
-        print(f"\n  Best grounded fields:")
+        print("\n  Best grounded fields:")
         for fk, n, avg_g, poor_rate, avg_c, viq in field_stats[-10:]:
-            print(f"  {fk:50s} {n:5d} {avg_g:6.2f} {poor_rate*100:5.1f}% {avg_c:5.2f} {viq:5.1f}%")
+            print(
+                f"  {fk:50s} {n:5d} {avg_g:6.2f} {poor_rate * 100:5.1f}% {avg_c:5.2f} {viq:5.1f}%"
+            )
 
         # ── 5. Overconfident examples ──
         if overconfident:
-            print(f"\n{'─'*60}")
-            print(f"5. OVERCONFIDENT EXAMPLES (conf>=0.8, grounding<0.3)")
-            print(f"{'─'*60}")
+            print(f"\n{'─' * 60}")
+            print("5. OVERCONFIDENT EXAMPLES (conf>=0.8, grounding<0.3)")
+            print(f"{'─' * 60}")
 
-            oc_fields = Counter(f"{i['ext_type']}.{re.sub(r'\\[\\d+\\]$', '', i['field'])}" for i in overconfident)
-            print(f"\n  Top overconfident fields:")
+            oc_fields = Counter(
+                f"{i['ext_type']}.{re.sub(r'\\[\\d+\\]$', '', i['field'])}"
+                for i in overconfident
+            )
+            print("\n  Top overconfident fields:")
             for field, count in oc_fields.most_common(10):
                 print(f"    {field:50s} {count:4d}")
 
-            print(f"\n  Examples:")
+            print("\n  Examples:")
             for item in overconfident[:10]:
                 print(f"    {item['source_group']}/{item['ext_type']}.{item['field']}")
-                print(f"      conf={item['confidence']:.2f} ground={item['grounding']:.2f}")
-                print(f"      quote: \"{item['quote'][:80]}\"")
-                print(f"      value: \"{item['value'][:60]}\"")
+                print(
+                    f"      conf={item['confidence']:.2f} ground={item['grounding']:.2f}"
+                )
+                print(f'      quote: "{item["quote"][:80]}"')
+                print(f'      value: "{item["value"][:60]}"')
                 print()
 
         # ── 6. Value-in-quote analysis ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("6. VALUE-IN-QUOTE ANALYSIS")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         has_val = [i for i in all_items if i["value"] and len(i["value"]) > 1]
         if has_val:
             viq_count = sum(1 for i in has_val if i["value_in_quote"])
             print(f"  Total with values: {len(has_val)}")
-            print(f"  Value found in quote: {viq_count} ({viq_count/len(has_val)*100:.1f}%)")
-            print(f"  Value NOT in quote: {len(has_val)-viq_count} ({(len(has_val)-viq_count)/len(has_val)*100:.1f}%)")
+            print(
+                f"  Value found in quote: {viq_count} ({viq_count / len(has_val) * 100:.1f}%)"
+            )
+            print(
+                f"  Value NOT in quote: {len(has_val) - viq_count} ({(len(has_val) - viq_count) / len(has_val) * 100:.1f}%)"
+            )
 
             # Fields where value is rarely in quote
-            print(f"\n  Fields where value is rarely in quote:")
+            print("\n  Fields where value is rarely in quote:")
             for fk, n, avg_g, poor_rate, avg_c, viq in field_stats:
                 if viq < 50 and n >= 10:
                     print(f"    {fk:50s}  val_in_quote: {viq:.0f}%  (n={n})")
 
         # ── 7. Quote provides no additional information ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("7. QUOTES THAT ADD NO INFORMATION (value == quote)")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
-        value_is_quote = [i for i in all_items if i["value"]
-                          and _normalize(i["value"]) == _normalize(i["quote"])]
-        print(f"  Value exactly equals quote: {len(value_is_quote)} ({len(value_is_quote)/total*100:.1f}%)")
+        value_is_quote = [
+            i
+            for i in all_items
+            if i["value"] and _normalize(i["value"]) == _normalize(i["quote"])
+        ]
+        print(
+            f"  Value exactly equals quote: {len(value_is_quote)} ({len(value_is_quote) / total * 100:.1f}%)"
+        )
         if value_is_quote:
-            viq_fields = Counter(f"{i['ext_type']}.{re.sub(r'\\[\\d+\\]$', '', i['field'])}" for i in value_is_quote)
+            viq_fields = Counter(
+                f"{i['ext_type']}.{re.sub(r'\\[\\d+\\]$', '', i['field'])}"
+                for i in value_is_quote
+            )
             for field, count in viq_fields.most_common(10):
                 print(f"    {field:50s} {count:4d}")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL COMPLETE")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 # Load .env BEFORE any imports that read settings or check env vars.
@@ -13,7 +14,7 @@ os.environ.setdefault("API_KEY", "test-api-key-for-pytest-minimum-16-chars")
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture

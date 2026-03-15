@@ -1,10 +1,10 @@
 """Tests for project schema update safety (force parameter)."""
 
-import pytest
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
@@ -40,15 +40,18 @@ class TestProjectSchemaUpdateSafety:
         """Create test client."""
         # Import here to avoid circular imports
         import sys
+
         sys.path.insert(0, "src")
         from main import app
+
         return TestClient(app)
 
     def test_update_schema_blocked_without_force(self, mock_db, mock_project):
         """Test that schema updates are blocked when extractions exist."""
+        from fastapi import HTTPException, Response
+
         from api.v1.projects import update_project
         from models import ProjectUpdate
-        from fastapi import Response, HTTPException
 
         project_id = mock_project.id
 
@@ -72,6 +75,7 @@ class TestProjectSchemaUpdateSafety:
             # Should raise 409 Conflict
             with pytest.raises(HTTPException) as exc_info:
                 import asyncio
+
                 asyncio.get_event_loop().run_until_complete(
                     update_project(
                         project_id=project_id,
@@ -88,9 +92,10 @@ class TestProjectSchemaUpdateSafety:
 
     def test_update_schema_allowed_with_force(self, mock_db, mock_project):
         """Test that schema updates proceed when force=True."""
+        from fastapi import Response
+
         from api.v1.projects import update_project
         from models import ProjectUpdate
-        from fastapi import Response
 
         project_id = mock_project.id
 
@@ -114,6 +119,7 @@ class TestProjectSchemaUpdateSafety:
 
             # Should succeed with force=True
             import asyncio
+
             result = asyncio.get_event_loop().run_until_complete(
                 update_project(
                     project_id=project_id,
@@ -126,13 +132,16 @@ class TestProjectSchemaUpdateSafety:
 
             # Verify warning header is set
             assert "X-Extraction-Warning" in response.headers
-            assert "100 existing extractions" in response.headers["X-Extraction-Warning"]
+            assert (
+                "100 existing extractions" in response.headers["X-Extraction-Warning"]
+            )
 
     def test_update_schema_no_extractions_no_block(self, mock_db, mock_project):
         """Test that schema updates proceed freely when no extractions exist."""
+        from fastapi import Response
+
         from api.v1.projects import update_project
         from models import ProjectUpdate
-        from fastapi import Response
 
         project_id = mock_project.id
 
@@ -156,6 +165,7 @@ class TestProjectSchemaUpdateSafety:
 
             # Should succeed without force
             import asyncio
+
             result = asyncio.get_event_loop().run_until_complete(
                 update_project(
                     project_id=project_id,
@@ -171,9 +181,10 @@ class TestProjectSchemaUpdateSafety:
 
     def test_update_non_schema_fields_not_blocked(self, mock_db, mock_project):
         """Test that non-schema updates are not blocked."""
+        from fastapi import Response
+
         from api.v1.projects import update_project
         from models import ProjectUpdate
-        from fastapi import Response
 
         project_id = mock_project.id
 
@@ -190,6 +201,7 @@ class TestProjectSchemaUpdateSafety:
 
             # Should succeed without checking extractions
             import asyncio
+
             result = asyncio.get_event_loop().run_until_complete(
                 update_project(
                     project_id=project_id,
@@ -205,9 +217,10 @@ class TestProjectSchemaUpdateSafety:
 
     def test_update_entity_types_blocked(self, mock_db, mock_project):
         """Test that entity_types updates are also blocked."""
+        from fastapi import HTTPException, Response
+
         from api.v1.projects import update_project
         from models import ProjectUpdate
-        from fastapi import Response, HTTPException
 
         project_id = mock_project.id
 
@@ -222,13 +235,12 @@ class TestProjectSchemaUpdateSafety:
             mock_db.execute.return_value = mock_scalar_result
 
             # Update entity_types
-            project_update = ProjectUpdate(
-                entity_types=["new_type_1", "new_type_2"]
-            )
+            project_update = ProjectUpdate(entity_types=["new_type_1", "new_type_2"])
             response = Response()
 
             with pytest.raises(HTTPException) as exc_info:
                 import asyncio
+
                 asyncio.get_event_loop().run_until_complete(
                     update_project(
                         project_id=project_id,
@@ -244,9 +256,10 @@ class TestProjectSchemaUpdateSafety:
 
     def test_error_detail_structure(self, mock_db, mock_project):
         """Test that error detail has expected structure."""
+        from fastapi import HTTPException, Response
+
         from api.v1.projects import update_project
         from models import ProjectUpdate
-        from fastapi import Response, HTTPException
 
         project_id = mock_project.id
 
@@ -267,6 +280,7 @@ class TestProjectSchemaUpdateSafety:
 
             with pytest.raises(HTTPException) as exc_info:
                 import asyncio
+
                 asyncio.get_event_loop().run_until_complete(
                     update_project(
                         project_id=project_id,

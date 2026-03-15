@@ -16,7 +16,9 @@ from services.extraction.smart_classifier import (
 )
 
 
-def create_embedding_with_similarity(target_similarity: float, dim: int = 1024) -> list[float]:
+def create_embedding_with_similarity(
+    target_similarity: float, dim: int = 1024
+) -> list[float]:
     """Create a unit vector with specified cosine similarity to [1, 0, 0, ...].
 
     Given a reference vector A = [1, 0, 0, ...], creates vector B such that
@@ -195,7 +197,7 @@ class TestSmartClassifierHighConfidence:
         # Page embedding is the reference vector [1, 0, 0, ...]
         page_embedding = reference_embedding()
         gearbox_embedding = create_embedding_with_similarity(0.95)  # High similarity
-        company_embedding = create_embedding_with_similarity(0.3)   # Low similarity
+        company_embedding = create_embedding_with_similarity(0.3)  # Low similarity
         services_embedding = create_embedding_with_similarity(0.2)  # Low similarity
 
         embedding_service.embed.return_value = page_embedding
@@ -219,14 +221,23 @@ class TestSmartClassifierHighConfidence:
         assert "High embedding similarity" in result.reasoning
 
     async def test_high_confidence_includes_all_matching_groups(
-        self, smart_classifier, embedding_service, redis_client, field_groups, app_config
+        self,
+        smart_classifier,
+        embedding_service,
+        redis_client,
+        field_groups,
+        app_config,
     ):
         """All groups above high threshold should be included."""
         # Mock embeddings with controlled cosine similarities
         # Both gearbox and company have high similarity (>= 0.75)
         page_embedding = reference_embedding()
-        gearbox_embedding = create_embedding_with_similarity(0.85)  # Above 0.75 threshold
-        company_embedding = create_embedding_with_similarity(0.80)  # Above 0.75 threshold
+        gearbox_embedding = create_embedding_with_similarity(
+            0.85
+        )  # Above 0.75 threshold
+        company_embedding = create_embedding_with_similarity(
+            0.80
+        )  # Above 0.75 threshold
         services_embedding = create_embedding_with_similarity(0.2)  # Below threshold
 
         embedding_service.embed.return_value = page_embedding
@@ -258,7 +269,7 @@ class TestSmartClassifierLowConfidence:
         """Low similarity scores should use dynamic fallback (top 80% of scores, min 2)."""
         # Mock embeddings - page doesn't match any group well (all below 0.4 threshold)
         page_embedding = reference_embedding()
-        gearbox_embedding = create_embedding_with_similarity(0.2)   # Below 0.4
+        gearbox_embedding = create_embedding_with_similarity(0.2)  # Below 0.4
         company_embedding = create_embedding_with_similarity(0.15)  # Below 0.4
         services_embedding = create_embedding_with_similarity(0.1)  # Below 0.4
 
@@ -286,12 +297,19 @@ class TestSmartClassifierMediumConfidence:
     """Test medium confidence classification path (reranker fallback)."""
 
     async def test_medium_confidence_uses_reranker(
-        self, smart_classifier, embedding_service, redis_client, field_groups, app_config
+        self,
+        smart_classifier,
+        embedding_service,
+        redis_client,
+        field_groups,
+        app_config,
     ):
         """Medium similarity should trigger reranker for confirmation."""
         # Mock embeddings - moderate similarity (between 0.4 and 0.75)
         page_embedding = reference_embedding()
-        gearbox_embedding = create_embedding_with_similarity(0.6)  # Medium - triggers reranker
+        gearbox_embedding = create_embedding_with_similarity(
+            0.6
+        )  # Medium - triggers reranker
         company_embedding = create_embedding_with_similarity(0.5)  # Medium
         services_embedding = create_embedding_with_similarity(0.45)  # Medium
 
@@ -324,7 +342,12 @@ class TestSmartClassifierMediumConfidence:
         assert "company_info" not in result.relevant_groups
 
     async def test_reranker_confirms_multiple_groups(
-        self, smart_classifier, embedding_service, redis_client, field_groups, app_config
+        self,
+        smart_classifier,
+        embedding_service,
+        redis_client,
+        field_groups,
+        app_config,
     ):
         """Reranker should confirm all groups above threshold."""
         # All embeddings in medium range (0.4 to 0.75) to trigger reranker
@@ -497,10 +520,15 @@ class TestSmartClassifierDisabled:
     ):
         """When disabled, should fall back to rule-based classification."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=False,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=False,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -717,7 +745,9 @@ class TestPageTypeInference:
 
     def test_infers_product_type(self, smart_classifier):
         """Groups with 'product' should infer product type."""
-        page_type = smart_classifier._infer_page_type(["products_gearbox", "products_motor"])
+        page_type = smart_classifier._infer_page_type(
+            ["products_gearbox", "products_motor"]
+        )
         assert page_type == "product"
 
     def test_infers_service_type(self, smart_classifier):
@@ -749,10 +779,15 @@ class TestClassificationConfigIntegration:
     ):
         """Custom skip patterns should override default patterns."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -789,10 +824,15 @@ class TestClassificationConfigIntegration:
     ):
         """Empty skip patterns list disables all URL-based skipping."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -831,10 +871,15 @@ class TestClassificationConfigIntegration:
     ):
         """Null patterns with smart classification enabled uses no skip patterns."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=False,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=False,
             classifier_content_limit=6000,
         )
 
@@ -873,10 +918,15 @@ class TestClassificationConfigIntegration:
     ):
         """Null patterns without smart classification uses default patterns."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=False,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=False,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -904,10 +954,15 @@ class TestClassificationConfigIntegration:
     ):
         """classification_use_default_skip_patterns setting forces defaults."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -935,10 +990,15 @@ class TestClassificationConfigIntegration:
     ):
         """Explicit patterns in config override global setting."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -979,10 +1039,15 @@ class TestResolveSkipPatterns:
     def test_explicit_empty_list(self, embedding_service, redis_client):
         """Explicit empty list returns empty list."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=False,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=False,
             classifier_content_limit=6000,
         )
 
@@ -999,10 +1064,15 @@ class TestResolveSkipPatterns:
     def test_explicit_custom_patterns(self, embedding_service, redis_client):
         """Explicit custom patterns are used."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=False,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=False,
             classifier_content_limit=6000,
         )
 
@@ -1020,10 +1090,15 @@ class TestResolveSkipPatterns:
     def test_none_with_smart_enabled_uses_empty(self, embedding_service, redis_client):
         """None patterns with smart classification uses empty list."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=False,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=False,
             classifier_content_limit=6000,
         )
 
@@ -1037,13 +1112,20 @@ class TestResolveSkipPatterns:
 
         assert classifier._rule_classifier._skip_patterns == []
 
-    def test_none_with_smart_disabled_uses_defaults(self, embedding_service, redis_client):
+    def test_none_with_smart_disabled_uses_defaults(
+        self, embedding_service, redis_client
+    ):
         """None patterns without smart classification uses defaults."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=False,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=False,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -1058,15 +1140,25 @@ class TestResolveSkipPatterns:
         # Should use DEFAULT_SKIP_PATTERNS (passed as None to PageClassifier)
         from services.extraction.page_classifier import PageClassifier
 
-        assert classifier._rule_classifier._skip_patterns == PageClassifier.DEFAULT_SKIP_PATTERNS
+        assert (
+            classifier._rule_classifier._skip_patterns
+            == PageClassifier.DEFAULT_SKIP_PATTERNS
+        )
 
-    def test_no_config_with_smart_enabled_uses_empty(self, embedding_service, redis_client):
+    def test_no_config_with_smart_enabled_uses_empty(
+        self, embedding_service, redis_client
+    ):
         """No config with smart classification uses empty list (context-agnostic)."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=False,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=False,
             classifier_content_limit=6000,
         )
 
@@ -1083,10 +1175,15 @@ class TestResolveSkipPatterns:
     def test_global_override_forces_defaults(self, embedding_service, redis_client):
         """Global override setting forces default patterns."""
         app_config = AppClassificationConfig(
-            enabled=True, skip_enabled=True, smart_enabled=True,
-            reranker_model="bge-reranker-v2-m3", embedding_high_threshold=0.75,
-            embedding_low_threshold=0.4, reranker_threshold=0.5,
-            cache_ttl=86400, use_default_skip_patterns=True,
+            enabled=True,
+            skip_enabled=True,
+            smart_enabled=True,
+            reranker_model="bge-reranker-v2-m3",
+            embedding_high_threshold=0.75,
+            embedding_low_threshold=0.4,
+            reranker_threshold=0.5,
+            cache_ttl=86400,
+            use_default_skip_patterns=True,
             classifier_content_limit=6000,
         )
 
@@ -1100,7 +1197,10 @@ class TestResolveSkipPatterns:
 
         from services.extraction.page_classifier import PageClassifier
 
-        assert classifier._rule_classifier._skip_patterns == PageClassifier.DEFAULT_SKIP_PATTERNS
+        assert (
+            classifier._rule_classifier._skip_patterns
+            == PageClassifier.DEFAULT_SKIP_PATTERNS
+        )
 
 
 class TestPromptHintInGroupText:
@@ -1112,7 +1212,9 @@ class TestPromptHintInGroupText:
             name="locations",
             description="Company locations",
             fields=[
-                FieldDefinition(name="city", field_type="text", description="City name"),
+                FieldDefinition(
+                    name="city", field_type="text", description="City name"
+                ),
             ],
             prompt_hint="manufacturing plants, headquarters, sales offices",
         )
@@ -1174,7 +1276,9 @@ class TestDynamicFallback:
 
         embedding_service.embed.return_value = page_embedding
         embedding_service.embed_batch.return_value = [
-            gearbox_embedding, company_embedding, services_embedding,
+            gearbox_embedding,
+            company_embedding,
+            services_embedding,
         ]
 
         result = await smart_classifier.classify(
@@ -1199,7 +1303,9 @@ class TestDynamicFallback:
 
         embedding_service.embed.return_value = page_embedding
         embedding_service.embed_batch.return_value = [
-            gearbox_embedding, company_embedding, services_embedding,
+            gearbox_embedding,
+            company_embedding,
+            services_embedding,
         ]
 
         result = await smart_classifier.classify(
@@ -1220,11 +1326,15 @@ class TestDynamicFallback:
         # Only 2 field groups
         groups = [
             FieldGroup(
-                name="group_a", description="A", prompt_hint="",
+                name="group_a",
+                description="A",
+                prompt_hint="",
                 fields=[FieldDefinition(name="x", field_type="text", description="X")],
             ),
             FieldGroup(
-                name="group_b", description="B", prompt_hint="",
+                name="group_b",
+                description="B",
+                prompt_hint="",
                 fields=[FieldDefinition(name="y", field_type="text", description="Y")],
             ),
         ]

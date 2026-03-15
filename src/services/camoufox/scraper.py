@@ -342,7 +342,7 @@ class CamoufoxScraper:
                     old_camoufox.__aexit__(None, None, None),
                     timeout=30.0,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "old_browser_cleanup_timeout", browser_index=index, timeout=30.0
                 )

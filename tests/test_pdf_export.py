@@ -1,11 +1,12 @@
 """Tests for PDF export functionality."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
 
-from services.reports.pdf import PDFConverter, PDFConversionError
+from services.reports.pdf import PDFConversionError, PDFConverter
 
 
 @pytest.fixture
@@ -108,7 +109,9 @@ class TestPDFConverter:
 
 
 class TestPDFExportEndpoint:
-    def test_export_pdf_returns_pdf_response(self, pdf_client, mock_report, valid_api_key):
+    def test_export_pdf_returns_pdf_response(
+        self, pdf_client, mock_report, valid_api_key
+    ):
         """Should return PDF with correct headers."""
         with patch("api.v1.reports.PDFConverter") as MockConverter:
             mock_converter = MagicMock()
@@ -125,7 +128,9 @@ class TestPDFExportEndpoint:
             assert response.headers["content-type"] == "application/pdf"
             assert "attachment" in response.headers.get("content-disposition", "")
 
-    def test_export_pdf_returns_404_when_not_found(self, pdf_client, mock_db_session, valid_api_key):
+    def test_export_pdf_returns_404_when_not_found(
+        self, pdf_client, mock_db_session, valid_api_key
+    ):
         """Should return 404 when report doesn't exist."""
         # Override the fixture to return None
         mock_db_session.query.return_value.filter.return_value.first.return_value = None
@@ -140,7 +145,9 @@ class TestPDFExportEndpoint:
 
         assert response.status_code == 404
 
-    def test_export_pdf_returns_503_when_pandoc_unavailable(self, pdf_client, mock_report, valid_api_key):
+    def test_export_pdf_returns_503_when_pandoc_unavailable(
+        self, pdf_client, mock_report, valid_api_key
+    ):
         """Should return 503 when Pandoc is not installed."""
         with patch("api.v1.reports.PDFConverter") as MockConverter:
             mock_converter = MagicMock()

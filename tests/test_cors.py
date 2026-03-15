@@ -1,4 +1,3 @@
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -18,11 +17,11 @@ class TestCORSMiddleware:
         )
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers
-        assert response.headers["access-control-allow-origin"] == "http://localhost:8080"
+        assert (
+            response.headers["access-control-allow-origin"] == "http://localhost:8080"
+        )
 
-    def test_cors_allows_multiple_origins(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_cors_allows_multiple_origins(self, client: TestClient, valid_api_key: str):
         """Should support multiple allowed origins from config."""
         # Test first allowed origin
         response = client.get(
@@ -33,7 +32,10 @@ class TestCORSMiddleware:
             },
         )
         assert response.status_code == 200
-        assert response.headers.get("access-control-allow-origin") == "http://localhost:8080"
+        assert (
+            response.headers.get("access-control-allow-origin")
+            == "http://localhost:8080"
+        )
 
     def test_cors_preflight_request(self, client: TestClient):
         """OPTIONS preflight requests should be handled correctly."""
@@ -50,9 +52,7 @@ class TestCORSMiddleware:
         assert "access-control-allow-methods" in response.headers
         assert "access-control-allow-headers" in response.headers
 
-    def test_cors_allows_credentials(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_cors_allows_credentials(self, client: TestClient, valid_api_key: str):
         """CORS should allow credentials for authenticated requests."""
         response = client.get(
             "/",
@@ -73,9 +73,7 @@ class TestCORSMiddleware:
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers
 
-    def test_cors_exposes_common_headers(
-        self, client: TestClient, valid_api_key: str
-    ):
+    def test_cors_exposes_common_headers(self, client: TestClient, valid_api_key: str):
         """CORS should expose common headers to browser."""
         response = client.get(
             "/",

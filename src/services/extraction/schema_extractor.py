@@ -37,6 +37,53 @@ _QUOTE_NOT_VALUE_NOTE = (
 )
 
 
+def _salvage_truncated_array(text: str) -> str | None:
+    """Remove the last incomplete JSON object from a truncated array response.
+
+    Finds the last complete }, before the truncation point and closes the array.
+    Returns None if no complete items can be found.
+    """
+    bracket_pos = text.find("[")
+    if bracket_pos < 0:
+        return None
+
+    # Walk through the text tracking brace depth to find last complete top-level item
+    last_complete = -1
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 1:  # Just closed a top-level array item
+                last_complete = i
+
+    if last_complete < 0:
+        return None
+
+    # Take everything up to and including the last complete item, close the array
+    salvaged = text[: last_complete + 1].rstrip().rstrip(",") + "]"
+    # If there was content before the array (like {"field_name": [...}), close that too
+    open_braces = salvaged.count("{") - salvaged.count("}")
+    salvaged += "}" * max(0, open_braces)
+
+    return salvaged
+
+
 def _singularize(word: str) -> str:
     """Naive singularization for English plural nouns.
 
@@ -137,12 +184,18 @@ class SchemaExtractor:
 
         if self.llm_queue is not None:
             return await self._extract_via_queue(
-                content, field_group, context_value, strict_quoting=strict_quoting,
+                content,
+                field_group,
+                context_value,
+                strict_quoting=strict_quoting,
                 already_found=already_found,
             )
         else:
             return await self._extract_direct(
-                content, field_group, context_value, strict_quoting=strict_quoting,
+                content,
+                field_group,
+                context_value,
+                strict_quoting=strict_quoting,
                 already_found=already_found,
             )
 
@@ -333,20 +386,39 @@ class SchemaExtractor:
                                 result_text, context="schema_extract_truncated"
                             )
                         except json.JSONDecodeError:
-                            logger.warning(
-                                "schema_extraction_truncated_unrecoverable",
+                            # Attempt partial salvage: remove last incomplete item
+                            result_data = None
+                            salvaged = _salvage_truncated_array(result_text)
+                            if salvaged:
+                                try:
+                                    result_data = try_repair_json(
+                                        salvaged,
+                                        context="schema_extract_salvaged",
+                                    )
+                                except json.JSONDecodeError:
+                                    pass
+
+                            if result_data is None:
+                                logger.warning(
+                                    "schema_extraction_truncated_unrecoverable",
+                                    field_group=field_group.name,
+                                    response_preview=result_text[:500]
+                                    if result_text
+                                    else None,
+                                )
+                                return {
+                                    field_group.name: [],
+                                    "confidence": 0.0,
+                                    "_truncated": True,
+                                }
+
+                            logger.info(
+                                "schema_extraction_truncated_salvaged",
                                 field_group=field_group.name,
-                                response_preview=result_text[:500]
-                                if result_text
-                                else None,
+                                salvaged_items=len(result_data)
+                                if isinstance(result_data, list)
+                                else 1,
                             )
-                            # Return empty list with truncation flag so the
-                            # orchestrator can record the data loss on the extraction.
-                            return {
-                                field_group.name: [],
-                                "confidence": 0.0,
-                                "_truncated": True,
-                            }
                     else:
                         # Non-entity fields - try normal repair
                         result_data = try_repair_json(
@@ -415,7 +487,8 @@ class SchemaExtractor:
         if self._data_version >= 2:
             if field_group.is_entity_list:
                 return self._build_entity_list_system_prompt_v2(
-                    field_group, strict_quoting=strict_quoting,
+                    field_group,
+                    strict_quoting=strict_quoting,
                     already_found=already_found,
                 )
             return self._build_system_prompt_v2(
@@ -425,9 +498,7 @@ class SchemaExtractor:
             return self._build_entity_list_system_prompt_v1(
                 field_group, strict_quoting=strict_quoting
             )
-        return self._build_system_prompt_v1(
-            field_group, strict_quoting=strict_quoting
-        )
+        return self._build_system_prompt_v1(field_group, strict_quoting=strict_quoting)
 
     def _build_system_prompt_v1(
         self, field_group: FieldGroup, strict_quoting: bool = False
@@ -582,7 +653,7 @@ Confidence per field:
         if self._source_quoting_enabled:
             if strict_quoting:
                 quoting_instruction = (
-                    '\nCRITICAL QUOTING REQUIREMENT:\n'
+                    "\nCRITICAL QUOTING REQUIREMENT:\n"
                     'For each entity, include a "_quote" field with an EXACT verbatim '
                     "excerpt (15-50 chars) copied directly from the source text that "
                     "identifies this entity.\n"
@@ -842,11 +913,15 @@ Confidence per entity:
             fields = {}
             for f in field_group.fields:
                 fields[f.name] = entity.get(f.name)
-            normalized.append({
-                "fields": fields,
-                "_confidence": float(entity.get("_confidence", entity.get("confidence", 0.5))),
-                "_quote": entity.get("_quote", entity.get("quote")),
-            })
+            normalized.append(
+                {
+                    "fields": fields,
+                    "_confidence": float(
+                        entity.get("_confidence", entity.get("confidence", 0.5))
+                    ),
+                    "_quote": entity.get("_quote", entity.get("quote")),
+                }
+            )
 
         return {
             entity_key: normalized,

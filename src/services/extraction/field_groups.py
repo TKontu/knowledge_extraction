@@ -6,8 +6,14 @@ from typing import Any
 # Valid merge strategies for field definitions
 VALID_MERGE_STRATEGIES = frozenset(
     {
-        "highest_confidence", "max", "min", "concat", "majority_vote",
-        "merge_dedupe", "longest_confident", "llm_synthesize",
+        "highest_confidence",
+        "max",
+        "min",
+        "concat",
+        "majority_vote",
+        "merge_dedupe",
+        "longest_confident",
+        "llm_synthesize",
     }
 )
 
@@ -23,8 +29,12 @@ class FieldDefinition:
     default: Any = None
     enum_values: list[str] | None = None
     merge_strategy: str | None = None  # Override type-based merge default
-    grounding_mode: str | None = None  # "required", "semantic", "none" (None = use type default)
-    consolidation_strategy: str | None = None  # Override type-based consolidation default
+    grounding_mode: str | None = (
+        None  # "required", "semantic", "none" (None = use type default)
+    )
+    consolidation_strategy: str | None = (
+        None  # Override type-based consolidation default
+    )
 
 
 @dataclass

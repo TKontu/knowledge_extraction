@@ -1,9 +1,10 @@
 """Tests for transparent proxy functionality in ProxyAdapter."""
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
-from unittest.mock import AsyncMock, Mock, patch
 
 from services.proxy.flaresolverr_adapter import ProxyAdapter
 from services.proxy.flaresolverr_client import FlareSolverrResponse
@@ -220,7 +221,9 @@ class TestProxyAdapter(AioHTTPTestCase):
             mock_http_response = Mock()
             mock_http_response.content = b"<html>Non-blocked</html>"
             mock_http_response.status_code = 200
-            mock_http_response.headers = httpx_mod.Headers({"Content-Type": "text/html"})
+            mock_http_response.headers = httpx_mod.Headers(
+                {"Content-Type": "text/html"}
+            )
             mock_client.get.return_value = mock_http_response
 
             # Request HTTPS to non-blocked domain
@@ -260,6 +263,4 @@ class TestProxyAdapter(AioHTTPTestCase):
         assert self.adapter.should_use_flaresolverr("https://siemens.com/") is True
 
         # Test with non-blocked URL
-        assert (
-            self.adapter.should_use_flaresolverr("http://example.com/path") is False
-        )
+        assert self.adapter.should_use_flaresolverr("http://example.com/path") is False

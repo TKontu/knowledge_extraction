@@ -186,9 +186,9 @@ def cancel_job(
 
     # Count sources that will need cleanup
     source_count = db.execute(
-        select(func.count()).select_from(Source).where(
-            Source.created_by_job_id == job_uuid
-        )
+        select(func.count())
+        .select_from(Source)
+        .where(Source.created_by_job_id == job_uuid)
     ).scalar()
 
     return JobCancelResponse(
@@ -294,7 +294,10 @@ async def delete_job(
         )
 
     # Don't allow deleting active jobs without cleanup
-    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING) and not cleanup:
+    if (
+        job.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING)
+        and not cleanup
+    ):
         if job.status == JobStatus.CANCELLING:
             detail = "Job is cancelling. Wait for 'cancelled' or use cleanup=true."
         else:

@@ -24,12 +24,11 @@ Usage:
 import argparse
 import asyncio
 import sys
-import time
 from dataclasses import dataclass
 
 sys.path.insert(0, "src")
 
-from sqlalchemy import text, select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -104,7 +103,9 @@ def phase1_fix_null_placeholders(
           AND (kv.value->>'quote' IS NULL OR kv.value->>'quote' = '')
           AND (kv.value->>'grounding')::numeric BETWEEN 0.4 AND 0.6
     """)
-    extraction_ids = [row[0] for row in session.execute(affected_sql, {"pid": project_id})]
+    extraction_ids = [
+        row[0] for row in session.execute(affected_sql, {"pid": project_id})
+    ]
     print(f"  Phase 1: Updating {len(extraction_ids):,} extractions...")
 
     batch_size = 500
@@ -112,9 +113,7 @@ def phase1_fix_null_placeholders(
     for i in range(0, len(extraction_ids), batch_size):
         batch_ids = extraction_ids[i : i + batch_size]
         extractions = (
-            session.execute(
-                select(Extraction).where(Extraction.id.in_(batch_ids))
-            )
+            session.execute(select(Extraction).where(Extraction.id.in_(batch_ids)))
             .scalars()
             .all()
         )
@@ -152,11 +151,12 @@ def phase1_fix_null_placeholders(
 
 
 async def phase2_rescue_booleans(
-    session: Session, project_id: str, dry_run: bool = False,
+    session: Session,
+    project_id: str,
+    dry_run: bool = False,
     concurrency: int = 5,
 ) -> RepairStats:
     """LLM rescue for high-confidence boolean fields without quotes."""
-    from services.extraction.grounding import verify_quote_in_source
     from services.extraction.llm_grounding import LLMGroundingVerifier
     from services.llm.client import LLMClient
 
@@ -192,7 +192,9 @@ async def phase2_rescue_booleans(
 
     total_sources = len(source_extractions)
     total_extractions = len(rows)
-    print(f"  Phase 2: {total_extractions:,} extractions across {total_sources:,} sources")
+    print(
+        f"  Phase 2: {total_extractions:,} extractions across {total_sources:,} sources"
+    )
 
     if dry_run:
         return stats
@@ -220,9 +222,7 @@ async def phase2_rescue_booleans(
 
         # Load all affected extractions for this source
         extractions = (
-            session.execute(
-                select(Extraction).where(Extraction.id.in_(ext_ids))
-            )
+            session.execute(select(Extraction).where(Extraction.id.in_(ext_ids)))
             .scalars()
             .all()
         )
@@ -299,45 +299,62 @@ async def phase2_rescue_booleans(
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Repair boolean grounding")
-    parser.add_argument("--dry-run", action="store_true", help="Report only, no changes")
-    parser.add_argument("--phase1-only", action="store_true", help="Only fix null placeholders")
     parser.add_argument(
-        "--project", choices=["drivetrain", "jobs", "wikipedia", "all"],
+        "--dry-run", action="store_true", help="Report only, no changes"
+    )
+    parser.add_argument(
+        "--phase1-only", action="store_true", help="Only fix null placeholders"
+    )
+    parser.add_argument(
+        "--project",
+        choices=["drivetrain", "jobs", "wikipedia", "all"],
         default="all",
     )
-    parser.add_argument("--concurrency", type=int, default=5, help="LLM concurrency for rescue")
+    parser.add_argument(
+        "--concurrency", type=int, default=5, help="LLM concurrency for rescue"
+    )
     args = parser.parse_args()
 
     projects = list(PROJECT_IDS.keys()) if args.project == "all" else [args.project]
 
     print("=" * 70)
     print("  BOOLEAN GROUNDING REPAIR")
-    print(f"  Mode: {'DRY RUN' if args.dry_run else 'LIVE' + (' (phase 1 only)' if args.phase1_only else '')}")
+    print(
+        f"  Mode: {'DRY RUN' if args.dry_run else 'LIVE' + (' (phase 1 only)' if args.phase1_only else '')}"
+    )
     print(f"  Projects: {', '.join(projects)}")
     print("=" * 70)
 
     with Session(engine) as session:
         for project_name in projects:
             project_id = PROJECT_IDS[project_name]
-            print(f"\n{'─'*70}")
+            print(f"\n{'─' * 70}")
             print(f"  {project_name}")
-            print(f"{'─'*70}")
+            print(f"{'─' * 70}")
 
             # Phase 1
-            phase1_count = phase1_fix_null_placeholders(session, project_id, args.dry_run)
+            phase1_count = phase1_fix_null_placeholders(
+                session, project_id, args.dry_run
+            )
 
             # Phase 2
             if not args.phase1_only:
                 stats = await phase2_rescue_booleans(
-                    session, project_id, args.dry_run,
+                    session,
+                    project_id,
+                    args.dry_run,
                     concurrency=args.concurrency,
                 )
                 print(f"\n  Summary for {project_name}:")
-                print(f"    Phase 1: {phase1_count:,} null placeholders → grounding=0.0")
-                print(f"    Phase 2: {stats.phase2_rescued:,} rescued, {stats.phase2_dropped:,} dropped")
+                print(
+                    f"    Phase 1: {phase1_count:,} null placeholders → grounding=0.0"
+                )
+                print(
+                    f"    Phase 2: {stats.phase2_rescued:,} rescued, {stats.phase2_dropped:,} dropped"
+                )
                 print(f"    Extractions updated: {stats.extractions_updated:,}")
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("  Repair complete.")
     print("=" * 70)
 

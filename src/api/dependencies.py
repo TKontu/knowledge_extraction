@@ -64,7 +64,9 @@ def get_qdrant_repository() -> QdrantRepository:
     """
     from config import settings
 
-    return QdrantRepository(qdrant_client, embedding_dimension=settings.llm.embedding_dimension)
+    return QdrantRepository(
+        qdrant_client, embedding_dimension=settings.llm.embedding_dimension
+    )
 
 
 def get_embedding_service() -> EmbeddingService:

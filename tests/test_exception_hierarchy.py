@@ -21,6 +21,7 @@ from services.scraper.rate_limiter import RateLimitExceeded
 # Inheritance chain
 # ---------------------------------------------------------------------------
 
+
 class TestInheritanceChain:
     """Verify every custom exception inherits from AppError."""
 
@@ -85,6 +86,7 @@ class TestInheritanceChain:
 # is_retryable classification
 # ---------------------------------------------------------------------------
 
+
 class TestRetryableClassification:
     """Verify is_retryable flag on each exception."""
 
@@ -128,6 +130,7 @@ class TestRetryableClassification:
 # code attribute
 # ---------------------------------------------------------------------------
 
+
 class TestCodeAttribute:
     """Verify code attribute set on each class."""
 
@@ -156,6 +159,7 @@ class TestCodeAttribute:
 # ---------------------------------------------------------------------------
 # Catch categories
 # ---------------------------------------------------------------------------
+
 
 class TestCatchCategories:
     """Verify catching base classes catches all subclasses."""
@@ -207,6 +211,7 @@ class TestCatchCategories:
 # Custom attributes preserved
 # ---------------------------------------------------------------------------
 
+
 class TestCustomAttributes:
     """Verify domain-specific attributes are preserved after re-parenting."""
 
@@ -220,7 +225,9 @@ class TestCustomAttributes:
         assert exc.code == "RATE_LIMIT_EXCEEDED"
 
     def test_template_load_error_attrs(self):
-        exc = TemplateLoadError(template_name="bad_template", errors=["missing field", "bad type"])
+        exc = TemplateLoadError(
+            template_name="bad_template", errors=["missing field", "bad type"]
+        )
         assert exc.template_name == "bad_template"
         assert exc.errors == ["missing field", "bad type"]
         assert "bad_template" in str(exc)
@@ -243,6 +250,7 @@ class TestCustomAttributes:
 # ---------------------------------------------------------------------------
 # FastAPI exception handler
 # ---------------------------------------------------------------------------
+
 
 class TestFastAPIExceptionHandler:
     """Verify the AppError exception handler returns correct responses."""

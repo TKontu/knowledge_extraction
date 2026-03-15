@@ -4,13 +4,13 @@ import pytest
 
 from services.extraction.schema_adapter import SchemaAdapter
 from services.projects.templates import (
-    COMPANY_ANALYSIS_TEMPLATE,
-    RESEARCH_SURVEY_TEMPLATE,
-    CONTRACT_REVIEW_TEMPLATE,
     BOOK_CATALOG_TEMPLATE,
+    COMPANY_ANALYSIS_TEMPLATE,
+    CONTRACT_REVIEW_TEMPLATE,
+    DEFAULT_EXTRACTION_TEMPLATE,
     DRIVETRAIN_COMPANY_TEMPLATE,
     DRIVETRAIN_COMPANY_TEMPLATE_SIMPLE,
-    DEFAULT_EXTRACTION_TEMPLATE,
+    RESEARCH_SURVEY_TEMPLATE,
 )
 
 
@@ -61,7 +61,9 @@ class TestAllTemplatesValid:
         for group in field_groups:
             assert group.name, f"{template_name}: group missing name"
             assert group.description, f"{template_name}: group missing description"
-            assert len(group.fields) > 0, f"{template_name}: group {group.name} has no fields"
+            assert len(group.fields) > 0, (
+                f"{template_name}: group {group.name} has no fields"
+            )
 
 
 class TestEntityListMerging:
@@ -75,7 +77,10 @@ class TestEntityListMerging:
     def orchestrator(self):
         """Create orchestrator with default context, skip if deps not available."""
         try:
-            from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
+            from services.extraction.schema_orchestrator import (
+                SchemaExtractionOrchestrator,
+            )
+
             return SchemaExtractionOrchestrator(schema_extractor=None)
         except ImportError:
             pytest.skip("structlog not available")
@@ -84,8 +89,11 @@ class TestEntityListMerging:
     def orchestrator_with_product_name(self):
         """Create orchestrator with product_name in entity_id_fields."""
         try:
-            from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
             from services.extraction.schema_adapter import ExtractionContext
+            from services.extraction.schema_orchestrator import (
+                SchemaExtractionOrchestrator,
+            )
+
             context = ExtractionContext(
                 entity_id_fields=["product_name", "entity_id", "name", "id"],
             )
@@ -96,9 +104,18 @@ class TestEntityListMerging:
     def test_merge_entity_lists_with_product_name(self, orchestrator_with_product_name):
         """Merging works with product_name field when context includes it."""
         chunk_results = [
-            {"products": [{"product_name": "Product A", "price": 100}], "confidence": 0.9},
-            {"products": [{"product_name": "Product B", "price": 200}], "confidence": 0.8},
-            {"products": [{"product_name": "Product A", "price": 150}], "confidence": 0.7},
+            {
+                "products": [{"product_name": "Product A", "price": 100}],
+                "confidence": 0.9,
+            },
+            {
+                "products": [{"product_name": "Product B", "price": 200}],
+                "confidence": 0.8,
+            },
+            {
+                "products": [{"product_name": "Product A", "price": 150}],
+                "confidence": 0.7,
+            },
         ]
 
         merged = orchestrator_with_product_name._merge_entity_lists(chunk_results)
@@ -111,9 +128,18 @@ class TestEntityListMerging:
     def test_merge_entity_lists_with_entity_id(self, orchestrator):
         """Merging works with entity_id field (alternative to product_name)."""
         chunk_results = [
-            {"entities": [{"entity_id": "E001", "name": "Entity A"}], "confidence": 0.9},
-            {"entities": [{"entity_id": "E002", "name": "Entity B"}], "confidence": 0.8},
-            {"entities": [{"entity_id": "E001", "name": "Entity A Updated"}], "confidence": 0.7},
+            {
+                "entities": [{"entity_id": "E001", "name": "Entity A"}],
+                "confidence": 0.9,
+            },
+            {
+                "entities": [{"entity_id": "E002", "name": "Entity B"}],
+                "confidence": 0.8,
+            },
+            {
+                "entities": [{"entity_id": "E001", "name": "Entity A Updated"}],
+                "confidence": 0.7,
+            },
         ]
 
         merged = orchestrator._merge_entity_lists(chunk_results)
@@ -141,6 +167,7 @@ class TestProfileUsedInPipeline:
         """Extractions should store schema name in profile_used field."""
         try:
             from services.extraction.pipeline import SchemaExtractionPipeline
+
             assert hasattr(SchemaExtractionPipeline, "extract_source")
             assert hasattr(SchemaExtractionPipeline, "extract_project")
         except ImportError:

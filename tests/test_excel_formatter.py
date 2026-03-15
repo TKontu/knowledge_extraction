@@ -59,4 +59,6 @@ class TestExcelFormatter:
 
         # Width should be based on longest line (19) + padding (2) = 21
         # Not total length (29) + padding (2) = 31
-        assert width <= 25, f"Width {width} should be based on longest line (~21), not total length (~31)"
+        assert width <= 25, (
+            f"Width {width} should be based on longest line (~21), not total length (~31)"
+        )

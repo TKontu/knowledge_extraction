@@ -149,7 +149,7 @@ class LLMGroundingVerifier:
         field_name: str,
         value: Any,
         source_content: str,
-    ) -> "RescueResult":
+    ) -> RescueResult:
         """Ask LLM to find the exact verbatim passage supporting a value.
 
         Used for borderline grounding scores (0.3-0.8) where string-match

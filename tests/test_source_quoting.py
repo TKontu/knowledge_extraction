@@ -1,13 +1,12 @@
 """Tests for source quoting in extraction prompts and merge."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
 from services.extraction.field_groups import FieldDefinition, FieldGroup
 from services.extraction.schema_extractor import SchemaExtractor
 from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
-
 
 # Reusable fixtures
 MANUFACTURING_GROUP = FieldGroup(
@@ -48,6 +47,7 @@ PRODUCTS_GROUP = FieldGroup(
 @pytest.fixture
 def llm_config():
     from config import LLMConfig
+
     return LLMConfig(
         base_url="http://localhost:9003/v1",
         embedding_base_url="http://localhost:9003/v1",
@@ -68,6 +68,7 @@ def llm_config():
 @pytest.fixture
 def mock_extractor():
     from unittest.mock import AsyncMock, Mock
+
     extractor = Mock()
     extractor.extract_field_group = AsyncMock(return_value={"test": "data"})
     return extractor
@@ -77,52 +78,50 @@ class TestPromptQuoting:
     """Test that quoting instructions appear/disappear based on flag."""
 
     def test_non_entity_prompt_includes_quotes_when_enabled(self, llm_config):
-            extractor = SchemaExtractor(llm_config, source_quoting=True)
-            prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
-            assert "_quotes" in prompt
-            assert "verbatim excerpt" in prompt
+        extractor = SchemaExtractor(llm_config, source_quoting=True)
+        prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
+        assert "_quotes" in prompt
+        assert "verbatim excerpt" in prompt
 
     def test_non_entity_prompt_excludes_quotes_when_disabled(self, llm_config):
-            extractor = SchemaExtractor(llm_config, source_quoting=False)
-            prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
-            assert "_quotes" not in prompt
+        extractor = SchemaExtractor(llm_config, source_quoting=False)
+        prompt = extractor._build_system_prompt(MANUFACTURING_GROUP)
+        assert "_quotes" not in prompt
 
     def test_entity_prompt_includes_quote_when_enabled(self, llm_config):
-            extractor = SchemaExtractor(llm_config, source_quoting=True)
-            prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
-            assert "_quote" in prompt
-            assert "verbatim excerpt" in prompt
+        extractor = SchemaExtractor(llm_config, source_quoting=True)
+        prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
+        assert "_quote" in prompt
+        assert "verbatim excerpt" in prompt
 
     def test_entity_prompt_excludes_quote_when_disabled(self, llm_config):
-            extractor = SchemaExtractor(llm_config, source_quoting=False)
-            prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
-            assert "_quote" not in prompt
+        extractor = SchemaExtractor(llm_config, source_quoting=False)
+        prompt = extractor._build_entity_list_system_prompt(PRODUCTS_GROUP)
+        assert "_quote" not in prompt
 
     def test_entity_prompt_strict_quoting(self, llm_config):
-            """strict_quoting=True adds stricter quoting instructions for entity lists."""
-            extractor = SchemaExtractor(llm_config, source_quoting=True)
-            prompt = extractor._build_entity_list_system_prompt(
-                PRODUCTS_GROUP, strict_quoting=True
-            )
-            assert "CRITICAL QUOTING REQUIREMENT" in prompt
-            assert "word-for-word" in prompt
+        """strict_quoting=True adds stricter quoting instructions for entity lists."""
+        extractor = SchemaExtractor(llm_config, source_quoting=True)
+        prompt = extractor._build_entity_list_system_prompt(
+            PRODUCTS_GROUP, strict_quoting=True
+        )
+        assert "CRITICAL QUOTING REQUIREMENT" in prompt
+        assert "word-for-word" in prompt
 
     def test_entity_prompt_normal_quoting(self, llm_config):
-            """strict_quoting=False uses standard quoting instructions."""
-            extractor = SchemaExtractor(llm_config, source_quoting=True)
-            prompt = extractor._build_entity_list_system_prompt(
-                PRODUCTS_GROUP, strict_quoting=False
-            )
-            assert "CRITICAL QUOTING REQUIREMENT" not in prompt
-            assert "verbatim excerpt" in prompt
+        """strict_quoting=False uses standard quoting instructions."""
+        extractor = SchemaExtractor(llm_config, source_quoting=True)
+        prompt = extractor._build_entity_list_system_prompt(
+            PRODUCTS_GROUP, strict_quoting=False
+        )
+        assert "CRITICAL QUOTING REQUIREMENT" not in prompt
+        assert "verbatim excerpt" in prompt
 
     def test_strict_quoting_routed_to_entity_list(self, llm_config):
-            """_build_system_prompt passes strict_quoting to entity list builder."""
-            extractor = SchemaExtractor(llm_config, source_quoting=True)
-            prompt = extractor._build_system_prompt(
-                PRODUCTS_GROUP, strict_quoting=True
-            )
-            assert "CRITICAL QUOTING REQUIREMENT" in prompt
+        """_build_system_prompt passes strict_quoting to entity list builder."""
+        extractor = SchemaExtractor(llm_config, source_quoting=True)
+        prompt = extractor._build_system_prompt(PRODUCTS_GROUP, strict_quoting=True)
+        assert "CRITICAL QUOTING REQUIREMENT" in prompt
 
 
 class TestQuoteMerge:
@@ -145,7 +144,8 @@ class TestQuoteMerge:
     def test_quotes_merged_from_best_chunk(self, mock_extractor):
         """Quotes from higher-confidence chunk should win."""
         orch = SchemaExtractionOrchestrator(
-            mock_extractor, extraction_config=self._make_config(quoting=True),
+            mock_extractor,
+            extraction_config=self._make_config(quoting=True),
         )
         chunk_results = [
             {
@@ -160,12 +160,16 @@ class TestQuoteMerge:
             },
         ]
         merged = orch._merge_chunk_results(chunk_results, MANUFACTURING_GROUP)
-        assert merged.get("_quotes", {}).get("manufactures_gearboxes") == "we produce gearboxes"
+        assert (
+            merged.get("_quotes", {}).get("manufactures_gearboxes")
+            == "we produce gearboxes"
+        )
 
     def test_missing_quotes_handled_gracefully(self, mock_extractor):
         """Chunks without _quotes should not cause errors."""
         orch = SchemaExtractionOrchestrator(
-            mock_extractor, extraction_config=self._make_config(quoting=True),
+            mock_extractor,
+            extraction_config=self._make_config(quoting=True),
         )
         chunk_results = [
             {"manufactures_gearboxes": True, "confidence": 0.8},
@@ -178,7 +182,8 @@ class TestQuoteMerge:
     def test_quotes_not_added_when_disabled(self, mock_extractor):
         """When quoting is disabled, no _quotes key should appear."""
         orch = SchemaExtractionOrchestrator(
-            mock_extractor, extraction_config=self._make_config(quoting=False),
+            mock_extractor,
+            extraction_config=self._make_config(quoting=False),
         )
         chunk_results = [
             {

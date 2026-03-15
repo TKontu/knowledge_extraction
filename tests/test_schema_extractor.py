@@ -55,6 +55,7 @@ class TestSchemaExtractor:
     @pytest.fixture
     def llm_config(self):
         from config import LLMConfig
+
         return LLMConfig(
             base_url="http://localhost:9003/v1",
             embedding_base_url="http://localhost:9003/v1",
@@ -128,7 +129,9 @@ class TestSchemaExtractor:
         extractor = SchemaExtractor(llm_config)
 
         # Simulate truncated JSON response (finish_reason="length")
-        truncated_json = '{"products_gearbox": [{"product_name": "Prod1"}, {"product_name": "Prod2'
+        truncated_json = (
+            '{"products_gearbox": [{"product_name": "Prod1"}, {"product_name": "Prod2'
+        )
         extractor.client = MagicMock()
         extractor.client.chat.completions.create = AsyncMock(
             return_value=MagicMock(
@@ -211,6 +214,7 @@ class TestPromptGrounding:
     @pytest.fixture
     def extractor(self):
         from config import LLMConfig
+
         llm = LLMConfig(
             base_url="http://localhost:9003/v1",
             embedding_base_url="http://localhost:9003/v1",
@@ -282,6 +286,7 @@ class TestUserPromptCleaning:
     @pytest.fixture
     def extractor(self):
         from config import LLMConfig
+
         llm = LLMConfig(
             base_url="http://localhost:9003/v1",
             embedding_base_url="http://localhost:9003/v1",
@@ -301,7 +306,9 @@ class TestUserPromptCleaning:
 
     def test_user_prompt_strips_structural_junk(self, extractor):
         """User prompt should have bare nav links removed."""
-        content = "* [Home](/home)\n* [About](/about)\n\n# Real Content\n\nActual data here."
+        content = (
+            "* [Home](/home)\n* [About](/about)\n\n# Real Content\n\nActual data here."
+        )
         prompt = extractor._build_user_prompt(content, MANUFACTURING_GROUP, "Test Co")
         assert "* [Home](/home)" not in prompt
         assert "* [About](/about)" not in prompt
@@ -317,7 +324,9 @@ class TestUserPromptCleaning:
 
     def test_user_prompt_preserves_real_content(self, extractor):
         """User prompt should preserve all non-junk content."""
-        content = "# Gearbox Products\n\nWe manufacture planetary gearboxes rated at 100kW."
+        content = (
+            "# Gearbox Products\n\nWe manufacture planetary gearboxes rated at 100kW."
+        )
         prompt = extractor._build_user_prompt(content, MANUFACTURING_GROUP, "Acme Corp")
         assert "Gearbox Products" in prompt
         assert "planetary gearboxes" in prompt
@@ -353,7 +362,5 @@ class TestUserPromptCleaning:
 
     def test_user_prompt_grounding_language(self, extractor):
         """User prompt should say 'ONLY the content below'."""
-        prompt = extractor._build_user_prompt(
-            "content", MANUFACTURING_GROUP, None
-        )
+        prompt = extractor._build_user_prompt("content", MANUFACTURING_GROUP, None)
         assert "ONLY the content below" in prompt

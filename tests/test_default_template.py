@@ -1,7 +1,5 @@
 """Tests for DEFAULT_EXTRACTION_TEMPLATE."""
 
-import pytest
-
 from services.extraction.schema_adapter import SchemaAdapter
 
 

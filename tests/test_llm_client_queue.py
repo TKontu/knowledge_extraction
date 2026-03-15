@@ -17,6 +17,7 @@ class TestLLMClientExtractEntities:
     def llm_config(self):
         """Create LLMConfig for testing."""
         from config import LLMConfig
+
         return LLMConfig(
             base_url="http://localhost:9003/v1",
             embedding_base_url="http://localhost:9003/v1",
@@ -61,8 +62,18 @@ class TestLLMClientExtractEntities:
             status="success",
             result={
                 "entities": [
-                    {"type": "plan", "value": "Professional Plan", "normalized": "professional_plan", "attributes": {}},
-                    {"type": "feature", "value": "API Access", "normalized": "api_access", "attributes": {}},
+                    {
+                        "type": "plan",
+                        "value": "Professional Plan",
+                        "normalized": "professional_plan",
+                        "attributes": {},
+                    },
+                    {
+                        "type": "feature",
+                        "value": "API Access",
+                        "normalized": "api_access",
+                        "attributes": {},
+                    },
                 ]
             },
             error=None,
@@ -108,6 +119,7 @@ class TestLLMClientExtractEntities:
         )
 
         from services.llm.client import LLMClient
+
         client = LLMClient(llm_config, llm_queue=mock_queue)
 
         await client.extract_entities(
@@ -143,6 +155,7 @@ class TestLLMClientExtractEntities:
         )
 
         from services.llm.client import LLMClient
+
         client = LLMClient(llm_config, llm_queue=mock_queue)
 
         await client.extract_entities(
@@ -219,5 +232,3 @@ class TestLLMClientExtractEntities:
             )
 
         assert "Entity extraction failed" in str(exc_info.value)
-
-

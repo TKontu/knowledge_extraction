@@ -86,6 +86,7 @@ class TestPipelineExtractSource:
         call_args = mock_orchestrator_with_context.extract_all_groups.call_args
         assert call_args.kwargs.get("source_context") == "Test Company"
 
+
 class TestSchemaPipelineResultObservability:
     """Test that SchemaPipelineResult includes observability counters."""
 

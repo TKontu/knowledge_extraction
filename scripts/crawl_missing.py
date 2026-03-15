@@ -7,7 +7,6 @@ Usage:
 """
 
 import argparse
-import json
 import re
 import time
 from pathlib import Path
@@ -89,9 +88,17 @@ def load_missing_urls(filepath: str) -> list[tuple[str, str]]:
 
 def main():
     parser = argparse.ArgumentParser(description="Crawl missing companies")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be crawled without doing it")
-    parser.add_argument("--delay", type=float, default=0.5, help="Delay between requests in seconds")
-    parser.add_argument("--input", default="output/missing_companies.txt", help="Input file with URLs")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be crawled without doing it",
+    )
+    parser.add_argument(
+        "--delay", type=float, default=0.5, help="Delay between requests in seconds"
+    )
+    parser.add_argument(
+        "--input", default="output/missing_companies.txt", help="Input file with URLs"
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -101,7 +108,9 @@ def main():
 
     urls = load_missing_urls(input_path)
     print(f"Loaded {len(urls)} URLs from {input_path}")
-    print(f"Settings: max_depth={MAX_DEPTH}, limit={LIMIT}, smart_crawl={SMART_CRAWL_ENABLED}")
+    print(
+        f"Settings: max_depth={MAX_DEPTH}, limit={LIMIT}, smart_crawl={SMART_CRAWL_ENABLED}"
+    )
     print()
 
     if args.dry_run:

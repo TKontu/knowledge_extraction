@@ -230,9 +230,7 @@ class ExtractionRepository:
         result = self._session.execute(query)
         return list(result.scalars().all())
 
-    def query_jsonb(
-        self, project_id: UUID, path: str, value: Any
-    ) -> list[Extraction]:
+    def query_jsonb(self, project_id: UUID, path: str, value: Any) -> list[Extraction]:
         """Query extractions by JSONB path and value.
 
         Args:
@@ -358,9 +356,7 @@ class ExtractionRepository:
             extraction.entities_extracted = entities_extracted
             self._session.flush()
 
-    def update_embedding_id(
-        self, extraction_id: UUID, embedding_id: str
-    ) -> None:
+    def update_embedding_id(self, extraction_id: UUID, embedding_id: str) -> None:
         """Update the embedding_id for an extraction.
 
         Args:
@@ -372,9 +368,7 @@ class ExtractionRepository:
             extraction.embedding_id = embedding_id
             self._session.flush()
 
-    def update_embedding_ids_batch(
-        self, extraction_ids: list[UUID]
-    ) -> int:
+    def update_embedding_ids_batch(self, extraction_ids: list[UUID]) -> int:
         """Update embedding_id for multiple extractions in batch.
 
         Sets embedding_id to the string representation of each extraction's ID,
@@ -460,8 +454,7 @@ class ExtractionRepository:
             return 0
 
         mappings = [
-            {"id": extraction_id, "data": data}
-            for extraction_id, data in updates
+            {"id": extraction_id, "data": data} for extraction_id, data in updates
         ]
         self._session.bulk_update_mappings(Extraction, mappings)
         self._session.flush()

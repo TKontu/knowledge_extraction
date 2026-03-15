@@ -59,9 +59,7 @@ class QdrantRepository:
         loop = asyncio.get_event_loop()
 
         # Check if collection exists
-        collections = await loop.run_in_executor(
-            None, self.client.get_collections
-        )
+        collections = await loop.run_in_executor(None, self.client.get_collections)
         if any(c.name == self.collection_name for c in collections.collections):
             return
 

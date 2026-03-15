@@ -31,8 +31,15 @@ class TestConfidenceNoneBypass:
     async def test_none_confidence_excluded(self, merge_service, column_meta):
         """Candidates with confidence=None should be excluded."""
         candidates = [
-            MergeCandidate(value="Acme", source_url="url1", source_title="Page1", confidence=None),
-            MergeCandidate(value="Acme Corp", source_url="url2", source_title="Page2", confidence=0.8),
+            MergeCandidate(
+                value="Acme", source_url="url1", source_title="Page1", confidence=None
+            ),
+            MergeCandidate(
+                value="Acme Corp",
+                source_url="url2",
+                source_title="Page2",
+                confidence=0.8,
+            ),
         ]
 
         result = await merge_service.merge_column("name", column_meta, candidates)
@@ -44,8 +51,15 @@ class TestConfidenceNoneBypass:
     async def test_all_none_confidence_returns_null(self, merge_service, column_meta):
         """All None confidence → all filtered → null result."""
         candidates = [
-            MergeCandidate(value="Acme", source_url="url1", source_title="Page1", confidence=None),
-            MergeCandidate(value="Acme Corp", source_url="url2", source_title="Page2", confidence=None),
+            MergeCandidate(
+                value="Acme", source_url="url1", source_title="Page1", confidence=None
+            ),
+            MergeCandidate(
+                value="Acme Corp",
+                source_url="url2",
+                source_title="Page2",
+                confidence=None,
+            ),
         ]
 
         result = await merge_service.merge_column("name", column_meta, candidates)
@@ -56,8 +70,12 @@ class TestConfidenceNoneBypass:
     async def test_low_confidence_excluded(self, merge_service, column_meta):
         """Candidates below min_confidence (0.3) should be excluded."""
         candidates = [
-            MergeCandidate(value="Bad", source_url="url1", source_title="Page1", confidence=0.1),
-            MergeCandidate(value="Good", source_url="url2", source_title="Page2", confidence=0.8),
+            MergeCandidate(
+                value="Bad", source_url="url1", source_title="Page1", confidence=0.1
+            ),
+            MergeCandidate(
+                value="Good", source_url="url2", source_title="Page2", confidence=0.8
+            ),
         ]
 
         result = await merge_service.merge_column("name", column_meta, candidates)
@@ -67,8 +85,12 @@ class TestConfidenceNoneBypass:
     async def test_valid_confidence_passes(self, merge_service, column_meta):
         """Candidates at or above min_confidence should pass."""
         candidates = [
-            MergeCandidate(value="OK", source_url="url1", source_title="Page1", confidence=0.3),
-            MergeCandidate(value="Good", source_url="url2", source_title="Page2", confidence=0.8),
+            MergeCandidate(
+                value="OK", source_url="url1", source_title="Page1", confidence=0.3
+            ),
+            MergeCandidate(
+                value="Good", source_url="url2", source_title="Page2", confidence=0.8
+            ),
         ]
 
         result = await merge_service.merge_column("name", column_meta, candidates)

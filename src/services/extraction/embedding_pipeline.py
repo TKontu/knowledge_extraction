@@ -164,4 +164,3 @@ class ExtractionEmbeddingService:
             return EmbeddingResult(
                 embedded_count=0, errors=[str(e)], failed_count=len(valid)
             )
-

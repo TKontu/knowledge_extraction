@@ -142,7 +142,7 @@ class ServiceContainer:
         ]:
             try:
                 await asyncio.wait_for(coro, timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("shutdown_timeout", service=name)
                 errors.append(f"{name}: timeout")
             except Exception as e:

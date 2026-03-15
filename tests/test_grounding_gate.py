@@ -29,9 +29,15 @@ def _loc(idx: int = 0) -> SourceLocation:
 
 
 # Default field_types for tests — all required unless overridden
-_STRING_TYPES = {"company_name": "string", "employee_count": "integer",
-                 "fabricated": "string", "location": "string",
-                 "keep": "string", "drop": "string", "rescue": "string"}
+_STRING_TYPES = {
+    "company_name": "string",
+    "employee_count": "integer",
+    "fabricated": "string",
+    "location": "string",
+    "keep": "string",
+    "drop": "string",
+    "rescue": "string",
+}
 
 
 class TestFieldItemGating:
@@ -42,7 +48,9 @@ class TestFieldItemGating:
             chunk_index=0,
             field_items={
                 "company_name": FieldItem("ABB", 0.9, "ABB Corp", 1.0, _loc()),
-                "employee_count": FieldItem(105000, 0.8, "105,000 employees", 0.95, _loc()),
+                "employee_count": FieldItem(
+                    105000, 0.8, "105,000 employees", 0.95, _loc()
+                ),
             },
         )
         gated = await apply_grounding_gate(
@@ -143,7 +151,9 @@ class TestFieldTypeAwareGating:
             },
         )
         gated = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"is_public": "boolean"},
         )
         assert "is_public" in gated.field_items
@@ -160,7 +170,9 @@ class TestFieldTypeAwareGating:
             },
         )
         gated = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"description": "summary"},
         )
         assert "description" in gated.field_items
@@ -176,7 +188,9 @@ class TestFieldTypeAwareGating:
             },
         )
         gated = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"overview": "summary"},
         )
         assert "overview" in gated.field_items
@@ -195,7 +209,9 @@ class TestFieldTypeAwareGating:
             },
         )
         gated = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"company_name": "string"},
         )
         assert "company_name" in gated.field_items
@@ -275,7 +291,9 @@ class TestListItemGating:
             },
         )
         gated = await apply_grounding_gate(
-            result, "source", mock_verifier,
+            result,
+            "source",
+            mock_verifier,
             field_types={"flags": "boolean"},
         )
         assert "flags" in gated.list_items
@@ -337,7 +355,10 @@ class TestEntityItemGating:
                 "products": [
                     EntityItem(
                         {"model_number": "ABC-123", "spec": "500W"},
-                        0.9, "partial", 0.5, _loc(),
+                        0.9,
+                        "partial",
+                        0.5,
+                        _loc(),
                     ),
                 ],
             },
@@ -368,7 +389,9 @@ class TestGroundingModeOverrides:
     """Tests for grounding_mode_overrides parameter (Fix G)."""
 
     @pytest.mark.asyncio
-    async def test_summary_field_with_required_override_gets_rescued(self, mock_verifier):
+    async def test_summary_field_with_required_override_gets_rescued(
+        self, mock_verifier
+    ):
         """A summary field normally uses none mode (no rescue), but with
         grounding_mode override to 'required', it should be rescued."""
         mock_verifier.rescue_quote.return_value = RescueResult(
@@ -382,7 +405,9 @@ class TestGroundingModeOverrides:
         )
         # Without override: summary field is none → borderline kept without rescue
         gated_no_override = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"description": "summary"},
         )
         assert "description" in gated_no_override.field_items
@@ -390,7 +415,9 @@ class TestGroundingModeOverrides:
 
         # With override: summary field treated as required → rescue attempted
         gated_with_override = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"description": "summary"},
             grounding_mode_overrides={"description": "required"},
         )
@@ -415,7 +442,9 @@ class TestGroundingModeOverrides:
         )
         # Without override: summary field (none mode) in borderline → kept as-is
         gated_no_override = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"overview": "summary"},
         )
         assert "overview" in gated_no_override.field_items
@@ -423,7 +452,9 @@ class TestGroundingModeOverrides:
 
         # With override: required mode → rescue attempted (fails → dropped)
         gated_with_override = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"overview": "summary"},
             grounding_mode_overrides={"overview": "required"},
         )
@@ -444,7 +475,9 @@ class TestGroundingModeOverrides:
             },
         )
         gated = await apply_grounding_gate(
-            result, "source text", mock_verifier,
+            result,
+            "source text",
+            mock_verifier,
             field_types={"description": "summary", "overview": "summary"},
             grounding_mode_overrides={"description": "required"},
         )

@@ -16,7 +16,6 @@ Usage:
 
 import json
 import re
-import sys
 from pathlib import Path
 
 import psycopg
@@ -63,13 +62,16 @@ def main():
 
     with conn.cursor() as cur:
         # Total company_meta extractions
-        cur.execute("""
+        cur.execute(
+            """
             SELECT count(*), data_version
             FROM extractions
             WHERE project_id = %s AND extraction_type = 'company_meta'
             GROUP BY data_version
             ORDER BY data_version
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         versions = cur.fetchall()
         print(f"\nExtractions by data_version: {versions}")
         report["extraction_counts_by_version"] = [
@@ -77,7 +79,8 @@ def main():
         ]
 
         # Analyze locations field in v2 extractions
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
                 e.id,
                 e.source_id,
@@ -91,7 +94,9 @@ def main():
               AND e.extraction_type = 'company_meta'
               AND e.data_version = 2
             LIMIT 500
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         rows = cur.fetchall()
 
         locations_empty = 0
@@ -114,11 +119,13 @@ def main():
                 if items:
                     locations_has_items += 1
                     if len(sample_locations_data) < 10:
-                        sample_locations_data.append({
-                            "extraction_id": str(eid),
-                            "source_group": sg,
-                            "items": items,
-                        })
+                        sample_locations_data.append(
+                            {
+                                "extraction_id": str(eid),
+                                "source_group": sg,
+                                "items": items,
+                            }
+                        )
                 else:
                     # Check if it has "value" key instead (v1 style in v2 wrapper)
                     val = loc_field.get("value")
@@ -129,11 +136,13 @@ def main():
             else:
                 # Unexpected format
                 if len(sample_locations_data) < 10:
-                    sample_locations_data.append({
-                        "extraction_id": str(eid),
-                        "raw_type": type(loc_field).__name__,
-                        "raw_value": str(loc_field)[:200],
-                    })
+                    sample_locations_data.append(
+                        {
+                            "extraction_id": str(eid),
+                            "raw_type": type(loc_field).__name__,
+                            "raw_value": str(loc_field)[:200],
+                        }
+                    )
 
             # --- certifications (for comparison) ---
             cert_field = data.get("certifications")
@@ -144,22 +153,24 @@ def main():
                 if items:
                     certs_has_items += 1
                     if len(sample_certs_data) < 5:
-                        sample_certs_data.append({
-                            "extraction_id": str(eid),
-                            "source_group": sg,
-                            "items": items[:5],
-                        })
+                        sample_certs_data.append(
+                            {
+                                "extraction_id": str(eid),
+                                "source_group": sg,
+                                "items": items[:5],
+                            }
+                        )
                 else:
                     certs_empty += 1
 
         total_v2 = len(rows)
         print(f"\nTotal v2 extractions sampled: {total_v2}")
-        print(f"\n--- locations field ---")
+        print("\n--- locations field ---")
         print(f"  missing (no key):      {locations_missing}")
         print(f"  empty items []:        {locations_empty}")
         print(f"  has items:             {locations_has_items}")
         print(f"  has value (not items): {locations_has_value}")
-        print(f"\n--- certifications field (comparison) ---")
+        print("\n--- certifications field (comparison) ---")
         print(f"  missing (no key):      {certs_missing}")
         print(f"  empty items []:        {certs_empty}")
         print(f"  has items:             {certs_has_items}")
@@ -178,11 +189,11 @@ def main():
         }
 
         if sample_locations_data:
-            print(f"\n  Sample locations with items:")
+            print("\n  Sample locations with items:")
             for s in sample_locations_data[:3]:
                 print(f"    {json.dumps(s, indent=2)[:300]}")
         else:
-            print(f"\n  NO locations items found in any extraction!")
+            print("\n  NO locations items found in any extraction!")
 
     # =========================================================================
     # 2. FULL COUNT — all company_meta extractions
@@ -193,7 +204,8 @@ def main():
 
     with conn.cursor() as cur:
         # Use SQL JSON to check locations field across all extractions
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
                 count(*) AS total,
                 count(*) FILTER (WHERE data ? 'locations') AS has_locations_key,
@@ -212,15 +224,23 @@ def main():
             WHERE project_id = %s
               AND extraction_type = 'company_meta'
               AND data_version = 2
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         row = cur.fetchone()
         total, has_loc_key, has_loc_items, has_cert_key, has_cert_items = row
 
         print(f"\nTotal v2 company_meta extractions: {total}")
-        print(f"  Has 'locations' key:     {has_loc_key} ({100*has_loc_key/max(total,1):.1f}%)")
-        print(f"  Has location items > 0:  {has_loc_items} ({100*has_loc_items/max(total,1):.1f}%)")
+        print(
+            f"  Has 'locations' key:     {has_loc_key} ({100 * has_loc_key / max(total, 1):.1f}%)"
+        )
+        print(
+            f"  Has location items > 0:  {has_loc_items} ({100 * has_loc_items / max(total, 1):.1f}%)"
+        )
         print(f"  Has 'certifications' key: {has_cert_key}")
-        print(f"  Has cert items > 0:      {has_cert_items} ({100*has_cert_items/max(total,1):.1f}%)")
+        print(
+            f"  Has cert items > 0:      {has_cert_items} ({100 * has_cert_items / max(total, 1):.1f}%)"
+        )
 
         report["full_count"] = {
             "total_v2_company_meta": total,
@@ -231,7 +251,8 @@ def main():
         }
 
         # Also check v1 extractions
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
                 count(*) AS total,
                 count(*) FILTER (
@@ -244,9 +265,13 @@ def main():
             WHERE project_id = %s
               AND extraction_type = 'company_meta'
               AND (data_version = 1 OR data_version IS NULL)
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         v1_row = cur.fetchone()
-        print(f"\nv1 company_meta extractions: {v1_row[0]}, with locations data: {v1_row[1]}")
+        print(
+            f"\nv1 company_meta extractions: {v1_row[0]}, with locations data: {v1_row[1]}"
+        )
         report["v1_count"] = {"total": v1_row[0], "has_locations_data": v1_row[1]}
 
     # =========================================================================
@@ -258,7 +283,8 @@ def main():
 
     with conn.cursor() as cur:
         # Get a few full extraction data blobs to see exactly what the LLM returned
-        cur.execute("""
+        cur.execute(
+            """
             SELECT e.id, e.source_group, e.data, e.confidence, e.chunk_index,
                    s.uri, s.title
             FROM extractions e
@@ -268,7 +294,9 @@ def main():
               AND e.data_version = 2
             ORDER BY random()
             LIMIT 10
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         samples = cur.fetchall()
 
         raw_samples = []
@@ -286,8 +314,12 @@ def main():
             }
             raw_samples.append(sample)
             print(f"\n  [{sg}] {uri}")
-            print(f"    locations: {json.dumps(data.get('locations'), default=str)[:200]}")
-            print(f"    certifications: {json.dumps(data.get('certifications'), default=str)[:200]}")
+            print(
+                f"    locations: {json.dumps(data.get('locations'), default=str)[:200]}"
+            )
+            print(
+                f"    certifications: {json.dumps(data.get('certifications'), default=str)[:200]}"
+            )
 
         report["raw_samples"] = raw_samples
 
@@ -300,13 +332,16 @@ def main():
 
     with conn.cursor() as cur:
         # Pick source groups that have company_meta extractions
-        cur.execute("""
+        cur.execute(
+            """
             SELECT DISTINCT e.source_group
             FROM extractions e
             WHERE e.project_id = %s AND e.extraction_type = 'company_meta'
             ORDER BY e.source_group
             LIMIT %s
-        """, (PROJECT_ID, SAMPLE_LIMIT))
+        """,
+            (PROJECT_ID, SAMPLE_LIMIT),
+        )
         source_groups = [r[0] for r in cur.fetchall()]
 
         groups_with_location_text = 0
@@ -314,14 +349,17 @@ def main():
         location_evidence = []
 
         for sg in source_groups:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT s.id, s.uri, s.title,
                        COALESCE(s.cleaned_content, s.content) AS content
                 FROM sources s
                 WHERE s.project_id = %s AND s.source_group = %s
                   AND COALESCE(s.cleaned_content, s.content) IS NOT NULL
                 LIMIT 5
-            """, (PROJECT_ID, sg))
+            """,
+                (PROJECT_ID, sg),
+            )
             sources = cur.fetchall()
 
             group_has_location = False
@@ -340,38 +378,48 @@ def main():
                         end = min(len(content), m.end() + 80)
                         snippet = content[start:end].replace("\n", " ").strip()
                         contexts.append(snippet)
-                    group_matches.append({
-                        "uri": uri,
-                        "title": title,
-                        "match_count": len(matches),
-                        "sample_contexts": contexts[:3],
-                        "content_length": len(content),
-                    })
+                    group_matches.append(
+                        {
+                            "uri": uri,
+                            "title": title,
+                            "match_count": len(matches),
+                            "sample_contexts": contexts[:3],
+                            "content_length": len(content),
+                        }
+                    )
 
             groups_total += 1
             if group_has_location:
                 groups_with_location_text += 1
-                location_evidence.append({
-                    "source_group": sg,
-                    "sources_with_locations": len(group_matches),
-                    "samples": group_matches[:2],
-                })
+                location_evidence.append(
+                    {
+                        "source_group": sg,
+                        "sources_with_locations": len(group_matches),
+                        "samples": group_matches[:2],
+                    }
+                )
 
         print(f"\nSource groups analyzed: {groups_total}")
-        print(f"Groups with location keywords in content: {groups_with_location_text} ({100*groups_with_location_text/max(groups_total,1):.0f}%)")
+        print(
+            f"Groups with location keywords in content: {groups_with_location_text} ({100 * groups_with_location_text / max(groups_total, 1):.0f}%)"
+        )
 
-        print(f"\nSample evidence (first 5 groups):")
+        print("\nSample evidence (first 5 groups):")
         for ev in location_evidence[:5]:
-            print(f"\n  [{ev['source_group']}] — {ev['sources_with_locations']} sources with location text")
+            print(
+                f"\n  [{ev['source_group']}] — {ev['sources_with_locations']} sources with location text"
+            )
             for src in ev["samples"][:2]:
                 print(f"    {src['uri']}")
                 for ctx in src["sample_contexts"][:2]:
-                    print(f"      → \"{ctx[:120]}...\"")
+                    print(f'      → "{ctx[:120]}..."')
 
         report["source_content_analysis"] = {
             "groups_analyzed": groups_total,
             "groups_with_location_keywords": groups_with_location_text,
-            "percentage": round(100 * groups_with_location_text / max(groups_total, 1), 1),
+            "percentage": round(
+                100 * groups_with_location_text / max(groups_total, 1), 1
+            ),
             "evidence_samples": location_evidence[:10],
         }
 
@@ -388,7 +436,8 @@ def main():
             sg = ev["source_group"]
 
             # Get all company_meta extractions for this group
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT e.data, e.chunk_index, e.confidence, s.uri
                 FROM extractions e
                 JOIN sources s ON s.id = e.source_id
@@ -397,7 +446,9 @@ def main():
                   AND e.source_group = %s
                   AND e.data_version = 2
                 ORDER BY e.chunk_index
-            """, (PROJECT_ID, sg))
+            """,
+                (PROJECT_ID, sg),
+            )
             extractions = cur.fetchall()
 
             loc_items_found = 0
@@ -411,13 +462,15 @@ def main():
                 cert_items = cert.get("items", []) if isinstance(cert, dict) else []
                 loc_items_found += len(loc_items)
                 cert_items_found += len(cert_items)
-                extraction_details.append({
-                    "uri": uri,
-                    "chunk": chunk,
-                    "confidence": conf,
-                    "locations": loc,
-                    "certifications_count": len(cert_items),
-                })
+                extraction_details.append(
+                    {
+                        "uri": uri,
+                        "chunk": chunk,
+                        "confidence": conf,
+                        "locations": loc,
+                        "certifications_count": len(cert_items),
+                    }
+                )
 
             entry = {
                 "source_group": sg,
@@ -430,10 +483,16 @@ def main():
             side_by_side.append(entry)
 
             print(f"\n  [{sg}]")
-            print(f"    Extractions: {len(extractions)}, Location items: {loc_items_found}, Cert items: {cert_items_found}")
-            print(f"    Source mentions locations: YES ({ev['sources_with_locations']} pages)")
+            print(
+                f"    Extractions: {len(extractions)}, Location items: {loc_items_found}, Cert items: {cert_items_found}"
+            )
+            print(
+                f"    Source mentions locations: YES ({ev['sources_with_locations']} pages)"
+            )
             if extraction_details:
-                print(f"    Sample extraction locations field: {json.dumps(extraction_details[0]['locations'], default=str)[:200]}")
+                print(
+                    f"    Sample extraction locations field: {json.dumps(extraction_details[0]['locations'], default=str)[:200]}"
+                )
 
     report["side_by_side"] = side_by_side
 
@@ -445,7 +504,9 @@ def main():
     print("=" * 70)
 
     # Reconstruct what the LLM sees for company_meta
-    field_spec_locations = '- "locations" (list): List of {city, country, site_type} objects'
+    field_spec_locations = (
+        '- "locations" (list): List of {city, country, site_type} objects'
+    )
     field_spec_certs = '- "certifications" (list): ISO certifications, industry standards, safety certifications'
 
     prompt_hint = """Extract:
@@ -463,22 +524,30 @@ def main():
     print(f"\nField spec for locations:     {field_spec_locations}")
     print(f"Field spec for certifications: {field_spec_certs}")
     print(f"\nPrompt hint:\n  {prompt_hint}")
-    print(f"\nv2 output format tells LLM to return:")
-    print(f'  {{"value": <extracted_value>, "confidence": 0.0-1.0, "quote": "..."}}')
-    print(f"\n⚠️  KEY ISSUE: v2 format asks for 'value' key, but list fields are stored as 'items'.")
-    print(f"   The LLM sees: return {{\"value\": [...]}} for a list field")
-    print(f"   But the pipeline expects: {{\"items\": [{{\"value\": ..., \"grounding\": ...}}]}}")
-    print(f"\n⚠️  DESCRIPTION ISSUE: 'List of {{city, country, site_type}} objects' tells the LLM")
-    print(f"   to return complex objects, but the v2 per-field format only has one 'value' slot.")
-    print(f"   The LLM may not know how to encode a list of dicts into {{\"value\": [...], \"quote\": \"...\"}}")
+    print("\nv2 output format tells LLM to return:")
+    print('  {"value": <extracted_value>, "confidence": 0.0-1.0, "quote": "..."}')
+    print(
+        "\n⚠️  KEY ISSUE: v2 format asks for 'value' key, but list fields are stored as 'items'."
+    )
+    print('   The LLM sees: return {"value": [...]} for a list field')
+    print('   But the pipeline expects: {"items": [{"value": ..., "grounding": ...}]}')
+    print(
+        "\n⚠️  DESCRIPTION ISSUE: 'List of {city, country, site_type} objects' tells the LLM"
+    )
+    print(
+        "   to return complex objects, but the v2 per-field format only has one 'value' slot."
+    )
+    print(
+        '   The LLM may not know how to encode a list of dicts into {"value": [...], "quote": "..."}'
+    )
 
     report["prompt_analysis"] = {
         "locations_field_spec": field_spec_locations,
         "certifications_field_spec": field_spec_certs,
         "prompt_hint": prompt_hint,
         "v2_output_format_issue": (
-            "v2 format asks LLM for {\"value\": ..., \"confidence\": ..., \"quote\": ...} "
-            "per field. For list fields, the LLM must return {\"value\": [...list items...]}. "
+            'v2 format asks LLM for {"value": ..., "confidence": ..., "quote": ...} '
+            'per field. For list fields, the LLM must return {"value": [...list items...]}. '
             "Complex objects like {city, country, site_type} may confuse the LLM about "
             "how to structure the response. Certifications (simple strings) work; "
             "locations (complex objects) may fail."
@@ -494,7 +563,8 @@ def main():
 
     with conn.cursor() as cur:
         # Get diverse sample of locations field values
-        cur.execute("""
+        cur.execute(
+            """
             SELECT DISTINCT ON (data->'locations')
                    data->'locations' AS loc_json,
                    data->>'_meta' AS meta
@@ -504,7 +574,9 @@ def main():
               AND data_version = 2
               AND data ? 'locations'
             LIMIT 20
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         distinct_formats = cur.fetchall()
 
         print(f"\nDistinct locations field formats found: {len(distinct_formats)}")
@@ -524,12 +596,15 @@ def main():
     print("=" * 70)
 
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT c.source_group, c.data, c.source_count, c.grounded_count
             FROM consolidated_extractions c
             WHERE c.project_id = %s AND c.extraction_type = 'company_meta'
             LIMIT 10
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         consolidated = cur.fetchall()
 
         print(f"\nConsolidated company_meta records: {len(consolidated)}")
@@ -559,7 +634,8 @@ def main():
     print("=" * 70)
 
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT e.data, e.source_group, s.uri
             FROM extractions e
             JOIN sources s ON s.id = e.source_id
@@ -568,7 +644,9 @@ def main():
               AND (e.data_version = 1 OR e.data_version IS NULL)
             ORDER BY random()
             LIMIT 10
-        """, (PROJECT_ID,))
+        """,
+            (PROJECT_ID,),
+        )
         v1_samples = cur.fetchall()
 
         print(f"\nv1 samples found: {len(v1_samples)}")
@@ -599,10 +677,10 @@ def main():
 
     print(f"""
 FINDINGS:
-  - v2 company_meta extractions: {report['full_count']['total_v2_company_meta']}
-  - Extractions with locations items > 0: {report['full_count']['has_location_items']}
-  - Extractions with cert items > 0: {report['full_count']['has_cert_items']}
-  - Source pages with location keywords: {report['source_content_analysis']['percentage']}%
+  - v2 company_meta extractions: {report["full_count"]["total_v2_company_meta"]}
+  - Extractions with locations items > 0: {report["full_count"]["has_location_items"]}
+  - Extractions with cert items > 0: {report["full_count"]["has_cert_items"]}
+  - Source pages with location keywords: {report["source_content_analysis"]["percentage"]}%
 
 HYPOTHESES:
   1. DESCRIPTION COMPLEXITY: "List of {{city, country, site_type}} objects" asks for

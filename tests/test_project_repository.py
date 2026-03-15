@@ -1,9 +1,9 @@
 """Tests for ProjectRepository."""
 
 import pytest
-from datetime import datetime
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from database import engine
 from orm_models import Project
 from services.projects.repository import ProjectRepository
@@ -66,9 +66,7 @@ class TestProjectRepositoryCreate:
         assert len(project.entity_types) == 1
         assert project.is_template is True
 
-    def test_create_project_returns_persisted_object(
-        self, project_repo, db_session
-    ):
+    def test_create_project_returns_persisted_object(self, project_repo, db_session):
         """Created project should be retrievable from database."""
         project = project_repo.create(
             name="persisted",
@@ -76,9 +74,7 @@ class TestProjectRepositoryCreate:
         )
 
         # Verify it's in the database
-        result = db_session.execute(
-            select(Project).where(Project.id == project.id)
-        )
+        result = db_session.execute(select(Project).where(Project.id == project.id))
         db_project = result.scalar_one()
         assert db_project.name == "persisted"
 
@@ -129,9 +125,7 @@ class TestProjectRepositoryGetByName:
 class TestProjectRepositoryListAll:
     """Test ProjectRepository.list_all() method."""
 
-    def test_list_all_returns_active_projects_only(
-        self, project_repo, db_session
-    ):
+    def test_list_all_returns_active_projects_only(self, project_repo, db_session):
         """Should return only active projects by default."""
         # Count pre-existing active projects
         pre_existing = len(project_repo.list_all())

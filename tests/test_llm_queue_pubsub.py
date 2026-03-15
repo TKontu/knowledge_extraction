@@ -16,6 +16,7 @@ from services.llm.worker import LLMWorker
 async def redis_client():
     """Create Redis client for testing."""
     from config import settings
+
     redis_url = getattr(settings, "redis_url", "redis://192.168.0.136:6379")
     redis = Redis.from_url(redis_url, db=0, decode_responses=False)
     yield redis
@@ -161,6 +162,7 @@ class TestPubSubNotification:
 
         async def wait_and_publish(req_id: str, delay: float):
             """Wait for result while publishing response after delay."""
+
             # Publish response in background
             async def publish():
                 await asyncio.sleep(delay)
@@ -216,7 +218,9 @@ class TestWorkerNotification:
         # Create mock LLM client
         mock_llm = MagicMock()
         mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock(message=MagicMock(content='{"result": "test"}'))]
+        mock_completion.choices = [
+            MagicMock(message=MagicMock(content='{"result": "test"}'))
+        ]
         mock_llm.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         # Create worker

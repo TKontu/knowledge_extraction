@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 from typing import Optional
 from uuid import uuid4
 
-from constants import JobStatus, SourceStatus
-
 from sqlalchemy import (
     ARRAY,
     JSON,
@@ -22,6 +20,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
+
+from constants import JobStatus, SourceStatus
 
 
 class UUID(TypeDecorator):

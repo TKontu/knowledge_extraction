@@ -432,12 +432,18 @@ class TestSavepointIsolation:
         db_session.flush()
 
         _create_extraction(
-            extraction_repo, test_project, test_source,
-            data={"company_name": "ABB"}, source_group="group_a",
+            extraction_repo,
+            test_project,
+            test_source,
+            data={"company_name": "ABB"},
+            source_group="group_a",
         )
         _create_extraction(
-            extraction_repo, test_project, source_b,
-            data={"company_name": "Siemens"}, source_group="group_b",
+            extraction_repo,
+            test_project,
+            source_b,
+            data={"company_name": "Siemens"},
+            source_group="group_b",
         )
         db_session.flush()
 
@@ -463,11 +469,15 @@ class TestSavepointIsolation:
         # Group A's consolidated record must be present
         from sqlalchemy import select
 
-        records = db_session.execute(
-            select(ConsolidatedExtraction).where(
-                ConsolidatedExtraction.project_id == test_project.id,
+        records = (
+            db_session.execute(
+                select(ConsolidatedExtraction).where(
+                    ConsolidatedExtraction.project_id == test_project.id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(records) == 1
         assert records[0].source_group == "group_a"
 
@@ -481,22 +491,29 @@ class TestStaleRecordCleanup:
         """If an extraction type disappears, its consolidated record is deleted."""
         # First, create a consolidated record by consolidating normally
         _create_extraction(
-            extraction_repo, test_project, test_source,
+            extraction_repo,
+            test_project,
+            test_source,
             data={"company_name": "ABB"},
         )
         await service.consolidate_source_group(test_project.id, "abb")
 
         from sqlalchemy import select
 
-        records = db_session.execute(
-            select(ConsolidatedExtraction).where(
-                ConsolidatedExtraction.project_id == test_project.id,
+        records = (
+            db_session.execute(
+                select(ConsolidatedExtraction).where(
+                    ConsolidatedExtraction.project_id == test_project.id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(records) == 1
 
         # Now delete all extractions and reconsolidate — stale record should be gone
         from sqlalchemy import delete
+
         from orm_models import Extraction
 
         db_session.execute(
@@ -509,11 +526,15 @@ class TestStaleRecordCleanup:
         # records ARE cleaned up even when there's nothing to consolidate.
         await service.consolidate_source_group(test_project.id, "abb")
 
-        records = db_session.execute(
-            select(ConsolidatedExtraction).where(
-                ConsolidatedExtraction.project_id == test_project.id,
+        records = (
+            db_session.execute(
+                select(ConsolidatedExtraction).where(
+                    ConsolidatedExtraction.project_id == test_project.id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(records) == 0
 
 
@@ -626,27 +647,43 @@ class TestLLMPostProcess:
         return source
 
     async def test_llm_summarize_replaces_value(
-        self, service, extraction_repo, llm_project, llm_source, llm_source_2, db_session
+        self,
+        service,
+        extraction_repo,
+        llm_project,
+        llm_source,
+        llm_source_2,
+        db_session,
     ):
         """When LLM succeeds, the synthesized text replaces longest_top_k fallback."""
         _create_extraction(
-            extraction_repo, llm_project, llm_source,
+            extraction_repo,
+            llm_project,
+            llm_source,
             data={"company_name": "ABB", "description": "ABB manufactures gearboxes"},
-            confidence=0.9, grounding_scores={"company_name": 1.0, "description": 1.0},
+            confidence=0.9,
+            grounding_scores={"company_name": 1.0, "description": 1.0},
         )
         _create_extraction(
-            extraction_repo, llm_project, llm_source_2,
+            extraction_repo,
+            llm_project,
+            llm_source_2,
             data={"company_name": "ABB", "description": "ABB is a leader in drives"},
-            confidence=0.85, grounding_scores={"company_name": 1.0, "description": 0.9},
+            confidence=0.85,
+            grounding_scores={"company_name": 1.0, "description": 0.9},
         )
 
         class MockLLMClient:
             async def complete(self, system_prompt, user_prompt, **kwargs):
                 return {"text": "ABB manufactures gearboxes and is a leader in drives."}
 
-        service_with_project = ConsolidationService(db_session, ProjectRepository(db_session))
+        service_with_project = ConsolidationService(
+            db_session, ProjectRepository(db_session)
+        )
         records = await service_with_project.consolidate_source_group(
-            llm_project.id, "abb", llm_client=MockLLMClient(),
+            llm_project.id,
+            "abb",
+            llm_client=MockLLMClient(),
         )
         assert len(records) == 1
         desc = records[0].fields.get("description")
@@ -655,27 +692,46 @@ class TestLLMPostProcess:
         assert desc.strategy == "llm_summarize"
 
     async def test_llm_summarize_fallback_on_error(
-        self, service, extraction_repo, llm_project, llm_source, llm_source_2, db_session
+        self,
+        service,
+        extraction_repo,
+        llm_project,
+        llm_source,
+        llm_source_2,
+        db_session,
     ):
         """When LLM fails, longest_top_k fallback is preserved."""
         _create_extraction(
-            extraction_repo, llm_project, llm_source,
+            extraction_repo,
+            llm_project,
+            llm_source,
             data={"company_name": "ABB", "description": "Short desc"},
-            confidence=0.9, grounding_scores={"company_name": 1.0, "description": 1.0},
+            confidence=0.9,
+            grounding_scores={"company_name": 1.0, "description": 1.0},
         )
         _create_extraction(
-            extraction_repo, llm_project, llm_source_2,
-            data={"company_name": "ABB", "description": "A longer description than the first"},
-            confidence=0.85, grounding_scores={"company_name": 1.0, "description": 0.9},
+            extraction_repo,
+            llm_project,
+            llm_source_2,
+            data={
+                "company_name": "ABB",
+                "description": "A longer description than the first",
+            },
+            confidence=0.85,
+            grounding_scores={"company_name": 1.0, "description": 0.9},
         )
 
         class FailingLLMClient:
             async def complete(self, system_prompt, user_prompt, **kwargs):
                 raise RuntimeError("LLM unavailable")
 
-        service_with_project = ConsolidationService(db_session, ProjectRepository(db_session))
+        service_with_project = ConsolidationService(
+            db_session, ProjectRepository(db_session)
+        )
         records = await service_with_project.consolidate_source_group(
-            llm_project.id, "abb", llm_client=FailingLLMClient(),
+            llm_project.id,
+            "abb",
+            llm_client=FailingLLMClient(),
         )
         assert len(records) == 1
         desc = records[0].fields.get("description")
@@ -685,23 +741,38 @@ class TestLLMPostProcess:
         assert "description" in desc.value.lower() or "desc" in desc.value.lower()
 
     async def test_no_llm_client_uses_fallback(
-        self, service, extraction_repo, llm_project, llm_source, llm_source_2, db_session
+        self,
+        service,
+        extraction_repo,
+        llm_project,
+        llm_source,
+        llm_source_2,
+        db_session,
     ):
         """Without llm_client, llm_summarize uses longest_top_k."""
         _create_extraction(
-            extraction_repo, llm_project, llm_source,
+            extraction_repo,
+            llm_project,
+            llm_source,
             data={"company_name": "ABB", "description": "Short"},
-            confidence=0.9, grounding_scores={"company_name": 1.0, "description": 1.0},
+            confidence=0.9,
+            grounding_scores={"company_name": 1.0, "description": 1.0},
         )
         _create_extraction(
-            extraction_repo, llm_project, llm_source_2,
+            extraction_repo,
+            llm_project,
+            llm_source_2,
             data={"company_name": "ABB", "description": "A longer description"},
-            confidence=0.85, grounding_scores={"company_name": 1.0, "description": 0.9},
+            confidence=0.85,
+            grounding_scores={"company_name": 1.0, "description": 0.9},
         )
 
-        service_with_project = ConsolidationService(db_session, ProjectRepository(db_session))
+        service_with_project = ConsolidationService(
+            db_session, ProjectRepository(db_session)
+        )
         records = await service_with_project.consolidate_source_group(
-            llm_project.id, "abb",
+            llm_project.id,
+            "abb",
         )
         assert len(records) == 1
         desc = records[0].fields.get("description")

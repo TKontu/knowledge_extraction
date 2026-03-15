@@ -584,9 +584,7 @@ class CrawlWorker:
 
         try:
             # Load field_groups from project
-            field_groups = await self._load_project_field_groups(
-                payload["project_id"]
-            )
+            field_groups = await self._load_project_field_groups(payload["project_id"])
 
             # Get limit for capping URLs
             limit = payload.get("limit", 100)
@@ -609,6 +607,7 @@ class CrawlWorker:
                         # Create embedding service
                         self._embedding_service = EmbeddingService(settings.llm)
                     from services.scraper.url_filter import UrlRelevanceFilter
+
                     self._url_filter = UrlRelevanceFilter(
                         self._embedding_service,
                         default_relevance_threshold=settings.crawl.smart_relevance_threshold,

@@ -127,9 +127,7 @@ class TestCrawlConfigValidation:
 
     def test_validate_valid_exclude_patterns(self):
         """Test valid regex patterns in exclude_patterns pass."""
-        config = CrawlConfig(
-            exclude_patterns=[".*/careers/.*", ".*/news/\\d{4}/.*"]
-        )
+        config = CrawlConfig(exclude_patterns=[".*/careers/.*", ".*/news/\\d{4}/.*"])
         is_valid, errors = config.validate()
 
         assert is_valid is True
@@ -269,8 +267,8 @@ class TestCrawlConfigIntegration:
         }
 
         adapter = SchemaAdapter()
-        field_groups, context, classification_config, crawl_config = adapter.parse_template(
-            template
+        field_groups, context, classification_config, crawl_config = (
+            adapter.parse_template(template)
         )
 
         assert crawl_config is not None
@@ -303,8 +301,8 @@ class TestCrawlConfigIntegration:
         }
 
         adapter = SchemaAdapter()
-        field_groups, context, classification_config, crawl_config = adapter.parse_template(
-            template
+        field_groups, context, classification_config, crawl_config = (
+            adapter.parse_template(template)
         )
 
         assert crawl_config is None

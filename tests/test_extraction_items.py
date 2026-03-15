@@ -121,7 +121,7 @@ class TestLocateInSource:
         assert loc.char_offset is not None
         assert loc.chunk_index == 0
         # Verify position is correct in original content
-        span = content[loc.char_offset:loc.char_end]
+        span = content[loc.char_offset : loc.char_end]
         assert "leading manufacturer" in span.lower()
 
     def test_case_insensitive(self):
@@ -130,7 +130,7 @@ class TestLocateInSource:
         loc = locate_in_source("leading manufacturer", content, chunk)
         assert loc is not None
         assert loc.char_offset is not None
-        span = content[loc.char_offset:loc.char_end]
+        span = content[loc.char_offset : loc.char_end]
         assert "Leading Manufacturer" in span
 
     def test_whitespace_positions_correct(self):
@@ -140,7 +140,7 @@ class TestLocateInSource:
         loc = locate_in_source("leading manufacturer", content, chunk)
         assert loc is not None
         assert loc.char_offset is not None
-        span = content[loc.char_offset:loc.char_end]
+        span = content[loc.char_offset : loc.char_end]
         assert "leading" in span
         assert "manufacturer" in span
 

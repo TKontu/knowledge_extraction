@@ -79,7 +79,8 @@ class SmartMergeService:
         """
         # Filter out low-confidence and unknown-confidence candidates
         filtered = [
-            c for c in candidates
+            c
+            for c in candidates
             if c.confidence is not None and c.confidence >= self._min_confidence
         ]
 
@@ -189,9 +190,13 @@ class SmartMergeService:
         candidate_lines = []
         for c in candidates:
             title_part = f" ({c.source_title})" if c.source_title else ""
-            conf_part = f" [confidence: {c.confidence:.2f}]" if c.confidence is not None else ""
+            conf_part = (
+                f" [confidence: {c.confidence:.2f}]" if c.confidence is not None else ""
+            )
             value_str = json.dumps(c.value) if not isinstance(c.value, str) else c.value
-            candidate_lines.append(f"- {c.source_url}{title_part}: {value_str}{conf_part}")
+            candidate_lines.append(
+                f"- {c.source_url}{title_part}: {value_str}{conf_part}"
+            )
 
         candidates_text = "\n".join(candidate_lines)
 

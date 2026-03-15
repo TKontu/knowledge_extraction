@@ -74,7 +74,9 @@ class ConsolidationWorker:
             try:
                 if source_group:
                     records = await service.consolidate_source_group(
-                        project_id, source_group, llm_client=llm_client,
+                        project_id,
+                        source_group,
+                        llm_client=llm_client,
                     )
                     self.db.commit()
                     result = {
@@ -84,7 +86,8 @@ class ConsolidationWorker:
                     }
                 else:
                     result = await service.consolidate_project(
-                        project_id, llm_client=llm_client,
+                        project_id,
+                        llm_client=llm_client,
                     )
                     self.db.commit()
             finally:

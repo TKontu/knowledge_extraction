@@ -53,7 +53,6 @@ class TestEmbeddingServiceInit:
         assert hasattr(embedding_service, "model")
 
 
-
 class TestEmbeddingServiceEmbed:
     """Test EmbeddingService.embed() method."""
 
@@ -62,7 +61,9 @@ class TestEmbeddingServiceEmbed:
         # Mock the API response
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed("test text")
 
@@ -73,7 +74,9 @@ class TestEmbeddingServiceEmbed:
         # Mock the API response
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed("test text")
 
@@ -99,7 +102,9 @@ class TestEmbeddingServiceEmbedBatch:
             MagicMock(embedding=[0.2] * 1024),
             MagicMock(embedding=[0.3] * 1024),
         ]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed_batch(["text1", "text2", "text3"])
 
@@ -115,7 +120,9 @@ class TestEmbeddingServiceEmbedBatch:
             MagicMock(embedding=[0.0, 2.0, 0.0]),
             MagicMock(embedding=[0.0, 0.0, 3.0]),
         ]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         result = await embedding_service.embed_batch(["first", "second", "third"])
 
@@ -165,9 +172,7 @@ class TestEmbeddingServiceRerank:
 
     async def test_rerank_single_document(self, embedding_service):
         """Should handle single document correctly."""
-        mock_response_data = {
-            "results": [{"index": 0, "relevance_score": 0.8}]
-        }
+        mock_response_data = {"results": [{"index": 0, "relevance_score": 0.8}]}
 
         mock_response = MagicMock()
         mock_response.json.return_value = mock_response_data
@@ -188,9 +193,7 @@ class TestEmbeddingServiceRerank:
 
     async def test_rerank_uses_default_model(self, embedding_service):
         """Should use default reranker model from settings when not specified."""
-        mock_response_data = {
-            "results": [{"index": 0, "relevance_score": 0.7}]
-        }
+        mock_response_data = {"results": [{"index": 0, "relevance_score": 0.7}]}
 
         mock_response = MagicMock()
         mock_response.json.return_value = mock_response_data
@@ -297,7 +300,9 @@ class TestEmbeddingServiceConcurrency:
         # Same semaphore instance
         assert semaphore_after_first is semaphore_after_second
 
-    async def test_semaphore_limits_concurrent_requests(self, reset_embedding_service_state):
+    async def test_semaphore_limits_concurrent_requests(
+        self, reset_embedding_service_state
+    ):
         """Should limit concurrent embed requests to configured value."""
         from services.storage.embedding import EmbeddingService
 
@@ -365,7 +370,9 @@ class TestEmbeddingTruncation:
 
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         await embedding_service.embed(long_text)
 
@@ -382,7 +389,9 @@ class TestEmbeddingTruncation:
 
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1024)]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         await embedding_service.embed(short_text)
 
@@ -405,7 +414,9 @@ class TestEmbeddingTruncation:
             MagicMock(embedding=[0.2] * 1024),
             MagicMock(embedding=[0.3] * 1024),
         ]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         await embedding_service.embed_batch(texts)
 
@@ -425,7 +436,9 @@ class TestEmbeddingTruncation:
             MagicMock(embedding=[0.2] * 3),
             MagicMock(embedding=[0.3] * 3),
         ]
-        embedding_service.client.embeddings.create = AsyncMock(return_value=mock_response)
+        embedding_service.client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
 
         await embedding_service.embed_batch(texts)
 

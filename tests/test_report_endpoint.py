@@ -1,7 +1,7 @@
 """Tests for report API endpoints."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -48,7 +48,13 @@ class TestCreateReport:
     @patch("api.v1.reports.LLMClient")
     @patch("api.v1.reports.ReportService")
     def test_create_report_single_type(
-        self, MockReportService, MockLLMClient, client: TestClient, valid_api_key: str, test_project, db
+        self,
+        MockReportService,
+        MockLLMClient,
+        client: TestClient,
+        valid_api_key: str,
+        test_project,
+        db,
     ):
         """Test creating a single-source report."""
         # Mock LLMClient as async context manager
@@ -85,7 +91,13 @@ class TestCreateReport:
     @patch("api.v1.reports.LLMClient")
     @patch("api.v1.reports.ReportService")
     def test_create_report_comparison_type(
-        self, MockReportService, MockLLMClient, client: TestClient, valid_api_key: str, test_project, db
+        self,
+        MockReportService,
+        MockLLMClient,
+        client: TestClient,
+        valid_api_key: str,
+        test_project,
+        db,
     ):
         """Test creating a comparison report."""
         mock_llm = AsyncMock()
@@ -117,7 +129,9 @@ class TestCreateReport:
         assert data["type"] == "comparison"
         assert len(data["source_groups"]) == 2
 
-    def test_create_report_project_not_found(self, client: TestClient, valid_api_key: str):
+    def test_create_report_project_not_found(
+        self, client: TestClient, valid_api_key: str
+    ):
         """Test creating report for non-existent project."""
         project_id = uuid4()
         response = client.post(

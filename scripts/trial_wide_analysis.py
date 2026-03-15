@@ -15,17 +15,15 @@ Usage:
 import re
 import sys
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
-from uuid import UUID
+from dataclasses import dataclass
 
 sys.path.insert(0, "src")
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database import engine
 from orm_models import Extraction, Project, Source
-from services.extraction.grounding import verify_quote_in_source
 
 _WS_RE = re.compile(r"\s+")
 _STRIP_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
@@ -53,6 +51,7 @@ def _strip_punct(s: str) -> str:
 
 # ── Quote quality classification ──
 
+
 @dataclass
 class QuoteAnalysis:
     project_name: str
@@ -74,7 +73,9 @@ class QuoteAnalysis:
     tier_any_match: bool
 
 
-def classify_quote(quote: str, content: str, value: str | None = None) -> tuple[str, float]:
+def classify_quote(
+    quote: str, content: str, value: str | None = None
+) -> tuple[str, float]:
     """Classify quote quality and return (category, word_overlap)."""
     if not quote or not content:
         return "empty", 0.0
@@ -101,10 +102,21 @@ def classify_quote(quote: str, content: str, value: str | None = None) -> tuple[
 
     # "No mention of..." / "Not explicitly mentioned" patterns
     negation_patterns = [
-        "no mention", "not mentioned", "no explicit", "not explicitly",
-        "not specified", "no specific", "n/a", "none mentioned",
-        "not available", "no information", "not provided", "no data",
-        "not found", "no certifications", "no details",
+        "no mention",
+        "not mentioned",
+        "no explicit",
+        "not explicitly",
+        "not specified",
+        "no specific",
+        "n/a",
+        "none mentioned",
+        "not available",
+        "no information",
+        "not provided",
+        "no data",
+        "not found",
+        "no certifications",
+        "no details",
     ]
     if any(p in quote_lower for p in negation_patterns):
         return "negation_quote", overlap
@@ -138,6 +150,7 @@ def classify_quote(quote: str, content: str, value: str | None = None) -> tuple[
 
 # ── Data extraction ──
 
+
 def extract_fields_v2(data: dict) -> list[dict]:
     """Extract all fields from v2 extraction data."""
     fields = []
@@ -147,25 +160,29 @@ def extract_fields_v2(data: dict) -> list[dict]:
         if fname.startswith("_"):
             continue
         if isinstance(fdata, dict):
-            fields.append({
-                "field_name": fname,
-                "value": fdata.get("value"),
-                "confidence": float(fdata.get("confidence", 0)),
-                "quote": fdata.get("quote"),
-                "grounding": float(fdata.get("grounding", 0)),
-                "location": fdata.get("location"),
-            })
+            fields.append(
+                {
+                    "field_name": fname,
+                    "value": fdata.get("value"),
+                    "confidence": float(fdata.get("confidence", 0)),
+                    "quote": fdata.get("quote"),
+                    "grounding": float(fdata.get("grounding", 0)),
+                    "location": fdata.get("location"),
+                }
+            )
         elif isinstance(fdata, list):
             for i, item in enumerate(fdata):
                 if isinstance(item, dict):
-                    fields.append({
-                        "field_name": f"{fname}[{i}]",
-                        "value": item.get("value"),
-                        "confidence": float(item.get("confidence", 0)),
-                        "quote": item.get("quote"),
-                        "grounding": float(item.get("grounding", 0)),
-                        "location": item.get("location"),
-                    })
+                    fields.append(
+                        {
+                            "field_name": f"{fname}[{i}]",
+                            "value": item.get("value"),
+                            "confidence": float(item.get("confidence", 0)),
+                            "quote": item.get("quote"),
+                            "grounding": float(item.get("grounding", 0)),
+                            "location": item.get("location"),
+                        }
+                    )
     return fields
 
 
@@ -180,26 +197,31 @@ def extract_fields_v1(data: dict, grounding_scores: dict | None = None) -> list[
         if fname in ("_quotes", "_conflicts", "_validation", "_quote", "confidence"):
             continue
         quote = quotes.get(fname) if isinstance(quotes, dict) else None
-        fields.append({
-            "field_name": fname,
-            "value": value,
-            "confidence": conf,
-            "quote": quote,
-            "grounding": float(gs.get(fname, 0)) if gs else 0,
-            "location": None,
-        })
+        fields.append(
+            {
+                "field_name": fname,
+                "value": value,
+                "confidence": conf,
+                "quote": quote,
+                "grounding": float(gs.get(fname, 0)) if gs else 0,
+                "location": None,
+            }
+        )
     return fields
 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=5000, help="Max extractions per project")
+    parser.add_argument(
+        "--limit", type=int, default=5000, help="Max extractions per project"
+    )
     args = parser.parse_args()
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("WIDE TRIAL: LLM Extraction Quality Analysis Across All Projects")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     with Session(engine) as session:
         # ── Discover all projects ──
@@ -212,7 +234,9 @@ def main():
         for project in projects:
             # Count extractions
             ext_count = session.execute(
-                select(func.count(Extraction.id)).where(Extraction.project_id == project.id)
+                select(func.count(Extraction.id)).where(
+                    Extraction.project_id == project.id
+                )
             ).scalar()
 
             if ext_count == 0:
@@ -318,39 +342,45 @@ def main():
             return
 
         total = len(all_analyses)
-        print(f"\n\n{'='*80}")
+        print(f"\n\n{'=' * 80}")
         print(f"ANALYSIS: {total} quotes across {len(project_stats)} projects")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # ── 1. Overall category distribution ──
         cats = Counter(a.category for a in all_analyses)
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("1. QUOTE QUALITY CATEGORIES (all projects)")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         # Group into quality tiers
         good_cats = {"exact_match", "punct_fixable", "reworded_minor"}
         ok_cats = {"reworded_major", "paraphrased"}
-        bad_cats = {"negation_quote", "fabricated_short", "value_as_quote", "hallucinated", "low_overlap"}
+        bad_cats = {
+            "negation_quote",
+            "fabricated_short",
+            "value_as_quote",
+            "hallucinated",
+            "low_overlap",
+        }
 
         good = sum(cats.get(c, 0) for c in good_cats)
         ok = sum(cats.get(c, 0) for c in ok_cats)
         bad = sum(cats.get(c, 0) for c in bad_cats)
 
-        print(f"\n  GOOD (locatable):     {good:5d} ({good/total*100:5.1f}%)")
-        print(f"  ACCEPTABLE (fuzzy):   {ok:5d} ({ok/total*100:5.1f}%)")
-        print(f"  BAD (unfixable):      {bad:5d} ({bad/total*100:5.1f}%)")
+        print(f"\n  GOOD (locatable):     {good:5d} ({good / total * 100:5.1f}%)")
+        print(f"  ACCEPTABLE (fuzzy):   {ok:5d} ({ok / total * 100:5.1f}%)")
+        print(f"  BAD (unfixable):      {bad:5d} ({bad / total * 100:5.1f}%)")
 
-        print(f"\n  Detail:")
+        print("\n  Detail:")
         for cat, count in cats.most_common():
             pct = count / total * 100
             bar = "█" * int(pct / 2)
             print(f"    {cat:25s} {count:5d} ({pct:5.1f}%) {bar}")
 
         # ── 2. By project ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("2. QUALITY BY PROJECT")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         by_project: dict[str, list] = defaultdict(list)
         for a in all_analyses:
             by_project[a.project_name].append(a)
@@ -365,14 +395,16 @@ def main():
             t1_pct = sum(1 for a in analyses if a.tier1_match) / n * 100
             tany_pct = sum(1 for a in analyses if a.tier_any_match) / n * 100
             print(f"\n  {pname} (n={n}):")
-            print(f"    Good: {p_good/n*100:.0f}%  Bad: {p_bad/n*100:.0f}%  "
-                  f"Avg grounding: {avg_grounding:.2f}  Avg conf: {avg_conf:.2f}")
+            print(
+                f"    Good: {p_good / n * 100:.0f}%  Bad: {p_bad / n * 100:.0f}%  "
+                f"Avg grounding: {avg_grounding:.2f}  Avg conf: {avg_conf:.2f}"
+            )
             print(f"    Tier1: {t1_pct:.0f}%  Any-tier: {tany_pct:.0f}%")
 
         # ── 3. By extraction type ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("3. QUALITY BY EXTRACTION TYPE")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         by_type: dict[str, list] = defaultdict(list)
         for a in all_analyses:
             by_type[a.extraction_type].append(a)
@@ -382,15 +414,17 @@ def main():
             n = len(analyses)
             p_bad = sum(1 for a in analyses if a.category in bad_cats)
             avg_g = sum(a.grounding for a in analyses) / n
-            print(f"\n  {etype} (n={n}, bad={p_bad/n*100:.0f}%, avg_g={avg_g:.2f}):")
+            print(
+                f"\n  {etype} (n={n}, bad={p_bad / n * 100:.0f}%, avg_g={avg_g:.2f}):"
+            )
             type_cats = Counter(a.category for a in analyses)
             for cat, count in type_cats.most_common(5):
-                print(f"    {cat:25s} {count:4d} ({count/n*100:5.1f}%)")
+                print(f"    {cat:25s} {count:4d} ({count / n * 100:5.1f}%)")
 
         # ── 4. By field name (precision bottlenecks) ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("4. FIELD-LEVEL PRECISION BOTTLENECKS")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         by_field: dict[str, list] = defaultdict(list)
         for a in all_analyses:
             # Strip list indices for grouping
@@ -408,74 +442,96 @@ def main():
             field_quality.append((field_key, n, n_bad, n_bad / n, avg_g))
 
         field_quality.sort(key=lambda x: -x[3])
-        print(f"\n  Worst fields (highest bad quote rate):")
+        print("\n  Worst fields (highest bad quote rate):")
         for fk, n, n_bad, bad_rate, avg_g in field_quality[:20]:
             bar = "▓" * int(bad_rate * 20)
-            print(f"    {fk:50s}  n={n:4d}  bad={bad_rate*100:5.1f}%  g={avg_g:.2f}  {bar}")
+            print(
+                f"    {fk:50s}  n={n:4d}  bad={bad_rate * 100:5.1f}%  g={avg_g:.2f}  {bar}"
+            )
 
-        print(f"\n  Best fields (lowest bad quote rate):")
+        print("\n  Best fields (lowest bad quote rate):")
         for fk, n, n_bad, bad_rate, avg_g in field_quality[-10:]:
-            print(f"    {fk:50s}  n={n:4d}  bad={bad_rate*100:5.1f}%  g={avg_g:.2f}")
+            print(f"    {fk:50s}  n={n:4d}  bad={bad_rate * 100:5.1f}%  g={avg_g:.2f}")
 
         # ── 5. LLM behavioral patterns ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("5. LLM BEHAVIORAL PATTERNS")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         # Pattern: Negation quotes ("No mention of X")
         negations = [a for a in all_analyses if a.category == "negation_quote"]
         if negations:
-            print(f"\n  A. NEGATION QUOTES: {len(negations)} ({len(negations)/total*100:.1f}%)")
+            print(
+                f"\n  A. NEGATION QUOTES: {len(negations)} ({len(negations) / total * 100:.1f}%)"
+            )
             print("     LLM says 'no mention of X' instead of omitting the field")
-            neg_fields = Counter(re.sub(r"\[\d+\]$", "", a.field_name) for a in negations)
-            print(f"     Top fields:")
+            neg_fields = Counter(
+                re.sub(r"\[\d+\]$", "", a.field_name) for a in negations
+            )
+            print("     Top fields:")
             for field, count in neg_fields.most_common(10):
                 print(f"       {field:40s} {count:4d}")
             # Show examples
-            print(f"     Examples:")
+            print("     Examples:")
             for a in negations[:5]:
-                print(f"       {a.extraction_type}.{a.field_name}: \"{a.quote[:80]}\"")
+                print(f'       {a.extraction_type}.{a.field_name}: "{a.quote[:80]}"')
 
         # Pattern: Value echoed as quote
         echoed = [a for a in all_analyses if a.category == "value_as_quote"]
         if echoed:
-            print(f"\n  B. VALUE-AS-QUOTE: {len(echoed)} ({len(echoed)/total*100:.1f}%)")
+            print(
+                f"\n  B. VALUE-AS-QUOTE: {len(echoed)} ({len(echoed) / total * 100:.1f}%)"
+            )
             print("     LLM just repeats the value as the supporting quote")
-            print(f"     Examples:")
+            print("     Examples:")
             for a in echoed[:5]:
-                print(f"       {a.field_name}: value=\"{a.value[:60]}\" quote=\"{a.quote[:60]}\"")
+                print(
+                    f'       {a.field_name}: value="{a.value[:60]}" quote="{a.quote[:60]}"'
+                )
 
         # Pattern: Fabricated short values
         fabricated = [a for a in all_analyses if a.category == "fabricated_short"]
         if fabricated:
-            print(f"\n  C. FABRICATED SHORT VALUES: {len(fabricated)} ({len(fabricated)/total*100:.1f}%)")
+            print(
+                f"\n  C. FABRICATED SHORT VALUES: {len(fabricated)} ({len(fabricated) / total * 100:.1f}%)"
+            )
             print("     Short values not found in source at all")
-            fab_fields = Counter(f"{a.extraction_type}.{re.sub(r'\\[\\d+\\]$', '', a.field_name)}" for a in fabricated)
-            print(f"     Top fields:")
+            fab_fields = Counter(
+                f"{a.extraction_type}.{re.sub(r'\\[\\d+\\]$', '', a.field_name)}"
+                for a in fabricated
+            )
+            print("     Top fields:")
             for field, count in fab_fields.most_common(10):
                 print(f"       {field:50s} {count:4d}")
-            print(f"     Examples:")
+            print("     Examples:")
             for a in fabricated[:5]:
-                print(f"       {a.field_name}: \"{a.quote}\" (g={a.grounding:.2f})")
+                print(f'       {a.field_name}: "{a.quote}" (g={a.grounding:.2f})')
 
         # Pattern: Hallucinated (long quotes with no source basis)
         hallucinated = [a for a in all_analyses if a.category == "hallucinated"]
         if hallucinated:
-            print(f"\n  D. HALLUCINATED QUOTES: {len(hallucinated)} ({len(hallucinated)/total*100:.1f}%)")
+            print(
+                f"\n  D. HALLUCINATED QUOTES: {len(hallucinated)} ({len(hallucinated) / total * 100:.1f}%)"
+            )
             print("     Long quotes with <10% word overlap with source")
-            hal_fields = Counter(f"{a.extraction_type}.{re.sub(r'\\[\\d+\\]$', '', a.field_name)}" for a in hallucinated)
-            print(f"     Top fields:")
+            hal_fields = Counter(
+                f"{a.extraction_type}.{re.sub(r'\\[\\d+\\]$', '', a.field_name)}"
+                for a in hallucinated
+            )
+            print("     Top fields:")
             for field, count in hal_fields.most_common(10):
                 print(f"       {field:50s} {count:4d}")
-            print(f"     Examples:")
+            print("     Examples:")
             for a in hallucinated[:5]:
-                print(f"       {a.source_group}/{a.field_name}: \"{a.quote[:100]}\"")
-                print(f"         overlap={a.word_overlap:.2f} g={a.grounding:.2f} conf={a.confidence:.2f}")
+                print(f'       {a.source_group}/{a.field_name}: "{a.quote[:100]}"')
+                print(
+                    f"         overlap={a.word_overlap:.2f} g={a.grounding:.2f} conf={a.confidence:.2f}"
+                )
 
         # ── 6. Confidence vs grounding correlation ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("6. CONFIDENCE vs GROUNDING CORRELATION")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         # Bucket by confidence, show avg grounding
         conf_buckets: dict[str, list] = defaultdict(list)
@@ -492,7 +548,9 @@ def main():
                 bucket = "0.0-0.3"
             conf_buckets[bucket].append(a)
 
-        print(f"\n  {'Confidence':15s} {'N':>6s} {'Avg Ground':>10s} {'Bad%':>6s} {'T1 Match%':>10s}")
+        print(
+            f"\n  {'Confidence':15s} {'N':>6s} {'Avg Ground':>10s} {'Bad%':>6s} {'T1 Match%':>10s}"
+        )
         for bucket in ["0.9-1.0", "0.7-0.9", "0.5-0.7", "0.3-0.5", "0.0-0.3"]:
             items = conf_buckets.get(bucket, [])
             if not items:
@@ -504,9 +562,9 @@ def main():
             print(f"  {bucket:15s} {n:6d} {avg_g:10.2f} {bad_pct:5.1f}% {t1_pct:9.1f}%")
 
         # ── 7. Grounding score distribution ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("7. GROUNDING SCORE DISTRIBUTION")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         g_buckets = Counter()
         for a in all_analyses:
@@ -523,15 +581,22 @@ def main():
             else:
                 g_buckets["0.00"] += 1
 
-        for bucket in ["0.95-1.00", "0.80-0.95", "0.60-0.80", "0.30-0.60", "0.01-0.30", "0.00"]:
+        for bucket in [
+            "0.95-1.00",
+            "0.80-0.95",
+            "0.60-0.80",
+            "0.30-0.60",
+            "0.01-0.30",
+            "0.00",
+        ]:
             count = g_buckets.get(bucket, 0)
             bar = "█" * int(count / total * 100 / 2)
-            print(f"  {bucket:10s} {count:5d} ({count/total*100:5.1f}%) {bar}")
+            print(f"  {bucket:10s} {count:5d} ({count / total * 100:5.1f}%) {bar}")
 
         # ── 8. Quote length analysis ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("8. QUOTE LENGTH vs QUALITY")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         len_buckets: dict[str, list] = defaultdict(list)
         for a in all_analyses:
@@ -547,7 +612,9 @@ def main():
                 b = "200+"
             len_buckets[b].append(a)
 
-        print(f"\n  {'Length':10s} {'N':>6s} {'Bad%':>6s} {'Avg Ground':>10s} {'T1%':>6s}")
+        print(
+            f"\n  {'Length':10s} {'N':>6s} {'Bad%':>6s} {'Avg Ground':>10s} {'T1%':>6s}"
+        )
         for b in ["<20", "20-50", "50-100", "100-200", "200+"]:
             items = len_buckets.get(b, [])
             if not items:
@@ -559,9 +626,9 @@ def main():
             print(f"  {b:10s} {n:6d} {bad_pct:5.1f}% {avg_g:10.2f} {t1_pct:5.1f}%")
 
         # ── 9. v1 vs v2 comparison ──
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("9. v1 vs v2 DATA VERSION COMPARISON")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         for ver in [1, 2]:
             ver_items = [a for a in all_analyses if a.data_version == ver]
             if not ver_items:
@@ -570,66 +637,82 @@ def main():
             bad_pct = sum(1 for a in ver_items if a.category in bad_cats) / n * 100
             avg_g = sum(a.grounding for a in ver_items) / n
             t1_pct = sum(1 for a in ver_items if a.tier1_match) / n * 100
-            neg_pct = sum(1 for a in ver_items if a.category == "negation_quote") / n * 100
+            neg_pct = (
+                sum(1 for a in ver_items if a.category == "negation_quote") / n * 100
+            )
             print(f"\n  v{ver} (n={n}):")
-            print(f"    Bad: {bad_pct:.1f}%  Negation: {neg_pct:.1f}%  "
-                  f"Avg grounding: {avg_g:.2f}  Tier1 match: {t1_pct:.1f}%")
+            print(
+                f"    Bad: {bad_pct:.1f}%  Negation: {neg_pct:.1f}%  "
+                f"Avg grounding: {avg_g:.2f}  Tier1 match: {t1_pct:.1f}%"
+            )
             ver_cats = Counter(a.category for a in ver_items)
             for cat, count in ver_cats.most_common(5):
-                print(f"    {cat:25s} {count:4d} ({count/n*100:5.1f}%)")
+                print(f"    {cat:25s} {count:4d} ({count / n * 100:5.1f}%)")
 
         # ── 10. Actionable recommendations ──
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("10. IMPROVEMENT OPPORTUNITIES (ranked by impact)")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         improvements = []
 
         # Negation quotes
         if negations:
-            improvements.append((
-                len(negations),
-                "PROMPT: Instruct LLM to OMIT fields it can't find instead of writing 'no mention of X'",
-                f"{len(negations)} negation quotes ({len(negations)/total*100:.1f}%)",
-                "Prompt change + post-processing filter"
-            ))
+            improvements.append(
+                (
+                    len(negations),
+                    "PROMPT: Instruct LLM to OMIT fields it can't find instead of writing 'no mention of X'",
+                    f"{len(negations)} negation quotes ({len(negations) / total * 100:.1f}%)",
+                    "Prompt change + post-processing filter",
+                )
+            )
 
         # Fabricated short values
         if fabricated:
-            improvements.append((
-                len(fabricated),
-                "FILTER: Drop fields with grounding=0.0 and quote_len<15",
-                f"{len(fabricated)} fabricated short values ({len(fabricated)/total*100:.1f}%)",
-                "Post-extraction confidence gate"
-            ))
+            improvements.append(
+                (
+                    len(fabricated),
+                    "FILTER: Drop fields with grounding=0.0 and quote_len<15",
+                    f"{len(fabricated)} fabricated short values ({len(fabricated) / total * 100:.1f}%)",
+                    "Post-extraction confidence gate",
+                )
+            )
 
         # Hallucinated
         if hallucinated:
-            improvements.append((
-                len(hallucinated),
-                "FILTER: Drop fields with grounding<0.3 (quote doesn't exist in source)",
-                f"{len(hallucinated)} hallucinated quotes ({len(hallucinated)/total*100:.1f}%)",
-                "Post-extraction grounding gate"
-            ))
+            improvements.append(
+                (
+                    len(hallucinated),
+                    "FILTER: Drop fields with grounding<0.3 (quote doesn't exist in source)",
+                    f"{len(hallucinated)} hallucinated quotes ({len(hallucinated) / total * 100:.1f}%)",
+                    "Post-extraction grounding gate",
+                )
+            )
 
         # Value-as-quote
         if echoed:
-            improvements.append((
-                len(echoed),
-                "PROMPT: Instruct LLM to quote the SOURCE TEXT, not echo the extracted value",
-                f"{len(echoed)} value-as-quote ({len(echoed)/total*100:.1f}%)",
-                "Prompt improvement"
-            ))
+            improvements.append(
+                (
+                    len(echoed),
+                    "PROMPT: Instruct LLM to quote the SOURCE TEXT, not echo the extracted value",
+                    f"{len(echoed)} value-as-quote ({len(echoed) / total * 100:.1f}%)",
+                    "Prompt improvement",
+                )
+            )
 
         # Low-grounding high-confidence
-        overconfident = [a for a in all_analyses if a.confidence >= 0.8 and a.grounding < 0.3]
+        overconfident = [
+            a for a in all_analyses if a.confidence >= 0.8 and a.grounding < 0.3
+        ]
         if overconfident:
-            improvements.append((
-                len(overconfident),
-                "CALIBRATION: LLM reports high confidence but quote is ungrounded",
-                f"{len(overconfident)} overconfident extractions ({len(overconfident)/total*100:.1f}%)",
-                "Constrain confidence to min(stated_conf, grounding)"
-            ))
+            improvements.append(
+                (
+                    len(overconfident),
+                    "CALIBRATION: LLM reports high confidence but quote is ungrounded",
+                    f"{len(overconfident)} overconfident extractions ({len(overconfident) / total * 100:.1f}%)",
+                    "Constrain confidence to min(stated_conf, grounding)",
+                )
+            )
 
         improvements.sort(key=lambda x: -x[0])
         for i, (count, action, impact, mechanism) in enumerate(improvements, 1):
@@ -637,9 +720,9 @@ def main():
             print(f"     Impact: {impact}")
             print(f"     How: {mechanism}")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL COMPLETE")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":

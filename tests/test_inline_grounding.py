@@ -25,8 +25,7 @@ def _make_field_group(fields: list[tuple[str, str]] | None = None) -> FieldGroup
         name="company_info",
         description="Company information",
         fields=[
-            FieldDefinition(name=n, field_type=t, description="")
-            for n, t in fields
+            FieldDefinition(name=n, field_type=t, description="") for n, t in fields
         ],
         prompt_hint="",
     )

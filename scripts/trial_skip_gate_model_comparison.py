@@ -25,7 +25,7 @@ from uuid import UUID
 sys.path.insert(0, "src")
 
 import httpx
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database import engine
@@ -108,7 +108,7 @@ def parse_decision(text: str) -> str:
     if "<think>" in text:
         idx = text.rfind("</think>")
         if idx != -1:
-            text = text[idx + 8:].strip()
+            text = text[idx + 8 :].strip()
     # Handle markdown fences
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
@@ -223,16 +223,18 @@ def load_samples(limit: int) -> list[PageSample]:
             else:
                 gt = "skip"
 
-            samples.append(PageSample(
-                source_id=row.id,
-                url=row.uri or "",
-                title=row.title,
-                content=content,
-                gt_decision=gt,
-                gt_confidence=max_conf,
-                extraction_count=ext_count,
-                source_group=row.source_group or "",
-            ))
+            samples.append(
+                PageSample(
+                    source_id=row.id,
+                    url=row.uri or "",
+                    title=row.title,
+                    content=content,
+                    gt_decision=gt,
+                    gt_confidence=max_conf,
+                    extraction_count=ext_count,
+                    source_group=row.source_group or "",
+                )
+            )
 
         # Stratified sample: ensure mix of extract/skip
         extracts = [s for s in samples if s.gt_decision == "extract"]
@@ -250,7 +252,9 @@ def load_samples(limit: int) -> list[PageSample]:
         selected = extracts[:n_extract] + skips[:n_skip]
         random.shuffle(selected)
 
-        print(f"Selected {len(selected)} samples: {n_extract} extract, {n_skip} skip (GT)")
+        print(
+            f"Selected {len(selected)} samples: {n_extract} extract, {n_skip} skip (GT)"
+        )
         return selected
 
 
@@ -276,7 +280,9 @@ def warm_up_model(client: httpx.Client, model: str) -> None:
         print(f"  {model} warmup failed ({lat:.1f}s): {e}", flush=True)
 
 
-def run_trial(samples: list[PageSample]) -> dict[str, list[tuple[PageSample, ModelResult]]]:
+def run_trial(
+    samples: list[PageSample],
+) -> dict[str, list[tuple[PageSample, ModelResult]]]:
     """Run models sequentially on all samples.
 
     Runs one model at a time on ALL samples to avoid constant model swapping.
@@ -291,7 +297,7 @@ def run_trial(samples: list[PageSample]) -> dict[str, list[tuple[PageSample, Mod
             errors = 0
             for i, sample in enumerate(samples):
                 if (i + 1) % 20 == 0 or i == 0:
-                    print(f"  {model}: {i+1}/{len(samples)}...", flush=True)
+                    print(f"  {model}: {i + 1}/{len(samples)}...", flush=True)
 
                 mr = classify_page_sync(
                     client, model, sample.url, sample.title, sample.content
@@ -304,13 +310,18 @@ def run_trial(samples: list[PageSample]) -> dict[str, list[tuple[PageSample, Mod
                         print(f"  {model}: 3+ errors, aborting", flush=True)
                         # Fill remaining with "extract" (safe default)
                         for j in range(i + 1, len(samples)):
-                            results[model].append((
-                                samples[j],
-                                ModelResult(model, "extract", "SKIPPED", 0.0, 0),
-                            ))
+                            results[model].append(
+                                (
+                                    samples[j],
+                                    ModelResult(model, "extract", "SKIPPED", 0.0, 0),
+                                )
+                            )
                         break
 
-            print(f"  {model}: done ({len(results[model])} pages, {errors} errors)", flush=True)
+            print(
+                f"  {model}: done ({len(results[model])} pages, {errors} errors)",
+                flush=True,
+            )
             print(flush=True)
 
     return results
@@ -318,9 +329,9 @@ def run_trial(samples: list[PageSample]) -> dict[str, list[tuple[PageSample, Mod
 
 def analyze_results(results: dict[str, list[tuple[PageSample, ModelResult]]]):
     """Compute metrics and print comparison."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("SKIP-GATE MODEL COMPARISON")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     for model in MODELS:
         pairs = results[model]
@@ -351,43 +362,55 @@ def analyze_results(results: dict[str, list[tuple[PageSample, ModelResult]]]):
         accuracy = (tp + tn) / total if total else 0
         precision = tp / (tp + fp) if (tp + fp) else 0
         recall = tp / (tp + fn) if (tp + fn) else 0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0
+        f1 = (
+            2 * precision * recall / (precision + recall) if (precision + recall) else 0
+        )
         skip_precision = tn / (tn + fn) if (tn + fn) else 0
         avg_latency = total_latency / total if total else 0
         avg_tokens = total_tokens / total if total else 0
 
         print(f"── {model} ──")
-        print(f"  Accuracy:       {accuracy:.1%} ({tp+tn}/{total})")
+        print(f"  Accuracy:       {accuracy:.1%} ({tp + tn}/{total})")
         print(f"  Precision:      {precision:.1%} (extract)")
         print(f"  Recall:         {recall:.1%} (extract) ← CRITICAL: must be ≥90%")
         print(f"  F1:             {f1:.1%}")
-        print(f"  Skip precision: {skip_precision:.1%} (when it says skip, is it right?)")
+        print(
+            f"  Skip precision: {skip_precision:.1%} (when it says skip, is it right?)"
+        )
         print(f"  Avg latency:    {avg_latency:.2f}s/page")
         print(f"  Avg tokens:     {avg_tokens:.0f}/page")
         print(f"  Confusion:      TP={tp} FP={fp} TN={tn} FN={fn}")
         print()
 
         if false_negatives:
-            print(f"  FALSE NEGATIVES ({len(false_negatives)}) — pages with data, model said 'skip':")
+            print(
+                f"  FALSE NEGATIVES ({len(false_negatives)}) — pages with data, model said 'skip':"
+            )
             for sample, mr in false_negatives[:8]:
                 print(f"    {sample.source_group}: {sample.url[:80]}")
-                print(f"      GT conf={sample.gt_confidence:.2f}, extractions={sample.extraction_count}")
+                print(
+                    f"      GT conf={sample.gt_confidence:.2f}, extractions={sample.extraction_count}"
+                )
                 print(f"      LLM: {mr.raw_response[:120]}")
                 print()
 
         if false_positives[:3]:
-            print(f"  FALSE POSITIVES ({len(false_positives)}) — no useful data, model said 'extract':")
+            print(
+                f"  FALSE POSITIVES ({len(false_positives)}) — no useful data, model said 'extract':"
+            )
             for sample, mr in false_positives[:3]:
                 print(f"    {sample.source_group}: {sample.url[:80]}")
-                print(f"      GT conf={sample.gt_confidence:.2f}, extractions={sample.extraction_count}")
+                print(
+                    f"      GT conf={sample.gt_confidence:.2f}, extractions={sample.extraction_count}"
+                )
                 print()
 
         print()
 
     # Head-to-head comparison
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print("HEAD-TO-HEAD COMPARISON")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     disagreements = []
     for (s1, m1), (s2, m2) in zip(results[MODELS[0]], results[MODELS[1]]):
@@ -405,7 +428,9 @@ def analyze_results(results: dict[str, list[tuple[PageSample, ModelResult]]]):
             winner = MODELS[1]
 
         print(f"  {sample.source_group}: {sample.url[:70]}")
-        print(f"    GT={sample.gt_decision} (conf={sample.gt_confidence:.2f}, exts={sample.extraction_count})")
+        print(
+            f"    GT={sample.gt_decision} (conf={sample.gt_confidence:.2f}, exts={sample.extraction_count})"
+        )
         print(f"    {MODELS[0]:30s}: {m1.decision}")
         print(f"    {MODELS[1]:30s}: {m2.decision}")
         print(f"    Correct: {winner}")
@@ -419,10 +444,10 @@ def main():
     parser.add_argument("--limit", type=int, default=120)
     args = parser.parse_args()
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TRIAL: Skip-Gate Model Comparison")
     print(f"Models: {', '.join(MODELS)}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     samples = load_samples(args.limit)
     if not samples:
@@ -432,9 +457,9 @@ def main():
     results = run_trial(samples)
     analyze_results(results)
 
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print("TRIAL COMPLETE")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
 
 if __name__ == "__main__":

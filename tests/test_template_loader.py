@@ -218,7 +218,9 @@ class TestProductionTemplates:
         from services.projects.template_loader import _registry
 
         # Force load production templates
-        templates_dir = Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
+        templates_dir = (
+            Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
+        )
         _registry.load_templates(templates_dir)
 
         # Verify all 9 templates loaded
@@ -245,7 +247,9 @@ class TestProductionTemplates:
         from services.projects.template_loader import _registry
 
         # Force load production templates
-        templates_dir = Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
+        templates_dir = (
+            Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
+        )
         _registry.load_templates(templates_dir)
 
         adapter = SchemaAdapter()
@@ -259,11 +263,15 @@ class TestProductionTemplates:
             assert schema is not None, f"Template {name} has no extraction_schema"
 
             result = adapter.validate_extraction_schema(schema)
-            assert result.is_valid, f"Template {name} failed validation: {result.errors}"
+            assert result.is_valid, (
+                f"Template {name} failed validation: {result.errors}"
+            )
 
     def test_template_names_match_filenames(self):
         """Template 'name' field matches the YAML filename (without .yaml)."""
-        templates_dir = Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
+        templates_dir = (
+            Path(__file__).parent.parent / "src" / "services" / "projects" / "templates"
+        )
 
         if not templates_dir.exists():
             pytest.skip("Templates directory does not exist yet")

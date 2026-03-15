@@ -150,9 +150,7 @@ class TestExtractionWorkerRollback:
         return job
 
     @pytest.mark.asyncio
-    async def test_rollback_called_on_exception(
-        self, mock_db, extract_job
-    ):
+    async def test_rollback_called_on_exception(self, mock_db, extract_job):
         """Verify db.rollback() is called when an exception occurs during extraction."""
         from services.extraction.worker import ExtractionWorker
 

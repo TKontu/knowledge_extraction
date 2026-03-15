@@ -4,8 +4,7 @@ TDD: These tests verify that the Scheduler passes the LLM queue to
 LLMClient when llm_queue_enabled is True.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -64,8 +63,8 @@ class TestSchedulerLLMQueueWiring:
     @pytest.mark.asyncio
     async def test_extraction_worker_receives_queued_llm(self, llm_config):
         """Test that extraction worker can be created with queue-backed LLM config."""
-        from services.llm.queue import LLMRequestQueue
         from services.extraction.worker import ExtractionWorker
+        from services.llm.queue import LLMRequestQueue
 
         mock_queue = MagicMock(spec=LLMRequestQueue)
         mock_db = MagicMock()

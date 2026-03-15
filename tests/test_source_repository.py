@@ -1,12 +1,14 @@
 """Tests for SourceRepository."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from database import engine
-from orm_models import Source, Project
-from services.storage.repositories.source import SourceRepository, SourceFilters
+from orm_models import Project, Source
+from services.storage.repositories.source import SourceFilters, SourceRepository
 
 
 @pytest.fixture
@@ -63,9 +65,7 @@ class TestSourceRepositoryCreate:
         assert source.title is None
         assert source.content is None
 
-    def test_create_source_with_all_fields(
-        self, source_repo, test_project, db_session
-    ):
+    def test_create_source_with_all_fields(self, source_repo, test_project, db_session):
         """Should create source with all fields populated."""
         source = source_repo.create(
             project_id=test_project.id,
@@ -104,9 +104,7 @@ class TestSourceRepositoryCreate:
         db_source = result.scalar_one()
         assert db_source.uri == "https://example.com/persisted"
 
-    def test_create_source_sets_created_at(
-        self, source_repo, test_project, db_session
-    ):
+    def test_create_source_sets_created_at(self, source_repo, test_project, db_session):
         """Should automatically set created_at timestamp."""
         source = source_repo.create(
             project_id=test_project.id,
@@ -121,9 +119,7 @@ class TestSourceRepositoryCreate:
 class TestSourceRepositoryGet:
     """Test SourceRepository.get() method."""
 
-    def test_get_by_id_returns_source(
-        self, source_repo, test_project, db_session
-    ):
+    def test_get_by_id_returns_source(self, source_repo, test_project, db_session):
         """Should retrieve source by ID."""
         source = source_repo.create(
             project_id=test_project.id,
@@ -147,9 +143,7 @@ class TestSourceRepositoryGet:
 class TestSourceRepositoryGetByUri:
     """Test SourceRepository.get_by_uri() method."""
 
-    def test_get_by_uri_returns_source(
-        self, source_repo, test_project, db_session
-    ):
+    def test_get_by_uri_returns_source(self, source_repo, test_project, db_session):
         """Should retrieve source by URI within a project."""
         source_repo.create(
             project_id=test_project.id,
@@ -163,18 +157,14 @@ class TestSourceRepositoryGetByUri:
         assert retrieved is not None
         assert retrieved.uri == "https://example.com/unique_uri"
 
-    def test_get_by_uri_nonexistent_returns_none(
-        self, source_repo, test_project
-    ):
+    def test_get_by_uri_nonexistent_returns_none(self, source_repo, test_project):
         """Should return None for nonexistent URI."""
         retrieved = source_repo.get_by_uri(
             project_id=test_project.id, uri="https://example.com/nonexistent"
         )
         assert retrieved is None
 
-    def test_get_by_uri_is_project_scoped(
-        self, source_repo, test_project, db_session
-    ):
+    def test_get_by_uri_is_project_scoped(self, source_repo, test_project, db_session):
         """Should only find sources within the specified project."""
         # Create another project
         other_project = Project(
@@ -217,9 +207,7 @@ class TestSourceRepositoryList:
         sources = source_repo.list(SourceFilters())
         assert len(sources) >= 2
 
-    def test_list_filters_by_project_id(
-        self, source_repo, test_project, db_session
-    ):
+    def test_list_filters_by_project_id(self, source_repo, test_project, db_session):
         """Should filter sources by project_id."""
         # Create another project
         other_project = Project(
@@ -242,9 +230,7 @@ class TestSourceRepositoryList:
         )
 
         # Filter by test_project
-        sources = source_repo.list(
-            SourceFilters(project_id=test_project.id)
-        )
+        sources = source_repo.list(SourceFilters(project_id=test_project.id))
         assert len(sources) == 1
         assert sources[0].uri == "https://example.com/project1"
 
@@ -266,9 +252,7 @@ class TestSourceRepositoryList:
             source_group="other_corp",
         )
 
-        sources = source_repo.list(
-            SourceFilters(source_group="acme_corp")
-        )
+        sources = source_repo.list(SourceFilters(source_group="acme_corp"))
         assert len(sources) >= 2
         assert all(s.source_group == "acme_corp" for s in sources)
 
@@ -341,9 +325,7 @@ class TestSourceRepositoryList:
         assert len(sources) == 1
         assert sources[0].uri == "https://example.com/match"
 
-    def test_list_returns_sorted_by_created_at(
-        self, source_repo, test_project
-    ):
+    def test_list_returns_sorted_by_created_at(self, source_repo, test_project):
         """Should return sources sorted by created_at descending."""
         source1 = source_repo.create(
             project_id=test_project.id,
@@ -356,9 +338,7 @@ class TestSourceRepositoryList:
             source_group="test_group",
         )
 
-        sources = source_repo.list(
-            SourceFilters(project_id=test_project.id)
-        )
+        sources = source_repo.list(SourceFilters(project_id=test_project.id))
         # Most recent first
         assert sources[0].id == source2.id
         assert sources[1].id == source1.id
@@ -380,9 +360,7 @@ class TestSourceRepositoryUpdateStatus:
         assert updated is not None
         assert updated.status == "completed"
 
-    def test_update_status_sets_fetched_at(
-        self, source_repo, test_project
-    ):
+    def test_update_status_sets_fetched_at(self, source_repo, test_project):
         """Should set fetched_at when status changes to completed."""
         source = source_repo.create(
             project_id=test_project.id,
@@ -424,9 +402,7 @@ class TestSourceRepositoryUpdateContent:
         assert updated.content == "Updated content"
         assert updated.title == "Updated Title"
 
-    def test_update_content_with_optional_fields(
-        self, source_repo, test_project
-    ):
+    def test_update_content_with_optional_fields(self, source_repo, test_project):
         """Should update content with all optional fields."""
         source = source_repo.create(
             project_id=test_project.id,
@@ -450,14 +426,10 @@ class TestSourceRepositoryUpdateContent:
         """Should return None when updating nonexistent source."""
         from uuid import uuid4
 
-        result = source_repo.update_content(
-            uuid4(), content="test", title="test"
-        )
+        result = source_repo.update_content(uuid4(), content="test", title="test")
         assert result is None
 
-    def test_update_content_preserves_other_fields(
-        self, source_repo, test_project
-    ):
+    def test_update_content_preserves_other_fields(self, source_repo, test_project):
         """Should not modify fields not included in update."""
         source = source_repo.create(
             project_id=test_project.id,

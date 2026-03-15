@@ -59,9 +59,11 @@ class JobCleanupService:
         logger.info("job_cleanup_started", job_id=str(job_id))
 
         # Step 1: Get sources created by this job
-        sources = self._db.execute(
-            select(Source).where(Source.created_by_job_id == job_id)
-        ).scalars().all()
+        sources = (
+            self._db.execute(select(Source).where(Source.created_by_job_id == job_id))
+            .scalars()
+            .all()
+        )
 
         source_ids = [s.id for s in sources]
         sources_count = len(source_ids)
@@ -75,17 +77,19 @@ class JobCleanupService:
         # Step 2: Get extractions for these sources (need IDs for embedding cleanup)
         extractions = []
         if source_ids:
-            extractions = self._db.execute(
-                select(Extraction).where(Extraction.source_id.in_(source_ids))
-            ).scalars().all()
+            extractions = (
+                self._db.execute(
+                    select(Extraction).where(Extraction.source_id.in_(source_ids))
+                )
+                .scalars()
+                .all()
+            )
 
         extraction_ids = [e.id for e in extractions]
         extractions_count = len(extraction_ids)
 
         # Count extractions with embedding_id set (for logging)
-        extraction_ids_with_embedding_id = [
-            e.id for e in extractions if e.embedding_id
-        ]
+        extraction_ids_with_embedding_id = [e.id for e in extractions if e.embedding_id]
 
         logger.debug(
             "job_cleanup_extractions_found",

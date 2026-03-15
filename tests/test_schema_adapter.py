@@ -1,6 +1,5 @@
 """Tests for SchemaAdapter - validates and converts extraction schemas."""
 
-
 from services.extraction.schema_adapter import ClassificationConfig, SchemaAdapter
 
 
@@ -308,7 +307,10 @@ class TestValidateExtractionSchema:
         result = adapter.validate_extraction_schema(schema)
         # This is a warning, not an error - schema is still valid
         assert result.is_valid
-        assert any("product_name" in w.lower() or "entity_id" in w.lower() for w in result.warnings)
+        assert any(
+            "product_name" in w.lower() or "entity_id" in w.lower()
+            for w in result.warnings
+        )
 
     def test_validation_rule_8_duplicate_field_group_names(self):
         """Error on duplicate field_group names."""
@@ -343,7 +345,10 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("duplicate" in error.lower() and "group" in error.lower() for error in result.errors)
+        assert any(
+            "duplicate" in error.lower() and "group" in error.lower()
+            for error in result.errors
+        )
 
     def test_validation_rule_9_duplicate_field_names(self):
         """Error on duplicate field names within group."""
@@ -372,7 +377,10 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("duplicate" in error.lower() and "field" in error.lower() for error in result.errors)
+        assert any(
+            "duplicate" in error.lower() and "field" in error.lower()
+            for error in result.errors
+        )
 
     def test_validation_rule_10_too_many_field_groups(self):
         """Error if >20 field groups."""
@@ -398,7 +406,9 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("20" in error or "too many" in error.lower() for error in result.errors)
+        assert any(
+            "20" in error or "too many" in error.lower() for error in result.errors
+        )
 
     def test_validation_rule_11_too_many_fields(self):
         """Error if >30 fields in group."""
@@ -424,7 +434,9 @@ class TestValidateExtractionSchema:
 
         result = adapter.validate_extraction_schema(schema)
         assert not result.is_valid
-        assert any("30" in error or "too many" in error.lower() for error in result.errors)
+        assert any(
+            "30" in error or "too many" in error.lower() for error in result.errors
+        )
 
 
 class TestConvertToFieldGroups:
@@ -659,7 +671,9 @@ class TestClassificationConfig:
 
     def test_validate_with_mixed_valid_invalid(self):
         """Validation reports all invalid patterns."""
-        config = ClassificationConfig(skip_patterns=[r"/valid/", r"[invalid", r"(also[bad"])
+        config = ClassificationConfig(
+            skip_patterns=[r"/valid/", r"[invalid", r"(also[bad"]
+        )
         is_valid, errors = config.validate()
         assert not is_valid
         assert len(errors) == 2  # Two invalid patterns
@@ -690,7 +704,9 @@ class TestParseTemplateWithClassificationConfig:
             }
         }
 
-        field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
+        field_groups, context, classification_config, crawl_config = (
+            adapter.parse_template(template)
+        )
         assert classification_config is not None
         assert classification_config.skip_patterns is None
         assert crawl_config is None  # Not in template
@@ -715,12 +731,12 @@ class TestParseTemplateWithClassificationConfig:
                     }
                 ],
             },
-            "classification_config": {
-                "skip_patterns": [r"/custom/"]
-            },
+            "classification_config": {"skip_patterns": [r"/custom/"]},
         }
 
-        field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
+        field_groups, context, classification_config, crawl_config = (
+            adapter.parse_template(template)
+        )
         assert classification_config.skip_patterns == [r"/custom/"]
 
     def test_parse_template_with_empty_skip_patterns(self):
@@ -743,12 +759,12 @@ class TestParseTemplateWithClassificationConfig:
                     }
                 ],
             },
-            "classification_config": {
-                "skip_patterns": []
-            },
+            "classification_config": {"skip_patterns": []},
         }
 
-        field_groups, context, classification_config, crawl_config = adapter.parse_template(template)
+        field_groups, context, classification_config, crawl_config = (
+            adapter.parse_template(template)
+        )
         assert classification_config.skip_patterns == []
 
 
@@ -788,8 +804,12 @@ class TestGroundingAndConsolidationValidation:
     def test_valid_consolidation_strategy_accepted(self):
         adapter = SchemaAdapter()
         for strategy in (
-            "frequency", "weighted_frequency", "weighted_median",
-            "any_true", "longest_top_k", "union_dedup",
+            "frequency",
+            "weighted_frequency",
+            "weighted_median",
+            "any_true",
+            "longest_top_k",
+            "union_dedup",
         ):
             result = adapter.validate_extraction_schema(
                 self._make_schema(consolidation_strategy=strategy)

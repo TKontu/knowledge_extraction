@@ -82,14 +82,16 @@ class LLMSkipGate:
         # Safety: no schema → extract everything
         if not schema:
             return SkipGateResult(
-                decision="extract", confidence=0.0,
+                decision="extract",
+                confidence=0.0,
                 latency=time.monotonic() - start,
             )
 
         # Safety: very short content → extract (may be truncated)
         if len(content.strip()) < 100:
             return SkipGateResult(
-                decision="extract", confidence=0.0,
+                decision="extract",
+                confidence=0.0,
                 latency=time.monotonic() - start,
             )
 
@@ -124,7 +126,9 @@ class LLMSkipGate:
                 latency=f"{latency:.2f}s",
             )
             return SkipGateResult(
-                decision=decision, confidence=0.0, latency=latency,
+                decision=decision,
+                confidence=0.0,
+                latency=latency,
             )
 
         except Exception:
@@ -136,7 +140,9 @@ class LLMSkipGate:
                 exc_info=True,
             )
             return SkipGateResult(
-                decision="extract", confidence=0.0, latency=latency,
+                decision="extract",
+                confidence=0.0,
+                latency=latency,
             )
 
 

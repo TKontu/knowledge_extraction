@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 
 from services.extraction.embedding_pipeline import (
-    EmbeddingResult,
     ExtractionEmbeddingService,
 )
 

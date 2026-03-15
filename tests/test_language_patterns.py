@@ -1,7 +1,5 @@
 """Tests for language URL pattern generation."""
 
-import pytest
-
 from services.filtering.language import LanguageCode
 from services.filtering.patterns import generate_language_exclusion_patterns
 
@@ -27,7 +25,9 @@ class TestLanguagePatterns:
 
     def test_generates_patterns_for_multiple_languages(self) -> None:
         """Test generating patterns for multiple languages."""
-        patterns = generate_language_exclusion_patterns([LanguageCode.DE, LanguageCode.FI])
+        patterns = generate_language_exclusion_patterns(
+            [LanguageCode.DE, LanguageCode.FI]
+        )
 
         # Should have patterns for both languages
         assert ".*/de/.*" in patterns

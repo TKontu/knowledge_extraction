@@ -123,14 +123,20 @@ class ConsolidationService:
 
             is_entity_list = ext_type in entity_list_groups
             record = consolidate_extractions(
-                ext_dicts, field_defs, source_group, ext_type,
+                ext_dicts,
+                field_defs,
+                source_group,
+                ext_type,
                 entity_list_key=ext_type if is_entity_list else None,
             )
 
             # LLM post-processing for llm_summarize fields
             if llm_client and not is_entity_list:
                 record = await self._llm_post_process(
-                    record, ext_dicts, field_defs, llm_client,
+                    record,
+                    ext_dicts,
+                    field_defs,
+                    llm_client,
                 )
 
             records.append(record)
@@ -162,7 +168,9 @@ class ConsolidationService:
         )
 
         return await self._process_source_groups(
-            project_id, source_groups, llm_client=llm_client,
+            project_id,
+            source_groups,
+            llm_client=llm_client,
         )
 
     async def reconsolidate(
@@ -175,7 +183,9 @@ class ConsolidationService:
         """Re-run consolidation (idempotent). Upserts replace old records."""
         if source_groups:
             return await self._process_source_groups(
-                project_id, source_groups, llm_client=llm_client,
+                project_id,
+                source_groups,
+                llm_client=llm_client,
             )
         return await self.consolidate_project(project_id, llm_client=llm_client)
 
@@ -198,7 +208,9 @@ class ConsolidationService:
             savepoint = self._session.begin_nested()
             try:
                 records = await self.consolidate_source_group(
-                    project_id, sg, llm_client=llm_client,
+                    project_id,
+                    sg,
+                    llm_client=llm_client,
                 )
                 savepoint.commit()
                 total_records += len(records)
@@ -233,7 +245,8 @@ class ConsolidationService:
         from services.extraction.grounding import GROUNDING_DEFAULTS
 
         summarize_fields: list[dict] = [
-            fd for fd in field_defs
+            fd
+            for fd in field_defs
             if fd.get("consolidation_strategy") == "llm_summarize"
         ]
         if not summarize_fields:
@@ -266,7 +279,9 @@ class ConsolidationService:
                     confidence = float(field_data.get("confidence", 0.5))
                     grounding_score = float(field_data.get("grounding", 1.0))
                     ext_confidence = float(ext.get("confidence", 0.5))
-                    weight = effective_weight(confidence, grounding_score, grounding_mode)
+                    weight = effective_weight(
+                        confidence, grounding_score, grounding_mode
+                    )
                     weight = min(weight, max(ext_confidence, 0.3))
                 else:
                     value = data.get(field_name)
@@ -275,7 +290,9 @@ class ConsolidationService:
                     confidence = ext.get("confidence", 0.5)
                     grounding_scores = ext.get("grounding_scores") or {}
                     grounding_score = grounding_scores.get(field_name)
-                    weight = effective_weight(confidence, grounding_score, grounding_mode)
+                    weight = effective_weight(
+                        confidence, grounding_score, grounding_mode
+                    )
 
                 weighted_values.append(WeightedValue(value, weight, str(source_id)))
 
@@ -286,11 +303,12 @@ class ConsolidationService:
 
             # Build synthesis prompt
             candidate_lines = "\n".join(
-                f"{i+1}. (weight: {w}) \"{text}\""
+                f'{i + 1}. (weight: {w}) "{text}"'
                 for i, (text, w) in enumerate(candidates)
             )
             prompt = _SUMMARIZE_PROMPT.format(
-                field_name=field_name, candidates=candidate_lines,
+                field_name=field_name,
+                candidates=candidate_lines,
             )
 
             try:

@@ -774,7 +774,11 @@ class TestPerFieldOverrides:
 
         # Override: frequency -> 100 (most common)
         field_defs_override = [
-            {"name": "count", "field_type": "integer", "consolidation_strategy": "frequency"},
+            {
+                "name": "count",
+                "field_type": "integer",
+                "consolidation_strategy": "frequency",
+            },
         ]
         record_override = consolidate_extractions(
             extractions, field_defs_override, "g", "t"
@@ -819,7 +823,10 @@ class TestEntityListConsolidation:
             {"name": "type", "field_type": "string"},
         ]
         record = consolidate_extractions(
-            extractions, field_defs, "abb", "products",
+            extractions,
+            field_defs,
+            "abb",
+            "products",
             entity_list_key="products",
         )
         assert "products" in record.fields
@@ -844,7 +851,10 @@ class TestEntityListConsolidation:
         ]
         field_defs = [{"name": "name", "field_type": "string"}]
         record = consolidate_extractions(
-            extractions, field_defs, "abb", "products",
+            extractions,
+            field_defs,
+            "abb",
+            "products",
             entity_list_key="products",
         )
         entities = record.fields["products"].value
@@ -875,7 +885,10 @@ class TestEntityListConsolidation:
         ]
         field_defs = [{"name": "name", "field_type": "string"}]
         record = consolidate_extractions(
-            extractions, field_defs, "abb", "products",
+            extractions,
+            field_defs,
+            "abb",
+            "products",
             entity_list_key="products",
         )
         # Both contribute (weight floor = 0.1), so both entities appear
@@ -894,7 +907,10 @@ class TestEntityListConsolidation:
         ]
         field_defs = [{"name": "name", "field_type": "string"}]
         record = consolidate_extractions(
-            extractions, field_defs, "abb", "products",
+            extractions,
+            field_defs,
+            "abb",
+            "products",
             entity_list_key="products",
         )
         assert "products" not in record.fields
@@ -911,7 +927,10 @@ class TestEntityListConsolidation:
         ]
         field_defs = [{"name": "company_name", "field_type": "string"}]
         record = consolidate_extractions(
-            extractions, field_defs, "abb", "company_info",
+            extractions,
+            field_defs,
+            "abb",
+            "company_info",
         )
         assert record.fields["company_name"].value == "ABB"
 
@@ -1121,7 +1140,10 @@ class TestEntityProvenance:
             {"name": "type", "field_type": "string"},
         ]
         record = consolidate_extractions(
-            extractions, field_defs, "abb", "products",
+            extractions,
+            field_defs,
+            "abb",
+            "products",
             entity_list_key="products",
         )
         ep = record.fields["products"].entity_provenance
@@ -1161,7 +1183,10 @@ class TestEntityProvenance:
         ]
         field_defs = [{"name": "name", "field_type": "string"}]
         record = consolidate_extractions(
-            extractions, field_defs, "g", "products",
+            extractions,
+            field_defs,
+            "g",
+            "products",
             entity_list_key="products",
         )
         ep = record.fields["products"].entity_provenance
@@ -1184,20 +1209,33 @@ class TestStrategyDefaults:
     def test_text_uses_weighted_frequency(self):
         """Text fields now use weighted_frequency (not longest_top_k)."""
         from services.extraction.consolidation import STRATEGY_DEFAULTS
+
         assert STRATEGY_DEFAULTS["text"] == "weighted_frequency"
 
     def test_summary_still_longest_top_k(self):
         from services.extraction.consolidation import STRATEGY_DEFAULTS
+
         assert STRATEGY_DEFAULTS["summary"] == "longest_top_k"
 
     def test_string_falls_back_to_frequency(self):
         """'string' type removed from STRATEGY_DEFAULTS; falls back to 'frequency'."""
         from services.extraction.consolidation import STRATEGY_DEFAULTS
+
         assert "string" not in STRATEGY_DEFAULTS
         # Verify fallback works via consolidate_extractions
         extractions = [
-            {"data": {"name": "ABB"}, "confidence": 0.9, "grounding_scores": {"name": 1.0}, "source_id": "s1"},
-            {"data": {"name": "ABB"}, "confidence": 0.8, "grounding_scores": {"name": 1.0}, "source_id": "s2"},
+            {
+                "data": {"name": "ABB"},
+                "confidence": 0.9,
+                "grounding_scores": {"name": 1.0},
+                "source_id": "s1",
+            },
+            {
+                "data": {"name": "ABB"},
+                "confidence": 0.8,
+                "grounding_scores": {"name": 1.0},
+                "source_id": "s2",
+            },
         ]
         field_defs = [{"name": "name", "field_type": "string"}]
         record = consolidate_extractions(extractions, field_defs, "g", "t")
@@ -1212,13 +1250,25 @@ class TestV2ExtractionConfidenceCap:
         """V2: per-field confidence 0.9 but extraction confidence 0.2 → weight capped at 0.3."""
         extractions = [
             {
-                "data": {"location": {"value": "Bielefeld", "confidence": 0.9, "grounding": 1.0}},
+                "data": {
+                    "location": {
+                        "value": "Bielefeld",
+                        "confidence": 0.9,
+                        "grounding": 1.0,
+                    }
+                },
                 "data_version": 2,
                 "confidence": 0.2,
                 "source_id": "s_bad",
             },
             {
-                "data": {"location": {"value": "Bocholt", "confidence": 0.8, "grounding": 1.0}},
+                "data": {
+                    "location": {
+                        "value": "Bocholt",
+                        "confidence": 0.8,
+                        "grounding": 1.0,
+                    }
+                },
                 "data_version": 2,
                 "confidence": 0.9,
                 "source_id": "s_good",
@@ -1263,8 +1313,8 @@ class TestV2ExtractionConfidenceCap:
         assert record.fields["name"].value == "ABB"
         assert record.fields["name"].winning_weight == pytest.approx(0.2)
 
-    def test_floor_prevents_zeroing(self):
-        """Floor of 0.3 prevents complete zeroing of fields."""
+    def test_zero_confidence_extraction_gets_zero_weight(self):
+        """Zero extraction confidence caps field weight to zero."""
         extractions = [
             {
                 "data": {"name": {"value": "ABB", "confidence": 0.9, "grounding": 1.0}},
@@ -1275,8 +1325,8 @@ class TestV2ExtractionConfidenceCap:
         ]
         field_defs = [{"name": "name", "field_type": "text"}]
         record = consolidate_extractions(extractions, field_defs, "g", "t")
-        # weight = min(0.9, 1.0) = 0.9, cap = max(0.0, 0.3) = 0.3 → 0.3
-        assert record.fields["name"].winning_weight == pytest.approx(0.3)
+        # weight = min(0.9, 0.0) = 0.0 — extraction confidence directly caps
+        assert record.fields["name"].winning_weight == pytest.approx(0.0)
 
 
 # ── Strategy: llm_summarize ──
@@ -1307,6 +1357,7 @@ class TestLLMSummarize:
 
     def test_in_valid_strategies(self):
         from services.extraction.consolidation import VALID_CONSOLIDATION_STRATEGIES
+
         assert "llm_summarize" in VALID_CONSOLIDATION_STRATEGIES
 
 
@@ -1425,7 +1476,11 @@ class TestV2ListFieldConsolidation:
                     "_meta": {"group": "company_meta", "data_version": 2},
                     "certifications": {
                         "items": [
-                            {"value": "ISO9001:2015", "grounding": 1.0, "confidence": 0.9},
+                            {
+                                "value": "ISO9001:2015",
+                                "grounding": 1.0,
+                                "confidence": 0.9,
+                            },
                             {"value": "ISO14001", "grounding": 1.0, "confidence": 0.85},
                         ]
                     },
@@ -1439,7 +1494,11 @@ class TestV2ListFieldConsolidation:
                     "_meta": {"group": "company_meta", "data_version": 2},
                     "certifications": {
                         "items": [
-                            {"value": "ISO9001:2015", "grounding": 1.0, "confidence": 0.9},
+                            {
+                                "value": "ISO9001:2015",
+                                "grounding": 1.0,
+                                "confidence": 0.9,
+                            },
                             {"value": "CE", "grounding": 0.9, "confidence": 0.8},
                         ]
                     },
@@ -1450,7 +1509,9 @@ class TestV2ListFieldConsolidation:
             },
         ]
         field_defs = [{"name": "certifications", "field_type": "list"}]
-        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        record = consolidate_extractions(
+            extractions, field_defs, "acme", "company_meta"
+        )
         assert "certifications" in record.fields
         result = record.fields["certifications"].value
         assert isinstance(result, list)
@@ -1473,7 +1534,9 @@ class TestV2ListFieldConsolidation:
             },
         ]
         field_defs = [{"name": "certifications", "field_type": "list"}]
-        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        record = consolidate_extractions(
+            extractions, field_defs, "acme", "company_meta"
+        )
         assert "certifications" not in record.fields
 
     def test_v2_list_items_null_values_skipped(self):
@@ -1495,7 +1558,9 @@ class TestV2ListFieldConsolidation:
             },
         ]
         field_defs = [{"name": "certifications", "field_type": "list"}]
-        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
+        record = consolidate_extractions(
+            extractions, field_defs, "acme", "company_meta"
+        )
         assert record.fields["certifications"].value == ["ISO9001"]
 
     def test_v2_list_weight_capped_by_ext_confidence(self):
@@ -1516,8 +1581,11 @@ class TestV2ListFieldConsolidation:
             },
         ]
         field_defs = [{"name": "certifications", "field_type": "list"}]
-        record = consolidate_extractions(extractions, field_defs, "acme", "company_meta")
-        assert record.fields["certifications"].winning_weight == pytest.approx(0.3)
+        record = consolidate_extractions(
+            extractions, field_defs, "acme", "company_meta"
+        )
+        # weight = min(avg_item_weight, ext_confidence) = min(0.95, 0.2) = 0.2
+        assert record.fields["certifications"].winning_weight == pytest.approx(0.2)
 
     def test_v2_list_falls_back_to_value_key(self):
         """If a list field has 'value' key instead of 'items', scalar path handles it."""
@@ -1525,7 +1593,11 @@ class TestV2ListFieldConsolidation:
             {
                 "data": {
                     "_meta": {"group": "meta", "data_version": 2},
-                    "tags": {"value": ["alpha", "beta"], "grounding": 1.0, "confidence": 0.9},
+                    "tags": {
+                        "value": ["alpha", "beta"],
+                        "grounding": 1.0,
+                        "confidence": 0.9,
+                    },
                 },
                 "data_version": 2,
                 "confidence": 0.8,

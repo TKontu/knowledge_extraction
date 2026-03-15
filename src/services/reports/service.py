@@ -588,7 +588,11 @@ class ReportService:
 
         schema = self._get_project_schema(project_id)
         if not schema:
-            return "# No extraction schema found\n\nCannot generate table.", None, empty_summary
+            return (
+                "# No extraction schema found\n\nCannot generate table.",
+                None,
+                empty_summary,
+            )
 
         # Query consolidated extractions
         from sqlalchemy import select
@@ -600,7 +604,11 @@ class ReportService:
         records = self._db.execute(query).scalars().all()
 
         if not records:
-            return "# No consolidated data\n\nRun consolidation first.", None, empty_summary
+            return (
+                "# No consolidated data\n\nRun consolidation first.",
+                None,
+                empty_summary,
+            )
 
         # Build unified data sheet
         builder = ConsolidatedReportBuilder(self._schema_generator)
@@ -631,7 +639,8 @@ class ReportService:
         return md_content, excel_bytes, summary
 
     def _group_records_by_sg(
-        self, records: list,
+        self,
+        records: list,
     ) -> dict[str, dict[str, Any]]:
         """Group records by source_group → extraction_type."""
         records_by_sg: dict[str, dict[str, Any]] = {}
@@ -652,20 +661,14 @@ class ReportService:
         for rec in records:
             for prov in (rec.provenance or {}).values():
                 if isinstance(prov, dict):
-                    all_source_ids.update(
-                        str(s) for s in prov.get("top_sources", [])
-                    )
+                    all_source_ids.update(str(s) for s in prov.get("top_sources", []))
 
         if not all_source_ids:
             return {}
 
-        source_rows = (
-            self._db.execute(
-                select(Source.id, Source.uri).where(
-                    Source.id.in_(list(all_source_ids))
-                )
-            ).all()
-        )
+        source_rows = self._db.execute(
+            select(Source.id, Source.uri).where(Source.id.in_(list(all_source_ids)))
+        ).all()
         return {str(row.id): row.uri for row in source_rows}
 
     def _aggregate_by_source(
@@ -836,9 +839,12 @@ class ReportService:
 
         # Columns to merge (skip metadata columns and internal tracking)
         merge_columns = [
-            c for c in columns
+            c
+            for c in columns
             if c not in ("source_url", "source_title", "domain", "avg_confidence")
-            and not c.startswith("_")  # Exclude internal fields like _column_confidences
+            and not c.startswith(
+                "_"
+            )  # Exclude internal fields like _column_confidences
         ]
 
         # Merge each domain
@@ -856,7 +862,9 @@ class ReportService:
                 continue
 
             # Merge each column in parallel
-            async def merge_column(col_name: str) -> tuple[str, Any, float, dict | None]:
+            async def merge_column(
+                col_name: str,
+            ) -> tuple[str, Any, float, dict | None]:
                 """Merge a single column for this domain."""
 
                 def get_column_confidence(row: dict, col: str) -> float | None:
@@ -943,8 +951,7 @@ class ReportService:
 
         # Update columns for domain output (remove source-specific columns)
         domain_columns = ["domain"] + [
-            c for c in columns
-            if c not in ("source_url", "source_title", "domain")
+            c for c in columns if c not in ("source_url", "source_title", "domain")
         ]
 
         # Update labels
@@ -1007,7 +1014,10 @@ class ReportService:
                 else:
                     # Sanitize for markdown table: newlines and pipe characters
                     values.append(
-                        str(val).replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+                        str(val)
+                        .replace("\n", " ")
+                        .replace("\r", " ")
+                        .replace("|", "\\|")
                     )
             lines.append("| " + " | ".join(values) + " |")
 
@@ -1062,7 +1072,12 @@ class ReportService:
 
         # Filter columns if specified
         if columns:
-            final_columns = [c for c in final_columns if c in columns or c in ("source_url", "source_title", "domain", "avg_confidence")]
+            final_columns = [
+                c
+                for c in final_columns
+                if c in columns
+                or c in ("source_url", "source_title", "domain", "avg_confidence")
+            ]
 
         md_content = self._build_markdown_table(rows, final_columns, title, labels)
 

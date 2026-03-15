@@ -31,9 +31,8 @@ import re
 import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, UTC
-from pathlib import Path
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
 sys.path.insert(0, "src")
@@ -45,14 +44,11 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import engine
 from orm_models import Project, Source
-from services.extraction.content_cleaner import strip_structural_junk
-from services.extraction.field_groups import FieldDefinition, FieldGroup
+from services.extraction.field_groups import FieldGroup
 from services.extraction.grounding import verify_quote_in_source
 from services.extraction.schema_adapter import ExtractionContext, SchemaAdapter
 from services.extraction.schema_extractor import (
     SchemaExtractor,
-    _HALLUCINATION_GUARD,
-    _QUOTE_NOT_VALUE_NOTE,
 )
 
 # ── Schema configurations ──────────────────────────────────────────────────
@@ -105,6 +101,7 @@ TARGETED_SOURCES = {
 
 # ── Data structures ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class FieldResult:
     field: str
@@ -144,9 +141,14 @@ def _normalize(s: str) -> str:
 
 # ── Parsing ──────────────────────────────────────────────────────────────────
 
+
 def parse_v2_fields(
-    raw: dict, source_text: str, source_group: str,
-    group_name: str, schema_name: str, field_group: FieldGroup,
+    raw: dict,
+    source_text: str,
+    source_group: str,
+    group_name: str,
+    schema_name: str,
+    field_group: FieldGroup,
 ) -> tuple[list[FieldResult], dict[str, int]]:
     """Parse v2 response, compute grounding, track list sizes."""
     results = []
@@ -178,25 +180,38 @@ def parse_v2_fields(
         grounding = verify_quote_in_source(quote, source_text)
 
         value_is_quote = (
-            bool(value_str) and len(value_str) > 1
+            bool(value_str)
+            and len(value_str) > 1
             and not isinstance(value, (list, dict))
             and _normalize(value_str) == _normalize(quote)
         )
 
-        results.append(FieldResult(
-            field=fname, value=value_str[:300], quote=quote[:200],
-            confidence=confidence, grounding=grounding,
-            value_is_quote=value_is_quote, source_group=source_group,
-            group_name=group_name, schema_name=schema_name,
-            is_list_field=is_list,
-            list_item_count=len(value) if is_list and isinstance(value, list) else 0,
-        ))
+        results.append(
+            FieldResult(
+                field=fname,
+                value=value_str[:300],
+                quote=quote[:200],
+                confidence=confidence,
+                grounding=grounding,
+                value_is_quote=value_is_quote,
+                source_group=source_group,
+                group_name=group_name,
+                schema_name=schema_name,
+                is_list_field=is_list,
+                list_item_count=len(value)
+                if is_list and isinstance(value, list)
+                else 0,
+            )
+        )
     return results, list_sizes
 
 
 def parse_entity_fields(
-    raw: dict, field_group: FieldGroup, source_text: str,
-    source_group: str, schema_name: str,
+    raw: dict,
+    field_group: FieldGroup,
+    source_text: str,
+    source_group: str,
+    schema_name: str,
 ) -> tuple[list[FieldResult], dict[str, int]]:
     """Parse v2 entity list response."""
     results = []
@@ -212,7 +227,12 @@ def parse_entity_fields(
             continue
         quote = entity.get("_quote") or ""
         confidence = float(entity.get("_confidence", entity.get("confidence", 0)))
-        name = entity.get("name") or entity.get("product_name") or entity.get("entity_id") or ""
+        name = (
+            entity.get("name")
+            or entity.get("product_name")
+            or entity.get("entity_id")
+            or ""
+        )
         value_str = str(name)
 
         if not quote:
@@ -220,20 +240,29 @@ def parse_entity_fields(
 
         grounding = verify_quote_in_source(quote, source_text)
         value_is_quote = (
-            bool(value_str) and len(value_str) > 1
+            bool(value_str)
+            and len(value_str) > 1
             and _normalize(value_str) == _normalize(quote)
         )
 
-        results.append(FieldResult(
-            field=f"{entity_key}[{i}]", value=value_str[:200], quote=quote[:200],
-            confidence=confidence, grounding=grounding,
-            value_is_quote=value_is_quote, source_group=source_group,
-            group_name=entity_key, schema_name=schema_name,
-        ))
+        results.append(
+            FieldResult(
+                field=f"{entity_key}[{i}]",
+                value=value_str[:200],
+                quote=quote[:200],
+                confidence=confidence,
+                grounding=grounding,
+                value_is_quote=value_is_quote,
+                source_group=source_group,
+                group_name=entity_key,
+                schema_name=schema_name,
+            )
+        )
     return results, list_sizes
 
 
 # ── LLM call (uses production code path) ─────────────────────────────────────
+
 
 async def extract_with_production_prompt(
     client: AsyncOpenAI,
@@ -289,6 +318,7 @@ async def extract_with_production_prompt(
 
 # ── Report ───────────────────────────────────────────────────────────────────
 
+
 def print_report(
     all_results: list[ExtractionResult],
     all_fields: list[FieldResult],
@@ -297,14 +327,18 @@ def print_report(
     """Print comprehensive baseline report."""
     elapsed_total = time.monotonic() - start_time
 
-    print(f"\n{'='*90}")
-    print(f"  PHASE B BASELINE REPORT — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"{'='*90}")
+    print(f"\n{'=' * 90}")
+    print(
+        f"  PHASE B BASELINE REPORT — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}"
+    )
+    print(f"{'=' * 90}")
     print(f"  Model: {settings.llm_model}")
     print(f"  Total extractions: {len(all_results)}")
     print(f"  Total fields scored: {len(all_fields)}")
     print(f"  Wall time: {elapsed_total:.0f}s")
-    print(f"  Prompt features: hallucination_guard=ON, quote_not_value=ON, list_max_items=ON")
+    print(
+        "  Prompt features: hallucination_guard=ON, quote_not_value=ON, list_max_items=ON"
+    )
 
     # ── Overall metrics ──
     n = len(all_fields)
@@ -321,43 +355,47 @@ def print_report(
     avg_g = sum(r.grounding for r in all_fields) / n
     avg_c = sum(r.confidence for r in all_fields) / n
 
-    print(f"\n{'─'*70}")
+    print(f"\n{'─' * 70}")
     print("  OVERALL QUALITY METRICS")
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
     print(f"  Fields with grounding data:     {n}")
     print(f"  Avg grounding:                  {avg_g:.3f}")
     print(f"  Avg confidence:                 {avg_c:.3f}")
-    print(f"  Well grounded (>=0.8):          {well}/{n} ({well/n*100:.1f}%)")
-    print(f"  Partially grounded (0.3-0.8):   {partial}/{n} ({partial/n*100:.1f}%)")
-    print(f"  Poorly grounded (<0.3):         {poor}/{n} ({poor/n*100:.1f}%)")
-    print(f"  Overconfident (c>=0.8 & g<0.3): {overconf}/{n} ({overconf/n*100:.1f}%)")
-    print(f"  Value == quote (echo):          {val_eq_q}/{n} ({val_eq_q/n*100:.1f}%)")
-    print(f"  Bad echo (echo & g<0.3):        {bad_echo}/{n} ({bad_echo/n*100:.1f}%)")
+    print(f"  Well grounded (>=0.8):          {well}/{n} ({well / n * 100:.1f}%)")
+    print(f"  Partially grounded (0.3-0.8):   {partial}/{n} ({partial / n * 100:.1f}%)")
+    print(f"  Poorly grounded (<0.3):         {poor}/{n} ({poor / n * 100:.1f}%)")
+    print(
+        f"  Overconfident (c>=0.8 & g<0.3): {overconf}/{n} ({overconf / n * 100:.1f}%)"
+    )
+    print(
+        f"  Value == quote (echo):          {val_eq_q}/{n} ({val_eq_q / n * 100:.1f}%)"
+    )
+    print(
+        f"  Bad echo (echo & g<0.3):        {bad_echo}/{n} ({bad_echo / n * 100:.1f}%)"
+    )
 
     # ── Truncation & errors ──
     truncations = sum(1 for r in all_results if r.finish_reason == "length")
     errors = sum(1 for r in all_results if r.error)
-    avg_resp_len = (
-        sum(r.response_length for r in all_results if r.raw_response) /
-        max(1, sum(1 for r in all_results if r.raw_response))
+    avg_resp_len = sum(r.response_length for r in all_results if r.raw_response) / max(
+        1, sum(1 for r in all_results if r.raw_response)
     )
     avg_latency = (
-        sum(r.elapsed for r in all_results) / len(all_results)
-        if all_results else 0
+        sum(r.elapsed for r in all_results) / len(all_results) if all_results else 0
     )
 
-    print(f"\n{'─'*70}")
+    print(f"\n{'─' * 70}")
     print("  EXTRACTION HEALTH")
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
     print(f"  Truncations (finish=length):    {truncations}/{len(all_results)}")
     print(f"  LLM errors:                     {errors}/{len(all_results)}")
     print(f"  Avg response length:            {avg_resp_len:.0f} chars")
     print(f"  Avg latency:                    {avg_latency:.2f}s")
 
     # ── List field sizes ──
-    print(f"\n{'─'*70}")
+    print(f"\n{'─' * 70}")
     print("  LIST FIELD SIZES (max_items enforcement)")
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
 
     list_sizes_all: dict[str, list[int]] = defaultdict(list)
     for r in all_results:
@@ -366,7 +404,7 @@ def print_report(
 
     if list_sizes_all:
         print(f"\n  {'Field':<55s} {'n':>4s} {'avg':>6s} {'max':>5s} {'>20':>5s}")
-        print(f"  {'─'*80}")
+        print(f"  {'─' * 80}")
         for fk in sorted(list_sizes_all.keys()):
             sizes = list_sizes_all[fk]
             avg_s = sum(sizes) / len(sizes) if sizes else 0
@@ -377,13 +415,15 @@ def print_report(
         print("  No list fields found")
 
     # ── Per-schema breakdown ──
-    print(f"\n{'─'*70}")
+    print(f"\n{'─' * 70}")
     print("  PER-SCHEMA BREAKDOWN")
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
 
     schemas = sorted(set(r.schema_name for r in all_fields))
-    print(f"\n  {'Schema':<20s} {'n':>5s} {'avg_g':>7s} {'well%':>7s} {'poor%':>7s} {'overc%':>7s} {'echo%':>7s}")
-    print(f"  {'─'*65}")
+    print(
+        f"\n  {'Schema':<20s} {'n':>5s} {'avg_g':>7s} {'well%':>7s} {'poor%':>7s} {'overc%':>7s} {'echo%':>7s}"
+    )
+    print(f"  {'─' * 65}")
 
     for schema in schemas:
         items = [r for r in all_fields if r.schema_name == schema]
@@ -392,16 +432,22 @@ def print_report(
             continue
         s_well = sum(1 for r in items if r.grounding >= 0.8) / sn * 100
         s_poor = sum(1 for r in items if r.grounding < 0.3) / sn * 100
-        s_overc = sum(1 for r in items if r.confidence >= 0.8 and r.grounding < 0.3) / sn * 100
+        s_overc = (
+            sum(1 for r in items if r.confidence >= 0.8 and r.grounding < 0.3)
+            / sn
+            * 100
+        )
         s_echo = sum(1 for r in items if r.value_is_quote) / sn * 100
         s_avg_g = sum(r.grounding for r in items) / sn
 
-        print(f"  {schema:<20s} {sn:5d} {s_avg_g:7.3f} {s_well:6.1f}% {s_poor:6.1f}% {s_overc:6.1f}% {s_echo:6.1f}%")
+        print(
+            f"  {schema:<20s} {sn:5d} {s_avg_g:7.3f} {s_well:6.1f}% {s_poor:6.1f}% {s_overc:6.1f}% {s_echo:6.1f}%"
+        )
 
     # ── Per-field breakdown ──
-    print(f"\n{'─'*70}")
+    print(f"\n{'─' * 70}")
     print("  PER-FIELD BREAKDOWN")
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
 
     by_field: dict[str, list[FieldResult]] = defaultdict(list)
     for r in all_fields:
@@ -411,7 +457,7 @@ def print_report(
     all_fks = sorted(by_field.keys())
 
     print(f"\n  {'Field':<55s} {'n':>4s} {'avg_g':>6s} {'poor%':>6s} {'echo%':>6s}")
-    print(f"  {'─'*80}")
+    print(f"  {'─' * 80}")
 
     for fk in all_fks:
         items = by_field[fk]
@@ -424,18 +470,22 @@ def print_report(
         print(f"  {fk:<55s} {fn:4d} {f_avg_g:6.3f} {f_poor:5.1f}% {f_echo:5.1f}%")
 
     # ── Targeted case results ──
-    targeted = [r for r in all_results if r.source_id in {
-        sid for sids in TARGETED_SOURCES.values() for sid in sids
-    }]
+    targeted = [
+        r
+        for r in all_results
+        if r.source_id in {sid for sids in TARGETED_SOURCES.values() for sid in sids}
+    ]
     if targeted:
-        print(f"\n{'─'*70}")
+        print(f"\n{'─' * 70}")
         print("  TARGETED HARD CASES")
-        print(f"{'─'*70}")
+        print(f"{'─' * 70}")
 
         for r in targeted:
             print(f"\n  Source: {r.source_group} ({r.source_id[:12]}...)")
             print(f"  Group: {r.group_name} | Schema: {r.schema_name}")
-            print(f"  Finish: {r.finish_reason} | Response: {r.response_length} chars | Time: {r.elapsed:.1f}s")
+            print(
+                f"  Finish: {r.finish_reason} | Response: {r.response_length} chars | Time: {r.elapsed:.1f}s"
+            )
 
             if r.list_field_sizes:
                 for fname, size in r.list_field_sizes.items():
@@ -445,15 +495,23 @@ def print_report(
                 print(f"  ERROR: {r.error}")
             else:
                 for fr in r.field_results:
-                    status = "✓" if fr.grounding >= 0.8 else "~" if fr.grounding >= 0.3 else "✗"
-                    print(f"    {status} {fr.field}: g={fr.grounding:.2f} c={fr.confidence:.2f} v=\"{fr.value[:60]}\"")
+                    status = (
+                        "✓"
+                        if fr.grounding >= 0.8
+                        else "~"
+                        if fr.grounding >= 0.3
+                        else "✗"
+                    )
+                    print(
+                        f'    {status} {fr.field}: g={fr.grounding:.2f} c={fr.confidence:.2f} v="{fr.value[:60]}"'
+                    )
                     if fr.grounding < 0.3:
-                        print(f"      quote=\"{fr.quote[:80]}\"")
+                        print(f'      quote="{fr.quote[:80]}"')
 
     # ── Worst offenders ──
-    print(f"\n{'─'*70}")
+    print(f"\n{'─' * 70}")
     print("  WORST OFFENDERS (poorly grounded, high confidence)")
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
 
     worst = sorted(
         [r for r in all_fields if r.confidence >= 0.7 and r.grounding < 0.3],
@@ -463,29 +521,32 @@ def print_report(
 
     for r in worst:
         print(f"\n  {r.schema_name}/{r.group_name}.{r.field} [{r.source_group}]")
-        print(f"    conf={r.confidence:.2f} ground={r.grounding:.2f} echo={r.value_is_quote}")
-        print(f"    value=\"{r.value[:80]}\"")
-        print(f"    quote=\"{r.quote[:80]}\"")
+        print(
+            f"    conf={r.confidence:.2f} ground={r.grounding:.2f} echo={r.value_is_quote}"
+        )
+        print(f'    value="{r.value[:80]}"')
+        print(f'    quote="{r.quote[:80]}"')
 
     # ── Summary baseline numbers ──
-    print(f"\n{'='*90}")
+    print(f"\n{'=' * 90}")
     print("  BASELINE REFERENCE NUMBERS")
-    print(f"{'='*90}")
+    print(f"{'=' * 90}")
     print(f"  Date:                {datetime.now(UTC).strftime('%Y-%m-%d')}")
     print(f"  Model:               {settings.llm_model}")
     print(f"  Schemas:             {', '.join(schemas)}")
     print(f"  Total fields:        {n}")
-    print(f"  Well grounded:       {well/n*100:.1f}%")
-    print(f"  Poorly grounded:     {poor/n*100:.1f}%")
-    print(f"  Overconfident:       {overconf/n*100:.1f}%")
-    print(f"  Value==quote (echo): {val_eq_q/n*100:.1f}%")
+    print(f"  Well grounded:       {well / n * 100:.1f}%")
+    print(f"  Poorly grounded:     {poor / n * 100:.1f}%")
+    print(f"  Overconfident:       {overconf / n * 100:.1f}%")
+    print(f"  Value==quote (echo): {val_eq_q / n * 100:.1f}%")
     print(f"  Truncations:         {truncations}/{len(all_results)}")
     print(f"  Avg grounding:       {avg_g:.3f}")
     print(f"  Avg latency:         {avg_latency:.2f}s")
-    print(f"{'='*90}\n")
+    print(f"{'=' * 90}\n")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+
 
 async def main():
     import argparse
@@ -493,17 +554,30 @@ async def main():
     parser = argparse.ArgumentParser(
         description="Phase B baseline trial across multiple schemas"
     )
-    parser.add_argument("--limit", type=int, default=None,
-                        help="Override per-schema source limit")
-    parser.add_argument("--schemas", type=str, default=None,
-                        help="Comma-separated schemas to test (default: all)")
-    parser.add_argument("--groups", type=str, default=None,
-                        help="Comma-separated field group names to test")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Override per-schema source limit"
+    )
+    parser.add_argument(
+        "--schemas",
+        type=str,
+        default=None,
+        help="Comma-separated schemas to test (default: all)",
+    )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        default=None,
+        help="Comma-separated field group names to test",
+    )
     parser.add_argument("--content-limit", type=int, default=20000)
-    parser.add_argument("--targeted-only", action="store_true",
-                        help="Only run targeted hard cases (skip random sampling)")
-    parser.add_argument("--concurrency", type=int, default=3,
-                        help="Max concurrent LLM calls")
+    parser.add_argument(
+        "--targeted-only",
+        action="store_true",
+        help="Only run targeted hard cases (skip random sampling)",
+    )
+    parser.add_argument(
+        "--concurrency", type=int, default=3, help="Max concurrent LLM calls"
+    )
     args = parser.parse_args()
 
     # Filter schemas
@@ -514,9 +588,9 @@ async def main():
 
     start_time = time.monotonic()
 
-    print(f"\n{'='*90}")
+    print(f"\n{'=' * 90}")
     print("  PHASE B BASELINE TRIAL")
-    print(f"{'='*90}")
+    print(f"{'=' * 90}")
     print(f"  Schemas: {', '.join(schema_keys)}")
     print(f"  Model: {settings.llm_model}")
     print(f"  Content limit: {args.content_limit}")
@@ -526,7 +600,9 @@ async def main():
 
     # ── Load all schemas and sample sources ──
     adapter = SchemaAdapter()
-    work_items: list[tuple] = []  # (schema_name, source_id, source_group, content, field_groups, context)
+    work_items: list[
+        tuple
+    ] = []  # (schema_name, source_id, source_group, content, field_groups, context)
 
     with Session(engine) as session:
         for schema_key in schema_keys:
@@ -554,23 +630,36 @@ async def main():
                 print(f"  ⚠ No field groups for {cfg['label']}, skipping")
                 continue
 
-            print(f"  {cfg['label']}: {len(field_groups)} groups ({', '.join(g.name for g in field_groups)})")
+            print(
+                f"  {cfg['label']}: {len(field_groups)} groups ({', '.join(g.name for g in field_groups)})"
+            )
 
             # Collect targeted sources
             targeted_ids = TARGETED_SOURCES.get(schema_key, [])
             if targeted_ids:
                 targeted_sources = session.execute(
-                    select(Source.id, Source.source_group, Source.content, Source.cleaned_content)
+                    select(
+                        Source.id,
+                        Source.source_group,
+                        Source.content,
+                        Source.cleaned_content,
+                    )
                     .where(Source.id.in_([UUID(sid) for sid in targeted_ids]))
                     .where(Source.content.isnot(None))
                 ).all()
                 for src in targeted_sources:
                     text = src.cleaned_content or src.content
                     if text and len(text) > 50:
-                        work_items.append((
-                            schema_key, str(src.id), src.source_group, text,
-                            field_groups, context,
-                        ))
+                        work_items.append(
+                            (
+                                schema_key,
+                                str(src.id),
+                                src.source_group,
+                                text,
+                                field_groups,
+                                context,
+                            )
+                        )
                 print(f"    Targeted: {len(targeted_sources)} sources")
 
             # Random sample (unless targeted-only)
@@ -579,7 +668,12 @@ async def main():
                 # Exclude targeted sources from random sample
                 exclude_ids = [UUID(sid) for sid in targeted_ids]
                 q = (
-                    select(Source.id, Source.source_group, Source.content, Source.cleaned_content)
+                    select(
+                        Source.id,
+                        Source.source_group,
+                        Source.content,
+                        Source.cleaned_content,
+                    )
                     .where(Source.project_id == project_id)
                     .where(Source.content.isnot(None))
                     .where(func.length(Source.content) > 200)
@@ -592,10 +686,16 @@ async def main():
                 for src in random_sources:
                     text = src.cleaned_content or src.content
                     if text and len(text) > 50:
-                        work_items.append((
-                            schema_key, str(src.id), src.source_group, text,
-                            field_groups, context,
-                        ))
+                        work_items.append(
+                            (
+                                schema_key,
+                                str(src.id),
+                                src.source_group,
+                                text,
+                                field_groups,
+                                context,
+                            )
+                        )
                 print(f"    Random: {len(random_sources)} sources")
 
     if not work_items:
@@ -621,15 +721,29 @@ async def main():
     call_idx = 0
 
     async def process_one(
-        schema_name: str, source_id: str, source_group: str,
-        content: str, group: FieldGroup, context: ExtractionContext,
+        schema_name: str,
+        source_id: str,
+        source_group: str,
+        content: str,
+        group: FieldGroup,
+        context: ExtractionContext,
     ) -> ExtractionResult:
         nonlocal call_idx
 
         async with semaphore:
-            raw, elapsed, finish_reason, resp_len = await extract_with_production_prompt(
-                client, model, content, group, context,
-                source_group, args.content_limit,
+            (
+                raw,
+                elapsed,
+                finish_reason,
+                resp_len,
+            ) = await extract_with_production_prompt(
+                client,
+                model,
+                content,
+                group,
+                context,
+                source_group,
+                args.content_limit,
             )
 
         call_idx += 1
@@ -639,24 +753,40 @@ async def main():
             print(
                 f"\r  [{call_idx}/{total_calls}] ({pct:.0f}%) "
                 f"{schema_name}/{source_group}/{group.name} → ERR     ",
-                end="", flush=True,
+                end="",
+                flush=True,
             )
             return ExtractionResult(
-                source_id=source_id, source_group=source_group or "",
-                group_name=group.name, schema_name=schema_name,
-                elapsed=elapsed, raw_response=None, error="LLM error",
-                finish_reason=finish_reason, response_length=resp_len,
-                field_results=[], list_field_sizes={},
+                source_id=source_id,
+                source_group=source_group or "",
+                group_name=group.name,
+                schema_name=schema_name,
+                elapsed=elapsed,
+                raw_response=None,
+                error="LLM error",
+                finish_reason=finish_reason,
+                response_length=resp_len,
+                field_results=[],
+                list_field_sizes={},
             )
 
         # Parse results
         if group.is_entity_list:
             field_results, list_sizes = parse_entity_fields(
-                raw, group, content, source_group or "", schema_name,
+                raw,
+                group,
+                content,
+                source_group or "",
+                schema_name,
             )
         else:
             field_results, list_sizes = parse_v2_fields(
-                raw, content, source_group or "", group.name, schema_name, group,
+                raw,
+                content,
+                source_group or "",
+                group.name,
+                schema_name,
+                group,
             )
 
         n_fields = len(field_results)
@@ -664,24 +794,45 @@ async def main():
         print(
             f"\r  [{call_idx}/{total_calls}] ({pct:.0f}%) "
             f"{schema_name}/{source_group}/{group.name} → {n_fields}f {trunc}    ",
-            end="", flush=True,
+            end="",
+            flush=True,
         )
 
         return ExtractionResult(
-            source_id=source_id, source_group=source_group or "",
-            group_name=group.name, schema_name=schema_name,
-            elapsed=elapsed, raw_response=raw, error=None,
-            finish_reason=finish_reason, response_length=resp_len,
-            field_results=field_results, list_field_sizes=list_sizes,
+            source_id=source_id,
+            source_group=source_group or "",
+            group_name=group.name,
+            schema_name=schema_name,
+            elapsed=elapsed,
+            raw_response=raw,
+            error=None,
+            finish_reason=finish_reason,
+            response_length=resp_len,
+            field_results=field_results,
+            list_field_sizes=list_sizes,
         )
 
     # Build all tasks
     tasks = []
-    for schema_name, source_id, source_group, content, field_groups, context in work_items:
+    for (
+        schema_name,
+        source_id,
+        source_group,
+        content,
+        field_groups,
+        context,
+    ) in work_items:
         for group in field_groups:
-            tasks.append(process_one(
-                schema_name, source_id, source_group, content, group, context,
-            ))
+            tasks.append(
+                process_one(
+                    schema_name,
+                    source_id,
+                    source_group,
+                    content,
+                    group,
+                    context,
+                )
+            )
 
     # Run with concurrency control
     results = await asyncio.gather(*tasks)

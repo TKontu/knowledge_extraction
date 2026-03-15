@@ -1,5 +1,3 @@
-import pytest
-
 from services.projects.templates import (
     COMPANY_ANALYSIS_TEMPLATE,
     CONTRACT_REVIEW_TEMPLATE,

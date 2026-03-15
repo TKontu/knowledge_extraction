@@ -106,11 +106,22 @@ class TestIsEmptyResult:
             name="company_info",
             description="Company information",
             fields=[
-                FieldDefinition(name="name", field_type="text", description="Company name"),
+                FieldDefinition(
+                    name="name", field_type="text", description="Company name"
+                ),
                 FieldDefinition(name="city", field_type="text", description="City"),
-                FieldDefinition(name="country", field_type="text", description="Country"),
-                FieldDefinition(name="employees", field_type="integer", description="Employee count"),
-                FieldDefinition(name="is_public", field_type="boolean", description="Public?", default=False),
+                FieldDefinition(
+                    name="country", field_type="text", description="Country"
+                ),
+                FieldDefinition(
+                    name="employees", field_type="integer", description="Employee count"
+                ),
+                FieldDefinition(
+                    name="is_public",
+                    field_type="boolean",
+                    description="Public?",
+                    default=False,
+                ),
             ],
             prompt_hint="Company details",
         )
@@ -122,7 +133,9 @@ class TestIsEmptyResult:
             description="Company locations",
             fields=[
                 FieldDefinition(name="city", field_type="text", description="City"),
-                FieldDefinition(name="country", field_type="text", description="Country"),
+                FieldDefinition(
+                    name="country", field_type="text", description="Country"
+                ),
             ],
             prompt_hint="Location list",
             is_entity_list=True,
@@ -183,7 +196,9 @@ class TestIsEmptyResult:
         assert is_empty is True
         assert ratio == 0.0
 
-    def test_entity_list_not_empty_when_has_entities(self, orchestrator, entity_list_group):
+    def test_entity_list_not_empty_when_has_entities(
+        self, orchestrator, entity_list_group
+    ):
         """Entity list with entities should not be empty."""
         data = {"locations": [{"city": "Helsinki", "country": "Finland"}]}
         is_empty, ratio = orchestrator._is_empty_result(data, entity_list_group)
@@ -284,7 +299,9 @@ class TestBooleanChunkMerge:
             name="flags",
             description="Boolean flags",
             fields=[
-                FieldDefinition(name="has_factory", field_type="boolean", description="Has factory"),
+                FieldDefinition(
+                    name="has_factory", field_type="boolean", description="Has factory"
+                ),
             ],
             prompt_hint="",
         )
@@ -420,7 +437,9 @@ class TestConfidenceAveraging:
             name="products",
             description="Products",
             fields=[
-                FieldDefinition(name="product_name", field_type="string", description="Name"),
+                FieldDefinition(
+                    name="product_name", field_type="string", description="Name"
+                ),
             ],
             prompt_hint="",
             is_entity_list=True,

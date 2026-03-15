@@ -225,7 +225,11 @@ class ExtractionWorker:
 
         # Create LLM skip-gate if enabled
         skip_gate = None
-        if self._classification and self._classification.skip_gate_enabled and self._llm:
+        if (
+            self._classification
+            and self._classification.skip_gate_enabled
+            and self._llm
+        ):
             from dataclasses import replace as dc_replace
 
             from services.extraction.llm_skip_gate import LLMSkipGate
@@ -234,7 +238,8 @@ class ExtractionWorker:
             gate_llm = self._llm
             if self._classification.skip_gate_model:
                 gate_llm = dc_replace(
-                    self._llm, model=self._classification.skip_gate_model,
+                    self._llm,
+                    model=self._classification.skip_gate_model,
                 )
 
             gate_client = LLMClientCls(
@@ -386,9 +391,7 @@ class ExtractionWorker:
 
             result = await self._process_with_schema_pipeline(
                 project_id=project_id,
-                source_ids=[UUID(sid) for sid in source_ids]
-                if source_ids
-                else None,
+                source_ids=[UUID(sid) for sid in source_ids] if source_ids else None,
                 source_groups=source_groups,
                 force=force,
                 field_groups_filter=field_groups_filter,

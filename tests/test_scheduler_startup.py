@@ -1,14 +1,12 @@
 """Tests for scheduler startup resilience: stale cleanup + worker stagger."""
 
-import asyncio
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from orm_models import Job, Project
-
 
 # ---------------------------------------------------------------------------
 # Unit tests (mocked DB)

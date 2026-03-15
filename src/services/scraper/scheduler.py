@@ -32,7 +32,9 @@ def get_stale_thresholds() -> dict[str, timedelta]:
         JobType.SCRAPE: timedelta(seconds=settings.scheduler.stale_threshold_scrape),
         JobType.EXTRACT: timedelta(seconds=settings.scheduler.stale_threshold_extract),
         JobType.CRAWL: timedelta(seconds=settings.scheduler.stale_threshold_crawl),
-        JobType.CONSOLIDATE: timedelta(seconds=1800),  # 30 minutes for LLM consolidation
+        JobType.CONSOLIDATE: timedelta(
+            seconds=1800
+        ),  # 30 minutes for LLM consolidation
         "default": timedelta(seconds=600),  # 10 minutes default
     }
 

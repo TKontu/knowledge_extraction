@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session
 
 from database import engine
 from orm_models import Extraction, Source
-from services.extraction.grounding import verify_quote_in_source, _word_window_similarity, _normalize_string
+from services.extraction.grounding import (
+    _normalize_string,
+    verify_quote_in_source,
+)
 
 _WS_RE = re.compile(r"\s+")
 _STRIP_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
@@ -52,7 +55,13 @@ def main():
                 continue
 
             for fname, value in ext.data.items():
-                if fname in ("_quotes", "_conflicts", "_validation", "_quote", "confidence"):
+                if fname in (
+                    "_quotes",
+                    "_conflicts",
+                    "_validation",
+                    "_quote",
+                    "confidence",
+                ):
                     continue
                 quote = quotes.get(fname)
                 if not quote or not isinstance(quote, str) or len(quote) < 3:
@@ -89,7 +98,7 @@ def main():
                     best_score = 0.0
                     if n <= len(c_words):
                         for i in range(len(c_words) - n + 1):
-                            window = c_words[i:i + n]
+                            window = c_words[i : i + n]
                             q_set = set(q_words)
                             w_set = set(window)
                             overlap = len(q_set & w_set) / len(q_set) if q_set else 0
@@ -99,34 +108,38 @@ def main():
 
                     # Value in source check
                     val_str = str(value) if value is not None else ""
-                    val_in_source = bool(val_str and _normalize(val_str) in _normalize(source_text))
+                    val_in_source = bool(
+                        val_str and _normalize(val_str) in _normalize(source_text)
+                    )
 
-                    middle_range.append({
-                        "field": fname,
-                        "ext_type": ext.extraction_type,
-                        "source_group": ext.source_group,
-                        "value": val_str[:80],
-                        "quote": quote[:150],
-                        "grounding": grounding,
-                        "tier": tier,
-                        "best_window": best_window[:150],
-                        "best_window_score": best_score,
-                        "val_in_source": val_in_source,
-                        "quote_len": len(quote),
-                    })
+                    middle_range.append(
+                        {
+                            "field": fname,
+                            "ext_type": ext.extraction_type,
+                            "source_group": ext.source_group,
+                            "value": val_str[:80],
+                            "quote": quote[:150],
+                            "grounding": grounding,
+                            "tier": tier,
+                            "best_window": best_window[:150],
+                            "best_window_score": best_score,
+                            "val_in_source": val_in_source,
+                            "quote_len": len(quote),
+                        }
+                    )
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"GROUNDING MIDDLE RANGE (0.3-0.8): {len(middle_range)} cases")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         if not middle_range:
             print("No cases in this range!")
             return
 
         # Score distribution within range
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("Score distribution:")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         buckets = Counter()
         for item in middle_range:
             g = item["grounding"]
@@ -148,31 +161,41 @@ def main():
 
         # Value in source?
         vis = sum(1 for i in middle_range if i["val_in_source"])
-        print(f"\n  Value found in source: {vis}/{len(middle_range)} ({vis/len(middle_range)*100:.0f}%)")
+        print(
+            f"\n  Value found in source: {vis}/{len(middle_range)} ({vis / len(middle_range) * 100:.0f}%)"
+        )
 
         # By field
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("By field:")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         by_field = Counter(f"{i['ext_type']}.{i['field']}" for i in middle_range)
         for field, count in by_field.most_common(15):
-            items = [i for i in middle_range if f"{i['ext_type']}.{i['field']}" == field]
+            items = [
+                i for i in middle_range if f"{i['ext_type']}.{i['field']}" == field
+            ]
             avg_g = sum(i["grounding"] for i in items) / len(items)
             vis_pct = sum(1 for i in items if i["val_in_source"]) / len(items) * 100
-            print(f"  {field:50s} n={count:3d}  avg_g={avg_g:.2f}  val_in_src={vis_pct:.0f}%")
+            print(
+                f"  {field:50s} n={count:3d}  avg_g={avg_g:.2f}  val_in_src={vis_pct:.0f}%"
+            )
 
         # Show ALL examples grouped by quality assessment
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print("ALL CASES (is this data useful or noise?):")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
 
         for item in sorted(middle_range, key=lambda x: x["grounding"]):
             g = item["grounding"]
             vis = "✓" if item["val_in_source"] else "✗"
-            print(f"\n  g={g:.2f} {vis} [{item['source_group']}/{item['ext_type']}.{item['field']}]")
-            print(f"    value: \"{item['value']}\"")
-            print(f"    quote: \"{item['quote']}\"")
-            print(f"    best window ({item['best_window_score']:.2f}): \"{item['best_window'][:120]}\"")
+            print(
+                f"\n  g={g:.2f} {vis} [{item['source_group']}/{item['ext_type']}.{item['field']}]"
+            )
+            print(f'    value: "{item["value"]}"')
+            print(f'    quote: "{item["quote"]}"')
+            print(
+                f'    best window ({item["best_window_score"]:.2f}): "{item["best_window"][:120]}"'
+            )
 
 
 if __name__ == "__main__":

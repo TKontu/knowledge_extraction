@@ -1,7 +1,8 @@
 """Tests for ExtractionRepository batch operations."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from orm_models import Extraction
 from services.storage.repositories.extraction import ExtractionRepository
@@ -89,9 +90,7 @@ class TestUpdateEmbeddingIdsBatch:
         assert test_extraction.embedding_id is None
 
         # Update embedding_id (sync method, no await)
-        updated_count = extraction_repo.update_embedding_ids_batch(
-            [test_extraction.id]
-        )
+        updated_count = extraction_repo.update_embedding_ids_batch([test_extraction.id])
 
         # Verify update
         assert updated_count == 1
@@ -100,9 +99,7 @@ class TestUpdateEmbeddingIdsBatch:
         db.refresh(test_extraction)
         assert test_extraction.embedding_id == str(test_extraction.id)
 
-    def test_updates_multiple_extractions(
-        self, extraction_repo, test_extractions, db
-    ):
+    def test_updates_multiple_extractions(self, extraction_repo, test_extractions, db):
         """Multiple extractions updated in single query."""
         extraction_ids = [ext.id for ext in test_extractions]
 

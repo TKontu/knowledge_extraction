@@ -1,10 +1,10 @@
 """Tests for FirecrawlClient scraper service."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock, Mock
-from datetime import datetime, UTC
+from unittest.mock import AsyncMock, Mock, patch
 
-from services.scraper.client import FirecrawlClient, ScrapeResult, ScrapeError
+import pytest
+
+from services.scraper.client import FirecrawlClient, ScrapeResult
 
 
 class TestFirecrawlClient:
@@ -224,7 +224,9 @@ class TestFirecrawlClient:
     @pytest.mark.asyncio
     async def test_client_closes_http_client(self, client):
         """Test that client properly closes HTTP client."""
-        with patch.object(client._http_client, "aclose", new_callable=AsyncMock) as mock_close:
+        with patch.object(
+            client._http_client, "aclose", new_callable=AsyncMock
+        ) as mock_close:
             await client.close()
             mock_close.assert_called_once()
 

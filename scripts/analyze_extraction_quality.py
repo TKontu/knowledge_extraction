@@ -23,16 +23,15 @@ import argparse
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 sys.path.insert(0, "src")
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from config import settings
 from database import engine
-from orm_models import Extraction, Project
+from orm_models import Extraction
 
 # ── Project IDs ──────────────────────────────────────────────────────────────
 
@@ -73,9 +72,9 @@ class FieldStats:
     count: int = 0
     sum_grounding: float = 0.0
     sum_confidence: float = 0.0
-    well: int = 0       # grounding >= 0.8
+    well: int = 0  # grounding >= 0.8
     borderline: int = 0  # 0.3 <= grounding < 0.8
-    poor: int = 0        # grounding < 0.3
+    poor: int = 0  # grounding < 0.3
     has_quote: int = 0
     has_location: int = 0
     null_placeholders: int = 0  # value=null, conf=0, grounding=0 (merge defaults)
@@ -100,7 +99,9 @@ class FieldStats:
     def pct_poor(self) -> float:
         return 100.0 * self.poor / self.count if self.count else 0.0
 
-    def record(self, grounding: float, confidence: float, has_quote: bool, has_loc: bool) -> None:
+    def record(
+        self, grounding: float, confidence: float, has_quote: bool, has_loc: bool
+    ) -> None:
         self.count += 1
         self.sum_grounding += grounding
         self.sum_confidence += confidence
@@ -119,21 +120,28 @@ class FieldStats:
 @dataclass
 class RunStats:
     """Stats for a single extraction run."""
+
     project_name: str
     run_label: str
     extraction_count: int = 0
     earliest: datetime | None = None
     latest: datetime | None = None
     # Per field-group
-    group_stats: dict[str, FieldStats] = field(default_factory=lambda: defaultdict(FieldStats))
+    group_stats: dict[str, FieldStats] = field(
+        default_factory=lambda: defaultdict(FieldStats)
+    )
     # Per field (within group)
-    field_stats: dict[str, FieldStats] = field(default_factory=lambda: defaultdict(FieldStats))
+    field_stats: dict[str, FieldStats] = field(
+        default_factory=lambda: defaultdict(FieldStats)
+    )
     # Per entity group (item-level grounding)
-    entity_stats: dict[str, FieldStats] = field(default_factory=lambda: defaultdict(FieldStats))
+    entity_stats: dict[str, FieldStats] = field(
+        default_factory=lambda: defaultdict(FieldStats)
+    )
     # Extraction-level confidence distribution
-    conf_high: int = 0   # >= 0.8
-    conf_mid: int = 0    # 0.3-0.8
-    conf_low: int = 0    # < 0.3
+    conf_high: int = 0  # >= 0.8
+    conf_mid: int = 0  # 0.3-0.8
+    conf_low: int = 0  # < 0.3
     # Overall field-level aggregate
     overall: FieldStats = field(default_factory=FieldStats)
 
@@ -234,7 +242,9 @@ def parse_entity_fields(data: dict, group_name: str, stats: RunStats) -> None:
                     fg = float(fval["grounding"])
                     fc = float(fval.get("confidence", confidence))
                     key = f"{group_name}.entity.{fname}"
-                    stats.field_stats[key].record(fg, fc, bool(fval.get("quote")), False)
+                    stats.field_stats[key].record(
+                        fg, fc, bool(fval.get("quote")), False
+                    )
 
 
 # Entity groups have items, scalar groups have direct field dicts
@@ -322,17 +332,17 @@ def analyze_project(
         print(f"  No v2 extractions found for {project_name}")
         return []
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"  PROJECT: {project_name}")
     print(f"  {len(runs)} extraction run(s) detected")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     for i, (start, end) in enumerate(runs):
-        print(f"  Run {i+1}: {start.isoformat()} → {end.isoformat()}")
+        print(f"  Run {i + 1}: {start.isoformat()} → {end.isoformat()}")
 
     if latest_only:
         runs = [runs[-1]]
-        print(f"  (analyzing latest run only)")
+        print("  (analyzing latest run only)")
 
     all_run_stats = []
 
@@ -394,28 +404,36 @@ def print_run_stats(stats: RunStats) -> None:
         print(f"\n  {stats.run_label}: No extractions")
         return
 
-    print(f"\n{'─'*80}")
+    print(f"\n{'─' * 80}")
     print(f"  {stats.project_name} — {stats.run_label}")
     print(f"  {n:,} extractions | {stats.earliest} → {stats.latest}")
-    print(f"{'─'*80}")
+    print(f"{'─' * 80}")
 
     # Extraction-level confidence
     total_conf = stats.conf_high + stats.conf_mid + stats.conf_low
     if total_conf > 0:
         print(f"\n  EXTRACTION-LEVEL CONFIDENCE (n={total_conf:,})")
         print(f"  {'Bucket':<20} {'Count':>8} {'Pct':>8}")
-        print(f"  {'─'*38}")
-        print(f"  {'High (>=0.8)':<20} {stats.conf_high:>8,} {100*stats.conf_high/total_conf:>7.1f}%")
-        print(f"  {'Medium (0.3-0.8)':<20} {stats.conf_mid:>8,} {100*stats.conf_mid/total_conf:>7.1f}%")
-        print(f"  {'Low (<0.3)':<20} {stats.conf_low:>8,} {100*stats.conf_low/total_conf:>7.1f}%")
+        print(f"  {'─' * 38}")
+        print(
+            f"  {'High (>=0.8)':<20} {stats.conf_high:>8,} {100 * stats.conf_high / total_conf:>7.1f}%"
+        )
+        print(
+            f"  {'Medium (0.3-0.8)':<20} {stats.conf_mid:>8,} {100 * stats.conf_mid / total_conf:>7.1f}%"
+        )
+        print(
+            f"  {'Low (<0.3)':<20} {stats.conf_low:>8,} {100 * stats.conf_low / total_conf:>7.1f}%"
+        )
 
     # Overall field-level grounding
     o = stats.overall
     total_with_nulls = o.count + o.null_placeholders
     if total_with_nulls > 0:
-        print(f"\n  FIELD-LEVEL GROUNDING (n={o.count:,} real + {o.null_placeholders:,} null placeholders)")
+        print(
+            f"\n  FIELD-LEVEL GROUNDING (n={o.count:,} real + {o.null_placeholders:,} null placeholders)"
+        )
         print(f"  {'Metric':<30} {'Value':>10}")
-        print(f"  {'─'*42}")
+        print(f"  {'─' * 42}")
         print(f"  {'Null placeholders filtered':<30} {o.null_placeholders:>10,}")
         print(f"  {'Real field observations':<30} {o.count:>10,}")
         if o.count > 0:
@@ -424,15 +442,19 @@ def print_run_stats(stats: RunStats) -> None:
             print(f"  {'Well-grounded (>=0.8)':<30} {o.pct_well:>9.1f}%")
             print(f"  {'Borderline (0.3-0.8)':<30} {o.pct_borderline:>9.1f}%")
             print(f"  {'Poorly-grounded (<0.3)':<30} {o.pct_poor:>9.1f}%")
-            print(f"  {'Has quote':<30} {100*o.has_quote/o.count:>9.1f}%")
-            print(f"  {'Has location':<30} {100*o.has_location/o.count:>9.1f}%")
+            print(f"  {'Has quote':<30} {100 * o.has_quote / o.count:>9.1f}%")
+            print(f"  {'Has location':<30} {100 * o.has_location / o.count:>9.1f}%")
 
     # Per field-group breakdown
     if stats.group_stats:
-        print(f"\n  PER FIELD-GROUP BREAKDOWN (null placeholders excluded)")
-        print(f"  {'Group':<30} {'Real':>7} {'Nulls':>7} {'AvgGnd':>8} {'Well%':>7} {'Bord%':>7} {'Poor%':>7} {'AvgConf':>8}")
-        print(f"  {'─'*84}")
-        for group_name in sorted(stats.group_stats, key=lambda g: stats.group_stats[g].avg_grounding):
+        print("\n  PER FIELD-GROUP BREAKDOWN (null placeholders excluded)")
+        print(
+            f"  {'Group':<30} {'Real':>7} {'Nulls':>7} {'AvgGnd':>8} {'Well%':>7} {'Bord%':>7} {'Poor%':>7} {'AvgConf':>8}"
+        )
+        print(f"  {'─' * 84}")
+        for group_name in sorted(
+            stats.group_stats, key=lambda g: stats.group_stats[g].avg_grounding
+        ):
             gs = stats.group_stats[group_name]
             if gs.count == 0:
                 print(
@@ -448,22 +470,30 @@ def print_run_stats(stats: RunStats) -> None:
 
     # Entity item grounding
     if stats.entity_stats:
-        print(f"\n  ENTITY ITEM GROUNDING")
-        print(f"  {'Entity Group':<30} {'Items':>7} {'AvgGnd':>8} {'Well%':>7} {'Bord%':>7} {'Poor%':>7} {'Quote%':>7}")
-        print(f"  {'─'*76}")
-        for group_name in sorted(stats.entity_stats, key=lambda g: stats.entity_stats[g].avg_grounding):
+        print("\n  ENTITY ITEM GROUNDING")
+        print(
+            f"  {'Entity Group':<30} {'Items':>7} {'AvgGnd':>8} {'Well%':>7} {'Bord%':>7} {'Poor%':>7} {'Quote%':>7}"
+        )
+        print(f"  {'─' * 76}")
+        for group_name in sorted(
+            stats.entity_stats, key=lambda g: stats.entity_stats[g].avg_grounding
+        ):
             es = stats.entity_stats[group_name]
             print(
                 f"  {group_name:<30} {es.count:>7,} {es.avg_grounding:>8.3f} "
                 f"{es.pct_well:>6.1f}% {es.pct_borderline:>6.1f}% {es.pct_poor:>6.1f}% "
-                f"{100*es.has_quote/es.count if es.count else 0:>6.1f}%"
+                f"{100 * es.has_quote / es.count if es.count else 0:>6.1f}%"
             )
 
     # Per-field breakdown (worst grounding first, top 25)
     if stats.field_stats:
-        print(f"\n  PER-FIELD BREAKDOWN (null placeholders excluded, sorted by avg grounding)")
-        print(f"  {'Field':<45} {'Real':>6} {'Nulls':>6} {'AvgGnd':>8} {'Well%':>7} {'Poor%':>7}")
-        print(f"  {'─'*82}")
+        print(
+            "\n  PER-FIELD BREAKDOWN (null placeholders excluded, sorted by avg grounding)"
+        )
+        print(
+            f"  {'Field':<45} {'Real':>6} {'Nulls':>6} {'AvgGnd':>8} {'Well%':>7} {'Poor%':>7}"
+        )
+        print(f"  {'─' * 82}")
         # Sort by avg_grounding, putting fields with 0 real observations last
         sorted_fields = sorted(
             stats.field_stats.items(),
@@ -489,14 +519,14 @@ def print_comparison(runs: list[RunStats]) -> None:
     if len(runs) < 2:
         return
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"  RUN-OVER-RUN COMPARISON: {runs[0].project_name}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"  {'Metric':<30}", end="")
     for r in runs:
         print(f" {r.run_label:>15}", end="")
     print()
-    print(f"  {'─'*(30 + 16 * len(runs))}")
+    print(f"  {'─' * (30 + 16 * len(runs))}")
 
     print(f"  {'Extractions':<30}", end="")
     for r in runs:
@@ -535,7 +565,7 @@ def print_comparison(runs: list[RunStats]) -> None:
             dg = new.overall.avg_grounding - old.overall.avg_grounding
             dw = new.overall.pct_well - old.overall.pct_well
             dp = new.overall.pct_poor - old.overall.pct_poor
-            print(f"\n  DELTA (Run 2 - Run 1):")
+            print("\n  DELTA (Run 2 - Run 1):")
             print(f"    Avg grounding:    {dg:+.3f}")
             print(f"    Well-grounded %:  {dw:+.1f}pp")
             print(f"    Poorly-grounded %: {dp:+.1f}pp")
@@ -546,14 +576,14 @@ def print_comparison(runs: list[RunStats]) -> None:
         all_groups.update(r.group_stats.keys())
 
     if all_groups:
-        print(f"\n  PER-GROUP COMPARISON (avg grounding)")
+        print("\n  PER-GROUP COMPARISON (avg grounding)")
         print(f"  {'Group':<25}", end="")
         for r in runs:
             print(f" {r.run_label:>15}", end="")
         if len(runs) == 2:
             print(f" {'Delta':>10}", end="")
         print()
-        print(f"  {'─'*(25 + 16 * len(runs) + (11 if len(runs) == 2 else 0))}")
+        print(f"  {'─' * (25 + 16 * len(runs) + (11 if len(runs) == 2 else 0))}")
 
         for group in sorted(all_groups):
             print(f"  {group:<25}", end="")
@@ -590,15 +620,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    projects = (
-        list(PROJECT_IDS.keys()) if args.project == "all" else [args.project]
-    )
+    projects = list(PROJECT_IDS.keys()) if args.project == "all" else [args.project]
 
     print("=" * 80)
     print("  EXTRACTION QUALITY ANALYSIS — v2 with inline grounding")
     print(f"  Analysis time: {datetime.now(UTC).isoformat()}")
     print(f"  Projects: {', '.join(projects)}")
-    print(f"  Mode: {'latest run only' if args.latest_only else 'all runs (with comparison)'}")
+    print(
+        f"  Mode: {'latest run only' if args.latest_only else 'all runs (with comparison)'}"
+    )
     print("=" * 80)
 
     with Session(engine) as session:
@@ -610,7 +640,7 @@ def main() -> None:
             if len(run_stats) > 1:
                 print_comparison(run_stats)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("  Analysis complete.")
     print("=" * 80)
 

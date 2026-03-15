@@ -6,11 +6,13 @@ Create Date: 2026-01-10 22:15:00.000000
 
 """
 
-from alembic import op
+from datetime import UTC, datetime
+from uuid import uuid4
+
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, timezone
-from uuid import uuid4
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "002"
@@ -22,19 +24,37 @@ depends_on = None
 BUILTIN_PROFILES = [
     {
         "name": "technical_specs",
-        "categories": ["specs", "hardware", "requirements", "compatibility", "performance"],
+        "categories": [
+            "specs",
+            "hardware",
+            "requirements",
+            "compatibility",
+            "performance",
+        ],
         "prompt_focus": "Hardware specifications, system requirements, supported platforms, performance metrics, compatibility information",
         "depth": "detailed",
     },
     {
         "name": "api_docs",
-        "categories": ["endpoints", "authentication", "rate_limits", "sdks", "versioning"],
+        "categories": [
+            "endpoints",
+            "authentication",
+            "rate_limits",
+            "sdks",
+            "versioning",
+        ],
         "prompt_focus": "API endpoints, authentication methods, rate limits, SDK availability, API versioning, request/response formats",
         "depth": "detailed",
     },
     {
         "name": "security",
-        "categories": ["certifications", "compliance", "encryption", "audit", "access_control"],
+        "categories": [
+            "certifications",
+            "compliance",
+            "encryption",
+            "audit",
+            "access_control",
+        ],
         "prompt_focus": "Security certifications (SOC2, ISO27001, etc), compliance standards, encryption methods, audit capabilities, access control features",
         "depth": "comprehensive",
     },
@@ -69,7 +89,7 @@ def upgrade() -> None:
     )
 
     # Prepare insert data
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     insert_data = [
         {
             "id": uuid4(),

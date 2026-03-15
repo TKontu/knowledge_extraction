@@ -1,9 +1,6 @@
 """Tests for job-related Pydantic models."""
 
-import pytest
-from pydantic import ValidationError
-
-from models import JobSummary, JobListResponse, JobDetailResponse
+from models import JobDetailResponse, JobListResponse, JobSummary
 
 
 class TestJobSummary:
@@ -102,7 +99,10 @@ class TestJobDetailResponse:
             completed_at="2026-01-11T10:05:00Z",
         )
 
-        assert detail.payload == {"urls": ["https://example.com"], "company": "Example Corp"}
+        assert detail.payload == {
+            "urls": ["https://example.com"],
+            "company": "Example Corp",
+        }
         assert detail.result == {"pages_scraped": 1, "success": True}
         assert detail.error is None
 

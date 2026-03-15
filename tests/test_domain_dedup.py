@@ -194,12 +194,18 @@ class TestComputeDomainFingerprint:
         pages = []
         for i in range(5):
             if i < 4:
-                pages.append(f"{block}\n\nUnique content for page {i} with enough text here.")
+                pages.append(
+                    f"{block}\n\nUnique content for page {i} with enough text here."
+                )
             else:
-                pages.append(f"Different page {i} with no shared block but enough text here.")
+                pages.append(
+                    f"Different page {i} with no shared block but enough text here."
+                )
 
         result = compute_domain_fingerprint(pages, threshold_pct=0.7, min_pages=5)
-        assert hash_block(block) not in set(result.boilerplate_hashes)  # MISSED: need 5/5
+        assert hash_block(block) not in set(
+            result.boilerplate_hashes
+        )  # MISSED: need 5/5
 
     def test_threshold_floor_overrides_min_pages_floor(self):
         """With threshold_floor=3, block on 4/5 pages (80%) is detected."""
@@ -207,9 +213,13 @@ class TestComputeDomainFingerprint:
         pages = []
         for i in range(5):
             if i < 4:
-                pages.append(f"{block}\n\nUnique content for page {i} with enough text here.")
+                pages.append(
+                    f"{block}\n\nUnique content for page {i} with enough text here."
+                )
             else:
-                pages.append(f"Different page {i} with no shared block but enough text here.")
+                pages.append(
+                    f"Different page {i} with no shared block but enough text here."
+                )
 
         result = compute_domain_fingerprint(
             pages, threshold_pct=0.7, min_pages=5, threshold_floor=3
@@ -223,9 +233,13 @@ class TestComputeDomainFingerprint:
         pages = []
         for i in range(10):
             if i < 5:
-                pages.append(f"{block}\n\nUnique content for page {i} with enough text here.")
+                pages.append(
+                    f"{block}\n\nUnique content for page {i} with enough text here."
+                )
             else:
-                pages.append(f"Different page {i} with no shared block but enough text here.")
+                pages.append(
+                    f"Different page {i} with no shared block but enough text here."
+                )
 
         result = compute_domain_fingerprint(
             pages, threshold_pct=0.7, min_pages=5, threshold_floor=3
@@ -367,24 +381,21 @@ class TestExtractPathPrefix:
         assert extract_path_prefix("https://example.com") == "/"
 
     def test_deeper_depth(self):
-        assert (
-            extract_path_prefix("https://example.com/a/b/c", depth=2) == "/a/b"
-        )
+        assert extract_path_prefix("https://example.com/a/b/c", depth=2) == "/a/b"
 
     def test_depth_exceeds_segments(self):
         assert extract_path_prefix("https://example.com/a", depth=3) == "/a"
 
     def test_query_params_ignored(self):
-        assert (
-            extract_path_prefix("https://example.com/motors?page=2") == "/motors"
-        )
+        assert extract_path_prefix("https://example.com/motors?page=2") == "/motors"
 
     def test_trailing_slash(self):
         assert extract_path_prefix("https://example.com/motors/") == "/motors"
 
     def test_encoded_path(self):
         assert (
-            extract_path_prefix("https://example.com/my%20motors/list") == "/my%20motors"
+            extract_path_prefix("https://example.com/my%20motors/list")
+            == "/my%20motors"
         )
 
 
@@ -469,7 +480,9 @@ class TestComputeSectionFingerprints:
         """All pages under same prefix should form one section."""
         pages_with_uris: list[tuple[str, str]] = []
         for i in range(8):
-            content = f"{MOTORS_NAV}\n\nPage {i} with unique motor content and description."
+            content = (
+                f"{MOTORS_NAV}\n\nPage {i} with unique motor content and description."
+            )
             pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
 
         result = compute_section_fingerprints(
@@ -489,7 +502,9 @@ class TestComputeSectionFingerprints:
             if i < 4:
                 content = f"{MOTORS_NAV}\n\nMotor page {i} with unique content here enough for block."
             else:
-                content = f"Page {i} without nav but with enough unique content for block."
+                content = (
+                    f"Page {i} without nav but with enough unique content for block."
+                )
             pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
 
         # Default threshold_floor=3: threshold = max(3, int(5*0.7)) = max(3,3) = 3
@@ -507,7 +522,9 @@ class TestComputeSectionFingerprints:
             if i < 4:
                 content = f"{MOTORS_NAV}\n\nMotor page {i} with unique content here enough for block."
             else:
-                content = f"Page {i} without nav but with enough unique content for block."
+                content = (
+                    f"Page {i} without nav but with enough unique content for block."
+                )
             pages_with_uris.append((content, f"https://example.com/motors/page{i}"))
 
         result = compute_section_fingerprints(
@@ -546,9 +563,7 @@ class TestTwoPassEndToEnd:
             uris.append(f"https://hansen-motor.com/about/page{i}")
 
         # Domain-level: COOKIE_BANNER on all 10 → caught. MOTORS_NAV on 6/10 (60%) → missed.
-        domain_fp = compute_domain_fingerprint(
-            pages, threshold_pct=0.7, min_pages=5
-        )
+        domain_fp = compute_domain_fingerprint(pages, threshold_pct=0.7, min_pages=5)
         domain_hashes = set(domain_fp.boilerplate_hashes)
         assert hash_block(COOKIE_BANNER) in domain_hashes
         assert hash_block(MOTORS_NAV) not in domain_hashes  # 60% < 70% threshold
@@ -564,7 +579,9 @@ class TestTwoPassEndToEnd:
 
         # /motors-for has 6 pages ≥ min_pages=5, MOTORS_NAV on 100%
         assert "/motors-for" in section_fp.section_results
-        motors_hashes = set(section_fp.section_results["/motors-for"].boilerplate_hashes)
+        motors_hashes = set(
+            section_fp.section_results["/motors-for"].boilerplate_hashes
+        )
         assert hash_block(MOTORS_NAV) in motors_hashes
 
         # Now strip /motors-for pages with merged hashes
@@ -594,9 +611,7 @@ class TestTwoPassEndToEnd:
                 f"{MOTORS_NAV}\n\n"
                 f"Motor item {i} technical description with enough detail for block."
             )
-            pages_with_uris.append(
-                (content, f"https://example.com/motors/item{i}")
-            )
+            pages_with_uris.append((content, f"https://example.com/motors/item{i}"))
 
         # /products section with PRODUCTS_SIDEBAR
         for i in range(6):
@@ -604,15 +619,15 @@ class TestTwoPassEndToEnd:
                 f"{PRODUCTS_SIDEBAR}\n\n"
                 f"Product listing {i} with detailed specifications and pricing info."
             )
-            pages_with_uris.append(
-                (content, f"https://example.com/products/item{i}")
-            )
+            pages_with_uris.append((content, f"https://example.com/products/item{i}"))
 
         section_fp = compute_section_fingerprints(
             pages_with_uris, threshold_pct=0.7, min_pages=5
         )
 
-        products_hashes = set(section_fp.section_results["/products"].boilerplate_hashes)
+        products_hashes = set(
+            section_fp.section_results["/products"].boilerplate_hashes
+        )
 
         # Strip a /products page with only /products section hashes (not /motors)
         product_page = (
