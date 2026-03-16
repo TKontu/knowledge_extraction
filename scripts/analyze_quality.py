@@ -8,12 +8,163 @@ Usage:
 """
 
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import psycopg
 
 PROJECT_ID = "99a19141-9268-40a8-bc9e-ad1fa12243da"
 DB_DSN = "postgresql://scristill:scristill@192.168.0.136:5432/scristill"
+
+# Common country names for detecting city/country confusion
+COUNTRY_NAMES = {
+    "afghanistan",
+    "albania",
+    "algeria",
+    "argentina",
+    "armenia",
+    "australia",
+    "austria",
+    "azerbaijan",
+    "bahrain",
+    "bangladesh",
+    "belarus",
+    "belgium",
+    "bolivia",
+    "bosnia",
+    "brazil",
+    "brunei",
+    "bulgaria",
+    "cambodia",
+    "cameroon",
+    "canada",
+    "chile",
+    "china",
+    "colombia",
+    "costa rica",
+    "croatia",
+    "cuba",
+    "cyprus",
+    "czech republic",
+    "czechia",
+    "denmark",
+    "dominican republic",
+    "ecuador",
+    "egypt",
+    "el salvador",
+    "estonia",
+    "ethiopia",
+    "finland",
+    "france",
+    "georgia",
+    "germany",
+    "ghana",
+    "greece",
+    "guatemala",
+    "honduras",
+    "hong kong",
+    "hungary",
+    "iceland",
+    "india",
+    "indonesia",
+    "iran",
+    "iraq",
+    "ireland",
+    "israel",
+    "italy",
+    "jamaica",
+    "japan",
+    "jordan",
+    "kazakhstan",
+    "kenya",
+    "kuwait",
+    "latvia",
+    "lebanon",
+    "libya",
+    "lithuania",
+    "luxembourg",
+    "malaysia",
+    "mexico",
+    "mongolia",
+    "morocco",
+    "mozambique",
+    "myanmar",
+    "nepal",
+    "netherlands",
+    "new zealand",
+    "nicaragua",
+    "nigeria",
+    "north korea",
+    "norway",
+    "oman",
+    "pakistan",
+    "panama",
+    "paraguay",
+    "peru",
+    "philippines",
+    "poland",
+    "portugal",
+    "qatar",
+    "romania",
+    "russia",
+    "saudi arabia",
+    "senegal",
+    "serbia",
+    "singapore",
+    "slovakia",
+    "slovenia",
+    "south africa",
+    "south korea",
+    "spain",
+    "sri lanka",
+    "sudan",
+    "sweden",
+    "switzerland",
+    "syria",
+    "taiwan",
+    "tanzania",
+    "thailand",
+    "tunisia",
+    "turkey",
+    "turkiye",
+    "uae",
+    "uganda",
+    "uk",
+    "ukraine",
+    "united arab emirates",
+    "united kingdom",
+    "united states",
+    "uruguay",
+    "usa",
+    "uzbekistan",
+    "venezuela",
+    "vietnam",
+    "yemen",
+    "zambia",
+    "zimbabwe",
+}
+
+# Regions/continents that should not appear in city or country fields
+REGION_NAMES = {
+    "africa",
+    "americas",
+    "asia",
+    "asia pacific",
+    "australia and oceania",
+    "central america",
+    "east asia",
+    "eastern europe",
+    "emea",
+    "europe",
+    "latin america",
+    "middle east",
+    "north america",
+    "oceania",
+    "scandinavia",
+    "south america",
+    "southeast asia",
+    "southern europe",
+    "western europe",
+}
 
 
 def is_empty(value) -> bool:
@@ -296,6 +447,109 @@ def main() -> None:
         print(
             f"{f['group']:<25} {f['field']:<30} {f['fill_pct']:>7.1f}% {f['empty']:>7} {f['total']:>7}"
         )
+
+    # ── Location quality checks ──
+    print("\n")
+    print("LOCATION QUALITY CHECKS")
+    print("=" * 90)
+
+    # Re-scan company_locations data for city/country issues
+    country_in_city = []  # (source_group, city_value)
+    region_in_city = []
+    region_in_country = []
+    city_filled_country_empty = []
+    unknown_values = []  # (source_group, field, value)
+
+    for ext_type, sg, data, prov, src_count, grounded_count in rows:
+        if ext_type != "company_locations":
+            continue
+        if not data or not isinstance(data, dict):
+            continue
+
+        # Entity list: data = {"company_locations": [...]}
+        entities = None
+        for key, val in data.items():
+            if isinstance(val, list):
+                entities = val
+                break
+        if not entities:
+            continue
+
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+            city = entity.get("city")
+            country = entity.get("country")
+
+            city_str = str(city).strip() if city else ""
+            country_str = str(country).strip() if country else ""
+
+            # Check for country names in city field
+            if city_str and city_str.lower() in COUNTRY_NAMES:
+                country_in_city.append((sg, city_str))
+
+            # Check for regions in city field
+            if city_str and city_str.lower() in REGION_NAMES:
+                region_in_city.append((sg, city_str))
+
+            # Check for regions in country field
+            if country_str and country_str.lower() in REGION_NAMES:
+                region_in_country.append((sg, country_str))
+
+            # Check for city filled but country empty
+            if city_str and not is_empty(city) and is_empty(country):
+                city_filled_country_empty.append((sg, city_str))
+
+            # Check for "unknown" / "N/A" sentinel values
+            for field_name, val in [("city", city), ("country", country)]:
+                if isinstance(val, str) and val.strip().lower() in (
+                    "unknown",
+                    "n/a",
+                    "na",
+                    "none",
+                    "null",
+                    "not specified",
+                    "-",
+                    "tbd",
+                ):
+                    unknown_values.append((sg, field_name, val.strip()))
+
+    # Report: Country names in city field
+    print(f"\nCountry names in city field: {len(country_in_city)}")
+    if country_in_city:
+        # Tally by value
+        city_val_counts = Counter(v for _, v in country_in_city)
+        for val, count in city_val_counts.most_common(15):
+            examples = [sg for sg, v in country_in_city if v == val][:3]
+            print(f"  '{val}' x{count}  (e.g., {', '.join(examples)})")
+
+    # Report: Regions in city or country
+    print(f"\nRegion/continent in city field: {len(region_in_city)}")
+    if region_in_city:
+        region_city_counts = Counter(v for _, v in region_in_city)
+        for val, count in region_city_counts.most_common(10):
+            print(f"  '{val}' x{count}")
+
+    print(f"\nRegion/continent in country field: {len(region_in_country)}")
+    if region_in_country:
+        region_country_counts = Counter(v for _, v in region_in_country)
+        for val, count in region_country_counts.most_common(10):
+            print(f"  '{val}' x{count}")
+
+    # Report: City filled but country empty
+    print(f"\nCity filled, country empty: {len(city_filled_country_empty)}")
+    if city_filled_country_empty:
+        # Show top cities missing country
+        missing_counts = Counter(city for _, city in city_filled_country_empty)
+        for city, count in missing_counts.most_common(15):
+            print(f"  '{city}' x{count}")
+
+    # Report: Sentinel / unknown values
+    print(f"\nSentinel values (unknown/N-A/null): {len(unknown_values)}")
+    if unknown_values:
+        sentinel_counts = Counter((field, val) for _, field, val in unknown_values)
+        for (field, val), count in sentinel_counts.most_common(10):
+            print(f"  {field}='{val}' x{count}")
 
     conn.close()
     print("\nDone.")

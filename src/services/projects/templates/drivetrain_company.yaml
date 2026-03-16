@@ -132,6 +132,8 @@ extraction_schema:
         - Convert HP to kW (multiply by 0.746)
         - Convert lb-ft to Nm (multiply by 1.356)
         - Gear ratios like "1:50" or "50:1"
+        - model_number: The manufacturer's part/model identifier (e.g., "SK 9032.1", "RX87", "R 17").
+          Look in product tables, datasheets, spec headers. If no distinct model number exists, use null.
       fields:
         - name: product_name
           field_type: text
@@ -173,6 +175,8 @@ extraction_schema:
         Extract MOTOR products only:
         - Electric motors, servo motors, stepper motors
         - Power ratings, speed ratings, voltage
+        - model_number: The manufacturer's part/model identifier (e.g., "M3BP 315", "1LE1", "AMA 315").
+          Look in product tables, datasheets, spec headers. If no distinct model number exists, use null.
       fields:
         - name: product_name
           field_type: text
@@ -210,6 +214,8 @@ extraction_schema:
         Extract ACCESSORY products:
         - Couplings, shafts, bearings, brakes, clutches
         - Pulleys, belts, chains, sprockets
+        - model_number: The manufacturer's part/model identifier (e.g., "ROTEX 28", "BK2 300", "EAS-HT").
+          Look in product tables, datasheets, spec headers. If no distinct model number exists, use null.
       fields:
         - name: product_name
           field_type: text
@@ -248,17 +254,21 @@ extraction_schema:
         - Sales offices, service centers, branch offices, R&D centers
         - Look in "About Us", "Contact", "Locations", footer sections
         - Include the site type (headquarters, manufacturing, sales, service, R&D, warehouse)
-        - If only a country is mentioned without a city, still extract it
+        - If only a country is mentioned without a city, still extract it with city as null
+        FIELD PLACEMENT RULES:
+        - city: MUST be a specific municipality or town (e.g. Detroit, Shanghai, Praha). NEVER put a country name or region here.
+        - country: MUST be a sovereign nation (e.g. USA, China, Czech Republic). Infer the country from context when possible (e.g. .de domain → Germany, phone +420 → Czech Republic, address mentions a state/province).
+        - If only a country or region is mentioned with no specific city, set city to null and put the country in the country field.
+        - SKIP entries that are only a continent or region name (e.g. "North America", "Europe", "Asia Pacific") with no country or city.
       fields:
         - name: city
           field_type: text
           required: false
-          description: City name
+          description: "Municipality/town name ONLY — never a country, region, or continent. Null if unknown."
         - name: country
           field_type: text
-          required: true
-          default: ""
-          description: Country name
+          required: false
+          description: "Sovereign nation name (e.g. USA, Germany, Czech Republic). Infer from context if possible."
         - name: site_type
           field_type: text
           required: false
