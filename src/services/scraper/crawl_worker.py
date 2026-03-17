@@ -785,7 +785,25 @@ class CrawlWorker:
             self.db.commit()
 
             if status.status == "scraping":
-                logger.debug(
+                # Check for batch scrape timeout (30 minutes)
+                if job.started_at:
+                    elapsed = (datetime.now(UTC) - job.started_at).total_seconds()
+                    if elapsed > 1800:
+                        logger.error(
+                            "smart_crawl_batch_scrape_timeout",
+                            job_id=str(job.id),
+                            batch_job_id=batch_job_id,
+                            elapsed_seconds=round(elapsed, 1),
+                            completed=status.completed,
+                            total=status.total,
+                        )
+                        job.status = JobStatus.FAILED
+                        job.error = f"Batch scrape timed out after {elapsed:.0f}s"
+                        job.completed_at = datetime.now(UTC)
+                        self.db.commit()
+                        return
+
+                logger.info(
                     "smart_crawl_batch_scrape_progress",
                     job_id=str(job.id),
                     completed=status.completed,
@@ -793,14 +811,14 @@ class CrawlWorker:
                 )
                 return  # Continue polling
 
-            if status.status == "failed":
+            elif status.status == "failed":
                 job.status = JobStatus.FAILED
                 job.error = f"Batch scrape failed: {status.error}"
                 job.completed_at = datetime.now(UTC)
                 self.db.commit()
                 return
 
-            if status.status == "completed":
+            elif status.status == "completed":
                 # Check for cancellation before storing
                 if self.job_repo.is_cancellation_requested(job.id):
                     logger.info(
@@ -841,6 +859,19 @@ class CrawlWorker:
                 # Auto-extract if enabled
                 if payload.get("auto_extract", True):
                     await self._create_extraction_job(job)
+
+            else:
+                logger.error(
+                    "smart_crawl_unknown_batch_status",
+                    job_id=str(job.id),
+                    batch_job_id=batch_job_id,
+                    status=status.status,
+                    error=status.error,
+                )
+                job.status = JobStatus.FAILED
+                job.error = f"Batch scrape status: {status.error or status.status}"
+                job.completed_at = datetime.now(UTC)
+                self.db.commit()
 
         except Exception as e:
             logger.error(

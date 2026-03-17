@@ -120,6 +120,20 @@ class JobScheduler:
         if self._consolidate_task:
             await self._consolidate_task
 
+    def _claim_and_release_lock(self, db: Session, job: Job) -> None:
+        """Commit immediately to release FOR UPDATE row lock.
+
+        Sets QUEUED jobs to RUNNING. For already-RUNNING jobs (poll pickup),
+        just commits to release the lock. This prevents sync-on-async deadlocks
+        where a worker holds a lock during an async HTTP call and another
+        worker's synchronous db.commit() blocks the event loop waiting for it.
+        """
+        if job.status == JobStatus.QUEUED:
+            job.status = JobStatus.RUNNING
+            if not job.started_at:
+                job.started_at = datetime.now(UTC)
+        db.commit()  # Releases FOR UPDATE lock
+
     async def _cleanup_stale_jobs(self) -> dict[str, int]:
         """Mark running/cancelling jobs as failed on startup.
 
@@ -211,6 +225,7 @@ class JobScheduler:
                             )
 
                     if job:
+                        self._claim_and_release_lock(db, job)
                         worker = ScraperWorker(
                             db=db,
                             firecrawl_client=self._services.firecrawl_client,
@@ -291,6 +306,7 @@ class JobScheduler:
                                 )
 
                     if job:
+                        self._claim_and_release_lock(db, job)
                         worker = CrawlWorker(
                             db=db,
                             firecrawl_client=self._services.firecrawl_client,
@@ -360,6 +376,7 @@ class JobScheduler:
                             )
 
                     if job:
+                        self._claim_and_release_lock(db, job)
                         llm_queue = (
                             self._services.llm_queue
                             if settings.llm_queue.enabled
@@ -409,6 +426,7 @@ class JobScheduler:
                     )
 
                     if job:
+                        self._claim_and_release_lock(db, job)
                         worker = ConsolidationWorker(
                             db=db,
                             llm_config=settings.llm,
