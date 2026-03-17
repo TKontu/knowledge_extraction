@@ -135,16 +135,20 @@ def _source_grounding_ratio(result: dict, content: str) -> float:
     return grounded / len(quotes)
 
 
-def _filter_entity_fields(entity: EntityItem, threshold: float) -> EntityItem:
+def _filter_entity_fields(
+    entity: EntityItem,
+    threshold: float,
+    id_fields: frozenset[str] | None = None,
+) -> EntityItem:
     """Drop individual entity fields with field_grounding below threshold.
 
     Sets low-grounding field values to None while keeping the entity.
-    ID fields (name, entity_id, id, product_name) are never dropped.
+    Template-configured ID fields are never dropped.
     """
     if not entity.field_grounding:
         return entity
 
-    id_fields = frozenset({"name", "entity_id", "id", "product_name"})
+    id_fields = id_fields or frozenset(("entity_id", "name", "id"))
     filtered_fields = dict(entity.fields)
     for field_name, gnd_score in entity.field_grounding.items():
         if field_name in id_fields:
@@ -174,6 +178,7 @@ async def apply_grounding_gate(
     grounding_mode_overrides: dict[str, str] | None = None,
     keep_threshold: float = 0.8,
     rescue_threshold: float = 0.3,
+    entity_id_fields: list[str] | None = None,
 ) -> ChunkExtractionResult:
     """Post-parse async gate that filters/rescues borderline-grounded fields.
 
@@ -201,6 +206,7 @@ async def apply_grounding_gate(
     rescue_sem = asyncio.Semaphore(3)
     ft = field_types or {}
     gm_overrides = grounding_mode_overrides or {}
+    _id_fields = frozenset(entity_id_fields or ("entity_id", "name", "id"))
 
     def _grounding_mode(name: str) -> str:
         """Look up the effective grounding mode for a field."""
@@ -282,17 +288,17 @@ async def apply_grounding_gate(
     ) -> tuple[str, EntityItem] | None:
         if entity.grounding >= keep_threshold:
             # Entity passes gate — still filter low-grounding fields
-            filtered = _filter_entity_fields(entity, rescue_threshold)
+            filtered = _filter_entity_fields(entity, rescue_threshold, _id_fields)
             return (group_name, filtered)
         if entity.grounding < rescue_threshold:
             return None
         # Use entity's identifying field for rescue prompt.
         # Skip rescue if no clear identifier — dict repr produces bad prompts.
-        entity_name = (
-            entity.fields.get("name")
-            or entity.fields.get("entity_id")
-            or entity.fields.get("id")
-        )
+        entity_name = None
+        for _idf in _id_fields:
+            entity_name = entity.fields.get(_idf)
+            if entity_name:
+                break
         if not entity_name:
             return None  # No identifiable field → drop borderline entity
         async with rescue_sem:
@@ -306,7 +312,7 @@ async def apply_grounding_gate(
                 location=entity.location,
                 field_grounding=entity.field_grounding,
             )
-            filtered = _filter_entity_fields(rescued, rescue_threshold)
+            filtered = _filter_entity_fields(rescued, rescue_threshold, _id_fields)
             return (group_name, filtered)
         return None
 
@@ -1203,6 +1209,7 @@ class SchemaExtractionOrchestrator:
                     self._grounding_verifier,
                     field_types=gate_field_types,
                     grounding_mode_overrides=gate_grounding_overrides,
+                    entity_id_fields=self._context.entity_id_fields,
                 )
 
             return result

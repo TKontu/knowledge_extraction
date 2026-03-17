@@ -245,10 +245,13 @@ def longest_top_k(values: list[WeightedValue], k: int = 3) -> str | None:
     return max(top_k, key=lambda v: len(v.value)).value
 
 
-def union_dedup(values: list[WeightedValue]) -> list:
-    """Union all list values, deduplicate by normalized name.
+def union_dedup(
+    values: list[WeightedValue],
+    entity_id_fields: list[str] | None = None,
+) -> list:
+    """Union all list values, deduplicate by identity fields.
 
-    Handles both string lists and entity dicts (deduped by 'name' key).
+    Handles both string lists and entity dicts (deduped by identity fields).
     Keeps first occurrence as canonical form.
     """
     if not values:
@@ -267,7 +270,7 @@ def union_dedup(values: list[WeightedValue]) -> list:
 
     # Detect if items are dicts (entity lists)
     if isinstance(all_items[0], dict):
-        return _dedup_dicts(all_items)
+        return _dedup_dicts(all_items, entity_id_fields)
 
     return _dedup_strings(all_items)
 
@@ -305,6 +308,7 @@ def effective_weight(
 def consolidate_field(
     values: list[WeightedValue],
     strategy: str,
+    entity_id_fields: list[str] | None = None,
     **kwargs: Any,
 ) -> ConsolidatedField:
     """Apply a named strategy to a list of weighted values."""
@@ -329,7 +333,13 @@ def consolidate_field(
     }
 
     func = strategies.get(strategy, frequency)
-    result_value = func(values, **kwargs) if kwargs else func(values)
+    # Pass entity_id_fields to union_dedup for template-agnostic entity matching
+    if strategy == "union_dedup" and entity_id_fields:
+        result_value = func(values, entity_id_fields=entity_id_fields)
+    elif kwargs:
+        result_value = func(values, **kwargs)
+    else:
+        result_value = func(values)
 
     # Compute agreement: fraction of values matching result
     if result_value is not None and not isinstance(result_value, list):
@@ -421,6 +431,7 @@ def consolidate_extractions(
     source_group: str,
     extraction_type: str,
     entity_list_key: str | None = None,
+    entity_id_fields: list[str] | None = None,
 ) -> ConsolidatedRecord:
     """Produce one consolidated record from N extractions.
 
@@ -448,7 +459,7 @@ def consolidate_extractions(
 
     if entity_list_key:
         return _consolidate_entity_list(
-            extractions, field_definitions, record, entity_list_key
+            extractions, field_definitions, record, entity_list_key, entity_id_fields
         )
 
     for field_def in field_definitions:
@@ -536,6 +547,7 @@ def _consolidate_entity_list(
     field_definitions: list[dict],
     record: ConsolidatedRecord,
     entity_key: str,
+    entity_id_fields: list[str] | None = None,
 ) -> ConsolidatedRecord:
     """Consolidate entity list extractions via weighted union_dedup.
 
@@ -614,11 +626,15 @@ def _consolidate_entity_list(
     if not weighted_values:
         return record
 
-    result = consolidate_field(weighted_values, "union_dedup")
+    result = consolidate_field(
+        weighted_values, "union_dedup", entity_id_fields=entity_id_fields
+    )
 
     # Compute per-entity provenance by tracing each deduped entity
     # back to its source extraction(s).
-    entity_prov = _compute_entity_provenance(result.value, weighted_values)
+    entity_prov = _compute_entity_provenance(
+        result.value, weighted_values, entity_id_fields
+    )
 
     # Replace the field with entity_provenance attached
     record.fields[entity_key] = ConsolidatedField(
@@ -662,9 +678,18 @@ def get_llm_summarize_candidates(
 # ── Internal helpers ──
 
 
-def _entity_match_key(entity: dict) -> str:
+def _entity_match_key(
+    entity: dict,
+    id_fields: list[str] | None = None,
+) -> str:
     """Compute a dedup key for an entity dict, matching _dedup_dicts logic."""
-    name = entity.get("name") or entity.get("product_name") or entity.get("id", "")
+    _fields = id_fields or ["entity_id", "name", "id"]
+    name = None
+    for f in _fields:
+        name = entity.get(f)
+        if name:
+            break
+    name = name or ""
     key = str(name).strip().lower()
     if not key:
         key = hashlib.sha256(json.dumps(entity, sort_keys=True).encode()).hexdigest()[
@@ -676,6 +701,7 @@ def _entity_match_key(entity: dict) -> str:
 def _compute_entity_provenance(
     deduped_entities: list[dict] | None,
     weighted_values: list[WeightedValue],
+    entity_id_fields: list[str] | None = None,
 ) -> list[dict]:
     """Compute per-entity provenance by tracing each entity back to sources.
 
@@ -696,13 +722,13 @@ def _compute_entity_provenance(
         for entity in wv.value:
             if not isinstance(entity, dict):
                 continue
-            key = _entity_match_key(entity)
+            key = _entity_match_key(entity, entity_id_fields)
             source_index.setdefault(key, []).append((wv.weight, wv.source_id))
 
     # For each deduped entity, look up its sources
     result: list[dict] = []
     for entity in deduped_entities:
-        key = _entity_match_key(entity)
+        key = _entity_match_key(entity, entity_id_fields)
         sources = source_index.get(key, [])
         # Filter to grounded sources (weight > 0), sorted by weight desc
         grounded = sorted(
@@ -746,8 +772,11 @@ def _dedup_strings(items: list) -> list:
     return result
 
 
-def _dedup_dicts(items: list[dict]) -> list[dict]:
-    """Deduplicate dict items by name, merging attributes across occurrences.
+def _dedup_dicts(
+    items: list[dict],
+    id_fields: list[str] | None = None,
+) -> list[dict]:
+    """Deduplicate dict items by identity fields, merging attributes across occurrences.
 
     When duplicates are found, attributes from later occurrences fill in
     keys that were None or missing in the first occurrence.
@@ -756,12 +785,7 @@ def _dedup_dicts(items: list[dict]) -> list[dict]:
     order: list[str] = []
 
     for item in items:
-        name = item.get("name") or item.get("product_name") or item.get("id", "")
-        key = str(name).strip().lower()
-        if not key:
-            key = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[
-                :16
-            ]
+        key = _entity_match_key(item, id_fields)
         if key not in groups:
             groups[key] = []
             order.append(key)

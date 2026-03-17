@@ -158,7 +158,9 @@ class ExtractionWorker:
             project: Optional project to extract classification_config from.
         """
         from redis_client import get_async_redis
-        from services.extraction.schema_adapter import ClassificationConfig
+        from services.extraction.schema_adapter import (
+            ClassificationConfig,
+        )
         from services.extraction.schema_extractor import SchemaExtractor
         from services.extraction.schema_orchestrator import SchemaExtractionOrchestrator
         from services.extraction.smart_classifier import SmartClassifier
@@ -252,10 +254,20 @@ class ExtractionWorker:
                 content_limit=self._classification.skip_gate_content_limit,
             )
 
+        # Extract context (entity_id_fields, source_label, etc.) from schema
+        extraction_context = None
+        if project and project.extraction_schema:
+            from services.extraction.schema_adapter import ExtractionContext
+
+            extraction_context = ExtractionContext.from_dict(
+                project.extraction_schema.get("extraction_context")
+            )
+
         orchestrator = SchemaExtractionOrchestrator(
             extractor,
             extraction_config=self._extraction,
             classification_config=self._classification,
+            context=extraction_context,
             smart_classifier=smart_classifier,
             grounding_verifier=grounding_verifier,
             skip_gate=skip_gate,

@@ -74,6 +74,10 @@ class ConsolidationService:
 
         field_defs_by_group, entity_list_groups = _extract_field_definitions(schema)
 
+        # Extract entity_id_fields from schema context for template-agnostic dedup
+        _ctx = schema.get("extraction_context") or {}
+        entity_id_fields: list[str] | None = _ctx.get("entity_id_fields")
+
         # Delete existing consolidated records for this source group so that
         # removed extraction types don't leave stale rows behind.
         self._session.execute(
@@ -128,6 +132,7 @@ class ConsolidationService:
                 source_group,
                 ext_type,
                 entity_list_key=ext_type if is_entity_list else None,
+                entity_id_fields=entity_id_fields,
             )
 
             # LLM post-processing for llm_summarize fields

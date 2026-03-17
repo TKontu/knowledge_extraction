@@ -140,7 +140,9 @@ class TemplateRegistry:
             )
 
         schema = template["extraction_schema"]
-        result = self._adapter.validate_extraction_schema(schema)
+        result = self._adapter.validate_extraction_schema(
+            schema, extraction_context=template.get("extraction_context")
+        )
 
         # Log warnings but don't fail
         for warning in result.warnings:

@@ -220,7 +220,9 @@ class SchemaExtractionPipeline:
             )
             schema = DEFAULT_EXTRACTION_TEMPLATE["extraction_schema"]
 
-        validation = adapter.validate_extraction_schema(schema)
+        validation = adapter.validate_extraction_schema(
+            schema, extraction_context=schema.get("extraction_context")
+        )
         if not validation.is_valid:
             logger.error(
                 "invalid_extraction_schema",

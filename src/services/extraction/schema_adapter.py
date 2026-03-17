@@ -227,11 +227,16 @@ class SchemaAdapter:
     MAX_FIELD_GROUPS = 20
     MAX_FIELDS_PER_GROUP = 30
 
-    def validate_extraction_schema(self, schema: dict) -> ValidationResult:
+    def validate_extraction_schema(
+        self,
+        schema: dict,
+        extraction_context: dict | None = None,
+    ) -> ValidationResult:
         """Validate schema structure.
 
         Args:
             schema: The extraction schema to validate.
+            extraction_context: Optional context dict with entity_id_fields etc.
 
         Returns:
             ValidationResult with is_valid flag and list of errors.
@@ -298,13 +303,18 @@ class SchemaAdapter:
                 field_names = [
                     f.get("name") for f in fg["fields"] if isinstance(f, dict)
                 ]
-                # Check against common ID patterns - validation doesn't know template context
-                common_id_fields = ["entity_id", "name", "id", "product_name"]
-                has_id_field = any(name in field_names for name in common_id_fields)
+                # Check if any field matches the configured entity_id_fields
+                ctx = extraction_context or {}
+                configured_ids = ctx.get(
+                    "entity_id_fields", ["entity_id", "name", "id"]
+                )
+                has_id_field = any(name in field_names for name in configured_ids)
                 if not has_id_field:
                     warnings.append(
                         f"field_groups[{i}] is_entity_list=true but has no common ID field "
-                        f"for deduplication. Consider adding one of: {common_id_fields}"
+                        f"for deduplication matching entity_id_fields ({configured_ids}). "
+                        f"Ensure extraction_context.entity_id_fields includes a field "
+                        f"from this group."
                     )
 
             # Rule 9: No duplicate field names within group

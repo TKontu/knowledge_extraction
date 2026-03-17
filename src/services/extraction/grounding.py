@@ -98,14 +98,20 @@ def verify_string_in_quote(value: Any, quote: str | None) -> float:
     return 0.0
 
 
-def verify_list_items_in_quote(items: list, quote: str | None) -> float:
+def verify_list_items_in_quote(
+    items: list,
+    quote: str | None,
+    id_field_names: tuple[str, ...] | None = None,
+) -> float:
     """Check fraction of list items grounded in quote text.
 
     Returns fraction: 3/5 items found -> 0.6. Handles both string lists
-    and entity dicts (uses 'name' key).
+    and entity dicts (uses identity fields from template).
     """
     if not items or not quote:
         return 0.0
+
+    _id_fields = id_field_names or ("entity_id", "name", "id")
 
     # Extract string values from items (handle dicts by extracting all string values)
     string_items = []
@@ -113,8 +119,12 @@ def verify_list_items_in_quote(items: list, quote: str | None) -> float:
         if item is None:
             continue
         if isinstance(item, dict):
-            # Try common name keys first for backward compat
-            name = item.get("name") or item.get("product_name") or item.get("id")
+            # Try configured identity fields first
+            name = None
+            for f in _id_fields:
+                name = item.get(f)
+                if name:
+                    break
             if name:
                 string_items.append(str(name))
             else:
@@ -149,13 +159,19 @@ def _coerce_quote(quote: Any) -> str | None:
     return str(quote) or None
 
 
-def score_field(value: Any, quote: Any, field_type: str) -> float:
+def score_field(
+    value: Any,
+    quote: Any,
+    field_type: str,
+    id_field_names: tuple[str, ...] | None = None,
+) -> float:
     """Score a single field value against its quote via string-match.
 
     Args:
         value: The extracted field value.
         quote: The source quote for this field (coerced to str if needed).
         field_type: Type string ("integer", "string", "list", etc.)
+        id_field_names: Entity identity field names from template.
 
     Returns:
         Grounding score 0.0-1.0.
@@ -167,11 +183,16 @@ def score_field(value: Any, quote: Any, field_type: str) -> float:
         return verify_numeric_in_quote(value, coerced)
     if field_type == "list":
         if isinstance(value, list):
-            return verify_list_items_in_quote(value, coerced)
+            return verify_list_items_in_quote(value, coerced, id_field_names)
         if isinstance(value, dict):
             # Single dict item from a list (v2 per-item scoring) —
             # check if any string values from the dict appear in the quote
-            name = value.get("name") or value.get("product_name") or value.get("id")
+            _id_fields = id_field_names or ("entity_id", "name", "id")
+            name = None
+            for f in _id_fields:
+                name = value.get(f)
+                if name:
+                    break
             if name:
                 return verify_string_in_quote(str(name), coerced)
             vals = [str(v) for v in value.values() if v and isinstance(v, str)]
@@ -233,6 +254,7 @@ def compute_entity_list_grounding_scores(
     data: dict,
     entity_key: str,
     field_types: dict[str, str],
+    id_field_names: tuple[str, ...] | None = None,
 ) -> dict[str, float]:
     """Score entity list extractions via string-match.
 
@@ -244,6 +266,7 @@ def compute_entity_list_grounding_scores(
         data: Extraction data dict with entity list.
         entity_key: Key containing the entity list (e.g., "products").
         field_types: Map of entity field_name -> type string.
+        id_field_names: Entity identity field names from template.
 
     Returns:
         Dict with single key (entity_key) -> average grounding score.
@@ -253,7 +276,7 @@ def compute_entity_list_grounding_scores(
         return {}
 
     # Determine which fields to use as identity for scoring
-    id_field_names = ("entity_id", "name", "id")
+    _id_fields = id_field_names or ("entity_id", "name", "id")
     scores: list[float] = []
 
     for entity in entities:
@@ -269,7 +292,7 @@ def compute_entity_list_grounding_scores(
         # Score the entity's identifying field against its quote
         id_value = None
         id_type = "string"
-        for id_field in id_field_names:
+        for id_field in _id_fields:
             id_value = entity.get(id_field)
             if id_value is not None:
                 id_type = field_types.get(id_field, "string")

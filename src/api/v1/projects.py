@@ -346,6 +346,8 @@ async def backfill_grounding(
 
     field_types_by_group = extract_field_types_from_schema(schema)
     entity_list_groups = extract_entity_list_groups(schema)
+    _ctx = schema.get("extraction_context") or {}
+    _id_fields = tuple(_ctx.get("entity_id_fields") or ("entity_id", "name", "id"))
     ext_repo = ExtractionRepository(db)
     filters = ExtractionFilters(project_id=project_id)
     total_count = ext_repo.count(filters)
@@ -375,7 +377,7 @@ async def backfill_grounding(
 
             if ext.extraction_type in entity_list_groups:
                 scores = compute_entity_list_grounding_scores(
-                    ext.data, ext.extraction_type, field_types
+                    ext.data, ext.extraction_type, field_types, _id_fields
                 )
             else:
                 scores = compute_grounding_scores(ext.data, field_types)

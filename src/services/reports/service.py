@@ -162,13 +162,19 @@ class ReportService:
             max_extractions=request.max_extractions,
         )
 
+        # Resolve source_label from project schema for template-agnostic titles
+        schema = self._get_project_schema(project_id)
+        _ctx = (schema or {}).get("extraction_context") or {}
+        source_label = _ctx.get("source_label", "Source")
+
         # Generate markdown content based on report type
         binary_content = None
         report_format = "md"
 
         if request.type == ReportType.TABLE:
             # Create title if not provided (need it before generation)
-            title = request.title or f"Table: {len(source_groups)} companies"
+            n = len(source_groups)
+            title = request.title or f"{source_label} Table ({n})"
 
             md_content, excel_bytes = await self._generate_table_report(
                 data=data,
@@ -190,7 +196,8 @@ class ReportService:
             content = self._generate_comparison_report(
                 data, request.title, request.max_detail_extractions
             )
-            title = request.title or f"Comparison: {len(source_groups)} companies"
+            n = len(source_groups)
+            title = request.title or f"{source_label} Comparison ({n})"
 
         # Create and save report with provenance tracking
         report = Report(
@@ -352,9 +359,15 @@ class ReportService:
                 # Skip LLM synthesis for single facts - just format directly
                 if items:
                     item = items[0]
-                    fact_text = item.get("data", {}).get(
-                        "fact", str(item.get("data", ""))
-                    )
+                    data = item.get("data", {})
+                    # Use first non-None string value from data
+                    fact_text = None
+                    if isinstance(data, dict):
+                        for v in data.values():
+                            if isinstance(v, str) and v.strip():
+                                fact_text = v
+                                break
+                    fact_text = fact_text or str(data) if data else ""
                     source_title = item.get("source_title", "")
                     source_uri = item.get("source_uri")
                     text = (

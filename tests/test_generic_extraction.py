@@ -210,7 +210,7 @@ class TestValidationWithCustomEntityIdFields:
                     "is_entity_list": True,
                     "fields": [
                         {
-                            "name": "product_name",  # In common_id_fields
+                            "name": "name",  # In default entity_id_fields
                             "field_type": "text",
                             "description": "Product name",
                         },
