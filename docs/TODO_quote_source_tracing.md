@@ -1,9 +1,17 @@
 # TODO: Reliable Quote-to-Source Position Tracing
 
-**Status**: Planned (revised after production trial)
+**Status**: **COMPLETE** (2026-03-18) — `locate_in_source()` rewritten to use 4-tier `ground_and_locate()`. Original-content offsets correct. Position mapping bug fixed.
 **Created**: 2026-03-08
 **Revised**: 2026-03-08 — coverage estimates corrected via trial on 1218 production quotes
 **Priority**: Medium — incremental improvement, not the crisis originally assumed
+
+## Implementation Status
+
+**COMPLETE.** `locate_in_source()` in `extraction_items.py:88` was rewritten to call
+`ground_and_locate()` / `ground_and_locate_precomputed()` from `grounding.py:798`.
+Returns `result.source_offset` / `result.source_end` — real original-content positions, not
+normalized-text indices. The bug described below is fixed. The trial results below describe
+the prototype that was subsequently implemented.
 
 ## Problem
 

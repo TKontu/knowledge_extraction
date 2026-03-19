@@ -1,7 +1,7 @@
 # TODO: Grounded Extraction & Downstream Quality
 
 **Created:** 2026-03-05
-**Status:** Layers 1 + 3 DEPLOYED (2026-03-09). Three-tier grounding gate active in production. Re-extraction running on all 3 projects. Layer 2 (skip-gate) and Layers 4-5 (multilingual, reports) pending.
+**Status:** Layers 1 + 3 DEPLOYED (2026-03-09). Three-tier grounding gate active in production. Layer 2 skip-gate Phase 2 COMPLETE (implementation wired into schema_orchestrator.py). Phase 3 (SmartClassifier removal) pending. Layers 4-5 (multilingual, reports) pending.
 **Depends on:** Findings from `docs/TODO_downstream_trials.md`
 
 ## Problem Statement
@@ -353,7 +353,7 @@ Use both: string-match first (free), then LLM verify the ambiguous cases (string
 
 - **Layer 1a: String-match verification** — DEPLOYED. Free, instant, catches 83% of spec hallucinations
 - **Layer 1b: LLM quote rescue** — DEPLOYED. Three-tier gate with `rescue_quote()` for borderline cases (0.3-0.8 grounding). `apply_grounding_gate()` as async post-parse in `schema_orchestrator.py`.
-- **Layer 2: Skip-gate** — PENDING (gemma3-4B binary, 92.6% recall). See `docs/TODO_classification_robustness.md`
+- **Layer 2: Skip-gate** — Phase 2 COMPLETE. Wired into `schema_orchestrator.py` as Level 1 classifier. Config: `classification_skip_gate_enabled` (default `False`). Phase 3 (SmartClassifier removal) pending. See `docs/TODO_classification_robustness.md`
 - **Layer 3: Grounding-weighted consolidation** — DEPLOYED. `effective_weight() = min(confidence, grounding_score)`. 6 strategies implemented.
 - **Layer 4: Multilingual dedup during consolidation** — PENDING. Language detection + LLM-based product name grouping.
 - ~~Grounded extraction prompts~~ → **Dropped** (47-80% recall loss, unacceptable)
@@ -731,11 +731,11 @@ For extractions where string-match grounding = 0.0 but a quote exists, run LLM v
 3. Show provenance indicators (source count, agreement level, grounding status)
 4. Validate: generate reports, compare against Trial 4A findings
 
-### Phase 5: Skip-Gate Integration
+### Phase 5: Skip-Gate Integration ✅ COMPLETE
 
 **Goal:** Stop wasting 57.7% of extraction calls on irrelevant pages.
 
-Per `docs/TODO_classification_robustness.md` spec. Binary skip-gate with gemma3-4B, schema passed as context.
+Per `docs/TODO_classification_robustness.md` spec. Binary skip-gate with gemma3-4B, schema passed as context. Phase 2 (pipeline integration) is complete — wired into `schema_orchestrator.py`. Phase 3 (SmartClassifier removal) remains pending.
 
 ### Phase 6: Light Prompt Improvements — TRIAL COMPLETE, READY TO DEPLOY
 

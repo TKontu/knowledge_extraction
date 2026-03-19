@@ -342,7 +342,7 @@ services:
       OPENAI_EMBEDDING_BASE_URL: ${OPENAI_EMBEDDING_BASE_URL:-http://192.168.0.136:9003/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
       LLM_MODEL: ${LLM_MODEL:-gemma3-12b-awq}
-      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-bge-large-en}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-bge-m3}
 
       # Scraping config
       SCRAPE_DELAY_MIN: ${SCRAPE_DELAY_MIN:-2}

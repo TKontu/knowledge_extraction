@@ -1,7 +1,7 @@
 # TODO: Phase C — Position Tracing & LLM Skip-Gate
 
 **Created:** 2026-03-09
-**Status:** Planned
+**Status:** **COMPLETE** (2026-03-18) — both features deployed
 **Depends on:** Phase A & B (grounding gate + prompt improvements) — DEPLOYED
 **Blocked by:** Nothing — both features are independent of each other and of deployment
 
@@ -13,8 +13,8 @@ Two independent features that improve extraction quality and efficiency:
 
 | Feature | What | Impact | Risk |
 |---------|------|--------|------|
-| **Position tracing** | Unified `ground_and_locate()` replaces buggy `locate_in_source()` | Fixes broken offset positions + improves match rate 79.6% → 87.3% | LOW — pure functions, additive |
-| **LLM skip-gate** | Binary page classifier before extraction | Eliminates ~15-25% wasted extraction calls | MEDIUM — changes classification flow |
+| **Position tracing** ✅ | Unified `ground_and_locate()` replaces buggy `locate_in_source()` | Fixes broken offset positions + improves match rate 79.6% → 87.3% | LOW — pure functions, additive |
+| **LLM skip-gate** ✅ | Binary page classifier before extraction | Eliminates ~15-25% wasted extraction calls | MEDIUM — changes classification flow |
 
 Both are **independently deployable**. Recommended order: position tracing first (lower risk, no config changes), then skip-gate.
 
@@ -49,7 +49,7 @@ Source (with content)
           For each field:
             grounding = ground_field_item(value, quote, chunk.content, field_type)
                         → min(verify_quote_in_source(quote, CHUNK), score_field(value, quote))
-            location = locate_in_source(quote, FULL_CONTENT, chunk)  ← BUGGY
+            location = locate_in_source(quote, FULL_CONTENT, chunk)  ← FIXED (now delegates to ground_and_locate())
       → apply_grounding_gate() [outside LLM semaphore]:
           ≥ 0.8: KEEP
           < 0.3: DROP
@@ -86,7 +86,12 @@ gemma3-4B's 4 false negatives were all pages where `cleaned_content` was just co
 
 ---
 
-## Feature A: Position Tracing
+## Feature A: Position Tracing ✅ COMPLETE
+
+**Implemented.** `locate_in_source()` (`extraction_items.py:88`) was rewritten to call
+`ground_and_locate()` / `ground_and_locate_precomputed()` from `grounding.py:798`.
+Returns real original-content offsets via `result.source_offset` / `result.source_end`.
+The position mapping bug is fixed. The problem description below is historical context.
 
 ### Problem
 
@@ -389,7 +394,12 @@ def _build_location(
 
 ---
 
-## Feature B: LLM Skip-Gate
+## Feature B: LLM Skip-Gate ✅ COMPLETE
+
+**Implemented.** Skip-gate wired into `schema_orchestrator.py` as Level 1 classifier
+(lines 458–483). Config: `classification_skip_gate_enabled` (default `False`).
+Phase 3 (SmartClassifier removal) remains pending — see `docs/TODO_classification_robustness.md`.
+The problem description below is historical context.
 
 ### Problem
 

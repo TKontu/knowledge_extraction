@@ -1,8 +1,24 @@
 # Robust Page Classification — Implementation Spec
 
 Version: 3.0 (2026-03-05)
-Status: **⬜ Not started**
+Status: **Phase 1 COMPLETE** · **Phase 2 COMPLETE** — Phase 3 (remove SmartClassifier) pending
 Depends on: None (independent of global sources refactor)
+
+## What's Implemented (Phase 1)
+
+**File: `src/services/extraction/llm_skip_gate.py`** — fully implemented:
+- `SkipGateResult` dataclass (decision, method, confidence)
+- `LLMSkipGate` class with `should_extract()` async method
+- `build_schema_summary()` — auto-generates schema context from any template
+- `_parse_decision()` — handles thinking tags (Qwen3), markdown fences, JSON parse, keyword fallback
+- Safety defaults: LLM failure → "extract", parse failure → "extract", no schema → "extract"
+
+**File: `src/config.py`** — config fields added:
+- `classification_skip_gate_enabled` (default False)
+- `classification_skip_gate_model` (default empty = use LLM_MODEL)
+- `classification_skip_gate_content_limit` (default 2000)
+
+**Phase 2 is complete**: `llm_skip_gate.py` IS wired into `schema_orchestrator.py` as Level 1 classifier (lines 458–483). SmartClassifier remains as Level 2 fallback — Phase 3 (remove it) is still pending.
 
 ## Problem
 
@@ -203,7 +219,7 @@ If `extraction_context` is missing, the skip-gate falls back to extracting every
 
 ---
 
-## Phase 1: LLM Skip-Gate Implementation ⬜
+## Phase 1: LLM Skip-Gate Implementation ✅ COMPLETE
 
 **Risk: LOW** — Additive. Doesn't change existing extraction path.
 
@@ -321,6 +337,8 @@ class LLMSkipGate:
 
 ```python
 # Skip-gate classification
+# NOTE: Implementation uses default=False (not True as shown here).
+# Disabled by default to avoid enabling prematurely in production.
 classification_skip_gate_enabled: bool = Field(
     default=True,
     description="Enable LLM skip-gate before extraction",
@@ -356,7 +374,9 @@ TestLLMSkipGate:
 
 ---
 
-## Phase 2: Pipeline Integration ⬜
+## Phase 2: Pipeline Integration ✅ COMPLETE
+
+**Implemented**: `skip_gate` param in `SchemaExtractionOrchestrator.__init__()` (line 372). `self._skip_gate` and `self._extraction_schema` stored. Full Level 1 path in `extract_all_groups()` (lines 458–483). Config default is `False` (disabled unless explicitly enabled).
 
 **Risk: MEDIUM** — Changes classification flow. Must not regress.
 

@@ -17,7 +17,7 @@ export API_KEY="your-generated-key-here"
 ```
 
 **Requirements:**
-- Minimum 16 characters (32+ recommended)
+- Minimum 32 characters (startup check warns if shorter)
 - Cannot use known insecure values (dev, test, changeme, etc.)
 - Must be set explicitly (no default)
 

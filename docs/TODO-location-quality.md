@@ -1,6 +1,6 @@
 # TODO: Improve Location & Field Extraction Quality
 
-**Status:** Fix 1 deployed, Fix 2 cancelled, Fix 4 ready to deploy, Fix 3 pending
+**Status:** Fix 1 deployed, Fix 2 cancelled, Fix 3 deployed, Fix 4 ready to deploy
 **Priority:** High
 **Created:** 2026-03-16
 
@@ -66,15 +66,16 @@ Post-consolidation quality analysis of the drivetrain project (238 companies, 58
 ### Trial script
 - `scripts/trial_model_number_prompts.py` — A/B test per product group
 
-## Fix 3: Add quality detection to analyze_quality.py — PENDING
+## Fix 3: Add quality detection to analyze_quality.py — DONE ✓
 
 **File:** `scripts/analyze_quality.py`
 
-Add a new section that detects:
-- Country names appearing in the `city` field (check against ~50 common countries)
-- Empty country with filled city
-- Sentinel values ("unknown", "N/A") in location fields
-- Parroted service_types (all items match the enum list)
+**Deployed.** The script already contains:
+- Country names in `city` field detection (lines 488–516, checks against common country list)
+- Sentinel value detection — "unknown", "N/A", "not specified", etc. (lines 504–515)
+- City-filled-but-country-empty detection (lines 539–545)
+
+Parroted `service_types` detection (all items match the enum list) was not verified as present.
 
 ## Fix 4: Improve service_types field description — READY TO DEPLOY
 

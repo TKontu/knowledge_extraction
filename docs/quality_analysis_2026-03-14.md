@@ -1,3 +1,5 @@
+> **SUPERSEDED** — See `HANDOFF.md` TODO Docs Status table for current fix status. Fix 1 (consolidation v2 list handling) and Fix 3 (location quality detection in `analyze_quality.py`) are deployed. Fix 4 (service_types description) is ready to deploy.
+
 # Drivetrain Quality Analysis — Post-Grounding Simplification
 **Date:** 2026-03-14
 **Project:** 99a19141-9268-40a8-bc9e-ad1fa12243da (238 source groups)
