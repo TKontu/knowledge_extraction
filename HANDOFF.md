@@ -44,11 +44,6 @@
 
 ## Next Steps
 
-### Immediate — Clean Up Duplicates
-- [ ] Delete old extractions (pre-2026-03-18) from DB before re-consolidating — use `created_at` to identify
-- [ ] Fix duplication bug: add delete-before-insert in `extract_project()` (caller of `extract_source`)
-- [ ] Re-run consolidation after cleanup
-
 ### Immediate — Location Quality
 - [ ] Deploy Fix 4: improve `service_types` field description in `drivetrain_company.yaml` — `docs/TODO-location-quality.md`
 - [ ] Address remaining city/country errors (641 country-in-city, 82 region-in-city) with post-processing or stronger prompt
