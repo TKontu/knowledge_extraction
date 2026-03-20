@@ -16,6 +16,7 @@ from config import (
     SchedulerConfig,
     ScrapingConfig,
     Settings,
+    ValidationConfig,
 )
 
 
@@ -42,6 +43,7 @@ ALL_FACADES = [
     ("proxy", ProxyConfig),
     ("scheduler", SchedulerConfig),
     ("observability", ObservabilityConfig),
+    ("validation", ValidationConfig),
 ]
 
 

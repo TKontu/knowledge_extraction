@@ -89,6 +89,7 @@ class ExtractionWorker:
         self._request_timeout = request_timeout
         self.llm_queue = llm_queue
         self.job_repo = JobRepository(db)
+        self._field_validation = None  # FieldValidationService | None (lazy init)
 
     def _create_checkpoint_callback(self, job: Job) -> CheckpointCallback:
         """Create a checkpoint callback that saves progress to job.payload.
@@ -279,11 +280,24 @@ class ExtractionWorker:
         if self._extraction and self._extraction.schema_embedding_enabled:
             extraction_embedding = self._extraction_embedding
 
+        # Initialize field validation service (once per worker, reuses cache)
+        from config import settings as _settings
+        from services.extraction.field_validation import FieldValidationService
+
+        if not self._field_validation and _settings.validation.enabled:
+            self._field_validation = FieldValidationService(
+                factapi_url=_settings.validation.factapi_url,
+                api_key=_settings.validation.factapi_api_key,
+                timeout=_settings.validation.factapi_timeout,
+                cache_ttl=_settings.validation.cache_ttl_seconds,
+            )
+
         return SchemaExtractionPipeline(
             orchestrator,
             self.db,
             extraction_embedding=extraction_embedding,
             extraction_config=self._extraction,
+            field_validation_service=self._field_validation,
         )
 
     async def _process_with_schema_pipeline(

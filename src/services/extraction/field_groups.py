@@ -17,6 +17,40 @@ VALID_MERGE_STRATEGIES = frozenset(
     }
 )
 
+VALID_VALIDATOR_TYPES = frozenset(
+    {
+        "factapi_not_in_column",
+        "factapi_exists_in_column",
+        "factapi_fill_from_lookup",
+    }
+)
+VALID_VALIDATOR_ACTIONS = frozenset(
+    {
+        "nullify",
+        "warn",
+        "fill_if_null",  # Fill target field only when it is empty/null
+        "fill_always",  # Fill target field unconditionally
+    }
+)
+
+
+@dataclass
+class ValidatorSpec:
+    """Declarative field validator backed by a factAPI collection."""
+
+    type: str  # "factapi_not_in_column" | "factapi_exists_in_column" | "factapi_fill_from_lookup"
+    collection: str  # factAPI collection, e.g. "worldcities"
+    column: str  # column to match the field's value against
+    action: str  # "nullify" | "warn" | "fill_if_null" | "fill_always"
+    case_sensitive: bool = False
+    fill_column: str | None = (
+        None  # factAPI column to read fill value from (fill type only)
+    )
+    target_field: str | None = (
+        None  # entity field to write fill value to (fill type only)
+    )
+    unique_only: bool = True  # Only fill when lookup maps to exactly one value
+
 
 @dataclass
 class FieldDefinition:
@@ -35,6 +69,7 @@ class FieldDefinition:
     consolidation_strategy: str | None = (
         None  # Override type-based consolidation default
     )
+    validators: list[ValidatorSpec] | None = None  # Declarative field validators
 
 
 @dataclass

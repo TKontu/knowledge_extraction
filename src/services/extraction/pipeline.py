@@ -56,6 +56,7 @@ class SchemaExtractionPipeline:
         extraction_embedding: ExtractionEmbeddingService | None = None,
         extraction_config=None,
         project_repo: "ProjectRepository | None" = None,
+        field_validation_service=None,  # FieldValidationService | None
     ):
         from config import settings
 
@@ -64,6 +65,7 @@ class SchemaExtractionPipeline:
         self._extraction_embedding = extraction_embedding
         self._extraction = extraction_config or settings.extraction
         self._project_repo = project_repo
+        self._field_validation = field_validation_service
 
     async def extract_source(
         self,
@@ -125,6 +127,30 @@ class SchemaExtractionPipeline:
             source.relevant_field_groups = classification.relevant_groups
             source.classification_method = classification.method.value
             source.classification_confidence = classification.confidence
+
+        # Field validation: correct declarative-validator violations before DB persist
+        if self._field_validation and field_groups:
+            from config import settings
+
+            if settings.validation.enabled:
+                fg_map = {g.name: g for g in field_groups}
+                lookup_sets = await self._field_validation.prefetch_for_groups(
+                    field_groups
+                )
+                for result in results:
+                    group = fg_map.get(result["extraction_type"])
+                    if group and any(f.validators for f in group.fields):
+                        modified, violations = self._field_validation.apply_to_result(
+                            result["data"], group, lookup_sets
+                        )
+                        result["data"] = modified
+                        if violations:
+                            logger.info(
+                                "field_validation_violations",
+                                source_id=str(source.id),
+                                extraction_type=result["extraction_type"],
+                                count=len(violations),
+                            )
 
         # Store each result as an extraction
         extractions = []

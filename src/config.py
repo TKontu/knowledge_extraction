@@ -138,6 +138,15 @@ class SchedulerConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ValidationConfig:
+    enabled: bool
+    factapi_url: str
+    factapi_api_key: str
+    factapi_timeout: float
+    cache_ttl_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class ObservabilityConfig:
     log_level: str
     log_format: str
@@ -701,6 +710,31 @@ class Settings(BaseSettings):
         description="Max characters of content sent to skip-gate LLM",
     )
 
+    # Field Validation (factAPI-backed declarative validators)
+    field_validation_enabled: bool = Field(
+        default=True,
+        description="Enable declarative field validators (factAPI-backed)",
+    )
+    factapi_url: str = Field(
+        default="http://192.168.0.136:8484",
+        description="factAPI base URL for reference collection lookups",
+    )
+    factapi_api_key: str = Field(
+        default="",
+        description="API key for factAPI (X-API-Key header)",
+    )
+    factapi_timeout: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=60.0,
+        description="HTTP timeout for factAPI requests in seconds",
+    )
+    factapi_cache_ttl_seconds: int = Field(
+        default=0,
+        ge=0,
+        description="TTL for factAPI lookup set cache (0 = indefinite for process lifetime)",
+    )
+
     # Extraction Pipeline Reliability
     extraction_content_limit: int = Field(
         default=20000,
@@ -1016,6 +1050,19 @@ class Settings(BaseSettings):
             ),
         )
 
+    @property
+    def validation(self) -> ValidationConfig:
+        return self._get_facade(
+            "validation",
+            lambda: ValidationConfig(
+                enabled=self.field_validation_enabled,
+                factapi_url=self.factapi_url,
+                factapi_api_key=self.factapi_api_key,
+                factapi_timeout=self.factapi_timeout,
+                cache_ttl_seconds=self.factapi_cache_ttl_seconds,
+            ),
+        )
+
 
 __all__ = [
     "Settings",
@@ -1030,6 +1077,7 @@ __all__ = [
     "ProxyConfig",
     "SchedulerConfig",
     "ObservabilityConfig",
+    "ValidationConfig",
 ]
 
 # Global settings instance

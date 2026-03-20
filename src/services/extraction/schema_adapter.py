@@ -407,6 +407,56 @@ class SchemaAdapter:
                             f"Valid: {sorted(VALID_CONSOLIDATION_STRATEGIES)}"
                         )
 
+                # Validate validators if provided
+                if "validators" in field:
+                    from services.extraction.field_groups import (
+                        VALID_VALIDATOR_ACTIONS,
+                        VALID_VALIDATOR_TYPES,
+                    )
+
+                    validators = field["validators"]
+                    if not isinstance(validators, list):
+                        errors.append(
+                            f"field_groups[{i}]['fields'][{j}] 'validators' must be a list"
+                        )
+                    else:
+                        for k, vspec in enumerate(validators):
+                            if not isinstance(vspec, dict):
+                                errors.append(
+                                    f"field_groups[{i}]['fields'][{j}]['validators'][{k}] must be a dict"
+                                )
+                                continue
+                            for req_key in ("type", "collection", "column", "action"):
+                                if req_key not in vspec:
+                                    errors.append(
+                                        f"field_groups[{i}]['fields'][{j}]['validators'][{k}] missing '{req_key}'"
+                                    )
+                            if (
+                                "type" in vspec
+                                and vspec["type"] not in VALID_VALIDATOR_TYPES
+                            ):
+                                errors.append(
+                                    f"field_groups[{i}]['fields'][{j}]['validators'][{k}] "
+                                    f"has invalid type: '{vspec['type']}'. "
+                                    f"Valid: {sorted(VALID_VALIDATOR_TYPES)}"
+                                )
+                            if (
+                                "action" in vspec
+                                and vspec["action"] not in VALID_VALIDATOR_ACTIONS
+                            ):
+                                errors.append(
+                                    f"field_groups[{i}]['fields'][{j}]['validators'][{k}] "
+                                    f"has invalid action: '{vspec['action']}'. "
+                                    f"Valid: {sorted(VALID_VALIDATOR_ACTIONS)}"
+                                )
+                            if vspec.get("type") == "factapi_fill_from_lookup":
+                                for fill_req in ("fill_column", "target_field"):
+                                    if fill_req not in vspec:
+                                        errors.append(
+                                            f"field_groups[{i}]['fields'][{j}]['validators'][{k}] "
+                                            f"with type 'factapi_fill_from_lookup' missing '{fill_req}'"
+                                        )
+
             # Validate max_items if provided
             if "max_items" in fg:
                 max_items = fg["max_items"]
@@ -453,12 +503,37 @@ class SchemaAdapter:
         Returns:
             List of FieldGroup objects.
         """
-        from services.extraction.field_groups import FieldDefinition, FieldGroup
+        from services.extraction.field_groups import (
+            FieldDefinition,
+            FieldGroup,
+            ValidatorSpec,
+        )
 
         field_groups = []
         for fg_def in schema.get("field_groups", []):
             fields = []
             for f_def in fg_def.get("fields", []):
+                # Parse validators list if present
+                validators = None
+                if "validators" in f_def and isinstance(f_def["validators"], list):
+                    validators = [
+                        ValidatorSpec(
+                            type=v["type"],
+                            collection=v["collection"],
+                            column=v["column"],
+                            action=v["action"],
+                            case_sensitive=v.get("case_sensitive", False),
+                            fill_column=v.get("fill_column"),
+                            target_field=v.get("target_field"),
+                            unique_only=v.get("unique_only", True),
+                        )
+                        for v in f_def["validators"]
+                        if isinstance(v, dict)
+                        and all(
+                            k in v for k in ("type", "collection", "column", "action")
+                        )
+                    ] or None
+
                 fields.append(
                     FieldDefinition(
                         name=f_def["name"],
@@ -470,6 +545,7 @@ class SchemaAdapter:
                         merge_strategy=f_def.get("merge_strategy"),
                         grounding_mode=f_def.get("grounding_mode"),
                         consolidation_strategy=f_def.get("consolidation_strategy"),
+                        validators=validators,
                     )
                 )
 

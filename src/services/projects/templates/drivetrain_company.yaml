@@ -265,6 +265,18 @@ extraction_schema:
           field_type: text
           required: false
           description: "Municipality/town name ONLY — never a country, region, or continent. Null if unknown."
+          validators:
+            - type: factapi_not_in_column
+              collection: worldcities
+              column: country
+              action: nullify
+            - type: factapi_fill_from_lookup
+              collection: worldcities
+              column: city
+              fill_column: country
+              target_field: country
+              action: fill_if_null
+              unique_only: true
         - name: country
           field_type: text
           required: false
