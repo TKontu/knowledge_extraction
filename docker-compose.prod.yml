@@ -283,6 +283,9 @@ services:
       CLASSIFICATION_SKIP_GATE_ENABLED: ${CLASSIFICATION_SKIP_GATE_ENABLED:-false}
       CLASSIFICATION_SKIP_GATE_MODEL: ${CLASSIFICATION_SKIP_GATE_MODEL:-}
       CLASSIFICATION_SKIP_GATE_CONTENT_LIMIT: ${CLASSIFICATION_SKIP_GATE_CONTENT_LIMIT:-2000}
+      # Field Validation (factAPI-backed)
+      FACTAPI_URL: ${FACTAPI_URL:-http://192.168.0.136:8484}
+      FACTAPI_API_KEY: ${FACTAPI_API_KEY:-}
     volumes:
       - ./prompts:/app/prompts:ro
       - ./reports:/app/reports
